@@ -7,6 +7,7 @@ from typing import Any
 
 from shumozizi.core.io import ContractError, load_json, sha256_file
 from shumozizi.core.schema import require_valid
+from shumozizi.results.references import verify_referenced_result
 from shumozizi.results.sealing import verify_sealed_result
 
 
@@ -113,10 +114,17 @@ def verify_figure_receipts(run_dir: Path) -> dict[str, Any]:
                     errors.extend(_check_file_binding(run_dir, binding, f"图表 {figure_id}.{key}[{index}]"))
             errors.extend(_check_file_binding(run_dir, receipt["script"], f"图表 {figure_id}.script"))
             registry = load_json(run_dir / "results" / "result_registry.json")
-            accepted = {entry["result_id"] for entry in registry.get("results", []) if entry.get("status") == "accepted" and entry.get("paper_allowed") is True}
+            require_valid(registry, "result_registry")
             for result_id in receipt["accepted_result_ids"]:
-                if result_id not in accepted:
-                    errors.append(f"图表 {figure_id} 引用了非 accepted 结果: {result_id}")
+                errors.extend(
+                    f"图表 {figure_id}: {message}"
+                    for message in verify_referenced_result(
+                        run_dir,
+                        registry,
+                        result_id,
+                        question_id=receipt["question_id"],
+                    )
+                )
     except (ContractError, KeyError) as exc:
         errors.append(str(exc))
     return {"valid": not errors, "errors": errors, "plan_path": str(plan_path)}

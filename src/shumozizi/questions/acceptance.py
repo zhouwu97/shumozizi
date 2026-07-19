@@ -7,6 +7,7 @@ from typing import Any
 
 from shumozizi.core.io import ContractError, load_json, resolve_inside
 from shumozizi.core.schema import require_valid
+from shumozizi.results.references import verify_referenced_result
 
 CHECK_NAMES = (
     "question_requirements",
@@ -25,6 +26,7 @@ CHECK_NAMES = (
 def _load_registry(run_dir: Path) -> dict[str, Any]:
     """读取结果注册表。"""
     registry = load_json(run_dir / "results" / "result_registry.json")
+    require_valid(registry, "result_registry")
     return registry
 
 
@@ -46,13 +48,16 @@ def _verify_one(run_dir: Path, path: Path, registry: dict[str, Any]) -> list[str
         for check_name in CHECK_NAMES:
             if not acceptance["checks"][check_name]["passed"]:
                 errors.append(f"{path.name}: 检查未通过 {check_name}")
-        by_id = {item.get("result_id"): item for item in registry.get("results", [])}
         for result_id in acceptance["accepted_result_ids"]:
-            result = by_id.get(result_id)
-            if result is None:
-                errors.append(f"{path.name}: accepted_result 不存在 {result_id}")
-            elif result.get("status") != "accepted" or result.get("paper_allowed") is not True:
-                errors.append(f"{path.name}: 结果未被 accepted/paper_allowed {result_id}")
+            errors.extend(
+                f"{path.name}: {message}"
+                for message in verify_referenced_result(
+                    run_dir,
+                    registry,
+                    result_id,
+                    question_id=acceptance["question_id"],
+                )
+            )
         for chapter in acceptance["chapter_paths"]:
             try:
                 chapter_path = resolve_inside(run_dir, chapter, must_exist=True)
