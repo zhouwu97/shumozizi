@@ -1,8 +1,8 @@
-# MathModelAgent Codex Project
+# MathModelAgent Codex Desktop Project
 
 ## 项目定位
 
-本项目是由 Codex CLI、Codex IDE 或 Codex 桌面应用驱动的项目级数学建模工作流包。
+本项目是由 Codex 桌面版 AI 驱动的项目级数学建模工作流包。
 不启动 WebUI、Redis、后端任务队列、旧多 Agent 框架或云端解释器。
 
 ## 完整工作流入口
@@ -43,20 +43,21 @@
 - 运行后检查退出码、输出文件、约束、单位和核心指标。
 - 论文必须编译，并检查最终 PDF 的图片、占位符、数值一致性和提交格式。
 - 使用 `python scripts/codex/validate_state.py runs/<run_id>` 校验状态和结果注册表。
-- 使用 `powershell -File scripts/codex/doctor.ps1` 检查本机工具。
+- 使用 `python scripts/doctor.py` 检查本机工具。
 
 ## 目录职责
 
 - `.agents/skills/`：Codex 原生包装 Skills。
 - `skills/`：上游原始 Skills，只作能力基线；不要为适配而整体重写。
 - `schemas/`：路线、状态与结果注册的机器可读约束。
-- `scripts/codex/`：初始化、校验和 `codex exec` 辅助脚本。
+- `scripts/codex/`：运行目录初始化与状态校验工具，不负责调用或调度 Codex。
+- `scripts/runtime/`：实验执行、证据复验和结果准入工具。
 - `problems/`：题面和附件，工作流不得修改原始文件。
 - `runs/`：每次运行的状态、代码、结果、图表和论文；默认不提交 Git。
 
 ## 禁止事项
 
-- 不默认使用 `--yolo`、`danger-full-access` 或 `approval_policy=never`。
+- 不通过命令行脚本启动、续跑或调度 Codex。
 - 不在路线确认前写完整建模报告、正式实验或论文。
 - 不为了创新堆叠未经基线、对照或消融验证的复杂模型。
 - 不引入 SDK、App Server、MCP 自建服务、数据库或多 Agent 调度。
