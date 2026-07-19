@@ -23,6 +23,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 class KnowledgeContractTests(unittest.TestCase):
     """验证知识资产只从锁定且许可边界明确的来源进入。"""
 
+    def test_index_rebuild_preserves_lf_checkout_bytes(self) -> None:
+        """从 LF checkout 重建索引不应因 Windows 换行转换改变文件哈希。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            repo_root = Path(temporary)
+            shutil.copytree(REPO_ROOT / "knowledge", repo_root / "knowledge")
+            for path in (repo_root / "knowledge").rglob("*.json"):
+                content = path.read_text(encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline="\n")
+
+            before = sha256_file(repo_root / "knowledge" / "INDEX.json")
+            build_knowledge_index(repo_root)
+            after = sha256_file(repo_root / "knowledge" / "INDEX.json")
+
+            self.assertEqual(before, after)
+
     def test_index_is_reproducible_and_selects_ranked_cards(self) -> None:
         """索引重建应稳定，选择器只读取通过哈希复验的卡片。"""
         before = sha256_file(REPO_ROOT / "knowledge" / "INDEX.json")
