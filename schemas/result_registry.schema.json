@@ -19,39 +19,35 @@
           "cycle",
           "status",
           "paper_allowed",
-          "source_script",
-          "source_output",
+          "execution_record_id",
           "metrics",
-          "conclusion"
+          "unit",
+          "conclusion",
+          "constraint_checks",
+          "validation_checks",
+          "baseline_result_id",
+          "innovation_claim_ids",
+          "innovation_evidence",
+          "acceptance"
         ],
         "allOf": [
+          {
+            "if": {
+              "properties": { "paper_allowed": { "const": true } },
+              "required": ["paper_allowed"]
+            },
+            "then": { "properties": { "status": { "const": "accepted" } } }
+          },
           {
             "if": {
               "properties": { "status": { "const": "accepted" } },
               "required": ["status"]
             },
             "then": {
-              "required": [
-                "run_command",
-                "exit_code",
-                "source_sha256",
-                "output_sha256",
-                "unit",
-                "constraint_checks",
-                "validation_checks",
-                "baseline_result_id",
-                "innovation_claim_ids",
-                "accepted_by",
-                "accepted_at"
-              ],
               "properties": {
-                "run_command": { "type": "string", "minLength": 1 },
-                "exit_code": { "const": 0 },
-                "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-                "output_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
                 "metrics": { "minProperties": 1 },
-                "unit": { "type": "string", "minLength": 1 },
-                "conclusion": { "type": "string", "minLength": 1 },
+                "unit": { "minLength": 1 },
+                "conclusion": { "minLength": 1 },
                 "constraint_checks": {
                   "minItems": 1,
                   "items": { "properties": { "passed": { "const": true } } }
@@ -60,8 +56,22 @@
                   "minItems": 1,
                   "items": { "properties": { "passed": { "const": true } } }
                 },
-                "accepted_by": { "type": "string", "minLength": 1 },
-                "accepted_at": { "type": "string", "format": "date-time" }
+                "acceptance": { "$ref": "#/$defs/acceptance" }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "cycle": { "const": "baseline" } },
+              "required": ["cycle"]
+            },
+            "then": { "properties": { "baseline_result_id": { "const": null } } },
+            "else": {
+              "properties": {
+                "baseline_result_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]+$"
+                }
               }
             }
           }
@@ -72,18 +82,15 @@
           "cycle": { "enum": ["baseline", "primary", "robustness", "ablation"] },
           "status": { "enum": ["candidate", "accepted", "rejected"] },
           "paper_allowed": { "type": "boolean" },
-          "source_script": { "type": "string", "minLength": 1 },
-          "source_output": { "type": "string", "minLength": 1 },
+          "execution_record_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
           "metrics": {
             "type": "object",
-            "additionalProperties": { "type": ["number", "integer", "string", "boolean", "null"] }
+            "additionalProperties": {
+              "type": ["number", "integer", "string", "boolean", "null"]
+            }
           },
+          "unit": { "type": "string" },
           "conclusion": { "type": "string" },
-          "run_command": { "type": ["string", "null"] },
-          "exit_code": { "type": ["integer", "null"] },
-          "source_sha256": { "type": ["string", "null"] },
-          "output_sha256": { "type": ["string", "null"] },
-          "unit": { "type": ["string", "null"] },
           "constraint_checks": {
             "type": "array",
             "items": { "$ref": "#/$defs/check" }
@@ -92,23 +99,28 @@
             "type": "array",
             "items": { "$ref": "#/$defs/check" }
           },
-          "baseline_result_id": {
-            "type": ["string", "null"],
-            "pattern": "^[A-Za-z0-9._-]+$"
-          },
+          "baseline_result_id": { "type": ["string", "null"] },
           "innovation_claim_ids": {
             "type": "array",
             "uniqueItems": true,
             "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
           },
-          "random_seed": { "type": ["integer", "null"] },
-          "accepted_by": { "type": ["string", "null"] },
-          "accepted_at": { "type": ["string", "null"] }
+          "innovation_evidence": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/innovation_evidence" }
+          },
+          "acceptance": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/$defs/acceptance" }
+            ]
+          }
         }
       }
     }
   },
   "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "check": {
       "type": "object",
       "additionalProperties": false,
@@ -117,12 +129,34 @@
         "check_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "passed": { "type": "boolean" },
         "details": { "type": "string", "minLength": 1 },
-        "evidence_path": { "type": ["string", "null"] },
-        "claim_ids": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
-        }
+        "evidence_path": { "type": ["string", "null"] }
+      }
+    },
+    "innovation_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "evidence_result_id"],
+      "properties": {
+        "claim_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "evidence_result_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted_by",
+        "accepted_at",
+        "execution_record_sha256",
+        "admission_tool",
+        "admission_version"
+      ],
+      "properties": {
+        "accepted_by": { "type": "string", "minLength": 1 },
+        "accepted_at": { "type": "string", "format": "date-time" },
+        "execution_record_sha256": { "$ref": "#/$defs/sha256" },
+        "admission_tool": { "const": "scripts/runtime/accept_result.py" },
+        "admission_version": { "const": "1.0" }
       }
     }
   }

@@ -9,7 +9,7 @@ description: 在人工路线已锁定后，按子问题执行 baseline、primary
 
 ## 前置条件
 
-1. 读取 `state.json`、`brief/ROUTE_LOCK.yaml` 和数学规格。
+1. 读取 `state.json`、`brief/ROUTE_LOCK.json` 和数学规格。
 2. 只有 `route_locked=true` 且状态为 `MODEL_SPEC_READY` 或 `EXPERIMENTING` 才能执行。
 3. 完整读取 `skills/3coding-visual/SKILL.md`，沿用其中的代码、图表和复现要求。
 4. 已完成的循环从状态和结果注册表恢复，不要因为新会话而重跑。
@@ -21,19 +21,37 @@ description: 在人工路线已锁定后，按子问题执行 baseline、primary
 3. `robustness` 或 `ablation`：按题型选择灵敏度、误差、扰动、交叉验证、蒙特卡洛、
    外推或约束边界测试。
 
-每轮都必须实际运行，检查退出码并保存源代码、原始输出、指标、图表数据和随机种子。失败时
+每轮都必须先按 `schemas/execution_manifest.schema.json` 写结构化执行清单，再调用：
+
+```powershell
+python scripts/runtime/execute_experiment.py runs/<run_id> <manifest.json>
+```
+
+执行器固定使用 `shell=False`，并保存不可变清单、标准输出、标准错误、退出码、输入哈希、
+输出哈希和随机种子。不得直接运行未登记实验，也不得把管道、重定向或复合命令装进字符串。
+失败时
 依次修复代码/数据、调整同路线参数/求解器、使用已确认备用路线；再失败则触发路线漂移，
 不得自行选择新模型类别。
 
 ## 结果注册
 
-先把新结果登记为 `candidate`。只有完成以下检查后才能改为 `accepted`：
+执行完成后，把引用 `execution_record_id` 的新结果登记为 `candidate`。只有完成以下检查后，
+才能调用唯一准入入口：
+
+```powershell
+python scripts/runtime/accept_result.py runs/<run_id> --result-id <result_id> --paper-allowed
+```
 
 - 源脚本和输出文件存在且能复现；
 - 指标定义与题意一致；
 - 约束、单位和数据范围通过；
 - 结论没有超出实验支持；
 - 若声称创新有效，存在基线、对照或消融证据。
+
+Codex 不得直接把 `status` 改成 `accepted`。准入脚本会复验执行记录 Schema、退出码、当前
+输入/输出哈希、全部预期输出、非空指标、单位、强约束、验证、基线和创新证据。非 baseline
+结果必须引用同一问题下已接受的 baseline；每个创新主张必须引用同题已接受的 robustness
+或 ablation 结果。
 
 按 `schemas/result_registry.schema.json` 更新 `results/result_registry.json`。只有
 `accepted` 且 `paper_allowed=true` 的记录可交给论文 Skill。

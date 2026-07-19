@@ -73,6 +73,7 @@ def main() -> int:
         "paper/sections",
         "review",
         "logs",
+        "executions/manifests",
     ):
         (run_dir / name).mkdir(parents=True, exist_ok=True)
 
