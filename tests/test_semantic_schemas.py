@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import unittest
 
+from shumozizi.claims.evaluator import EVALUATOR_VERSION
 from shumozizi.core.schema import validate_document
 
 SHA = "a" * 64
@@ -37,10 +38,11 @@ def prediction(prediction_id: str, direction: str) -> dict:
     return result
 
 
-def comparison_predicate(prediction_id: str) -> dict:
+def comparison_predicate(prediction_id: str, role: str = "required_support") -> dict:
     """返回结构化比较谓词。"""
     return {
         "prediction_id": prediction_id,
+        "role": role,
         "metric": "validation_rmse",
         "relation": "relative_decrease_at_most",
         "threshold": 0.03,
@@ -194,7 +196,7 @@ def claim_evidence(status: str = "supported") -> dict:
         "schema_name": "claim_evidence",
         "schema_version": "2.0",
         "run_id": "semantic-test",
-        "evaluator_version": "1.0.0",
+        "evaluator_version": EVALUATOR_VERSION,
         "route_lock_sha256": SHA,
         "result_registry_sha256": SHA,
         "experiment_plan_sha256": SHA,
@@ -206,7 +208,13 @@ def claim_evidence(status: str = "supported") -> dict:
                 "status": status,
                 "evidence_result_ids": ["Q1-B0", "Q1-P1"],
                 "prediction_checks": [
-                    {"prediction_id": "P-Q1-01", "status": "passed", "observed": 0.08, "required": 0.05}
+                    {
+                        "prediction_id": "P-Q1-01",
+                        "role": "required_support",
+                        "status": "passed",
+                        "observed": 0.08,
+                        "required": 0.05,
+                    }
                 ],
                 "paper_permissions": {
                     "contribution_section": status == "supported",
@@ -252,6 +260,11 @@ class SemanticSchemaTests(unittest.TestCase):
         document = experiment_plan()
         document["randomness_plan"] = {"applicable": True}
         self.assert_invalid(document, "experiment_plan", "seeds")
+
+    def test_experiment_plan_rejects_predicate_without_role(self) -> None:
+        document = experiment_plan()
+        del document["comparison_rule"]["predicates"][0]["role"]
+        self.assert_invalid(document, "experiment_plan", "role")
 
     def test_claim_evidence_accepts_supported_claim(self) -> None:
         self.assert_valid(claim_evidence(), "claim_evidence")

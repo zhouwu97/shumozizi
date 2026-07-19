@@ -65,9 +65,10 @@
     "prediction_check": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["prediction_id", "status"],
+      "required": ["prediction_id", "role", "status"],
       "properties": {
         "prediction_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "role": {"enum": ["required_support", "falsification"]},
         "status": {"enum": ["passed", "failed", "inconclusive", "not_evaluated"]},
         "metric": {"type": "string", "minLength": 1},
         "unit": {"type": "string", "minLength": 1},

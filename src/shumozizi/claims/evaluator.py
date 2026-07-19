@@ -23,8 +23,15 @@ from shumozizi.core.io import (
 from shumozizi.core.schema import require_valid
 from shumozizi.results.sealing import verify_sealed_result
 
-EVALUATOR_VERSION = "1.0.0"
+EVALUATOR_VERSION = "1.1.0"
 CLAIM_STATUSES = {"supported", "partially_supported", "rejected", "inconclusive"}
+PREDICATE_ROLES = {"required_support", "falsification"}
+COMPARISON_POLICY = {
+    "supported_if": "all_required_predictions_pass",
+    "partially_supported_if": "at_least_one_required_prediction_passes",
+    "rejected_if": "any_falsification_condition_passes",
+    "otherwise": "inconclusive",
+}
 RELATIONS = {
     "relative_increase",
     "relative_decrease",
@@ -36,6 +43,15 @@ RELATIONS = {
     "absolute_increase_at_most",
     "stable",
 }
+
+
+def _require_comparison_policy(rule: dict[str, Any]) -> None:
+    """拒绝声明了 evaluator 未实现之判定策略的实验计划。"""
+    mismatches = [
+        name for name, expected in COMPARISON_POLICY.items() if rule.get(name) != expected
+    ]
+    if mismatches:
+        raise ContractError(f"不支持的主张判定策略字段: {', '.join(mismatches)}")
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -165,9 +181,13 @@ def _predicate_check(
     target: tuple[float, str, list[str]] | None,
 ) -> tuple[dict[str, Any], list[str]]:
     """执行一个结构化 predicate，并返回检查记录与证据结果 IDs。"""
+    role = predicate.get("role")
+    if role not in PREDICATE_ROLES:
+        raise ContractError(f"不支持的 predicate role: {role}")
     prediction_id = predicate.get("prediction_id") or f"metric-{predicate['metric']}"
     check: dict[str, Any] = {
         "prediction_id": prediction_id,
+        "role": role,
         "metric": predicate["metric"],
         "status": "inconclusive",
         "required": float(predicate["threshold"]),
@@ -269,7 +289,9 @@ def evaluate_claim_documents(
         for plan in claim_plans:
             question_id = plan["question_id"]
             baseline_ids = plan.get("baseline_result_ids", [])
-            predicates = plan.get("comparison_rule", {}).get("predicates", [])
+            comparison_rule = plan.get("comparison_rule", {})
+            _require_comparison_policy(comparison_rule)
+            predicates = comparison_rule.get("predicates", [])
             for predicate in predicates:
                 prediction_id = predicate.get("prediction_id")
                 if prediction_id and prediction_id not in claim["prediction_ids"]:
@@ -296,12 +318,17 @@ def evaluate_claim_documents(
                 all_comparisons.append(
                     {"claim_id": claim_id, "plan_id": plan["experiment_id"], "check": check}
                 )
-        statuses = [item["status"] for item in checks]
-        if statuses and all(item == "passed" for item in statuses):
-            status = "supported"
-        elif any(item == "failed" for item in statuses):
+        required_statuses = [
+            item["status"] for item in checks if item["role"] == "required_support"
+        ]
+        falsification_statuses = [
+            item["status"] for item in checks if item["role"] == "falsification"
+        ]
+        if any(item == "failed" for item in falsification_statuses):
             status = "rejected"
-        elif any(item == "passed" for item in statuses):
+        elif required_statuses and all(item == "passed" for item in required_statuses):
+            status = "supported"
+        elif any(item == "passed" for item in required_statuses):
             status = "partially_supported"
         else:
             status = "inconclusive"

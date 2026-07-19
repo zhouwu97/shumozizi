@@ -153,9 +153,10 @@
     "comparison_predicate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["metric", "relation", "threshold", "unit", "aggregation"],
+      "required": ["role", "metric", "relation", "threshold", "unit", "aggregation"],
       "properties": {
         "prediction_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "role": {"enum": ["required_support", "falsification"]},
         "metric": {"type": "string", "minLength": 1},
         "relation": {
           "enum": [

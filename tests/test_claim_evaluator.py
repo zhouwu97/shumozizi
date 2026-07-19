@@ -51,6 +51,7 @@ def evaluation_documents(
         plan["comparison_rule"]["predicates"].append(
             {
                 "prediction_id": "P-Q1-02",
+                "role": "required_support",
                 "metric": "missing_metric",
                 "relation": "stable",
                 "threshold": 0.01,
@@ -85,9 +86,10 @@ class ClaimEvaluatorTests(unittest.TestCase):
         self.assertEqual("supported", evidence["claims"][0]["status"])
         self.assertEqual("passed", evidence["claims"][0]["prediction_checks"][0]["status"])
 
-    def test_failed_predicate_rejects_claim_even_when_text_is_confident(self) -> None:
+    def test_failed_falsification_rejects_claim_even_when_text_is_confident(self) -> None:
         lock, registry, plans, sealed = evaluation_documents(12.0)
         lock["innovation_claims"][0]["claim"] = "无论数值如何变化，本主张都必然成立"
+        plans[0]["comparison_rule"]["predicates"][0]["role"] = "falsification"
 
         evidence, _ = evaluate_claim_documents(lock, registry, plans, sealed)
 
@@ -104,6 +106,31 @@ class ClaimEvaluatorTests(unittest.TestCase):
         self.assertEqual("partially_supported", evidence["claims"][0]["status"])
         self.assertEqual(
             ["passed", "inconclusive"],
+            [item["status"] for item in evidence["claims"][0]["prediction_checks"]],
+        )
+
+    def test_required_support_pass_and_fail_is_partially_supported(self) -> None:
+        """非致命支持预测一过一败时不应直接拒绝创新主张。"""
+        lock, registry, plans, sealed = evaluation_documents(8.0)
+        predicates = plans[0]["comparison_rule"]["predicates"]
+        predicates[0]["role"] = "required_support"
+        predicates.append(
+            {
+                "prediction_id": "P-Q1-02",
+                "role": "required_support",
+                "metric": "validation_rmse",
+                "relation": "stable",
+                "threshold": 0.01,
+                "unit": "dimensionless",
+                "aggregation": "primary_result",
+            }
+        )
+
+        evidence, _ = evaluate_claim_documents(lock, registry, plans, sealed)
+
+        self.assertEqual("partially_supported", evidence["claims"][0]["status"])
+        self.assertEqual(
+            ["passed", "failed"],
             [item["status"] for item in evidence["claims"][0]["prediction_checks"]],
         )
 

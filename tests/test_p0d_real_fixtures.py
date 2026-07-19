@@ -109,6 +109,7 @@ class P0DRealFixtureTests(unittest.TestCase):
             metric="objective",
             relation="relative_increase",
             threshold=0.2,
+            role="falsification",
         )
 
         rejected = self._evaluate_claims()
@@ -229,6 +230,7 @@ class P0DRealFixtureTests(unittest.TestCase):
         metric: str,
         relation: str,
         threshold: float,
+        role: str = "required_support",
     ) -> None:
         """写入真实结果对应的结构化实验计划。"""
         plan = experiment_plan()
@@ -245,6 +247,7 @@ class P0DRealFixtureTests(unittest.TestCase):
         plan["comparison_rule"]["predicates"] = [
             {
                 "prediction_id": prediction_id,
+                "role": role,
                 "metric": metric,
                 "relation": relation,
                 "threshold": threshold,
