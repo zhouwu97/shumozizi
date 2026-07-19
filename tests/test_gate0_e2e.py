@@ -239,12 +239,6 @@ class Gate0EndToEndTests(unittest.TestCase):
                 '核心结果为 #evidence("Q1-VALUE")。\n',
                 encoding="utf-8",
             )
-            service.transition(
-                run_dir.name,
-                WorkflowEvent.PAPER_COMPLETED,
-                actor,
-                [self._ref(run_dir, "paper_source", paper_source)],
-            )
             final_pdf = run_dir / "paper/final.pdf"
             compiled = subprocess.run(
                 ["typst", "compile", str(paper_source), str(final_pdf)],
@@ -255,6 +249,56 @@ class Gate0EndToEndTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(0, compiled.returncode, compiled.stderr)
+            # Gate 0 使用最小但完整的论文和图表生产回执。
+            for relative in ("skills/mathmodel-paper/SKILL.md", "skills/5writing/SKILL.md", "skills/typst-author/SKILL.md", "skills/3coding-visual/SKILL.md"):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("测试 Skill\n", encoding="utf-8")
+            claim_gate = run_dir / "paper/claim_gate.json"
+            claim_gate.write_text("{}\n", encoding="utf-8")
+            paper_plan = {
+                "schema_name": "paper_plan",
+                "schema_version": "2.0",
+                "run_id": run_dir.name,
+                "bindings": {
+                    "mathmodel_paper": {"path": "skills/mathmodel-paper/SKILL.md", "sha256": sha256_file(root / "skills/mathmodel-paper/SKILL.md")},
+                    "writing_skill": {"path": "skills/5writing/SKILL.md", "sha256": sha256_file(root / "skills/5writing/SKILL.md")},
+                    "typst_author": {"path": "skills/typst-author/SKILL.md", "sha256": sha256_file(root / "skills/typst-author/SKILL.md")},
+                    "competition_template": {"path": "profiles/generic.json", "sha256": sha256_file(root / "profiles/generic.json")},
+                    "model_spec": {"path": "reports/model_spec.md", "sha256": sha256_file(run_dir / "reports/model_spec.md")},
+                    "result_registry": {"path": "results/result_registry.json", "sha256": sha256_file(run_dir / "results/result_registry.json")},
+                    "claim_gate": {"path": "paper/claim_gate.json", "sha256": sha256_file(claim_gate)},
+                    "section_files": [{"path": "paper/main.typ", "sha256": sha256_file(paper_source)}],
+                    "figures_used": [],
+                },
+                "final_pdf_path": "paper/final.pdf",
+            }
+            atomic_json(run_dir / "paper/paper_plan.json", paper_plan)
+            state = load_json(run_dir / "state.json")
+            atomic_json(
+                run_dir / "paper/PAPER_BUILD_RECEIPT.json",
+                {
+                    "schema_name": "paper_build_receipt",
+                    "schema_version": "2.0",
+                    "run_id": run_dir.name,
+                    "plan_path": "paper/paper_plan.json",
+                    "plan_sha256": sha256_file(run_dir / "paper/paper_plan.json"),
+                    "state_revision": state["revision"],
+                    "final_pdf_path": "paper/final.pdf",
+                    "final_pdf_sha256": sha256_file(final_pdf),
+                    "generated_at": "2026-07-19T00:00:00Z",
+                },
+            )
+            atomic_json(
+                run_dir / "figures/FIGURE_PLAN.json",
+                {"schema_name": "figure_plan", "schema_version": "2.0", "run_id": run_dir.name, "figures": []},
+            )
+            service.transition(
+                run_dir.name,
+                WorkflowEvent.PAPER_COMPLETED,
+                actor,
+                [self._ref(run_dir, "paper_source", paper_source)],
+            )
             self._record_review(
                 service,
                 run_dir,

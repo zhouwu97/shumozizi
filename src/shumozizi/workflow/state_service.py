@@ -11,6 +11,7 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
+from shumozizi.paper.receipts import verify_production_receipts
 from shumozizi.profiles.lock import verify_run_config_lock
 from shumozizi.results.sealing import verify_sealed_result
 from shumozizi.workflow.reviews import verify_review_receipt
@@ -379,6 +380,10 @@ class StateService:
                 state,
                 tuple(f"R2_EXPERIMENT_{question_id}" for question_id in completed_questions),
             )
+        if event is WorkflowEvent.PAPER_COMPLETED:
+            production = verify_production_receipts(run_dir)
+            if not production["valid"]:
+                raise ContractError("论文或图表生产回执校验失败: " + "; ".join(production["errors"]))
         if event is WorkflowEvent.QA_STARTED:
             self._require_passed_review_gates(
                 run_dir, state, ("R3_PAPER_LOGIC", "R4_FORMAT_VISUAL")

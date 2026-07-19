@@ -45,7 +45,17 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 | `inconclusive` | 只能写结果和未决讨论，不得写确定性贡献 |
 | `stale=true` | 完全禁止引用该主张证据 |
 
-按用户已锁定的比赛、语言和排版引擎组装并编译论文。
+按用户已锁定的比赛、语言和排版引擎组装并编译论文。 
+
+## 生产回执
+
+在进入 `PAPER_DRAFTED` 前必须写入并通过机器校验：
+
+- `paper/paper_plan.json`：绑定本 Skill、`skills/5writing`、`skills/typst-author`、比赛模板、model spec、结果注册表、claim gate、章节文件和使用的图表。
+- `paper/PAPER_BUILD_RECEIPT.json`：绑定计划哈希、当前 state revision、最终 PDF 路径与 SHA-256。
+- `figures/FIGURE_PLAN.json` 及每张图的 `figures/<figure_id>.receipt.json`：绑定 accepted result ID、数据、绘图脚本、PDF/PNG 输出、单位、图例和坐标轴。
+
+优先使用 Nature Figure；不可用时可使用 `skills/3coding-visual`。回执不是简单的 `{"status":"pass"}`，必须由 `verify_production_receipts()` 复验所有路径、哈希和 accepted 结果。
 
 生成草稿后把状态设为 `PAPER_DRAFTED`，然后交给 `$mathmodel-review`。本 Skill 不执行多轮
 审稿，也不把论文直接标记为最终提交稿。

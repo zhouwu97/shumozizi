@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/figure_receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "figure_id", "accepted_result_ids", "data_files", "script", "outputs", "units", "legend", "axes", "generated_at"],
+  "properties": {
+    "schema_name": {"const": "figure_receipt"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "figure_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "accepted_result_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "data_files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}},
+    "script": {"$ref": "#/$defs/file"},
+    "outputs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}},
+    "units": {"type": "string", "minLength": 1},
+    "legend": {"type": "string", "minLength": 1},
+    "axes": {"type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": {"x": {"type": "string", "minLength": 1}, "y": {"type": "string", "minLength": 1}}},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "file": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/sha"}}}
+  }
+}
