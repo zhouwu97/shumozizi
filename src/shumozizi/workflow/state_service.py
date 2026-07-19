@@ -13,6 +13,7 @@ from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.receipts import verify_production_receipts
 from shumozizi.profiles.lock import verify_run_config_lock
+from shumozizi.questions.acceptance import verify_question_acceptance
 from shumozizi.results.sealing import verify_sealed_result
 from shumozizi.workflow.reviews import verify_review_receipt
 
@@ -384,6 +385,9 @@ class StateService:
             production = verify_production_receipts(run_dir)
             if not production["valid"]:
                 raise ContractError("论文或图表生产回执校验失败: " + "; ".join(production["errors"]))
+            acceptance = verify_question_acceptance(run_dir)
+            if not acceptance["valid"]:
+                raise ContractError("逐问验收校验失败: " + "; ".join(acceptance["errors"]))
         if event is WorkflowEvent.QA_STARTED:
             self._require_passed_review_gates(
                 run_dir, state, ("R3_PAPER_LOGIC", "R4_FORMAT_VISUAL")

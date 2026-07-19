@@ -20,6 +20,7 @@ RUN_DIRECTORIES = (
     "results/revocations",
     "experiments/plans",
     "claims",
+    "questions",
     "figures",
     "paper/sections",
     "paper/generated",

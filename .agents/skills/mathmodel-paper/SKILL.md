@@ -54,6 +54,7 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 - `paper/paper_plan.json`：绑定本 Skill、`skills/5writing`、`skills/typst-author`、比赛模板、model spec、结果注册表、claim gate、章节文件和使用的图表。
 - `paper/PAPER_BUILD_RECEIPT.json`：绑定计划哈希、当前 state revision、最终 PDF 路径与 SHA-256。
 - `figures/FIGURE_PLAN.json` 及每张图的 `figures/<figure_id>.receipt.json`：绑定 accepted result ID、数据、绘图脚本、PDF/PNG 输出、单位、图例和坐标轴。
+- `questions/<question_id>/QUESTION_ACCEPTANCE.json`：逐项绑定题目要求、模型输出、一一对应关系、硬约束、baseline、accepted result、不确定性、direct answer、上游依赖和 claim status。未通过的问题不得进入 `paper/sections/`。
 
 优先使用 Nature Figure；不可用时可使用 `skills/3coding-visual`。回执不是简单的 `{"status":"pass"}`，必须由 `verify_production_receipts()` 复验所有路径、哈希和 accepted 结果。
 

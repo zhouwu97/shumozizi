@@ -205,6 +205,33 @@ class Gate0EndToEndTests(unittest.TestCase):
                 actor,
                 [],
             )
+            question_section = run_dir / "paper/sections/q1.typ"
+            question_section.parent.mkdir(parents=True, exist_ok=True)
+            question_section.write_text("= Q1 逐问回答\n固定标量为 1.25。\n", encoding="utf-8")
+            checks = {
+                name: {"passed": True, "evidence": "Gate 0 fixture 已核验"}
+                for name in (
+                    "question_requirements", "model_output", "output_mapping", "hard_constraints",
+                    "baseline", "accepted_result", "uncertainty", "direct_answer",
+                    "upstream_dependencies", "claim_status",
+                )
+            }
+            atomic_json(
+                run_dir / "questions/q1/QUESTION_ACCEPTANCE.json",
+                {
+                    "schema_name": "question_acceptance",
+                    "schema_version": "2.0",
+                    "run_id": run_dir.name,
+                    "question_id": "q1",
+                    "status": "accepted",
+                    "checks": checks,
+                    "accepted_result_ids": ["q1-baseline"],
+                    "chapter_paths": ["paper/sections/q1.typ"],
+                    "direct_answer": "固定标量为 1.25。",
+                    "claim_status": "none",
+                    "generated_at": "2026-07-19T00:00:00Z",
+                },
+            )
 
             evidence_map = {
                 "schema_name": "evidence_map",
@@ -268,7 +295,10 @@ class Gate0EndToEndTests(unittest.TestCase):
                     "model_spec": {"path": "reports/model_spec.md", "sha256": sha256_file(run_dir / "reports/model_spec.md")},
                     "result_registry": {"path": "results/result_registry.json", "sha256": sha256_file(run_dir / "results/result_registry.json")},
                     "claim_gate": {"path": "paper/claim_gate.json", "sha256": sha256_file(claim_gate)},
-                    "section_files": [{"path": "paper/main.typ", "sha256": sha256_file(paper_source)}],
+                    "section_files": [
+                        {"path": "paper/main.typ", "sha256": sha256_file(paper_source)},
+                        {"path": "paper/sections/q1.typ", "sha256": sha256_file(question_section)},
+                    ],
                     "figures_used": [],
                 },
                 "final_pdf_path": "paper/final.pdf",
