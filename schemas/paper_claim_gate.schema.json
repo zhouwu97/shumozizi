@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_claim_gate.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "evaluator_version",
+    "claim_evidence_sha256",
+    "stale",
+    "claimability",
+    "claims"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_claim_gate"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "evaluator_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "claim_evidence_sha256": {"$ref": "#/$defs/sha"},
+    "stale": {"type": "boolean"},
+    "stale_reason": {"type": "string", "minLength": 2},
+    "claimability": {"enum": ["claims", "none"]},
+    "claimability_reason": {"type": "string", "minLength": 2},
+    "claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/claim"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"stale": {"const": true}}},
+      "then": {"required": ["stale_reason"]}
+    },
+    {
+      "if": {"properties": {"stale": {"const": false}}},
+      "then": {"not": {"required": ["stale_reason"]}}
+    },
+    {
+      "if": {
+        "properties": {"claimability": {"const": "none"}}
+      },
+      "then": {
+        "required": ["claimability_reason"],
+        "properties": {"claims": {"maxItems": 0}}
+      }
+    }
+  ],
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "status",
+        "reference_allowed",
+        "contribution_mode",
+        "allowed_uses",
+        "reason"
+      ],
+      "properties": {
+        "claim_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "status": {
+          "enum": ["supported", "partially_supported", "rejected", "inconclusive"]
+        },
+        "reference_allowed": {"type": "boolean"},
+        "contribution_mode": {"enum": ["full", "limited", "none", "blocked"]},
+        "allowed_uses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "contribution",
+              "limited_contribution",
+              "results",
+              "failure_analysis",
+              "inconclusive_discussion",
+              "limitations"
+            ]
+          }
+        },
+        "reason": {"type": "string", "minLength": 2}
+      }
+    }
+  }
+}

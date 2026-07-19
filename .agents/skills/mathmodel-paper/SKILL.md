@@ -10,10 +10,18 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 ## 前置检查
 
 1. 完整读取 `skills/5writing/SKILL.md`，沿用比赛模板、排版和编译要求。
-2. 读取 `state.json`、`brief/ROUTE_LOCK.json`、数学规格和
-   `results/result_registry.json`。
+2. 读取 `state.json`、`brief/ROUTE_LOCK.json`、数学规格、
+   `results/result_registry.json` 和 `claims/claim_evidence.json`。
 3. 过滤出 `status=accepted` 且 `paper_allowed=true` 的结果；其他记录不得进入正文、
    摘要、图表结论或贡献声明。
+4. 写作前生成论文主张门禁：
+
+   ```powershell
+   python scripts/runtime/gate_paper_claims.py runs/<run_id>
+   ```
+
+   `paper/claim_gate.json` 的 `stale=true` 时，主张证据完全禁止引用；必须先重新生成
+   当前 claim evidence。不得根据路线锁中的自由文本或聊天内容绕过门禁。
 
 ## 增量写作
 
@@ -27,8 +35,17 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 ## 全文组装
 
 只有状态达到 `RESULTS_ACCEPTED` 后，才统一写摘要、结论、优缺点和推广。摘要必须包含真实
-核心数值；创新只能写入 `keep` 且有基线/消融证据的主张。按用户已锁定的比赛、语言和排版
-引擎组装并编译论文。
+核心数值。创新表述必须逐项服从 `paper/claim_gate.json`：
+
+| claim status | 允许写法 |
+| --- | --- |
+| `supported` | 可写确定性贡献、结果和讨论 |
+| `partially_supported` | 只能写有限贡献，并同时写明限制 |
+| `rejected` | 只能写结果、失败分析和限制，不得写成贡献 |
+| `inconclusive` | 只能写结果和未决讨论，不得写确定性贡献 |
+| `stale=true` | 完全禁止引用该主张证据 |
+
+按用户已锁定的比赛、语言和排版引擎组装并编译论文。
 
 生成草稿后把状态设为 `PAPER_DRAFTED`，然后交给 `$mathmodel-review`。本 Skill 不执行多轮
 审稿，也不把论文直接标记为最终提交稿。
