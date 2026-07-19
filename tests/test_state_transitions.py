@@ -317,7 +317,7 @@ def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
     }
     for path in bound_files.values():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("测试绑定\n", encoding="utf-8")
+        path.write_text("{}\n" if path.name == "claim_gate.json" else "测试绑定\n", encoding="utf-8")
     section = run_dir / "paper/main.typ"
     section.write_text("= 测试论文\n", encoding="utf-8")
     registry = run_dir / "results/result_registry.json"
@@ -352,6 +352,7 @@ def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
             "schema_name": "paper_plan",
             "schema_version": "2.0",
             "run_id": run_dir.name,
+            "referenced_result_ids": [],
             "bindings": bindings,
             "final_pdf_path": "paper/final.pdf",
         },

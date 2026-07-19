@@ -59,4 +59,3 @@ def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
     assert result["status"] == "pass"
     assert result["max_rounds"] == 2
     assert result["consecutive_passing_rounds"] == 1
-

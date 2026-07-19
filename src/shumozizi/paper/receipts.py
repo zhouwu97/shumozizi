@@ -8,7 +8,6 @@ from typing import Any
 from shumozizi.core.io import ContractError, load_json, sha256_file
 from shumozizi.core.schema import require_valid
 from shumozizi.results.references import verify_referenced_result
-from shumozizi.results.sealing import verify_sealed_result
 
 
 def _repo_root(run_dir: Path) -> Path:
@@ -77,24 +76,75 @@ def verify_paper_build_receipt(
             items = value if key in {"section_files", "figures_used"} else [value]
             for index, item in enumerate(items):
                 errors.extend(_check_file_binding(run_dir, item, f"论文绑定 {key}[{index}]"))
-        errors.extend(_verify_accepted_result_bindings(run_dir, bindings["result_registry"]))
+        errors.extend(_verify_accepted_result_bindings(run_dir, plan))
     except (ContractError, KeyError) as exc:
         errors.append(str(exc))
     return {"valid": not errors, "errors": errors, "plan_path": str(plan_path), "receipt_path": str(receipt_path)}
 
 
-def _verify_accepted_result_bindings(run_dir: Path, registry_binding: dict[str, str]) -> list[str]:
-    """确保计划引用的结果注册表只把真实 accepted 结果带入论文。"""
+def _verify_accepted_result_bindings(run_dir: Path, plan: dict[str, Any]) -> list[str]:
+    """只验证论文实际引用的结果，并交叉检查所有证据来源。"""
     errors: list[str] = []
     try:
-        registry_path = _resolve_bound_file(run_dir, registry_binding["path"])
+        registry_path = _resolve_bound_file(run_dir, plan["bindings"]["result_registry"]["path"])
         registry = load_json(registry_path)
-        for item in registry.get("results", []):
-            if item.get("status") == "accepted":
-                verification = verify_sealed_result(run_dir, item["result_id"])
-                errors.extend(f"结果 {item['result_id']}: {message}" for message in verification["errors"])
-                if item.get("paper_allowed") is not True:
-                    errors.append(f"accepted 结果未允许写入论文: {item['result_id']}")
+        require_valid(registry, "result_registry")
+        referenced = set(plan["referenced_result_ids"])
+        for result_id in referenced:
+            errors.extend(
+                f"论文引用结果 {result_id}: {message}"
+                for message in verify_referenced_result(run_dir, registry, result_id)
+            )
+
+        evidence_map_path = run_dir / "paper" / "evidence_map.json"
+        if evidence_map_path.is_file():
+            evidence_map = load_json(evidence_map_path)
+            require_valid(evidence_map, "evidence_map")
+            evidence_ids = {
+                source["result_id"]
+                for claim in evidence_map["claims"]
+                for source in claim["inputs"]
+            }
+            errors.extend(
+                f"evidence_map 引用结果未列入 referenced_result_ids: {result_id}"
+                for result_id in sorted(evidence_ids - referenced)
+            )
+
+        claim_evidence_path = run_dir / "claims" / "claim_evidence.json"
+        if claim_evidence_path.is_file():
+            claim_evidence = load_json(claim_evidence_path)
+            require_valid(claim_evidence, "claim_evidence")
+            claim_ids = {
+                result_id
+                for claim in claim_evidence["claims"]
+                for result_id in claim["evidence_result_ids"]
+            }
+            errors.extend(
+                f"claim evidence 引用结果未列入 referenced_result_ids: {result_id}"
+                for result_id in sorted(claim_ids - referenced)
+            )
+
+        claim_gate_path = _resolve_bound_file(
+            run_dir, plan["bindings"]["claim_gate"]["path"]
+        )
+        claim_gate = load_json(claim_gate_path)
+        gate_ids = set(claim_gate.get("evidence_result_ids", []))
+        errors.extend(
+            f"claim gate 引用结果未列入 referenced_result_ids: {result_id}"
+            for result_id in sorted(gate_ids - referenced)
+        )
+
+        figure_plan = load_json(run_dir / "figures" / "FIGURE_PLAN.json")
+        require_valid(figure_plan, "figure_plan")
+        for figure in figure_plan["figures"]:
+            receipt = load_json(
+                run_dir / "figures" / f"{figure['figure_id']}.receipt.json"
+            )
+            require_valid(receipt, "figure_receipt")
+            errors.extend(
+                f"图表 {figure['figure_id']} 引用结果未列入 referenced_result_ids: {result_id}"
+                for result_id in set(receipt["accepted_result_ids"]) - referenced
+            )
     except (ContractError, KeyError) as exc:
         errors.append(f"结果注册表绑定无效: {exc}")
     return errors

@@ -337,6 +337,7 @@ class Gate0EndToEndTests(unittest.TestCase):
                 "schema_name": "paper_plan",
                 "schema_version": "2.0",
                 "run_id": run_dir.name,
+                "referenced_result_ids": ["q1-baseline"],
                 "bindings": {
                     "mathmodel_paper": {"path": "skills/mathmodel-paper/SKILL.md", "sha256": sha256_file(root / "skills/mathmodel-paper/SKILL.md")},
                     "writing_skill": {"path": "skills/5writing/SKILL.md", "sha256": sha256_file(root / "skills/5writing/SKILL.md")},

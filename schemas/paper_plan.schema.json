@@ -3,11 +3,17 @@
   "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_plan.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_name", "schema_version", "run_id", "bindings", "final_pdf_path"],
+  "required": ["schema_name", "schema_version", "run_id", "bindings", "referenced_result_ids", "final_pdf_path"],
   "properties": {
     "schema_name": {"const": "paper_plan"},
     "schema_version": {"const": "2.0"},
     "run_id": {"type": "string", "minLength": 1},
+    "referenced_result_ids": {
+      "type": "array",
+      "minItems": 0,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
     "bindings": {
       "type": "object",
       "additionalProperties": false,

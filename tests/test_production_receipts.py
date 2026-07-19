@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
-from shumozizi.paper.receipts import verify_figure_receipts
+from shumozizi.paper.receipts import verify_figure_receipts, verify_paper_build_receipt
 from shumozizi.workflow.state_service import Actor, StateService, WorkflowEvent
 from tests.runtime_helpers import RuntimeFixture
 
@@ -98,6 +98,104 @@ def _write_figure_receipt(fixture: RuntimeFixture) -> None:
             "generated_at": "2026-07-19T00:00:00Z",
         },
     )
+
+
+def _write_paper_package(
+    fixture: RuntimeFixture,
+    referenced_result_ids: list[str],
+) -> None:
+    """写入最小哈希闭合论文包，保留已有图表计划。"""
+    run_dir = fixture.run_dir
+    root = run_dir.parents[1]
+    state = {"revision": 1}
+    atomic_json(run_dir / "state.json", state)
+    final_pdf = run_dir / "paper/final.pdf"
+    final_pdf.parent.mkdir(parents=True, exist_ok=True)
+    final_pdf.write_bytes(b"PDF")
+    files = {
+        "mathmodel_paper": root / "skills/mathmodel-paper/SKILL.md",
+        "writing_skill": root / "skills/5writing/SKILL.md",
+        "typst_author": root / "skills/typst-author/SKILL.md",
+        "competition_template": root / "profiles/generic.json",
+        "model_spec": run_dir / "reports/model_spec.md",
+        "claim_gate": run_dir / "paper/claim_gate.json",
+    }
+    for path in files.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n" if path.name == "claim_gate.json" else "绑定文件\n", encoding="utf-8")
+    section = run_dir / "paper/main.typ"
+    section.write_text("= 测试论文\n", encoding="utf-8")
+    registry = run_dir / "results/result_registry.json"
+    figures_plan = json.loads(
+        (run_dir / "figures/FIGURE_PLAN.json").read_text(encoding="utf-8")
+    ) if (run_dir / "figures/FIGURE_PLAN.json").is_file() else {
+        "schema_name": "figure_plan",
+        "schema_version": "2.0",
+        "run_id": run_dir.name,
+        "figures": [],
+    }
+    atomic_json(run_dir / "figures/FIGURE_PLAN.json", figures_plan)
+    bindings: dict[str, object] = {}
+    for name, path in files.items():
+        binding_root = root if root in path.parents else run_dir
+        bindings[name] = {
+            "path": path.relative_to(binding_root).as_posix(),
+            "sha256": sha256_file(path),
+        }
+    bindings["result_registry"] = {
+        "path": "results/result_registry.json",
+        "sha256": sha256_file(registry),
+    }
+    bindings["section_files"] = [
+        {"path": "paper/main.typ", "sha256": sha256_file(section)}
+    ]
+    bindings["figures_used"] = [
+        {
+            "path": f"figures/{figure['figure_id']}.png",
+            "sha256": sha256_file(run_dir / f"figures/{figure['figure_id']}.png"),
+        }
+        for figure in figures_plan["figures"]
+    ]
+    plan = {
+        "schema_name": "paper_plan",
+        "schema_version": "2.0",
+        "run_id": run_dir.name,
+        "referenced_result_ids": referenced_result_ids,
+        "bindings": bindings,
+        "final_pdf_path": "paper/final.pdf",
+    }
+    plan_path = run_dir / "paper/paper_plan.json"
+    atomic_json(plan_path, plan)
+    atomic_json(
+        run_dir / "paper/PAPER_BUILD_RECEIPT.json",
+        {
+            "schema_name": "paper_build_receipt",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "plan_path": "paper/paper_plan.json",
+            "plan_sha256": sha256_file(plan_path),
+            "state_revision": 1,
+            "final_pdf_path": "paper/final.pdf",
+            "final_pdf_sha256": sha256_file(final_pdf),
+            "generated_at": "2026-07-19T00:00:00Z",
+        },
+    )
+
+
+def _set_paper_allowed(fixture: RuntimeFixture, allowed: bool) -> None:
+    """更新注册表权限并同步论文计划中的注册表哈希。"""
+    registry_path = fixture.run_dir / "results/result_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["results"][0]["paper_allowed"] = allowed
+    atomic_json(registry_path, registry)
+    plan_path = fixture.run_dir / "paper/paper_plan.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan["bindings"]["result_registry"]["sha256"] = sha256_file(registry_path)
+    atomic_json(plan_path, plan)
+    receipt_path = fixture.run_dir / "paper/PAPER_BUILD_RECEIPT.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["plan_sha256"] = sha256_file(plan_path)
+    atomic_json(receipt_path, receipt)
 
 
 def test_paper_completed_requires_production_receipts(tmp_path: Path) -> None:
@@ -231,3 +329,93 @@ def test_figure_receipt_rejects_inactive_result(
 
     assert not report["valid"]
     assert any("不是 accepted" in error for error in report["errors"])
+
+
+def test_unreferenced_paper_forbidden_result_does_not_block(
+    accepted_figure_run: RuntimeFixture,
+) -> None:
+    """论文未引用的 accepted 诊断结果不应阻断构建。"""
+    registry_path = accepted_figure_run.run_dir / "results/result_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["results"][0]["paper_allowed"] = False
+    atomic_json(registry_path, registry)
+    _write_paper_package(accepted_figure_run, [])
+
+    report = verify_paper_build_receipt(accepted_figure_run.run_dir)
+
+    assert report["valid"]
+
+
+def test_referenced_paper_forbidden_result_is_rejected(
+    accepted_figure_run: RuntimeFixture,
+) -> None:
+    """论文实际引用的结果必须保留 paper_allowed 权限。"""
+    registry_path = accepted_figure_run.run_dir / "results/result_registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["results"][0]["paper_allowed"] = False
+    atomic_json(registry_path, registry)
+    _write_paper_package(accepted_figure_run, ["r1"])
+
+    report = verify_paper_build_receipt(accepted_figure_run.run_dir)
+
+    assert not report["valid"]
+    assert any("未允许写入论文" in error for error in report["errors"])
+
+
+def test_referenced_paper_invalid_seal_is_rejected(
+    accepted_figure_run: RuntimeFixture,
+) -> None:
+    """论文引用的结果封条失效时不得通过构建回执。"""
+    _write_paper_package(accepted_figure_run, ["r1"])
+    sealed_path = accepted_figure_run.run_dir / "results/sealed/r1.result.json"
+    sealed = json.loads(sealed_path.read_text(encoding="utf-8"))
+    sealed["conclusion"] = "篡改"
+    atomic_json(sealed_path, sealed)
+
+    report = verify_paper_build_receipt(accepted_figure_run.run_dir)
+
+    assert not report["valid"]
+    assert any("sealed result" in error for error in report["errors"])
+
+
+def test_evidence_map_result_must_be_declared_in_paper_plan(
+    accepted_figure_run: RuntimeFixture,
+) -> None:
+    """evidence map 实际引用结果不能通过漏填论文引用集合绕过。"""
+    _write_paper_package(accepted_figure_run, [])
+    atomic_json(
+        accepted_figure_run.run_dir / "paper/evidence_map.json",
+        {
+            "schema_name": "evidence_map",
+            "schema_version": "2.0",
+            "run_id": accepted_figure_run.run_dir.name,
+            "claims": [
+                {
+                    "claim_id": "Q1-VALUE",
+                    "inputs": [
+                        {"name": "value", "result_id": "r1", "metric_spec_id": "r1-value"}
+                    ],
+                    "expression": None,
+                    "display": {"decimals": 2, "unit": "dimensionless"},
+                }
+            ],
+        },
+    )
+
+    report = verify_paper_build_receipt(accepted_figure_run.run_dir)
+
+    assert not report["valid"]
+    assert any("evidence_map 引用结果未列入" in error for error in report["errors"])
+
+
+def test_figure_result_must_be_declared_in_paper_plan(
+    accepted_figure_run: RuntimeFixture,
+) -> None:
+    """图表实际引用结果不能通过漏填论文引用集合绕过。"""
+    _write_figure_receipt(accepted_figure_run)
+    _write_paper_package(accepted_figure_run, [])
+
+    report = verify_paper_build_receipt(accepted_figure_run.run_dir)
+
+    assert not report["valid"]
+    assert any("图表 q1 引用结果未列入" in error for error in report["errors"])
