@@ -43,7 +43,6 @@ def admit_candidate(
         "constraint_checks",
         "validation_checks",
         "baseline_result_id",
-        "innovation_claims",
     }
     missing = sorted(required - candidate.keys())
     if missing:
@@ -88,13 +87,17 @@ def admit_candidate(
             }
         )
         metric_hashes[metric_id] = sha256_file(provenance_path)
-    for claim in candidate["innovation_claims"]:
-        if not claim.get("evidence") or any(
-            not item.get("metric_spec_ids") for item in claim["evidence"]
-        ):
-            raise ContractError(
-                "每个 innovation_claim_id 必须包含明确的 result/metric evidence mapping"
-            )
+    claim_refs = candidate.get("claim_refs")
+    if claim_refs is None:
+        legacy_claims = candidate.get("innovation_claims", [])
+        if not isinstance(legacy_claims, list):
+            raise ContractError("innovation_claims 必须为数组")
+        claim_refs = [claim.get("claim_id") for claim in legacy_claims if isinstance(claim, dict)]
+    if not isinstance(claim_refs, list) or any(
+        not isinstance(claim_id, str) or not claim_id.strip() for claim_id in claim_refs
+    ):
+        raise ContractError("claim_refs 必须为非空字符串数组")
+    claim_refs = list(dict.fromkeys(claim_refs))
     registry_path = run_dir / "results" / "result_registry.json"
     registry = load_json(registry_path)
     require_valid(registry, "result_registry")
@@ -120,27 +123,6 @@ def admit_candidate(
             raise ContractError("baseline_result_id 必须引用同一问题的 accepted baseline")
         if not verify_sealed_result(run_dir, baseline_id)["valid"]:
             raise ContractError("baseline_result_id 的 sealed result 复验失败")
-    for claim in candidate["innovation_claims"]:
-        for evidence in claim["evidence"]:
-            linked = next(
-                (
-                    item
-                    for item in registry["results"]
-                    if item["result_id"] == evidence["result_id"]
-                    and item["status"] == "accepted"
-                    and item["question_id"] == candidate["question_id"]
-                    and item["cycle"] in {"robustness", "ablation"}
-                ),
-                None,
-            )
-            if linked is None:
-                raise ContractError(
-                    f"创新主张 {claim['claim_id']} 必须引用同题 accepted robustness/ablation 结果"
-                )
-            linked_result = load_json(run_dir / linked["sealed_result_path"])
-            linked_metrics = {item["metric_spec_id"] for item in linked_result["metrics"]}
-            if not set(evidence["metric_spec_ids"]).issubset(linked_metrics):
-                raise ContractError(f"创新主张 {claim['claim_id']} 引用了不存在的指标")
     accepted_at = utc_now()
     sealed = {
         "schema_name": "sealed_result",
@@ -155,7 +137,7 @@ def admit_candidate(
         "constraint_checks": candidate["constraint_checks"],
         "validation_checks": candidate["validation_checks"],
         "baseline_result_id": candidate["baseline_result_id"],
-        "innovation_claims": candidate["innovation_claims"],
+        "claim_refs": claim_refs,
         "paper_allowed": paper_allowed,
         "accepted_by": accepted_by,
         "accepted_at": accepted_at,

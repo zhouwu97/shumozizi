@@ -284,6 +284,36 @@ class SemanticSchemaTests(unittest.TestCase):
         document["stale"] = True
         self.assert_invalid(document, "claim_evidence", "stale_reason")
 
+    def test_legacy_sealed_result_with_innovation_claims_remains_readable(self) -> None:
+        """旧 Run 的 innovation_claims 封存格式仍应通过兼容读取。"""
+        document = {
+            "schema_name": "sealed_result",
+            "schema_version": "2.0",
+            "result_id": "Q1-P1",
+            "run_id": "legacy-run",
+            "question_id": "Q1",
+            "cycle": "primary",
+            "execution_record_id": "exec-Q1-P1",
+            "metrics": [
+                {
+                    "name": "rmse",
+                    "metric_spec_id": "metric-Q1-P1",
+                    "value": 1.0,
+                    "unit": "dimensionless",
+                }
+            ],
+            "conclusion": "旧格式结果。",
+            "constraint_checks": [{"passed": True}],
+            "validation_checks": [{"passed": True}],
+            "baseline_result_id": "Q1-B0",
+            "innovation_claims": [],
+            "paper_allowed": True,
+            "accepted_by": "legacy-agent",
+            "accepted_at": "2026-07-19T00:00:00Z",
+        }
+
+        self.assert_valid(document, "sealed_result")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,12 +46,17 @@ python scripts/runtime/accept_result.py runs/<run_id> --result-id <result_id> --
 - 指标定义与题意一致；
 - 约束、单位和数据范围通过；
 - 结论没有超出实验支持；
-- 若声称创新有效，存在基线、对照或消融证据。
+- 非 baseline 结果引用同题已接受且可复验的 baseline。
 
 Codex 不得直接把 `status` 改成 `accepted`。准入脚本会复验执行记录 Schema、退出码、当前
-输入/输出哈希、全部预期输出、非空指标、单位、强约束、验证、基线和创新证据。非 baseline
-结果必须引用同一问题下已接受的 baseline；每个创新主张必须引用同题已接受的 robustness
-或 ablation 结果。
+输入/输出哈希、全部预期输出、非空指标、单位、强约束、验证和基线。结果只用
+`claim_refs` 关联可能相关的主张，不保存“创新已成立”的判断；旧候选中的
+`innovation_claims` 仅兼容读取并转换为引用。primary 可以在第三轮实验前 accepted。
+
+创新主张必须由 `scripts/runtime/evaluate_claims.py` 独立评估。缺少路线要求的 robustness 或
+ablation 证据时状态必须为 `inconclusive`；第三轮结果接受后再使用 `--refresh` 更新评估。
+主张被 rejected 只限制论文贡献表述，不得撤销事实正确的 accepted result，也不得改写其
+sealed result。
 
 按 `schemas/result_registry.schema.json` 更新 `results/result_registry.json`。只有
 `accepted` 且 `paper_allowed=true` 的记录可交给论文 Skill。
