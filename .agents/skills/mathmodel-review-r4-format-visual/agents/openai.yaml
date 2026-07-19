@@ -1,0 +1,4 @@
+interface:
+  display_name: "R4 Format and Visual Review"
+  short_description: "Inspect the frozen PDF and submission package"
+  default_prompt: "Render and audit the declared final PDF without editing production files."

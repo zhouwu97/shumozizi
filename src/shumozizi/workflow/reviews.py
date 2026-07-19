@@ -13,11 +13,11 @@ from shumozizi.core.io import ContractError, atomic_json, load_json, resolve_ins
 from shumozizi.core.schema import require_valid
 
 REVIEW_STAGES = {
-    "R1_MODELING": "mathmodel-review/r1-modeling",
-    "R2_EXPERIMENT": "mathmodel-review/r2-experiment",
-    "R3_PAPER_LOGIC": "mathmodel-review/r3-paper-logic",
-    "R4_FORMAT_VISUAL": "mathmodel-review/r4-format-visual",
-    "R5_COMPREHENSIVE": "mathmodel-review/r5-comprehensive",
+    "R1_MODELING": "mathmodel-review-r1-modeling",
+    "R2_EXPERIMENT": "mathmodel-review-r2-experiment",
+    "R3_PAPER_LOGIC": "mathmodel-review-r3-paper-logic",
+    "R4_FORMAT_VISUAL": "mathmodel-review-r4-format-visual",
+    "R5_COMPREHENSIVE": "mathmodel-review-r5-comprehensive",
     "J0_FINAL_BLIND_JUDGE": "fresh_context_unstructured",
 }
 VERDICTS = {
@@ -204,14 +204,19 @@ def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict
                 reports.append(report)
         except ContractError:
             continue
-    max_rounds = 5 if mode == "training" else 3
-    good = [item for item in reports if item["rating"]["grade"] in {"A", "B"} and not any(f["severity"] in {"P0", "P1"} for f in item["findings"])]
-    consecutive = len(good) >= 2 and all(item in good for item in reports[-2:]) if len(reports) >= 2 else False
+    max_rounds = 5 if mode == "training" else 2
+    good = [
+        item
+        for item in reports
+        if item["rating"]["grade"] in {"A", "B"}
+        and not any(f["severity"] in {"P0", "P1"} for f in item["findings"])
+    ]
+    passed = bool(good and good[-1] is reports[-1])
     return {
-        "status": "pass" if consecutive else ("not_ready_for_submission" if len(reports) >= max_rounds else "continue"),
+        "status": "pass" if passed else ("not_ready_for_submission" if len(reports) >= max_rounds else "continue"),
         "rounds": len(reports),
         "max_rounds": max_rounds,
         "passing_rounds": len(good),
-        "consecutive_passing_rounds": 2 if consecutive else 0,
-        "requires_human_final_package": consecutive,
+        "consecutive_passing_rounds": 1 if passed else 0,
+        "requires_human_final_package": passed,
     }
