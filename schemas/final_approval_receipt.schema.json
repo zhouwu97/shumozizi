@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/zhouwu97/shumozizi/schemas/final_approval_receipt.schema.json",
+  "type": "object", "additionalProperties": false, "required": ["schema_name", "schema_version", "run_id", "approval_request_sha256", "final_pdf_sha256", "qa_report_sha256", "evidence_report_sha256", "run_config_lock_sha256", "decision", "approved_by", "approval_source", "raw_user_response", "approved_at"],
+  "properties": {"schema_name": {"const": "final_approval_receipt"}, "schema_version": {"const": "2.0"}, "run_id": {"type": "string"}, "approval_request_sha256": {"$ref": "#/$defs/sha"}, "final_pdf_sha256": {"$ref": "#/$defs/sha"}, "qa_report_sha256": {"$ref": "#/$defs/sha"}, "evidence_report_sha256": {"$ref": "#/$defs/sha"}, "run_config_lock_sha256": {"$ref": "#/$defs/sha"}, "decision": {"const": "approved"}, "approved_by": {"type": "string"}, "approval_source": {"const": "codex-desktop-user-message"}, "raw_user_response": {"type": "string", "minLength": 1}, "approved_at": {"type": "string", "format": "date-time"}}, "$defs": {"sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

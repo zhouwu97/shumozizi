@@ -10,6 +10,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from shumozizi.core.io import sha256_file
+from shumozizi.workflow.approval import (
+    create_approval_request,
+    materialize_route_approval,
+)
+from shumozizi.workflow.initialization import initialize_run
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = REPO_ROOT / "scripts" / "codex" / "validate_state.py"
@@ -20,17 +26,27 @@ class ValidateStateCliTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.run_dir = Path(self.temporary.name) / "test-run"
-        for name in ("brief", "results", "code", "paper", "executions/manifests"):
-            (self.run_dir / name).mkdir(parents=True, exist_ok=True)
+        self.repo_root = Path(self.temporary.name)
+        problem = self.repo_root / "problems/sample.md"
+        problem.parent.mkdir(parents=True)
+        problem.write_text("用于状态校验的测试题面。\n", encoding="utf-8")
+        self.run_dir = initialize_run(
+            self.repo_root,
+            problem,
+            "test-run",
+            mode="training",
+        )
         self.write_json(
             "state.json",
             {
-                "schema_version": "1.0",
+                "schema_name": "workflow_state",
+                "schema_version": "2.0",
+                "run_schema_version": "2.0",
                 "run_id": "test-run",
                 "problem_source": "problems/sample.md",
                 "mode": "training",
                 "status": "ROUTE_LOCKED",
+                "revision": 1,
                 "completed_stages": ["route"],
                 "active_stage": "model_spec",
                 "route_locked": True,
@@ -39,13 +55,25 @@ class ValidateStateCliTests(unittest.TestCase):
                 "artifacts": {},
                 "last_updated_by": "test",
                 "updated_at": "2026-07-19T00:00:00+00:00",
-                "history": [],
+                "history": [
+                    {
+                        "from_status": "WAITING_HUMAN_ROUTE",
+                        "status": "ROUTE_LOCKED",
+                        "event": "ROUTE_APPROVED",
+                        "timestamp": "2026-07-19T00:00:00+00:00",
+                        "actor": {"actor_id": "test", "actor_type": "system"},
+                        "artifact_refs": [],
+                    }
+                ],
             },
         )
         self.write_json(
             "brief/route_candidates.json",
             {
+                "schema_name": "route_candidates",
+                "schema_version": "2.0",
                 "run_id": "test-run",
+                "run_config_lock_sha256": sha256_file(self.run_dir / "config/RUN_CONFIG_LOCK.json"),
                 "problem_summary": "这是一个用于验证路线锁运行时行为的最小数学建模问题摘要。",
                 "ambiguities": [],
                 "recommended_route_id": "route_a",
@@ -56,9 +84,19 @@ class ValidateStateCliTests(unittest.TestCase):
                 ],
             },
         )
-        self.write_json(
-            "results/result_registry.json",
-            {"schema_version": "1.0", "run_id": "test-run", "results": []},
+        request = create_approval_request(
+            self.run_dir,
+            "route",
+            {
+                "run_config_lock": self.run_dir / "config/RUN_CONFIG_LOCK.json",
+                "route_candidates": self.run_dir / "brief/route_candidates.json",
+            },
+        )
+        self.assertTrue(request.is_file())
+        materialize_route_approval(
+            self.run_dir,
+            raw_user_response="批准路线 A",
+            selected_route_id="route_a",
         )
 
     def tearDown(self) -> None:
@@ -90,27 +128,11 @@ class ValidateStateCliTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    @staticmethod
-    def valid_route_lock(selected_route_id: str = "route_a") -> dict:
+    def valid_route_lock(self, selected_route_id: str = "route_a") -> dict:
         """生成完整且已批准的 JSON 路线锁。"""
-        return {
-            "approved": True,
-            "selected_route_id": selected_route_id,
-            "problem_interpretation": "根据输入数据建立可复现的优化与验证模型。",
-            "primary_route": "稳健优化模型",
-            "fallback_route": "线性基线模型",
-            "required_baselines": ["线性基线模型"],
-            "innovation": {"major_per_question": 1, "minor_per_question": 1, "claims": []},
-            "validation": ["敏感性分析"],
-            "resource_limits": {
-                "max_main_experiment_cycles_per_question": 3,
-                "max_web_searches": 5,
-                "max_full_self_reviews": 1,
-                "route_drift_budget_ratio": 0.3,
-            },
-            "approved_by": "human",
-            "approved_at": "2026-07-19T00:00:00+00:00",
-        }
+        value = json.loads((self.run_dir / "brief/ROUTE_LOCK.json").read_text(encoding="utf-8"))
+        value["selected_route_id"] = selected_route_id
+        return value
 
     def run_validator(self) -> tuple[subprocess.CompletedProcess[str], dict]:
         """调用与桌面任务相同的状态校验入口。"""
@@ -209,7 +231,7 @@ class ValidateStateCliTests(unittest.TestCase):
         completed, payload = self.run_validator()
 
         self.assertEqual(1, completed.returncode)
-        self.assertTrue(any("result_registry.schema.json" in item for item in payload["errors"]))
+        self.assertTrue(any("schema_name" in item for item in payload["errors"]))
 
 
 if __name__ == "__main__":

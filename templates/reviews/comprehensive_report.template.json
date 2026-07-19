@@ -1,0 +1,19 @@
+{
+  "schema_name": "review_report",
+  "schema_version": "2.0",
+  "request_id": "<request_id>",
+  "run_id": "<run_id>",
+  "stage": "R5_COMPREHENSIVE",
+  "review_round_id": "r5-1",
+  "verdict": "B",
+  "findings": [],
+  "rating": {
+    "grade": "B",
+    "confidence": "low",
+    "basis": ["逐项引用题面、代码、结果和 PDF"],
+    "downgrade_reasons": [],
+    "expert_estimate": true
+  },
+  "read_only_confirmed": true,
+  "generated_at": "<utc_timestamp>"
+}

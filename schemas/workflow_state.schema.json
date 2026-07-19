@@ -1,77 +1,27 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/zhouwu97/shumozizi/schemas/workflow_state.schema.json",
-  "title": "MathModelAgent Workflow State",
+  "title": "shumozizi Workflow State v2",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "run_id",
-    "problem_source",
-    "mode",
-    "status",
-    "completed_stages",
-    "active_stage",
-    "route_locked",
-    "paper_ready",
-    "question_progress",
-    "last_updated_by",
-    "updated_at"
-  ],
+  "required": ["schema_name", "schema_version", "run_schema_version", "run_id", "problem_source", "mode", "status", "revision", "completed_stages", "active_stage", "route_locked", "paper_ready", "question_progress", "artifacts", "last_updated_by", "updated_at", "history"],
   "properties": {
-    "schema_version": { "const": "1.0" },
-    "run_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
-    "problem_source": { "type": "string", "minLength": 1 },
-    "mode": { "enum": ["competition", "training", "audit"] },
-    "status": {
-      "enum": [
-        "NEW",
-        "ROUTE_PROPOSED",
-        "WAITING_HUMAN_ROUTE",
-        "ROUTE_LOCKED",
-        "MODEL_SPEC_READY",
-        "EXPERIMENTING",
-        "RESULTS_ACCEPTED",
-        "PAPER_DRAFTED",
-        "SELF_REVIEWED",
-        "WAITING_HUMAN_FINAL",
-        "COMPLETE",
-        "BLOCKED"
-      ]
-    },
-    "completed_stages": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
-    "active_stage": { "type": ["string", "null"] },
-    "route_locked": { "type": "boolean" },
-    "paper_ready": { "type": "boolean" },
-    "question_progress": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["baseline", "primary", "robustness", "paper_section"],
-        "properties": {
-          "baseline": { "enum": ["pending", "running", "accepted", "failed", "skipped"] },
-          "primary": { "enum": ["pending", "running", "accepted", "failed", "skipped"] },
-          "robustness": { "enum": ["pending", "running", "accepted", "failed", "skipped"] },
-          "paper_section": { "enum": ["pending", "drafted", "verified"] }
-        }
-      }
-    },
-    "artifacts": { "type": "object", "additionalProperties": { "type": "string" } },
-    "last_updated_by": { "type": "string", "minLength": 1 },
-    "updated_at": { "type": "string", "format": "date-time" },
-    "history": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["status", "timestamp", "actor"],
-        "properties": {
-          "status": { "type": "string" },
-          "timestamp": { "type": "string", "format": "date-time" },
-          "actor": { "type": "string" },
-          "note": { "type": "string" }
-        }
-      }
-    }
+    "schema_name": {"const": "workflow_state"},
+    "schema_version": {"const": "2.0"},
+    "run_schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "problem_source": {"type": "string", "minLength": 1},
+    "mode": {"enum": ["competition", "training", "audit"]},
+    "status": {"enum": ["NEW", "WAITING_HUMAN_ROUTE", "ROUTE_LOCKED", "MODEL_SPEC_READY", "EXPERIMENTING", "RESULTS_ACCEPTED", "PAPER_DRAFTED", "QA_RUNNING", "WAITING_HUMAN_FINAL", "COMPLETE", "BLOCKED"]},
+    "revision": {"type": "integer", "minimum": 0},
+    "completed_stages": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "active_stage": {"type": ["string", "null"]},
+    "route_locked": {"type": "boolean"},
+    "paper_ready": {"type": "boolean"},
+    "question_progress": {"type": "object", "additionalProperties": {"type": "object"}},
+    "artifacts": {"type": "object", "additionalProperties": {"type": "string"}},
+    "last_updated_by": {"type": "string", "minLength": 1},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "history": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["from_status", "status", "event", "timestamp", "actor", "artifact_refs"], "properties": {"from_status": {"type": ["string", "null"]}, "status": {"type": "string"}, "event": {"type": "string"}, "timestamp": {"type": "string", "format": "date-time"}, "actor": {"type": "object"}, "artifact_refs": {"type": "array", "items": {"type": "object"}}, "note": {"type": "string"}}}}
   }
 }

@@ -1,0 +1,22 @@
+{
+  "schema_name": "competition_profile",
+  "schema_version": "2.0",
+  "profile_id": "diangong",
+  "profile_version": "1.0.0",
+  "display_name": "电工杯数学建模竞赛",
+  "rules_status": "official-confirmation-required",
+  "rules_sources": [],
+  "page_limit": null,
+  "a4_required": true,
+  "page_margin_cm": 2.5,
+  "max_file_size_bytes": null,
+  "anonymous_required": true,
+  "required_submission_files": ["paper/final.pdf"],
+  "summary_first_page": true,
+  "mechanical_qa": {
+    "duplicate_caption_pattern": "(?i)(?:图|表)\\s*([0-9]+)[：:.\\s]",
+    "anonymous_forbidden_patterns": ["学校名称", "学生姓名", "指导教师", "学号"],
+    "require_figure_qa_receipts": true
+  },
+  "warnings": ["当前仅提供保守通用检查；必须依据当届官方通知确认页数、命名和提交包要求"]
+}

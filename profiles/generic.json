@@ -1,0 +1,22 @@
+{
+  "schema_name": "competition_profile",
+  "schema_version": "2.0",
+  "profile_id": "generic",
+  "profile_version": "2.0.0",
+  "display_name": "通用数学建模竞赛",
+  "rules_status": "generic",
+  "rules_sources": [],
+  "page_limit": null,
+  "a4_required": false,
+  "page_margin_cm": 2.5,
+  "max_file_size_bytes": null,
+  "anonymous_required": true,
+  "required_submission_files": ["paper/final.pdf"],
+  "summary_first_page": false,
+  "mechanical_qa": {
+    "duplicate_caption_pattern": "(?i)(?:figure|fig\\.|table|图|表)\\s*([0-9]+)[：:.\\s]",
+    "anonymous_forbidden_patterns": [],
+    "require_figure_qa_receipts": true
+  },
+  "warnings": ["通用 Profile 不包含特定比赛页数、命名或附加材料规则"]
+}

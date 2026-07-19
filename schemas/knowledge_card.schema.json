@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/knowledge_card.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "card_id", "title", "source_ids", "tags", "guidance"],
+  "properties": {
+    "schema_name": {"const": "knowledge_card"},
+    "schema_version": {"const": "2.0"},
+    "card_id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "title": {"type": "string", "minLength": 1},
+    "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "tags": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "guidance": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  }
+}

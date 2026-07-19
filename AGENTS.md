@@ -15,34 +15,48 @@
 
 ## 两个人工确认点
 
-1. 路线确认：生成 2–3 条真正不同的候选路线，写入 `route_candidates.json` 和
-   `ROUTE_BRIEF.md`，把状态设为 `WAITING_HUMAN_ROUTE`，然后停止。
-2. 最终审核：完成实验、论文、一次自审、一次定向修复和快速复检，写入
-   `FINAL_REVIEW_MEMO.md`，把状态设为 `WAITING_HUMAN_FINAL`，然后停止。
+1. 路线确认：生成 2–3 条真正不同的候选路线和 `route_approval_request.json`，通过
+   `StateService.transition()` 把状态设为 `WAITING_HUMAN_ROUTE`，然后停止。只有人类明确
+   回复后才能物化批准回执和 `ROUTE_LOCK.json`。
+2. 最终审核：完成实验、论文、证据校验、QA 聚合和定向修复，写入
+   `final_approval_request.json`，把状态设为 `WAITING_HUMAN_FINAL`，然后停止。只有绑定当前
+   PDF、QA、证据报告和配置锁的人类回执有效时，才可进入 `COMPLETE`。
 
 改变题意解释、目标函数、核心约束、模型类别、已锁路线，或新增实验预计占剩余预算
 30% 以上时，视为路线漂移，必须再次停下并请求人工确认。
 
 ## 状态与结果
 
-- `runs/<run_id>/state.json` 是唯一工作流状态来源，每完成一个阶段都要更新。
+- `runs/<run_id>/state.json` 是唯一工作流状态来源，只有
+  `shumozizi.workflow.state_service.StateService` 可以写入。
 - 不依赖聊天历史、任务 ID 或 Codex 会话 ID 判断进度。
 - 代码必须实际运行，不得编造数据、指标、图表或引用。
-- 论文关键数值必须来自 `runs/<run_id>/results/result_registry.json`。
-- 只有 `status=accepted` 且 `paper_allowed=true` 的结果可进入论文、摘要和结论。
+- 论文关键数值必须来自可复验的 metric provenance 与 RFC 8785 sealed result。
+- 只有注册表中仍为 `accepted`、`paper_allowed=true` 且封条有效的结果可进入论文；
+  `revoked` 与 `superseded` 结果一律禁止引用。
+- Route、Paper、QA、Final Approval 必须读取同一份 `config/RUN_CONFIG_LOCK.json`，不得接收
+  调用方临时传入的 Profile。
 
 ## 实验预算
 
 每个子问题默认最多执行三个主要循环：baseline、primary、robustness/ablation。
 失败时依次修代码或数据、调整同路线参数或求解器、使用已确认备用路线；再失败则申请
-路线漂移确认。禁止无限调参、无限搜索和无限自审。
+ 路线漂移确认。禁止无限调参、无限搜索和无限自审。
+
+## 五层独立审核
+
+论文生产后依次创建 R1 建模、R2 实验复现、R3 论文逻辑、R4 格式视觉审核请求，再由全新
+Codex 对话执行 R5 全面盲审。R5 竞赛模式最多 3 轮、训练模式最多 5 轮；单轮出现 P0/P1
+或评级低于 B 必须修复，连续两轮 B/A 且无 P0/P1 才能进入人工最终核包。审核任务默认只读，
+只写自己的报告和回执；模型、数字、核心图表、假设、约束或结论变化时必须按影响范围重跑
+实验并新开 R5。
 
 ## 本地执行与检查
 
 - 优先使用项目或赛题目录已有 Python 环境。
 - 运行后检查退出码、输出文件、约束、单位和核心指标。
 - 论文必须编译，并检查最终 PDF 的图片、占位符、数值一致性和提交格式。
-- 使用 `python scripts/codex/validate_state.py runs/<run_id>` 校验状态和结果注册表。
+- 使用 `python scripts/codex/validate_state.py runs/<run_id>` 校验状态、配置、批准与 sealed result。
 - 使用 `python scripts/doctor.py` 检查本机工具。
 
 ## 目录职责

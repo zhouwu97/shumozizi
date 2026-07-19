@@ -20,8 +20,9 @@ Codex 读题
 - `AGENTS.md`：项目总规则和两个强制人工确认点。
 - `.agents/skills/`：Codex 可原生发现的五个轻量包装 Skill。
 - `skills/`：保留 MathModelAgent 上游原始 Skills，便于对照和同步。
-- `runs/<run_id>/state.json`：唯一工作流状态来源，可跨会话恢复。
-- `schemas/`：候选路线、路线锁、状态和结果注册表的运行时结构约束。
+- `runs/<run_id>/state.json`：唯一工作流状态来源，只能由状态服务写入，可跨会话恢复。
+- `runs/<run_id>/config/RUN_CONFIG_LOCK.json`：不可变比赛 Profile、题面、语言与排版配置。
+- `schemas/`：全部运行时文件的 Schema v2 结构约束；文档必须自声明名称和版本。
 - `scripts/codex/`：初始化运行目录和校验工作流状态。
 - `scripts/runtime/`：统一执行实验、复验执行证据和接受结果。
 - `scripts/doctor.py`：跨平台环境诊断，不调用或调度 Codex。
@@ -40,9 +41,11 @@ web_search = "cached"
 
 ## 快速开始
 
-先运行环境诊断：
+必须直接以嵌套 Git 根打开 Codex 桌面工作区。打开外层目录后再进入本仓库会被诊断为错误。
+安装正式包并运行环境诊断：
 
 ```powershell
+python -m pip install -e .[test]
 python scripts/doctor.py
 ```
 
@@ -73,9 +76,9 @@ runs/2026-A-001/brief/route_candidates.json
 
 并把状态设为 `WAITING_HUMAN_ROUTE`。此时 Codex 必须停止，不得开始正式建模。
 
-人工确认后，把 `ROUTE_LOCK.template.json` 复制为 `ROUTE_LOCK.json`，填写并将
-`approved` 改为 `true`。然后再次调用 `$mathmodel-workflow`。路线锁使用 JSON，运行时会把
-完整嵌套文档送入 JSON Schema Validator，而不是只检查顶层字段。
+人工确认前，系统生成绑定 `RUN_CONFIG_LOCK` 与候选路线哈希的批准请求。人类明确回复后，
+批准协议生成 `route_approval_receipt.json` 和 `ROUTE_LOCK.json`；禁止通过复制模板或手改
+`approved=true` 绕过回执。
 
 路线锁固定：
 
@@ -94,9 +97,9 @@ runs/2026-A-001/brief/route_candidates.json
 2. primary；
 3. robustness 或 ablation。
 
-新结果先登记为 `candidate`。只有执行命令成功、源代码与输出哈希匹配、指标非空、约束和
-验证检查通过、基线及创新证据引用完整，才能变成 `accepted`。论文只能读取 `accepted` 且
-`paper_allowed=true` 的结果。
+新结果先登记为 `candidate`。指标必须由白名单提取器从执行记录中的已哈希输出生成 provenance；
+派生指标只允许受限 AST。准入后生成不可改写的 sealed result 与 RFC 8785 seal。撤销只追加
+revocation record，论文不得读取 `revoked` 或 `superseded` 结果。
 
 实验必须先写结构化执行清单，再由统一执行器运行：
 
@@ -113,11 +116,8 @@ python scripts/runtime/execute_experiment.py runs/2026-A-001 runs/2026-A-001/exe
 python scripts/codex/validate_state.py runs/2026-A-001
 ```
 
-首次使用先安装唯一 Python 运行依赖：
-
-```powershell
-python -m pip install -r requirements.txt
-```
+论文数字通过 `scripts/generate_paper_evidence.py` 生成 Typst macro，QA 会在最终 PDF 的 claim
+标签附近检查真实展示值，而不是信任手填的 `rendered_value`。
 
 ## 第二次人工确认：最终论文
 
@@ -127,7 +127,8 @@ python -m pip install -r requirements.txt
 runs/2026-A-001/review/FINAL_REVIEW_MEMO.md
 ```
 
-状态变为 `WAITING_HUMAN_FINAL`，Codex 再次停止。只有人工明确批准后才能进入 `COMPLETE`。
+状态变为 `WAITING_HUMAN_FINAL`，Codex 再次停止。最终回执绑定当前 PDF、QA 聚合报告、证据
+报告与 Profile 哈希；任何一个发生变化都会使批准自动失效。
 
 ## 跨任务继续
 

@@ -10,7 +10,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INITIALIZER = REPO_ROOT / "scripts" / "codex" / "init_run.py"
 VALIDATOR = REPO_ROOT / "scripts" / "codex" / "validate_state.py"

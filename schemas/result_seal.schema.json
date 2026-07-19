@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/zhouwu97/shumozizi/schemas/result_seal.schema.json",
+  "type": "object", "additionalProperties": false, "required": ["schema_name", "schema_version", "canonicalization", "result_sha256", "execution_record_sha256", "metric_provenance_sha256", "sealed_at"],
+  "properties": {"schema_name": {"const": "result_seal"}, "schema_version": {"const": "2.0"}, "canonicalization": {"const": "RFC8785"}, "result_sha256": {"$ref": "#/$defs/sha"}, "execution_record_sha256": {"$ref": "#/$defs/sha"}, "metric_provenance_sha256": {"type": "object", "additionalProperties": {"$ref": "#/$defs/sha"}}, "sealed_at": {"type": "string", "format": "date-time"}}, "$defs": {"sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

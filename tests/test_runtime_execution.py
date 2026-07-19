@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from runtime_helpers import RuntimeFixture
-
+from tests.runtime_helpers import RuntimeFixture
 
 WRITER_SCRIPT = """from pathlib import Path
 import json
@@ -46,10 +45,12 @@ class RuntimeExecutionTests(unittest.TestCase):
             (self.fixture.run_dir / "results/result_registry.json").read_text(encoding="utf-8")
         )
         self.assertEqual("accepted", registry["results"][0]["status"])
-        self.assertEqual(
-            "scripts/runtime/accept_result.py",
-            registry["results"][0]["acceptance"]["admission_tool"],
+        seal = json.loads(
+            (self.fixture.run_dir / registry["results"][0]["result_seal_path"]).read_text(
+                encoding="utf-8"
+            )
         )
+        self.assertEqual("RFC8785", seal["canonicalization"])
 
     def test_nonzero_exit_cannot_be_accepted(self) -> None:
         """非零退出即使写出文件也不得准入。"""
@@ -141,7 +142,14 @@ class RuntimeExecutionTests(unittest.TestCase):
         primary = self.prepare_success("exec_innovation", "q1_innovation")
         primary["cycle"] = "primary"
         primary["baseline_result_id"] = "q1_baseline"
-        primary["innovation_claim_ids"] = ["claim_1"]
+        primary["innovation_claims"] = [
+            {
+                "claim_id": "claim_1",
+                "claim": "测试创新主张",
+                "evidence": [],
+                "status": "keep",
+            }
+        ]
         self.fixture.set_results([accepted_baseline, primary])
 
         accepted = self.fixture.run_acceptor("q1_innovation")
@@ -188,10 +196,9 @@ class RuntimeExecutionTests(unittest.TestCase):
 
         accepted = self.fixture.run_acceptor("q1_timeout")
         record = json.loads(
-            (
-                self.fixture.run_dir
-                / "executions/exec_timeout/execution_record.json"
-            ).read_text(encoding="utf-8")
+            (self.fixture.run_dir / "executions/exec_timeout/execution_record.json").read_text(
+                encoding="utf-8"
+            )
         )
 
         self.assertNotEqual(0, executed.returncode)

@@ -1,0 +1,13 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "bounded-mechanical-submission-qa",
+  "title": "有界机械提交检查",
+  "source_ids": ["sweetcornna-mathodology"],
+  "tags": ["qa", "pdf", "figure", "caption", "anonymous", "submission"],
+  "guidance": [
+    "机械 QA 作为统一 QA Aggregator 的 Adapter 输出检查项，不建立第二套结论",
+    "检查页数、逐页空白、重复 caption、匿名元数据与提交包完整性",
+    "图表碰撞由图表生成阶段产生可复验回执，缺失或失败回执阻断提交"
+  ]
+}
