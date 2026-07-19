@@ -39,7 +39,11 @@ def _check_file_binding(run_dir: Path, item: dict[str, str], label: str) -> list
     return []
 
 
-def verify_paper_build_receipt(run_dir: Path) -> dict[str, Any]:
+def verify_paper_build_receipt(
+    run_dir: Path,
+    *,
+    expected_state_revision: int | None = None,
+) -> dict[str, Any]:
     """验证论文计划、构建回执及其所有输入输出绑定。"""
     errors: list[str] = []
     plan_path = run_dir / "paper" / "paper_plan.json"
@@ -56,8 +60,11 @@ def verify_paper_build_receipt(run_dir: Path) -> dict[str, Any]:
             errors.append("论文回执 plan_path 必须为 paper/paper_plan.json")
         if receipt["plan_sha256"] != sha256_file(plan_path):
             errors.append("论文回执未绑定当前 paper_plan.json")
-        if receipt["state_revision"] != state["revision"]:
-            errors.append("论文构建回执不是当前 state revision 生成")
+        if expected_state_revision is not None:
+            if receipt["state_revision"] != expected_state_revision:
+                errors.append("论文构建回执不是指定 state revision 生成")
+        elif receipt["state_revision"] > state["revision"]:
+            errors.append("论文构建回执来自未来 state revision")
         if receipt["final_pdf_path"] != plan["final_pdf_path"]:
             errors.append("论文回执 final_pdf_path 与计划不一致")
         final_pdf = _resolve_bound_file(run_dir, receipt["final_pdf_path"])
@@ -130,8 +137,15 @@ def verify_figure_receipts(run_dir: Path) -> dict[str, Any]:
     return {"valid": not errors, "errors": errors, "plan_path": str(plan_path)}
 
 
-def verify_production_receipts(run_dir: Path) -> dict[str, Any]:
+def verify_production_receipts(
+    run_dir: Path,
+    *,
+    expected_state_revision: int | None = None,
+) -> dict[str, Any]:
     """汇总论文和图表生产回执校验，供状态门调用。"""
-    paper = verify_paper_build_receipt(run_dir)
+    paper = verify_paper_build_receipt(
+        run_dir,
+        expected_state_revision=expected_state_revision,
+    )
     figures = verify_figure_receipts(run_dir)
     return {"valid": paper["valid"] and figures["valid"], "errors": [*paper["errors"], *figures["errors"]], "paper": paper, "figures": figures}

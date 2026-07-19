@@ -246,6 +246,8 @@ class StateService:
             "recorded_revision": next_revision,
             "question_id": question_id,
             "request_stage": expected_stage,
+            "verdict": report.get("verdict", ""),
+            "decision": receipt["decision"],
         }
         state["revision"] = next_revision
         state["last_updated_by"] = actor.actor_id
@@ -308,6 +310,12 @@ class StateService:
                 for finding in report.get("findings", [])
             )
             return grade in {"A", "B"} and not severe
+        if gate_id == "J0_FINAL_BLIND_JUDGE":
+            severe = any(
+                finding.get("severity") in {"P0", "P1"}
+                for finding in report.get("findings", [])
+            )
+            return report.get("verdict") in {"PROCEED", "ADVISORY"} and not severe
         return report.get("verdict") in verdicts[request_stage]
 
     def _check_review_gate_timing(
@@ -335,7 +343,9 @@ class StateService:
             qa = load_json(run_dir / "review" / "QA_AGGREGATE.json")
             if qa.get("status") != "pass" or qa.get("hard_failures"):
                 raise ContractError("R5 必须在 QA 机械检查通过后执行")
+            self._require_current_production_integrity(run_dir)
         if gate_id == "J0_FINAL_BLIND_JUDGE":
+            self._require_current_production_integrity(run_dir)
             self._require_passed_review_gates(
                 run_dir, state, ("R5_STANDARD_FINAL",)
             )
@@ -382,12 +392,10 @@ class StateService:
                 tuple(f"R2_EXPERIMENT_{question_id}" for question_id in completed_questions),
             )
         if event is WorkflowEvent.PAPER_COMPLETED:
-            production = verify_production_receipts(run_dir)
-            if not production["valid"]:
-                raise ContractError("论文或图表生产回执校验失败: " + "; ".join(production["errors"]))
-            acceptance = verify_question_acceptance(run_dir)
-            if not acceptance["valid"]:
-                raise ContractError("逐问验收校验失败: " + "; ".join(acceptance["errors"]))
+            self._require_current_production_integrity(
+                run_dir,
+                expected_state_revision=state["revision"],
+            )
         if event is WorkflowEvent.QA_STARTED:
             self._require_passed_review_gates(
                 run_dir, state, ("R3_PAPER_LOGIC", "R4_FORMAT_VISUAL")
@@ -410,8 +418,28 @@ class StateService:
                     "J0_FINAL_BLIND_JUDGE",
                 ),
             )
+            self._require_current_production_integrity(run_dir)
         if event is WorkflowEvent.FINAL_APPROVED:
             self._assert_complete_invariants(run_dir, state)
+
+    @staticmethod
+    def _require_current_production_integrity(
+        run_dir: Path,
+        *,
+        expected_state_revision: int | None = None,
+    ) -> None:
+        """复验当前论文、图表和逐问验收生产事实。"""
+        production = verify_production_receipts(
+            run_dir,
+            expected_state_revision=expected_state_revision,
+        )
+        if not production["valid"]:
+            raise ContractError(
+                "论文或图表生产回执校验失败: " + "; ".join(production["errors"])
+            )
+        acceptance = verify_question_acceptance(run_dir)
+        if not acceptance["valid"]:
+            raise ContractError("逐问验收校验失败: " + "; ".join(acceptance["errors"]))
 
     @staticmethod
     def _require_passed_review_gates(
@@ -441,6 +469,7 @@ class StateService:
         """复验 COMPLETE 所绑定的全部当前事实。"""
         if state.get("paper_ready") is not True:
             raise ContractError("COMPLETE 要求 paper_ready=true")
+        self._require_current_production_integrity(run_dir)
         verify_run_config_lock(self.repo_root, run_dir)
         qa_path = run_dir / "review" / "QA_AGGREGATE.json"
         evidence_path = run_dir / "review" / "EVIDENCE_VALIDATION.json"

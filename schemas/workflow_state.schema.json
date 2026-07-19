@@ -33,7 +33,9 @@
           "reviewed_revision": {"type": "integer", "minimum": 0},
           "recorded_revision": {"type": "integer", "minimum": 0},
           "question_id": {"type": ["string", "null"]},
-          "request_stage": {"type": "string"}
+          "request_stage": {"type": "string"},
+          "verdict": {"type": "string"},
+          "decision": {"enum": ["accepted", "accepted_with_warnings", "rejected", "superseded"]}
         }
       }
     },

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError
+from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.workflow.reviews import (
     create_review_request,
     materialize_review_receipt,
@@ -240,3 +240,203 @@ def test_real_r1_receipt_is_recorded_before_experiment(tmp_path: Path) -> None:
 
     assert recorded["review_gates"]["R1_MODELING"]["status"] == "passed"
     assert progressed["status"] == "EXPERIMENTING"
+
+
+def _qa_running_state(run_id: str) -> dict:
+    """构造可登记 R5/J0 的最小合法 QA_RUNNING 状态。"""
+    return {
+        "schema_name": "workflow_state",
+        "schema_version": "2.0",
+        "run_schema_version": "2.0",
+        "run_id": run_id,
+        "problem_source": "problems/sample.md",
+        "mode": "competition",
+        "status": "QA_RUNNING",
+        "revision": 7,
+        "completed_stages": ["PAPER_DRAFTED"],
+        "active_stage": "qa",
+        "route_locked": True,
+        "paper_ready": True,
+        "question_progress": {},
+        "review_gates": {},
+        "artifacts": {},
+        "last_updated_by": "test",
+        "updated_at": "2026-07-19T00:00:00Z",
+        "history": [],
+    }
+
+
+def _record_review(
+    service: StateService,
+    run_dir: Path,
+    stage: str,
+    gate_id: str,
+    verdict: str,
+    *,
+    findings: list[dict] | None = None,
+    rating: bool = False,
+) -> dict:
+    """创建并登记真实审核请求、报告和回执。"""
+    bound = run_dir / "paper/final.pdf"
+    request = create_review_request(run_dir, stage, {"final_pdf": bound})
+    request_doc = json.loads(request.read_text(encoding="utf-8"))
+    report = {
+        "schema_name": "review_report",
+        "schema_version": "2.0",
+        "request_id": request_doc["request_id"],
+        "run_id": run_dir.name,
+        "stage": stage,
+        "review_round_id": request_doc["review_round_id"],
+        "verdict": verdict,
+        "findings": findings or [],
+        "read_only_confirmed": True,
+        "generated_at": "2026-07-19T00:00:00Z",
+    }
+    if rating:
+        report["rating"] = {
+            "grade": verdict,
+            "confidence": "high",
+            "basis": ["冻结提交包"],
+            "downgrade_reasons": [],
+            "expert_estimate": True,
+        }
+    report_path = write_review_report(request, report)
+    receipt = materialize_review_receipt(request, report_path)
+    return service.record_review_gate(run_dir.name, gate_id, receipt, Actor("review"))
+
+
+def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
+    """为审核时机测试写入哈希闭合的最小论文生产包。"""
+    bound_files = {
+        "mathmodel_paper": repo_root / "skills/mathmodel-paper/SKILL.md",
+        "writing_skill": repo_root / "skills/5writing/SKILL.md",
+        "typst_author": repo_root / "skills/typst-author/SKILL.md",
+        "competition_template": repo_root / "profiles/generic.json",
+        "model_spec": run_dir / "reports/model_spec.md",
+        "claim_gate": run_dir / "paper/claim_gate.json",
+    }
+    for path in bound_files.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("测试绑定\n", encoding="utf-8")
+    section = run_dir / "paper/main.typ"
+    section.write_text("= 测试论文\n", encoding="utf-8")
+    registry = run_dir / "results/result_registry.json"
+    atomic_json(
+        registry,
+        {
+            "schema_name": "result_registry",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "results": [],
+        },
+    )
+    bindings = {
+        name: {
+            "path": path.relative_to(repo_root if repo_root in path.parents else run_dir).as_posix(),
+            "sha256": sha256_file(path),
+        }
+        for name, path in bound_files.items()
+    }
+    bindings["result_registry"] = {
+        "path": "results/result_registry.json",
+        "sha256": sha256_file(registry),
+    }
+    bindings["section_files"] = [
+        {"path": "paper/main.typ", "sha256": sha256_file(section)}
+    ]
+    bindings["figures_used"] = []
+    plan_path = run_dir / "paper/paper_plan.json"
+    atomic_json(
+        plan_path,
+        {
+            "schema_name": "paper_plan",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "bindings": bindings,
+            "final_pdf_path": "paper/final.pdf",
+        },
+    )
+    state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+    atomic_json(
+        run_dir / "paper/PAPER_BUILD_RECEIPT.json",
+        {
+            "schema_name": "paper_build_receipt",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "plan_path": "paper/paper_plan.json",
+            "plan_sha256": sha256_file(plan_path),
+            "state_revision": state["revision"],
+            "final_pdf_path": "paper/final.pdf",
+            "final_pdf_sha256": sha256_file(run_dir / "paper/final.pdf"),
+            "generated_at": "2026-07-19T00:00:00Z",
+        },
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "figures": [],
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("verdict", "findings", "expected_status"),
+    [
+        ("PROCEED", [], "passed"),
+        ("DO_NOT_PROCEED", [], "failed"),
+        ("ADVISORY", [], "passed"),
+        (
+            "ADVISORY",
+            [
+                {
+                    "finding_id": "J0-P1",
+                    "severity": "P1",
+                    "title": "关键结论证据不足",
+                    "evidence": ["最终 PDF 第 3 页"],
+                    "remediation": "修正证据链",
+                    "status": "open",
+                }
+            ],
+            "failed",
+        ),
+    ],
+)
+def test_j0_verdict_semantics_are_enforced_and_retained(
+    tmp_path: Path,
+    verdict: str,
+    findings: list[dict],
+    expected_status: str,
+) -> None:
+    """J0 否决和严重问题必须阻断，普通 advisory 只保留警告。"""
+    run_dir = tmp_path / "runs" / f"j0-{verdict.lower()}-{len(findings)}"
+    (run_dir / "paper").mkdir(parents=True)
+    (run_dir / "review").mkdir()
+    (run_dir / "paper/final.pdf").write_bytes(b"PDF")
+    atomic_json(run_dir / "state.json", _qa_running_state(run_dir.name))
+    atomic_json(run_dir / "review/QA_AGGREGATE.json", {"status": "pass", "hard_failures": []})
+    _write_minimal_production(tmp_path, run_dir)
+    service = StateService(tmp_path)
+    _record_review(
+        service,
+        run_dir,
+        "R5_COMPREHENSIVE",
+        "R5_STANDARD_FINAL",
+        "B",
+        rating=True,
+    )
+
+    state = _record_review(
+        service,
+        run_dir,
+        "J0_FINAL_BLIND_JUDGE",
+        "J0_FINAL_BLIND_JUDGE",
+        verdict,
+        findings=findings,
+    )
+
+    gate = state["review_gates"]["J0_FINAL_BLIND_JUDGE"]
+    assert gate["status"] == expected_status
+    assert gate["verdict"] == verdict

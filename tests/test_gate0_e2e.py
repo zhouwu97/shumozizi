@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shumozizi.core.io import atomic_json, load_json, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.evidence.validator import generate_paper_evidence
 from shumozizi.qa.aggregator import run_submission_qa
 from shumozizi.results.metrics import materialize_metric
@@ -283,6 +283,56 @@ class Gate0EndToEndTests(unittest.TestCase):
                 path.write_text("测试 Skill\n", encoding="utf-8")
             claim_gate = run_dir / "paper/claim_gate.json"
             claim_gate.write_text("{}\n", encoding="utf-8")
+            figure_data = run_dir / "figures/q1.csv"
+            figure_script = run_dir / "figures/q1.py"
+            figure_output = run_dir / "figures/q1.png"
+            figure_data.write_text("x,y\n1,1.25\n", encoding="utf-8")
+            figure_script.write_text("print('Gate 0 figure')\n", encoding="utf-8")
+            figure_output.write_bytes(b"PNG")
+            atomic_json(
+                run_dir / "figures/FIGURE_PLAN.json",
+                {
+                    "schema_name": "figure_plan",
+                    "schema_version": "2.0",
+                    "run_id": run_dir.name,
+                    "figures": [
+                        {
+                            "figure_id": "q1",
+                            "preferred": "Nature Figure",
+                            "fallback": "skills/3coding-visual",
+                        }
+                    ],
+                },
+            )
+            atomic_json(
+                run_dir / "figures/q1.receipt.json",
+                {
+                    "schema_name": "figure_receipt",
+                    "schema_version": "2.0",
+                    "run_id": run_dir.name,
+                    "figure_id": "q1",
+                    "question_id": "q1",
+                    "accepted_result_ids": ["q1-baseline"],
+                    "data_files": [
+                        {"path": "figures/q1.csv", "sha256": sha256_file(figure_data)}
+                    ],
+                    "script": {
+                        "path": "figures/q1.py",
+                        "sha256": sha256_file(figure_script),
+                    },
+                    "outputs": [
+                        {"path": "figures/q1.png", "sha256": sha256_file(figure_output)}
+                    ],
+                    "units": "dimensionless",
+                    "legend": "固定标量",
+                    "axes": {"x": "样本", "y": "数值"},
+                    "generated_at": "2026-07-19T00:00:00Z",
+                },
+            )
+            atomic_json(
+                run_dir / "figures/q1.png.qa.json",
+                {"status": "pass", "figure_id": "q1"},
+            )
             paper_plan = {
                 "schema_name": "paper_plan",
                 "schema_version": "2.0",
@@ -299,7 +349,9 @@ class Gate0EndToEndTests(unittest.TestCase):
                         {"path": "paper/main.typ", "sha256": sha256_file(paper_source)},
                         {"path": "paper/sections/q1.typ", "sha256": sha256_file(question_section)},
                     ],
-                    "figures_used": [],
+                    "figures_used": [
+                        {"path": "figures/q1.png", "sha256": sha256_file(figure_output)}
+                    ],
                 },
                 "final_pdf_path": "paper/final.pdf",
             }
@@ -318,10 +370,6 @@ class Gate0EndToEndTests(unittest.TestCase):
                     "final_pdf_sha256": sha256_file(final_pdf),
                     "generated_at": "2026-07-19T00:00:00Z",
                 },
-            )
-            atomic_json(
-                run_dir / "figures/FIGURE_PLAN.json",
-                {"schema_name": "figure_plan", "schema_version": "2.0", "run_id": run_dir.name, "figures": []},
             )
             service.transition(
                 run_dir.name,
@@ -378,6 +426,26 @@ class Gate0EndToEndTests(unittest.TestCase):
                 {"final_pdf": final_pdf},
                 "PROCEED",
             )
+            original_figure_data = figure_data.read_text(encoding="utf-8")
+            figure_data.write_text("x,y\n1,999\n", encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "生产回执"):
+                service.transition(run_dir.name, WorkflowEvent.QA_PASSED, actor, [])
+            figure_data.write_text(original_figure_data, encoding="utf-8")
+
+            original_figure_script = figure_script.read_text(encoding="utf-8")
+            figure_script.write_text("print('tampered')\n", encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "生产回执"):
+                service.transition(run_dir.name, WorkflowEvent.QA_PASSED, actor, [])
+            figure_script.write_text(original_figure_script, encoding="utf-8")
+
+            acceptance_path = run_dir / "questions/q1/QUESTION_ACCEPTANCE.json"
+            acceptance = load_json(acceptance_path)
+            acceptance["status"] = "rejected"
+            atomic_json(acceptance_path, acceptance)
+            with self.assertRaisesRegex(ContractError, "逐问验收"):
+                service.transition(run_dir.name, WorkflowEvent.QA_PASSED, actor, [])
+            acceptance["status"] = "accepted"
+            atomic_json(acceptance_path, acceptance)
             service.transition(run_dir.name, WorkflowEvent.QA_PASSED, actor, [])
             create_final_approval_request(run_dir, final_pdf)
             final_receipt = materialize_final_approval(
@@ -385,6 +453,20 @@ class Gate0EndToEndTests(unittest.TestCase):
                 raw_user_response="测试夹具明确批准最终提交",
                 approved_by="human-test-fixture",
             )
+            build_receipt_path = run_dir / "paper/PAPER_BUILD_RECEIPT.json"
+            build_receipt = load_json(build_receipt_path)
+            original_plan_sha256 = build_receipt["plan_sha256"]
+            build_receipt["plan_sha256"] = "0" * 64
+            atomic_json(build_receipt_path, build_receipt)
+            with self.assertRaisesRegex(ContractError, "生产回执"):
+                service.transition(
+                    run_dir.name,
+                    WorkflowEvent.FINAL_APPROVED,
+                    actor,
+                    [self._ref(run_dir, "final_approval_receipt", final_receipt)],
+                )
+            build_receipt["plan_sha256"] = original_plan_sha256
+            atomic_json(build_receipt_path, build_receipt)
             state = service.transition(
                 run_dir.name,
                 WorkflowEvent.FINAL_APPROVED,
