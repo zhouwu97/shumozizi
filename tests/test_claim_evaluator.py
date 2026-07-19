@@ -44,6 +44,7 @@ def evaluation_documents(
 ) -> tuple[dict, dict, list[dict], dict[str, dict]]:
     """构造纯内存评估输入。"""
     lock = route_lock()
+    lock["innovation_claims"][0]["required_experiment_roles"] = ["baseline", "primary"]
     plan = experiment_plan()
     plan["comparison_rule"]["predicates"][0]["relation"] = "relative_decrease"
     plan["comparison_rule"]["predicates"][0]["threshold"] = 0.1
@@ -141,6 +142,63 @@ class ClaimEvaluatorTests(unittest.TestCase):
 
         self.assertEqual("inconclusive", evidence["claims"][0]["status"])
         self.assertEqual([], evidence["claims"][0]["evidence_result_ids"])
+
+    def test_missing_required_ablation_is_inconclusive(self) -> None:
+        """路线锁要求的消融未完成时不得提前支持创新主张。"""
+        lock, registry, plans, sealed = evaluation_documents(8.0)
+        lock["innovation_claims"][0]["required_experiment_roles"].append("ablation")
+
+        evidence, _ = evaluate_claim_documents(lock, registry, plans, sealed)
+
+        claim = evidence["claims"][0]
+        self.assertEqual("inconclusive", claim["status"])
+        self.assertEqual(["ablation"], claim["missing_experiment_roles"])
+
+    def test_robustness_plan_without_accepted_result_is_inconclusive(self) -> None:
+        """仅存在稳健性计划而没有 accepted/sealed result 不算完成该角色。"""
+        lock, registry, plans, sealed = evaluation_documents(8.0)
+        lock["innovation_claims"][0]["required_experiment_roles"].append("robustness")
+        robustness_plan = experiment_plan()
+        robustness_plan["experiment_id"] = "Q1-R1"
+        robustness_plan["experiment_role"] = "robustness"
+        robustness_plan["comparison_rule"]["predicates"][0]["aggregation"] = (
+            "robustness_result"
+        )
+        plans.append(robustness_plan)
+
+        evidence, _ = evaluate_claim_documents(lock, registry, plans, sealed)
+
+        claim = evidence["claims"][0]
+        self.assertEqual("inconclusive", claim["status"])
+        self.assertEqual(["robustness"], claim["missing_experiment_roles"])
+
+    def test_all_required_experiment_roles_allow_supported_claim(self) -> None:
+        """baseline、primary、ablation 均有有效结果时允许支持主张。"""
+        lock, registry, plans, sealed = evaluation_documents(8.0)
+        lock["innovation_claims"][0]["required_experiment_roles"].append("ablation")
+        registry["results"].append(registry_row("Q1-A1", "ablation"))
+        sealed["Q1-A1"] = sealed_result("Q1-A1", 8.5)
+        ablation_plan = experiment_plan()
+        ablation_plan["experiment_id"] = "Q1-A1"
+        ablation_plan["experiment_role"] = "ablation"
+        ablation_plan["comparison_rule"]["predicates"][0]["relation"] = (
+            "relative_decrease"
+        )
+        ablation_plan["comparison_rule"]["predicates"][0]["threshold"] = 0.1
+        ablation_plan["comparison_rule"]["predicates"][0]["aggregation"] = (
+            "ablation_result"
+        )
+        plans.append(ablation_plan)
+
+        evidence, _ = evaluate_claim_documents(lock, registry, plans, sealed)
+
+        claim = evidence["claims"][0]
+        self.assertEqual("supported", claim["status"])
+        self.assertEqual(
+            ["baseline", "primary", "ablation"],
+            claim["satisfied_experiment_roles"],
+        )
+        self.assertEqual([], claim["missing_experiment_roles"])
 
     def test_no_structured_claim_is_claimability_none(self) -> None:
         lock, registry, plans, sealed = evaluation_documents(8.0)

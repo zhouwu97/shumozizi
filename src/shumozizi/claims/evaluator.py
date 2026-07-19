@@ -23,9 +23,10 @@ from shumozizi.core.io import (
 from shumozizi.core.schema import require_valid
 from shumozizi.results.sealing import verify_sealed_result
 
-EVALUATOR_VERSION = "1.1.0"
+EVALUATOR_VERSION = "1.2.0"
 CLAIM_STATUSES = {"supported", "partially_supported", "rejected", "inconclusive"}
 PREDICATE_ROLES = {"required_support", "falsification"}
+EXPERIMENT_ROLES = ("baseline", "primary", "robustness", "ablation")
 COMPARISON_POLICY = {
     "supported_if": "all_required_predictions_pass",
     "partially_supported_if": "at_least_one_required_prediction_passes",
@@ -52,6 +53,12 @@ def _require_comparison_policy(rule: dict[str, Any]) -> None:
     ]
     if mismatches:
         raise ContractError(f"不支持的主张判定策略字段: {', '.join(mismatches)}")
+
+
+def _ordered_roles(roles: Iterable[str]) -> list[str]:
+    """按实验协议顺序稳定输出角色集合。"""
+    values = set(roles)
+    return [role for role in EXPERIMENT_ROLES if role in values]
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -172,6 +179,44 @@ def _aggregate_metric(
     if not values or len(units) != 1:
         return None
     return sum(values) / len(values), units.pop(), used
+
+
+def _satisfied_experiment_roles(
+    registry: dict[str, Any],
+    sealed_results: dict[str, dict[str, Any]],
+    plans: list[dict[str, Any]],
+) -> set[str]:
+    """返回由关联计划及其 accepted/sealed results 实际满足的实验角色。"""
+    satisfied: set[str] = set()
+    for plan in plans:
+        question_id = plan["question_id"]
+        baseline_ids = _result_ids_for_aggregation(
+            registry,
+            question_id,
+            "baseline_result",
+            plan.get("baseline_result_ids", []),
+        )
+        if any(result_id in sealed_results for result_id in baseline_ids):
+            satisfied.add("baseline")
+
+        role = plan["experiment_role"]
+        target_roles = (
+            ("robustness", "ablation")
+            if role == "robustness_or_ablation"
+            else (role,)
+        )
+        for target_role in target_roles:
+            if target_role == "baseline":
+                continue
+            result_ids = _result_ids_for_aggregation(
+                registry,
+                question_id,
+                f"{target_role}_result",
+                plan.get("baseline_result_ids", []),
+            )
+            if any(result_id in sealed_results for result_id in result_ids):
+                satisfied.add(target_role)
+    return satisfied
 
 
 def _predicate_check(
@@ -332,16 +377,27 @@ def evaluate_claim_documents(
             status = "partially_supported"
         else:
             status = "inconclusive"
-        claims_output.append(
-            {
-                "claim_id": claim_id,
-                "claim": claim.get("claim"),
-                "status": status,
-                "evidence_result_ids": sorted(evidence_ids),
-                "prediction_checks": checks,
-                "paper_permissions": _claim_permissions(status),
-            }
+        required_roles = _ordered_roles(claim.get("required_experiment_roles", []))
+        satisfied_roles = _ordered_roles(
+            _satisfied_experiment_roles(registry, sealed_results, claim_plans)
         )
+        missing_roles = _ordered_roles(set(required_roles) - set(satisfied_roles))
+        if missing_roles:
+            status = "inconclusive"
+        claim_output = {
+            "claim_id": claim_id,
+            "claim": claim.get("claim"),
+            "status": status,
+            "evidence_result_ids": sorted(evidence_ids),
+            "prediction_checks": checks,
+            "required_experiment_roles": required_roles,
+            "satisfied_experiment_roles": satisfied_roles,
+            "missing_experiment_roles": missing_roles,
+            "paper_permissions": _claim_permissions(status),
+        }
+        if missing_roles:
+            claim_output["reason"] = f"缺少已接受且已封存的实验角色: {', '.join(missing_roles)}"
+        claims_output.append(claim_output)
     return (
         {
             "schema_name": "claim_evidence",

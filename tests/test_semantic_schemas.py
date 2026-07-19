@@ -216,6 +216,9 @@ def claim_evidence(status: str = "supported") -> dict:
                         "required": 0.05,
                     }
                 ],
+                "required_experiment_roles": ["baseline", "primary", "ablation"],
+                "satisfied_experiment_roles": ["baseline", "primary", "ablation"],
+                "missing_experiment_roles": [],
                 "paper_permissions": {
                     "contribution_section": status == "supported",
                     "results_section": True,

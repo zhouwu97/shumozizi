@@ -216,6 +216,7 @@ class P0DRealFixtureTests(unittest.TestCase):
                 "claim_id": claim_id,
                 "claim": claim_text,
                 "prediction_ids": [prediction_id],
+                "required_experiment_roles": ["baseline", "primary"],
             }
         )
         self.fixture.write_json("brief/ROUTE_LOCK.json", lock)

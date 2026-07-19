@@ -93,6 +93,9 @@
         "status",
         "evidence_result_ids",
         "prediction_checks",
+        "required_experiment_roles",
+        "satisfied_experiment_roles",
+        "missing_experiment_roles",
         "paper_permissions"
       ],
       "properties": {
@@ -109,6 +112,10 @@
           "type": "array",
           "items": {"$ref": "#/$defs/prediction_check"}
         },
+        "required_experiment_roles": {"$ref": "#/$defs/experiment_roles"},
+        "satisfied_experiment_roles": {"$ref": "#/$defs/experiment_roles"},
+        "missing_experiment_roles": {"$ref": "#/$defs/experiment_roles"},
+        "reason": {"type": "string", "minLength": 2},
         "paper_permissions": {
           "type": "object",
           "additionalProperties": false,
@@ -120,6 +127,11 @@
           }
         }
       }
+    },
+    "experiment_roles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["baseline", "primary", "robustness", "ablation"]}
     }
   }
 }
