@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/result_registry.schema.json",
+  "title": "MathModelAgent Result Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "results"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "result_id",
+          "question_id",
+          "cycle",
+          "status",
+          "paper_allowed",
+          "source_script",
+          "source_output",
+          "metrics",
+          "conclusion"
+        ],
+        "properties": {
+          "result_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+          "question_id": { "type": "string", "minLength": 1 },
+          "cycle": { "enum": ["baseline", "primary", "robustness", "ablation"] },
+          "status": { "enum": ["candidate", "accepted", "rejected"] },
+          "paper_allowed": { "type": "boolean" },
+          "source_script": { "type": "string", "minLength": 1 },
+          "source_output": { "type": "string", "minLength": 1 },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": { "type": ["number", "integer", "string", "boolean", "null"] }
+          },
+          "conclusion": { "type": "string" },
+          "random_seed": { "type": ["integer", "null"] },
+          "accepted_by": { "type": ["string", "null"] },
+          "accepted_at": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

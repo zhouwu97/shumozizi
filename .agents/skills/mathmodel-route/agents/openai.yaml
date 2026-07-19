@@ -1,0 +1,4 @@
+interface:
+  display_name: "Math Modeling Route"
+  short_description: "Propose distinct modeling routes for human selection"
+  default_prompt: "Use $mathmodel-route to analyze the problem, propose candidate routes, and stop."

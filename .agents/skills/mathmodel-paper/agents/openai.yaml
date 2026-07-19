@@ -1,0 +1,4 @@
+interface:
+  display_name: "Math Modeling Paper"
+  short_description: "Write paper sections from accepted reproducible results"
+  default_prompt: "Use $mathmodel-paper to write the next evidence-backed paper section."

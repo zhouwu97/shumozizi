@@ -1,0 +1,4 @@
+interface:
+  display_name: "Math Modeling Experiment"
+  short_description: "Run bounded baseline, primary, and robustness experiments"
+  default_prompt: "Use $mathmodel-experiment to execute and register the locked-route experiments."
