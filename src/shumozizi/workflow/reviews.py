@@ -18,6 +18,7 @@ REVIEW_STAGES = {
     "R3_PAPER_LOGIC": "mathmodel-review/r3-paper-logic",
     "R4_FORMAT_VISUAL": "mathmodel-review/r4-format-visual",
     "R5_COMPREHENSIVE": "mathmodel-review/r5-comprehensive",
+    "J0_FINAL_BLIND_JUDGE": "fresh_context_unstructured",
 }
 VERDICTS = {
     "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_FIXES", "REBUILD"},
@@ -25,6 +26,7 @@ VERDICTS = {
     "R3_PAPER_LOGIC": {"READY_FOR_COMPREHENSIVE_REVIEW", "MAJOR_REVISION", "NOT_READY"},
     "R4_FORMAT_VISUAL": {"COMPLIANT", "FIX_REQUIRED", "NOT_COMPLIANT"},
     "R5_COMPREHENSIVE": {"A", "B", "C", "D", "E"},
+    "J0_FINAL_BLIND_JUDGE": {"PROCEED", "DO_NOT_PROCEED", "ADVISORY"},
 }
 
 
@@ -55,6 +57,10 @@ def create_review_request(
     """冻结当前 revision 并创建供新桌面任务领取的只读审核请求。"""
     if stage not in REVIEW_STAGES:
         raise ContractError(f"未知审核阶段: {stage}")
+    if stage == "J0_FINAL_BLIND_JUDGE" and any(
+        (run_dir / "review" / stage.lower()).glob("*/review_request.json")
+    ):
+        raise ContractError("J0_FINAL_BLIND_JUDGE 只允许创建一次")
     state = load_json(run_dir / "state.json")
     if state.get("run_id") != run_dir.name:
         raise ContractError("审核请求 run_id 与运行目录不一致")
@@ -91,7 +97,10 @@ def create_review_request(
         "output_path": f"review/{stage.lower()}/{round_id}/review_report.json",
         "skill": REVIEW_STAGES[stage],
         "read_only": True,
-        "budget": {"max_minutes": max_minutes, "max_rounds": 5 if mode == "training" else 3},
+        "budget": {
+            "max_minutes": max_minutes,
+            "max_rounds": 1 if stage == "J0_FINAL_BLIND_JUDGE" else (5 if mode == "training" else 2),
+        },
         "requested_at": utc_now(),
     }
     require_valid(request, "review_request")
@@ -153,7 +162,9 @@ def materialize_review_receipt(request_path: Path, report_path: Path, *, decisio
     return receipt_path
 
 
-def verify_review_receipt(run_dir: Path, receipt_path: Path) -> dict[str, Any]:
+def verify_review_receipt(
+    run_dir: Path, receipt_path: Path, *, require_current_revision: bool = True
+) -> dict[str, Any]:
     """验证审核回执、报告、请求和当前 revision 是否仍匹配。"""
     errors: list[str] = []
     try:
@@ -173,7 +184,7 @@ def verify_review_receipt(run_dir: Path, receipt_path: Path) -> dict[str, Any]:
             if sha256_file(bound_path) != expected:
                 errors.append(f"审核绑定事实已变化: {name}")
         state = load_json(run_dir / "state.json")
-        if state["revision"] != receipt["state_revision"]:
+        if require_current_revision and state["revision"] != receipt["state_revision"]:
             errors.append("作者修复后旧审核回执已失效")
         if request["bindings"] != receipt["bindings"]:
             errors.append("审核回执绑定与请求不一致")

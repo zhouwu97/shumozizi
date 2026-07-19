@@ -21,6 +21,16 @@ NEW
 → COMPLETE
 ```
 
+主枚举之外，`state.json.review_gates` 是同一状态机内的阶段证明，不是第二套状态机：
+
+```text
+MODEL_SPEC_READY --R1_MODELING--> EXPERIMENTING
+每问实验完成 --R2_EXPERIMENT_<question_id>--> RESULTS_ACCEPTED
+PAPER_DRAFTED --R3_PAPER_LOGIC + R4_FORMAT_VISUAL--> QA_RUNNING
+QA 机械通过 --R5_STANDARD_FINAL--> J0_FINAL_BLIND_JUDGE
+J0 一次性回执 --> WAITING_HUMAN_FINAL
+```
+
 QA hard failure 的唯一修复回路为：
 
 ```text
@@ -48,18 +58,18 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 
 每问执行 baseline、primary、robustness/ablation。每轮先写执行清单，由统一执行器以结构化
 参数运行 Python，生成包含退出码、日志、输入输出哈希的不可变执行记录。指标由白名单提取器
-生成 provenance，候选结果必须通过约束、基线、创新证据和来源复验后，才按 RFC 8785 封存。
-结果接受后立即写对应论文
-章节，避免把写作挤到最后。全部实验完成后才写摘要和结论。
+生成 provenance，候选结果必须通过约束、基线和来源复验后，才按 RFC 8785 封存；创新主张由
+独立 evaluator 评估，不阻断 primary 的事实准入。每问实验完成后先登记 R2 回执，再进入结果
+汇总和论文。
 
 桌面版 AI 负责读取状态和决定下一阶段；项目不提供调用 AI 的 CLI 调度器。新建任务后再次
 调用 `$mathmodel-workflow`，即可从 `state.json` 恢复。
 
 ## 第二个暂停点
 
-论文完成后依次创建 R1-R4 审核请求，并由全新对话执行 R5 全面盲审。连续两轮 B/A 且无 P0/P1 后
-状态才可变为 `WAITING_HUMAN_FINAL`。人工回执必须绑定当前 PDF、QA、evidence report 和配置锁；
-人工未明确批准或任一绑定已变化时，不能标记完成。
+完整论文和 PDF 后依次创建 R3/R4 请求；机械 QA 通过后由全新对话执行 R5，随后只执行一次 J0
+自然评委盲评。竞赛模式 R5 最多两轮，仅 P0/P1 或低于 B 才重跑。所有回执必须登记到
+`review_gates` 并绑定当前生产事实；未登记或任一绑定变化时，不能进入 `WAITING_HUMAN_FINAL`。
 
 ## 三种模式
 

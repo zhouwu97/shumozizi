@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shumozizi.core.io import atomic_json, sha256_file
+from shumozizi.core.io import atomic_json, load_json, sha256_file
 from shumozizi.evidence.validator import generate_paper_evidence
 from shumozizi.qa.aggregator import run_submission_qa
 from shumozizi.results.metrics import materialize_metric
@@ -21,6 +21,11 @@ from shumozizi.workflow.approval import (
     materialize_route_approval,
 )
 from shumozizi.workflow.initialization import initialize_run
+from shumozizi.workflow.reviews import (
+    create_review_request,
+    materialize_review_receipt,
+    write_review_report,
+)
 from shumozizi.workflow.state_service import (
     Actor,
     ArtifactRef,
@@ -97,6 +102,14 @@ class Gate0EndToEndTests(unittest.TestCase):
                 actor,
                 [self._ref(run_dir, "model_spec", model_spec)],
             )
+            self._record_review(
+                service,
+                run_dir,
+                actor,
+                "R1_MODELING",
+                {"model_spec": model_spec},
+                "ACCEPT",
+            )
             service.transition(
                 run_dir.name,
                 WorkflowEvent.EXPERIMENT_STARTED,
@@ -170,6 +183,22 @@ class Gate0EndToEndTests(unittest.TestCase):
                 paper_allowed=True,
             )
             self.assertEqual("q1-baseline", sealed["result_id"])
+            service.update_question_progress(
+                run_dir.name, "q1", "experiment", "accepted", actor
+            )
+            self._record_review(
+                service,
+                run_dir,
+                actor,
+                "R2_EXPERIMENT",
+                {
+                    "execution_record": run_dir
+                    / "executions/q1-run-001/execution_record.json",
+                    "sealed_result": run_dir / "results/sealed/q1-baseline.result.json",
+                },
+                "REPRODUCIBLE",
+                question_id="q1",
+            )
             service.transition(
                 run_dir.name,
                 WorkflowEvent.RESULTS_ADMITTED,
@@ -216,8 +245,34 @@ class Gate0EndToEndTests(unittest.TestCase):
                 actor,
                 [self._ref(run_dir, "paper_source", paper_source)],
             )
+            final_pdf = run_dir / "paper/final.pdf"
+            compiled = subprocess.run(
+                ["typst", "compile", str(paper_source), str(final_pdf)],
+                cwd=run_dir / "paper",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(0, compiled.returncode, compiled.stderr)
+            self._record_review(
+                service,
+                run_dir,
+                actor,
+                "R3_PAPER_LOGIC",
+                {"paper_source": paper_source, "final_pdf": final_pdf},
+                "READY_FOR_COMPREHENSIVE_REVIEW",
+            )
+            self._record_review(
+                service,
+                run_dir,
+                actor,
+                "R4_FORMAT_VISUAL",
+                {"paper_source": paper_source, "final_pdf": final_pdf},
+                "COMPLIANT",
+            )
             service.transition(run_dir.name, WorkflowEvent.QA_STARTED, actor, [])
-            missing_pdf = run_dir / "paper/final.pdf"
+            missing_pdf = run_dir / "paper/not-the-bound-final.pdf"
             blocked = run_submission_qa(run_dir.name, missing_pdf)
             self.assertEqual("blocked", blocked["status"])
             service.transition(run_dir.name, WorkflowEvent.QA_BLOCKED, actor, [])
@@ -229,20 +284,28 @@ class Gate0EndToEndTests(unittest.TestCase):
                 actor,
                 [self._ref(run_dir, "repair_memo", repair)],
             )
-            compiled = subprocess.run(
-                ["typst", "compile", str(paper_source), str(missing_pdf)],
-                cwd=run_dir / "paper",
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                check=False,
-            )
-            self.assertEqual(0, compiled.returncode, compiled.stderr)
             service.transition(run_dir.name, WorkflowEvent.QA_STARTED, actor, [])
-            passed = run_submission_qa(run_dir.name, missing_pdf)
+            passed = run_submission_qa(run_dir.name, final_pdf)
             self.assertEqual("pass", passed["status"], passed["hard_failures"])
+            self._record_review(
+                service,
+                run_dir,
+                actor,
+                "R5_COMPREHENSIVE",
+                {"final_pdf": final_pdf, "qa": run_dir / "review/QA_AGGREGATE.json"},
+                "B",
+                rating=True,
+            )
+            self._record_review(
+                service,
+                run_dir,
+                actor,
+                "J0_FINAL_BLIND_JUDGE",
+                {"final_pdf": final_pdf},
+                "PROCEED",
+            )
             service.transition(run_dir.name, WorkflowEvent.QA_PASSED, actor, [])
-            create_final_approval_request(run_dir, missing_pdf)
+            create_final_approval_request(run_dir, final_pdf)
             final_receipt = materialize_final_approval(
                 run_dir,
                 raw_user_response="测试夹具明确批准最终提交",
@@ -255,6 +318,53 @@ class Gate0EndToEndTests(unittest.TestCase):
                 [self._ref(run_dir, "final_approval_receipt", final_receipt)],
             )
             self.assertEqual("COMPLETE", state["status"])
+
+    @staticmethod
+    def _record_review(
+        service: StateService,
+        run_dir: Path,
+        actor: Actor,
+        stage: str,
+        bindings: dict[str, Path],
+        verdict: str,
+        *,
+        question_id: str | None = None,
+        rating: bool = False,
+    ) -> None:
+        """生成并通过公开审核接口登记一个阶段回执。"""
+        request = create_review_request(
+            run_dir,
+            stage,
+            bindings,
+            question_id=question_id,
+        )
+        request_doc = load_json(request)
+        report = {
+            "schema_name": "review_report",
+            "schema_version": "2.0",
+            "request_id": request_doc["request_id"],
+            "run_id": run_dir.name,
+            "stage": stage,
+            "review_round_id": request_doc["review_round_id"],
+            "verdict": verdict,
+            "findings": [],
+            "read_only_confirmed": True,
+            "generated_at": "2026-07-19T00:00:00Z",
+        }
+        if rating:
+            report["rating"] = {
+                "grade": verdict,
+                "confidence": "high",
+                "basis": ["当前冻结提交包"],
+                "downgrade_reasons": [],
+                "expert_estimate": True,
+            }
+        report_path = write_review_report(request, report)
+        receipt = materialize_review_receipt(request, report_path)
+        gate_id = "R2_EXPERIMENT_" + question_id if question_id else stage
+        if stage == "R5_COMPREHENSIVE":
+            gate_id = "R5_STANDARD_FINAL"
+        service.record_review_gate(run_dir.name, gate_id, receipt, actor)
 
     @staticmethod
     def _candidate(route_id: str, name: str) -> dict[str, object]:

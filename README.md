@@ -119,16 +119,26 @@ python scripts/codex/validate_state.py runs/2026-A-001
 论文数字通过 `scripts/generate_paper_evidence.py` 生成 Typst macro，QA 会在最终 PDF 的 claim
 标签附近检查真实展示值，而不是信任手填的 `rendered_value`。
 
-## 第二次人工确认：最终论文
+## 阶段审核与第二次人工确认
 
-工作流只允许一次机械检查、一次评委视角自审、一次定向修复和一次快速复检。完成后生成：
+主状态枚举不变，但 `state.json.review_gates` 记录不可跳过的阶段证明：
+
+```text
+MODEL_SPEC_READY --R1--> EXPERIMENTING
+每问实验完成 --R2--> RESULTS_ACCEPTED
+完整论文和 PDF --R3/R4--> QA_RUNNING
+机械 QA 通过 --R5--> J0_FINAL_BLIND_JUDGE --> WAITING_HUMAN_FINAL
+```
+
+竞赛模式 R5 最多两轮，仅 P0/P1 或低于 B 才重跑；J0 只执行一次。完成后生成：
 
 ```text
 runs/2026-A-001/review/FINAL_REVIEW_MEMO.md
 ```
 
-状态变为 `WAITING_HUMAN_FINAL`，Codex 再次停止。最终回执绑定当前 PDF、QA 聚合报告、证据
-报告与 Profile 哈希；任何一个发生变化都会使批准自动失效。
+状态变为 `WAITING_HUMAN_FINAL`，Codex 再次停止。进入该状态前必须登记当前 revision 的
+R3/R4/R5/J0 回执；最终回执绑定当前 PDF、QA 聚合报告、证据报告与 Profile 哈希，任何一个
+发生变化都会使批准自动失效。
 
 ## 跨任务继续
 

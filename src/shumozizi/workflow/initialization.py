@@ -97,6 +97,16 @@ def initialize_run(
         "route_locked": False,
         "paper_ready": False,
         "question_progress": {},
+        "review_gates": {
+            gate: {"status": "pending", "receipt": None}
+            for gate in (
+                "R1_MODELING",
+                "R3_PAPER_LOGIC",
+                "R4_FORMAT_VISUAL",
+                "R5_STANDARD_FINAL",
+                "J0_FINAL_BLIND_JUDGE",
+            )
+        },
         "artifacts": {},
         "last_updated_by": "init_run.py",
         "updated_at": now,

@@ -13,6 +13,7 @@ from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.profiles.lock import verify_run_config_lock
 from shumozizi.results.sealing import verify_sealed_result
+from shumozizi.workflow.reviews import verify_review_receipt
 
 
 class WorkflowEvent(StrEnum):
@@ -84,6 +85,13 @@ ACTIVE_STAGES = {
 
 QUESTION_TRACKS = {"model", "experiment", "paper", "review"}
 TRACK_STATUSES = {"pending", "in_progress", "ready", "blocked", "accepted", "stale"}
+REVIEW_GATE_STAGES = {
+    "R1_MODELING": "R1_MODELING",
+    "R3_PAPER_LOGIC": "R3_PAPER_LOGIC",
+    "R4_FORMAT_VISUAL": "R4_FORMAT_VISUAL",
+    "R5_STANDARD_FINAL": "R5_COMPREHENSIVE",
+    "J0_FINAL_BLIND_JUDGE": "J0_FINAL_BLIND_JUDGE",
+}
 
 
 class StateService:
@@ -188,6 +196,148 @@ class StateService:
         atomic_json(state_path, state)
         return state
 
+    def record_review_gate(
+        self,
+        run_id: str,
+        gate_id: str,
+        receipt_path: Path,
+        actor: Actor,
+    ) -> dict[str, Any]:
+        """复验审核回执并把阶段证明写入同一工作流状态。"""
+        run_dir = self.repo_root / "runs" / run_id
+        state_path = run_dir / "state.json"
+        state = load_json(state_path)
+        require_valid(state, "workflow_state")
+        resolved_receipt = receipt_path.resolve()
+        try:
+            relative_receipt = resolved_receipt.relative_to(run_dir.resolve()).as_posix()
+        except ValueError as exc:
+            raise ContractError("审核回执路径越过运行目录边界") from exc
+        verification = verify_review_receipt(
+            run_dir, resolved_receipt, require_current_revision=False
+        )
+        if not verification["valid"]:
+            raise ContractError("审核回执复验失败: " + "; ".join(verification["errors"]))
+        receipt = load_json(resolved_receipt)
+        request = load_json(resolved_receipt.with_name("review_request.json"))
+        report = load_json(resolved_receipt.with_name("review_report.json"))
+        if receipt["state_revision"] != state["revision"]:
+            raise ContractError("审核回执不是针对当前 state revision 创建")
+        expected_stage, question_id = self._review_gate_identity(gate_id)
+        if request["stage"] != expected_stage or report["stage"] != expected_stage:
+            raise ContractError(f"审核回执阶段与门不一致: {gate_id}")
+        if question_id is not None and request.get("question_id") != question_id:
+            raise ContractError(f"R2 审核回执 question_id 不匹配: {question_id}")
+        self._check_review_gate_timing(run_dir, state, gate_id, question_id)
+        passed = self._review_gate_passed(gate_id, receipt, report)
+        if gate_id == "J0_FINAL_BLIND_JUDGE" and state.get("review_gates", {}).get(
+            gate_id, {}
+        ).get("receipt"):
+            raise ContractError("J0_FINAL_BLIND_JUDGE 只允许登记一次")
+        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        next_revision = state["revision"] + 1
+        state.setdefault("review_gates", {})[gate_id] = {
+            "status": "passed" if passed else "failed",
+            "receipt": relative_receipt,
+            "receipt_sha256": sha256_file(resolved_receipt),
+            "reviewed_revision": receipt["state_revision"],
+            "recorded_revision": next_revision,
+            "question_id": question_id,
+            "request_stage": expected_stage,
+        }
+        state["revision"] = next_revision
+        state["last_updated_by"] = actor.actor_id
+        state["updated_at"] = now
+        state["history"].append(
+            {
+                "from_status": state["status"],
+                "status": state["status"],
+                "event": "REVIEW_GATE_RECORDED",
+                "timestamp": now,
+                "actor": asdict(actor),
+                "artifact_refs": [
+                    asdict(
+                        ArtifactRef(
+                            role=gate_id,
+                            path=relative_receipt,
+                            sha256=sha256_file(resolved_receipt),
+                        )
+                    )
+                ],
+                "note": f"{gate_id}: {'passed' if passed else 'failed'}",
+            }
+        )
+        require_valid(state, "workflow_state")
+        atomic_json(state_path, state)
+        return state
+
+    @staticmethod
+    def _review_gate_identity(gate_id: str) -> tuple[str, str | None]:
+        """解析审核门对应的请求阶段和可选题号。"""
+        if gate_id.startswith("R2_EXPERIMENT_"):
+            question_id = gate_id.removeprefix("R2_EXPERIMENT_")
+            if not question_id:
+                raise ContractError("R2 审核门缺少 question_id")
+            return "R2_EXPERIMENT", question_id
+        stage = REVIEW_GATE_STAGES.get(gate_id)
+        if stage is None:
+            raise ContractError(f"未知审核门: {gate_id}")
+        return stage, None
+
+    @staticmethod
+    def _review_gate_passed(
+        gate_id: str, receipt: dict[str, Any], report: dict[str, Any]
+    ) -> bool:
+        """按各审核阶段的结论规则判断是否通过。"""
+        if receipt.get("decision") not in {"accepted", "accepted_with_warnings"}:
+            return False
+        verdicts = {
+            "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_FIXES"},
+            "R2_EXPERIMENT": {"REPRODUCIBLE", "REPRODUCIBLE_WITH_WARNINGS"},
+            "R3_PAPER_LOGIC": {"READY_FOR_COMPREHENSIVE_REVIEW"},
+            "R4_FORMAT_VISUAL": {"COMPLIANT"},
+            "J0_FINAL_BLIND_JUDGE": {"PROCEED", "DO_NOT_PROCEED", "ADVISORY"},
+        }
+        request_stage = report["stage"]
+        if gate_id == "R5_STANDARD_FINAL":
+            grade = report.get("rating", {}).get("grade")
+            severe = any(
+                finding.get("severity") in {"P0", "P1"}
+                for finding in report.get("findings", [])
+            )
+            return grade in {"A", "B"} and not severe
+        return report.get("verdict") in verdicts[request_stage]
+
+    def _check_review_gate_timing(
+        self,
+        run_dir: Path,
+        state: dict[str, Any],
+        gate_id: str,
+        question_id: str | None,
+    ) -> None:
+        """保证每类审核只在主状态链规定的阶段登记。"""
+        expected_status = {
+            "R1_MODELING": "MODEL_SPEC_READY",
+            "R3_PAPER_LOGIC": "PAPER_DRAFTED",
+            "R4_FORMAT_VISUAL": "PAPER_DRAFTED",
+            "R5_STANDARD_FINAL": "QA_RUNNING",
+            "J0_FINAL_BLIND_JUDGE": "QA_RUNNING",
+        }.get(gate_id, "EXPERIMENTING")
+        if state["status"] != expected_status:
+            raise ContractError(f"{gate_id} 只能在 {expected_status} 阶段登记")
+        if question_id is not None:
+            track = state.get("question_progress", {}).get(question_id, {})
+            if track.get("experiment") not in {"ready", "accepted"}:
+                raise ContractError(f"{question_id} 实验未完成，不能登记 R2")
+        if gate_id == "R5_STANDARD_FINAL":
+            qa = load_json(run_dir / "review" / "QA_AGGREGATE.json")
+            if qa.get("status") != "pass" or qa.get("hard_failures"):
+                raise ContractError("R5 必须在 QA 机械检查通过后执行")
+        if gate_id == "J0_FINAL_BLIND_JUDGE":
+            self._require_passed_review_gates(
+                run_dir, state, ("R5_STANDARD_FINAL",)
+            )
+
     @staticmethod
     def _verify_artifact_refs(run_dir: Path, refs: list[ArtifactRef]) -> None:
         """复验所有事件产物都位于运行目录内且哈希匹配。"""
@@ -214,6 +364,25 @@ class StateService:
             roles
         ):
             raise ContractError("路线漂移必须附带 drift memo 与新批准请求")
+        if event is WorkflowEvent.EXPERIMENT_STARTED:
+            self._require_passed_review_gates(run_dir, state, ("R1_MODELING",))
+        if event is WorkflowEvent.RESULTS_ADMITTED:
+            completed_questions = [
+                question_id
+                for question_id, tracks in state.get("question_progress", {}).items()
+                if tracks.get("experiment") in {"ready", "accepted"}
+            ]
+            if not completed_questions:
+                raise ContractError("RESULTS_ADMITTED 要求至少一个问级实验已完成")
+            self._require_passed_review_gates(
+                run_dir,
+                state,
+                tuple(f"R2_EXPERIMENT_{question_id}" for question_id in completed_questions),
+            )
+        if event is WorkflowEvent.QA_STARTED:
+            self._require_passed_review_gates(
+                run_dir, state, ("R3_PAPER_LOGIC", "R4_FORMAT_VISUAL")
+            )
         if event is WorkflowEvent.QA_BLOCKED:
             qa = load_json(run_dir / "review" / "QA_AGGREGATE.json")
             if qa.get("status") != "blocked":
@@ -222,8 +391,42 @@ class StateService:
             qa = load_json(run_dir / "review" / "QA_AGGREGATE.json")
             if qa.get("status") != "pass" or qa.get("hard_failures"):
                 raise ContractError("QA 未通过，不能等待最终批准")
+            self._require_passed_review_gates(
+                run_dir,
+                state,
+                (
+                    "R3_PAPER_LOGIC",
+                    "R4_FORMAT_VISUAL",
+                    "R5_STANDARD_FINAL",
+                    "J0_FINAL_BLIND_JUDGE",
+                ),
+            )
         if event is WorkflowEvent.FINAL_APPROVED:
             self._assert_complete_invariants(run_dir, state)
+
+    @staticmethod
+    def _require_passed_review_gates(
+        run_dir: Path, state: dict[str, Any], gate_ids: tuple[str, ...]
+    ) -> None:
+        """要求指定审核门均通过，且回执仍绑定当前生产事实。"""
+        gates = state.get("review_gates", {})
+        for gate_id in gate_ids:
+            gate = gates.get(gate_id, {})
+            if gate.get("status") != "passed" or not gate.get("receipt"):
+                raise ContractError(f"审核门未通过或缺少回执: {gate_id}")
+            receipt_path = run_dir / gate["receipt"]
+            if not receipt_path.is_file() or gate.get("receipt_sha256") != sha256_file(
+                receipt_path
+            ):
+                raise ContractError(f"审核回执不存在或哈希失效: {gate_id}")
+            verification = verify_review_receipt(
+                run_dir, receipt_path, require_current_revision=False
+            )
+            if not verification["valid"]:
+                raise ContractError(
+                    f"审核回执绑定已失效: {gate_id}: "
+                    + "; ".join(verification["errors"])
+                )
 
     def _assert_complete_invariants(self, run_dir: Path, state: dict[str, Any]) -> None:
         """复验 COMPLETE 所绑定的全部当前事实。"""
