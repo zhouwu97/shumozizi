@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import re
 from pathlib import Path
+
+try:
+    from jsonschema import Draft202012Validator, FormatChecker
+except ImportError as exc:  # pragma: no cover - 由命令行环境负责安装依赖
+    raise SystemExit(
+        "缺少运行时依赖 jsonschema；请执行: python -m pip install -r requirements.txt"
+    ) from exc
 
 
 STATUSES = (
@@ -24,6 +31,7 @@ STATUSES = (
 )
 LOCKED_STATUSES = set(STATUSES[3:]) - {"BLOCKED"}
 PAPER_STATUSES = {"PAPER_DRAFTED", "SELF_REVIEWED", "WAITING_HUMAN_FINAL", "COMPLETE"}
+SCHEMA_ROOT = Path(__file__).resolve().parents[2] / "schemas"
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,21 +57,23 @@ def load_json(path: Path, errors: list[str]) -> dict:
     return value
 
 
-def yaml_top_level(path: Path) -> dict[str, str]:
-    """读取路线锁顶层标量；避免为校验脚本引入 YAML 依赖。"""
-    values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line or line[0].isspace() or line.lstrip().startswith("#"):
-            continue
-        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", line)
-        if match:
-            values[match.group(1)] = match.group(2).strip().strip('"\'')
-    return values
+def validate_schema(document: dict, schema_name: str, errors: list[str]) -> None:
+    """使用正式 JSON Schema 校验完整文档，包括嵌套结构和格式。"""
+    schema_path = SCHEMA_ROOT / schema_name
+    schema = load_json(schema_path, errors)
+    if not schema:
+        return
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    for violation in sorted(validator.iter_errors(document), key=lambda item: list(item.path)):
+        location = ".".join(str(part) for part in violation.absolute_path) or "<root>"
+        errors.append(f"{schema_name} 校验失败 [{location}]: {violation.message}")
 
 
 def validate_state(run_dir: Path, errors: list[str], warnings: list[str]) -> dict:
     """校验状态结构与人工检查点不变量。"""
     state = load_json(run_dir / "state.json", errors)
+    if state:
+        validate_schema(state, "workflow_state.schema.json", errors)
     required = {
         "schema_version",
         "run_id",
@@ -82,36 +92,64 @@ def validate_state(run_dir: Path, errors: list[str], warnings: list[str]) -> dic
     if missing:
         errors.append(f"state.json 缺少字段: {', '.join(missing)}")
         return state
-    if state["status"] not in STATUSES:
-        errors.append(f"未知状态: {state['status']}")
+    status = state["status"]
+    if status not in STATUSES:
+        errors.append(f"未知状态: {status}")
     if state["mode"] not in {"competition", "training", "audit"}:
         errors.append(f"未知模式: {state['mode']}")
     if state["run_id"] != run_dir.name:
         errors.append("state.run_id 必须与运行目录名一致")
 
-    route_lock = run_dir / "brief" / "ROUTE_LOCK.yaml"
-    if state["status"] in LOCKED_STATUSES:
-        if not state["route_locked"]:
-            errors.append(f"状态 {state['status']} 要求 route_locked=true")
-        if not route_lock.exists():
-            errors.append("路线锁定后必须存在 brief/ROUTE_LOCK.yaml")
-        else:
-            values = yaml_top_level(route_lock)
-            if values.get("approved", "").lower() != "true":
-                errors.append("ROUTE_LOCK.yaml 必须包含 approved: true")
-            for field in (
-                "selected_route_id",
-                "problem_interpretation",
-                "primary_route",
-                "fallback_route",
-            ):
-                if not values.get(field):
-                    errors.append(f"ROUTE_LOCK.yaml 缺少有效字段: {field}")
-    elif state["route_locked"]:
-        errors.append(f"状态 {state['status']} 不应设置 route_locked=true")
+    candidates_path = run_dir / "brief" / "route_candidates.json"
+    candidates: dict = {}
+    candidates_required = isinstance(status, str) and status in set(STATUSES[1:]) - {"BLOCKED"}
+    if candidates_path.exists():
+        candidates = load_json(candidates_path, errors)
+        if candidates:
+            validate_schema(candidates, "route_candidates.schema.json", errors)
+            if candidates.get("run_id") != state.get("run_id"):
+                errors.append("route_candidates.run_id 与 state.run_id 不一致")
+            candidate_ids = [
+                item.get("route_id")
+                for item in candidates.get("candidates", [])
+                if isinstance(item, dict) and isinstance(item.get("route_id"), str)
+            ]
+            if len(candidate_ids) != len(set(candidate_ids)):
+                errors.append("候选路线 route_id 重复")
+            if candidates.get("recommended_route_id") not in candidate_ids:
+                errors.append("recommended_route_id 必须引用真实存在的候选路线")
+    elif candidates_required:
+        errors.append("当前状态要求存在 brief/route_candidates.json")
 
-    if state["status"] in PAPER_STATUSES and not state["paper_ready"]:
-        warnings.append(f"状态 {state['status']} 通常应设置 paper_ready=true")
+    route_lock = run_dir / "brief" / "ROUTE_LOCK.json"
+    route_lock_document: dict = {}
+    if isinstance(status, str) and status in LOCKED_STATUSES:
+        if not state["route_locked"]:
+            errors.append(f"状态 {status} 要求 route_locked=true")
+        if not route_lock.exists():
+            errors.append("路线锁定后必须存在 brief/ROUTE_LOCK.json")
+        else:
+            route_lock_document = load_json(route_lock, errors)
+            if route_lock_document:
+                validate_schema(route_lock_document, "route_lock.schema.json", errors)
+    elif state["route_locked"]:
+        errors.append(f"状态 {status} 不应设置 route_locked=true")
+    elif route_lock.exists():
+        route_lock_document = load_json(route_lock, errors)
+        if route_lock_document:
+            validate_schema(route_lock_document, "route_lock.schema.json", errors)
+
+    if candidates and route_lock_document:
+        candidate_ids = {
+            item.get("route_id")
+            for item in candidates.get("candidates", [])
+            if isinstance(item, dict) and isinstance(item.get("route_id"), str)
+        }
+        if route_lock_document.get("selected_route_id") not in candidate_ids:
+            errors.append("selected_route_id 必须引用真实存在的候选路线")
+
+    if isinstance(status, str) and status in PAPER_STATUSES and not state["paper_ready"]:
+        warnings.append(f"状态 {status} 通常应设置 paper_ready=true")
     if state["paper_ready"] and not (run_dir / "paper").exists():
         errors.append("paper_ready=true 但 paper/ 不存在")
     return state
@@ -122,12 +160,20 @@ def validate_results(run_dir: Path, state: dict, errors: list[str]) -> None:
     registry = load_json(run_dir / "results" / "result_registry.json", errors)
     if not registry:
         return
+    validate_schema(registry, "result_registry.schema.json", errors)
     if registry.get("run_id") != state.get("run_id"):
         errors.append("result_registry.run_id 与 state.run_id 不一致")
     results = registry.get("results")
     if not isinstance(results, list):
         errors.append("result_registry.results 必须是数组")
         return
+    accepted_baselines = {
+        result.get("result_id"): result.get("question_id")
+        for result in results
+        if isinstance(result, dict)
+        and result.get("status") == "accepted"
+        and result.get("cycle") == "baseline"
+    }
     seen: set[str] = set()
     for index, result in enumerate(results):
         if not isinstance(result, dict):
@@ -143,6 +189,21 @@ def validate_results(run_dir: Path, state: dict, errors: list[str]) -> None:
         if result.get("paper_allowed") and result.get("status") != "accepted":
             errors.append(f"结果 {result_id} 未 accepted 却允许进入论文")
         if result.get("status") == "accepted":
+            if result.get("cycle") != "baseline":
+                baseline_id = result.get("baseline_result_id")
+                if accepted_baselines.get(baseline_id) != result.get("question_id"):
+                    errors.append(
+                        f"已接受结果 {result_id} 的 baseline_result_id 必须引用同一问题的已接受基线"
+                    )
+            evidenced_claim_ids = {
+                claim_id
+                for check in result.get("validation_checks", [])
+                if isinstance(check, dict) and check.get("passed") is True
+                for claim_id in check.get("claim_ids", [])
+            }
+            for claim_id in result.get("innovation_claim_ids", []):
+                if claim_id not in evidenced_claim_ids:
+                    errors.append(f"已接受结果 {result_id} 的创新主张 {claim_id} 缺少验证证据")
             for key in ("source_script", "source_output"):
                 source = result.get(key)
                 if not source:
@@ -151,8 +212,17 @@ def validate_results(run_dir: Path, state: dict, errors: list[str]) -> None:
                 source_path = Path(source)
                 if not source_path.is_absolute():
                     source_path = run_dir / source_path
+                source_path = source_path.resolve()
+                if run_dir != source_path and run_dir not in source_path.parents:
+                    errors.append(f"已接受结果 {result_id} 的 {key} 越过运行目录边界: {source}")
+                    continue
                 if not source_path.exists():
                     errors.append(f"已接受结果 {result_id} 的 {key} 不存在: {source}")
+                    continue
+                hash_key = "source_sha256" if key == "source_script" else "output_sha256"
+                actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+                if result.get(hash_key) != actual_hash:
+                    errors.append(f"已接受结果 {result_id} 的 {hash_key} 与当前文件不一致")
 
 
 def main() -> int:

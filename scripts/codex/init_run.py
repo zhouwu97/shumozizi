@@ -109,27 +109,30 @@ def main() -> int:
         run_dir / "results" / "result_registry.json",
         {"schema_version": "1.0", "run_id": run_id, "results": []},
     )
-    (run_dir / "brief" / "ROUTE_LOCK.template.yaml").write_text(
-        """approved: false
-selected_route_id: ""
-problem_interpretation: ""
-primary_route: ""
-fallback_route: ""
-required_baselines: []
-innovation:
-  major_per_question: 1
-  minor_per_question: 1
-  claims: []
-validation: []
-resource_limits:
-  max_main_experiment_cycles_per_question: 3
-  max_web_searches: 5
-  max_full_self_reviews: 1
-  route_drift_budget_ratio: 0.3
-approved_by: ""
-approved_at: ""
-""",
-        encoding="utf-8",
+    atomic_json(
+        run_dir / "brief" / "ROUTE_LOCK.template.json",
+        {
+            "approved": False,
+            "selected_route_id": "",
+            "problem_interpretation": "",
+            "primary_route": "",
+            "fallback_route": "",
+            "required_baselines": [],
+            "innovation": {
+                "major_per_question": 1,
+                "minor_per_question": 1,
+                "claims": [],
+            },
+            "validation": [],
+            "resource_limits": {
+                "max_main_experiment_cycles_per_question": 3,
+                "max_web_searches": 5,
+                "max_full_self_reviews": 1,
+                "route_drift_budget_ratio": 0.3,
+            },
+            "approved_by": "",
+            "approved_at": "",
+        },
     )
     print(json.dumps({"run_id": run_id, "run_dir": str(run_dir)}, ensure_ascii=False))
     return 0

@@ -24,6 +24,48 @@
           "metrics",
           "conclusion"
         ],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "status": { "const": "accepted" } },
+              "required": ["status"]
+            },
+            "then": {
+              "required": [
+                "run_command",
+                "exit_code",
+                "source_sha256",
+                "output_sha256",
+                "unit",
+                "constraint_checks",
+                "validation_checks",
+                "baseline_result_id",
+                "innovation_claim_ids",
+                "accepted_by",
+                "accepted_at"
+              ],
+              "properties": {
+                "run_command": { "type": "string", "minLength": 1 },
+                "exit_code": { "const": 0 },
+                "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "output_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "metrics": { "minProperties": 1 },
+                "unit": { "type": "string", "minLength": 1 },
+                "conclusion": { "type": "string", "minLength": 1 },
+                "constraint_checks": {
+                  "minItems": 1,
+                  "items": { "properties": { "passed": { "const": true } } }
+                },
+                "validation_checks": {
+                  "minItems": 1,
+                  "items": { "properties": { "passed": { "const": true } } }
+                },
+                "accepted_by": { "type": "string", "minLength": 1 },
+                "accepted_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        ],
         "properties": {
           "result_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
           "question_id": { "type": "string", "minLength": 1 },
@@ -37,9 +79,49 @@
             "additionalProperties": { "type": ["number", "integer", "string", "boolean", "null"] }
           },
           "conclusion": { "type": "string" },
+          "run_command": { "type": ["string", "null"] },
+          "exit_code": { "type": ["integer", "null"] },
+          "source_sha256": { "type": ["string", "null"] },
+          "output_sha256": { "type": ["string", "null"] },
+          "unit": { "type": ["string", "null"] },
+          "constraint_checks": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/check" }
+          },
+          "validation_checks": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/check" }
+          },
+          "baseline_result_id": {
+            "type": ["string", "null"],
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "innovation_claim_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
+          },
           "random_seed": { "type": ["integer", "null"] },
           "accepted_by": { "type": ["string", "null"] },
           "accepted_at": { "type": ["string", "null"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "passed", "details"],
+      "properties": {
+        "check_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "passed": { "type": "boolean" },
+        "details": { "type": "string", "minLength": 1 },
+        "evidence_path": { "type": ["string", "null"] },
+        "claim_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" }
         }
       }
     }
