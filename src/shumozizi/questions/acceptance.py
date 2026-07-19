@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, load_json, resolve_inside
+from shumozizi.core.io import ContractError, load_json, relative_inside, resolve_inside
 from shumozizi.core.schema import require_valid
+from shumozizi.questions.manifest import verify_problem_manifest
 from shumozizi.results.references import verify_referenced_result
 
 CHECK_NAMES = (
@@ -61,7 +62,7 @@ def _verify_one(run_dir: Path, path: Path, registry: dict[str, Any]) -> list[str
         for chapter in acceptance["chapter_paths"]:
             try:
                 chapter_path = resolve_inside(run_dir, chapter, must_exist=True)
-                if "paper/sections" not in chapter_path.relative_to(run_dir).as_posix():
+                if "paper/sections" not in relative_inside(run_dir, chapter_path).as_posix():
                     errors.append(f"{path.name}: 章节越出 paper/sections {chapter}")
             except ContractError as exc:
                 errors.append(f"{path.name}: 章节无效 {exc}")
@@ -76,6 +77,17 @@ def verify_question_acceptance(run_dir: Path) -> dict[str, Any]:
     try:
         state = load_json(run_dir / "state.json")
         registry = _load_registry(run_dir)
+        manifest_report = verify_problem_manifest(run_dir)
+        if not manifest_report["valid"]:
+            errors.extend(f"问题全集: {message}" for message in manifest_report["errors"])
+            manifest_questions: set[str] = set()
+            required_questions: set[str] = set()
+        else:
+            manifest = load_json(run_dir / "problem/PROBLEM_MANIFEST.json")
+            manifest_questions = {item["question_id"] for item in manifest["questions"]}
+            required_questions = {
+                item["question_id"] for item in manifest["questions"] if item["required"]
+            }
         acceptance_dir = run_dir / "questions"
         completed = {
             question_id
@@ -86,8 +98,12 @@ def verify_question_acceptance(run_dir: Path) -> dict[str, Any]:
         for path in sorted(acceptance_dir.glob("*/QUESTION_ACCEPTANCE.json")):
             seen.add(path.parent.name)
             errors.extend(_verify_one(run_dir, path, registry))
-        missing = sorted(completed - seen)
+        missing = sorted((completed | required_questions) - seen)
         errors.extend(f"问题缺少 QUESTION_ACCEPTANCE.json: {question_id}" for question_id in missing)
+        errors.extend(
+            f"QUESTION_ACCEPTANCE 引用了问题全集之外的题号: {question_id}"
+            for question_id in sorted(seen - manifest_questions)
+        )
     except (ContractError, KeyError) as exc:
         errors.append(str(exc))
     return {"valid": not errors, "errors": errors}

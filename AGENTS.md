@@ -16,8 +16,9 @@
 ## 两个人工确认点
 
 1. 路线确认：生成 2–3 条真正不同的候选路线和 `route_approval_request.json`，通过
-   `StateService.transition()` 把状态设为 `WAITING_HUMAN_ROUTE`，然后停止。只有人类明确
-   回复后才能物化批准回执和 `ROUTE_LOCK.json`。
+   `PROBLEM_MANIFEST.json` 冻结必做问题全集，再由 `StateService.transition()` 把状态设为
+   `WAITING_HUMAN_ROUTE`，然后停止。只有明确的人类回复后才能物化批准回执和
+   `ROUTE_LOCK.json`。
 2. 最终审核：只有 R1/R2/R3/R4/R5/J0 阶段回执均登记在当前 `state.json.review_gates`，并且
    `final_approval_request.json` 绑定当前 PDF、QA、证据报告和配置锁时，才可把状态设为
    `WAITING_HUMAN_FINAL`；然后停止。只有绑定当前事实的人类回执有效时，才可进入 `COMPLETE`。
@@ -36,6 +37,8 @@
   `revoked` 与 `superseded` 结果一律禁止引用。
 - Route、Paper、QA、Final Approval 必须读取同一份 `config/RUN_CONFIG_LOCK.json`，不得接收
   调用方临时传入的 Profile。
+- 路线锁定后，`problem/PROBLEM_MANIFEST.json` 是权威问题全集；完整论文和最终审核必须覆盖
+  其中全部 `required=true` 的问题。
 
 ## 实验预算
 
@@ -45,10 +48,13 @@
 
 ## 五层独立审核
 
-论文生产后依次创建 R1 建模、逐问 R2 实验复现、R3 论文逻辑、R4 格式视觉审核请求；机械
-QA 通过后执行一次 R5 全面盲审，再执行一次 J0 自然评委盲评。竞赛模式 R5 最多 2 轮，只有
+模型规格完成后先创建 R1 建模审核；每问实验完成后创建对应 R2 实验复现，论文完成后创建
+R3 论文逻辑和 R4 格式视觉审核请求；机械 QA 通过后执行一次 R5 全面盲审，再执行一次 J0
+自然评委盲评。竞赛模式 R5 最多 2 轮，只有
 P0/P1 或低于 B 才重跑；训练模式最多 5 轮。审核任务默认只读，只写自己的报告和回执；
 模型、数字、核心图表、假设、约束或结论变化时必须按影响范围重跑实验并刷新受影响回执。
+R5 同时输出 A 轴完整性和 B 轴竞赛质量；只有 `A_PASS` 且 B 轴达到最低阈值时，联合结论才可为
+`FINAL_CANDIDATE`。失败审核必须生成带哈希的 `REPAIR_PLAN.json`，按受影响阶段定向返工。
 
 ## 本地执行与检查
 

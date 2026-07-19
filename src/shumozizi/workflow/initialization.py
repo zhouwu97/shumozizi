@@ -12,6 +12,7 @@ from shumozizi.profiles.lock import create_run_config_lock
 
 RUN_DIRECTORIES = (
     "brief",
+    "problem",
     "reports",
     "code",
     "results/candidates",
@@ -28,6 +29,8 @@ RUN_DIRECTORIES = (
     "logs",
     "executions/manifests",
     "config",
+    "source/python",
+    "source/matlab",
 )
 
 

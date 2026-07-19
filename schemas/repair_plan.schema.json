@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/repair_plan.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "source_report_path",
+    "source_report_sha256", "axis", "repair_scope", "required_retests",
+    "route_reapproval_required", "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "repair_plan"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string"},
+    "source_report_path": {"type": "string"},
+    "source_report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "axis": {"enum": ["integrity", "quality", "both"]},
+    "repair_scope": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding_id", "axis", "affected_stage", "files", "expected_improvement"],
+        "properties": {
+          "finding_id": {"type": "string"},
+          "axis": {"enum": ["integrity", "quality", "both"]},
+          "affected_stage": {"type": "string"},
+          "files": {"type": "array", "items": {"type": "string"}},
+          "expected_improvement": {"type": "string"}
+        }
+      }
+    },
+    "required_retests": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "route_reapproval_required": {"type": "boolean"},
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

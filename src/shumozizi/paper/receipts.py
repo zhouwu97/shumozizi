@@ -166,6 +166,10 @@ def verify_figure_receipts(run_dir: Path) -> dict[str, Any]:
             require_valid(receipt, "figure_receipt")
             if receipt["run_id"] != run_dir.name or receipt["figure_id"] != figure_id:
                 errors.append(f"图表回执身份不一致: {figure_id}")
+            if receipt["selected_skill"] != item["selected_skill"]:
+                errors.append(f"图表 {figure_id}: 回执 selected_skill 与计划不一致")
+            if receipt["template_id"] != item["template_id"]:
+                errors.append(f"图表 {figure_id}: 回执 template_id 与计划不一致")
             for key in ("data_files", "outputs"):
                 for index, binding in enumerate(receipt[key]):
                     errors.extend(_check_file_binding(run_dir, binding, f"图表 {figure_id}.{key}[{index}]"))

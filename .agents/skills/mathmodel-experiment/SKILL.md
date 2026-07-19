@@ -12,7 +12,8 @@ description: 在人工路线已锁定后，按子问题执行 baseline、primary
 1. 读取 `state.json`、`brief/ROUTE_LOCK.json` 和数学规格。
 2. 只有 `route_locked=true` 且状态为 `MODEL_SPEC_READY` 或 `EXPERIMENTING` 才能执行。
 3. 完整读取 `skills/3coding-visual/SKILL.md`，沿用其中的代码、图表和复现要求。
-4. 已完成的循环从状态和结果注册表恢复，不要因为新会话而重跑。
+4. 当结果图型命中项目原生模板目录时，读取 `skills/mathmodel-figure-templates/SKILL.md`，复制对应脚本后替换为当前 accepted-result 数据；模板中的模拟数据只能用于样式预览，禁止直接写入论文。
+5. 已完成的循环从状态和结果注册表恢复，不要因为新会话而重跑。
 
 ## 每个子问题的三个循环
 

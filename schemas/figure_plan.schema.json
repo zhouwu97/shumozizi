@@ -13,12 +13,30 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["figure_id", "preferred", "fallback"],
+        "required": ["figure_id", "preferred", "fallback", "selected_skill", "template_id", "selection_reason"],
         "properties": {
           "figure_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
-          "preferred": {"const": "Nature Figure"},
-          "fallback": {"const": "skills/3coding-visual"}
-        }
+          "preferred": {"const": "skills/mathmodel-figure-templates"},
+          "fallback": {"const": "skills/3coding-visual"},
+          "selected_skill": {"enum": ["skills/mathmodel-figure-templates", "skills/3coding-visual"]},
+          "template_id": {"enum": [
+            "multiclass-shap-combo", "paired-raincloud", "cv-roc-ci", "taylor-diagram",
+            "correlation-pairgrid", "prediction-marginal-grid", "rf-tpe-surface",
+            "grouped-corr-split-violin", "grouped-circular-heatmap", "urban-park-cooling-combo",
+            "nature-chord-diagram", "custom"
+          ]},
+          "selection_reason": {"type": "string", "minLength": 1}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"selected_skill": {"const": "skills/mathmodel-figure-templates"}}},
+            "then": {"properties": {"template_id": {"not": {"const": "custom"}}}}
+          },
+          {
+            "if": {"properties": {"selected_skill": {"const": "skills/3coding-visual"}}},
+            "then": {"properties": {"template_id": {"const": "custom"}}}
+          }
+        ]
       }
     }
   }

@@ -17,11 +17,13 @@
     "bindings": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mathmodel_paper", "writing_skill", "typst_author", "competition_template", "model_spec", "result_registry", "claim_gate", "section_files", "figures_used"],
+      "required": ["mathmodel_paper", "writing_skill", "typst_author", "figure_templates", "coding_visual", "competition_template", "model_spec", "result_registry", "claim_gate", "section_files", "figures_used"],
       "properties": {
         "mathmodel_paper": {"$ref": "#/$defs/file"},
         "writing_skill": {"$ref": "#/$defs/file"},
         "typst_author": {"$ref": "#/$defs/file"},
+        "figure_templates": {"$ref": "#/$defs/file"},
+        "coding_visual": {"$ref": "#/$defs/file"},
         "competition_template": {"$ref": "#/$defs/file"},
         "model_spec": {"$ref": "#/$defs/file"},
         "result_registry": {"$ref": "#/$defs/file"},

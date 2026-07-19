@@ -21,8 +21,10 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 
 1. 校验 request、QA 通过状态、绑定哈希和当前冻结 revision。
 2. 只从评委可见材料判断题目覆盖、结果可信度、论文表达、图表和提交风险。
-3. 给出 A-E grade、confidence、basis、downgrade_reasons。
-4. 每条问题按 P0/P1/P2/P3 给出定位证据；不执行修复，不读取前轮报告。
+3. A 轴复验完整性并给出 `A_PASS` 或 `A_BLOCKED`；B 轴独立评价竞赛质量并给出总分、分项分和
+   `B_STRONG`、`B_PASS`、`B_WEAK` 或 `B_REBUILD`。
+4. 同时给出 A-E grade、confidence、basis、downgrade_reasons 以及与双轴一致的联合结论。
+5. 每条问题按 P0/P1/P2/P3 给出定位证据、所属轴、受影响阶段、文件、重测项和预期改进；不执行修复，不读取前轮报告。
 
 ## 基础 Skill 与脚本
 
@@ -46,18 +48,21 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 
 ## 通过条件
 
-grade 为 A/B 且无 P0/P1；回执 decision 可为 `accepted` 或 `accepted_with_warnings`。否则进入
-定向修复，修改核心模型/数字/图表/结论时必须刷新受影响实验和审核绑定。
+A 轴必须为 `A_PASS`；B 轴总分至少 75，且题目覆盖、模型深度、实验验证均至少 60，并评为
+`B_STRONG` 或 `B_PASS`；同时不得有 P0/P1。满足时联合结论为 `FINAL_CANDIDATE`，否则只能是
+`QUALITY_REPAIR`、`INTEGRITY_REPAIR` 或 `FULL_REPAIR`，并由协调器生成带哈希的
+`REPAIR_PLAN.json`。修改核心模型、数字、图表或结论时必须刷新受影响实验和审核绑定。
 
 ## 输出格式
 
-报告必须包含 `rating.grade`、`confidence`、`basis`、`downgrade_reasons`、`expert_estimate=true`，
-并按 request 唯一路径写入 `review_report.json`。
+报告必须包含 `rating`、`integrity_axis`、`quality_axis`、`joint_verdict`、`repair_scope`、
+`required_retests`，并按 request 唯一路径写入 `review_report.json`。
 
 ## 结束前自检
 
 - [ ] 没有读取前轮审核报告或作者解释；
 - [ ] 没有修改生产文件；
 - [ ] 评级有可定位证据和降级原因；
+- [ ] 双轴分数、联合结论和 P0/P1 finding 相互一致；
 - [ ] 竞赛模式没有无理由创建第二轮；
 - [ ] 报告通过 Schema 并可由回执绑定。

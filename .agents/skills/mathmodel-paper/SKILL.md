@@ -10,11 +10,12 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 ## 前置检查
 
 1. 完整读取 `skills/5writing/SKILL.md`，沿用比赛模板、排版和编译要求。
-2. 读取 `state.json`、`brief/ROUTE_LOCK.json`、数学规格、
+2. 完整读取 `skills/mathmodel-figure-templates/SKILL.md` 和 `skills/3coding-visual/SKILL.md`，按图型选择项目原生科研绘图模板或通用数据绘图能力。
+3. 读取 `state.json`、`brief/ROUTE_LOCK.json`、数学规格、
    `results/result_registry.json` 和 `claims/claim_evidence.json`。
-3. 过滤出 `status=accepted` 且 `paper_allowed=true` 的结果；其他记录不得进入正文、
+4. 过滤出 `status=accepted` 且 `paper_allowed=true` 的结果；其他记录不得进入正文、
    摘要、图表结论或贡献声明。
-4. 写作前生成论文主张门禁：
+5. 写作前生成论文主张门禁：
 
    ```powershell
    python scripts/runtime/gate_paper_claims.py runs/<run_id>
@@ -56,7 +57,7 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 - `figures/FIGURE_PLAN.json` 及每张图的 `figures/<figure_id>.receipt.json`：绑定 accepted result ID、数据、绘图脚本、PDF/PNG 输出、单位、图例和坐标轴。
 - `questions/<question_id>/QUESTION_ACCEPTANCE.json`：逐项绑定题目要求、模型输出、一一对应关系、硬约束、baseline、accepted result、不确定性、direct answer、上游依赖和 claim status。未通过的问题不得进入 `paper/sections/`。
 
-优先使用 Nature Figure；不可用时可使用 `skills/3coding-visual`。回执不是简单的 `{"status":"pass"}`，必须由 `verify_production_receipts()` 复验所有路径、哈希和 accepted 结果。
+图表选择顺序固定为：首先匹配 `skills/mathmodel-figure-templates` 的 11 类项目原生模板；没有匹配图型时使用 `skills/3coding-visual` 编写自定义数据图。Nature 风格只在用户明确要求且脚本已纳入当前运行目录时使用，不作为默认生产依赖。每张图必须在 `FIGURE_PLAN.json` 中记录 `selected_skill`、`template_id` 和选择理由，回执不是简单的 `{"status":"pass"}`，必须由 `verify_production_receipts()` 复验所有路径、哈希、选型和 accepted 结果。
 
 生成草稿后把状态设为 `PAPER_DRAFTED`，然后交给 `$mathmodel-review`。本 Skill 不执行多轮
 审稿，也不把论文直接标记为最终提交稿。

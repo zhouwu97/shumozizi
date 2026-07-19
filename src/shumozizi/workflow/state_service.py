@@ -14,8 +14,12 @@ from shumozizi.core.schema import require_valid
 from shumozizi.paper.receipts import verify_production_receipts
 from shumozizi.profiles.lock import verify_run_config_lock
 from shumozizi.questions.acceptance import verify_question_acceptance
+from shumozizi.questions.manifest import verify_problem_manifest
 from shumozizi.results.sealing import verify_sealed_result
+from shumozizi.workflow.approval import verify_route_approval
+from shumozizi.workflow.integrity import verify_run_integrity
 from shumozizi.workflow.reviews import verify_review_receipt
+from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
 
 
 class WorkflowEvent(StrEnum):
@@ -228,6 +232,12 @@ class StateService:
         expected_stage, question_id = self._review_gate_identity(gate_id)
         if request["stage"] != expected_stage or report["stage"] != expected_stage:
             raise ContractError(f"审核回执阶段与门不一致: {gate_id}")
+        if gate_id in {"R4_FORMAT_VISUAL", "R5_STANDARD_FINAL", "J0_FINAL_BLIND_JUDGE"}:
+            source_report = verify_source_manifest(run_dir)
+            if not source_report["valid"]:
+                raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
+            if request.get("binding_paths", {}).get("source_manifest") != SOURCE_MANIFEST_PATH:
+                raise ContractError(f"{gate_id} 审核请求未绑定权威 SOURCE_MANIFEST.json")
         if question_id is not None and request.get("question_id") != question_id:
             raise ContractError(f"R2 审核回执 question_id 不匹配: {question_id}")
         self._check_review_gate_timing(run_dir, state, gate_id, question_id)
@@ -295,6 +305,8 @@ class StateService:
         """按各审核阶段的结论规则判断是否通过。"""
         if receipt.get("decision") not in {"accepted", "accepted_with_warnings"}:
             return False
+        if any(finding.get("severity") in {"P0", "P1"} for finding in report.get("findings", [])):
+            return False
         verdicts = {
             "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_FIXES"},
             "R2_EXPERIMENT": {"REPRODUCIBLE", "REPRODUCIBLE_WITH_WARNINGS"},
@@ -304,12 +316,16 @@ class StateService:
         }
         request_stage = report["stage"]
         if gate_id == "R5_STANDARD_FINAL":
-            grade = report.get("rating", {}).get("grade")
             severe = any(
                 finding.get("severity") in {"P0", "P1"}
                 for finding in report.get("findings", [])
             )
-            return grade in {"A", "B"} and not severe
+            return (
+                report.get("joint_verdict") == "FINAL_CANDIDATE"
+                and report.get("integrity_axis", {}).get("verdict") == "A_PASS"
+                and report.get("quality_axis", {}).get("verdict") in {"B_STRONG", "B_PASS"}
+                and not severe
+            )
         if gate_id == "J0_FINAL_BLIND_JUDGE":
             severe = any(
                 finding.get("severity") in {"P0", "P1"}
@@ -372,6 +388,12 @@ class StateService:
         if event is WorkflowEvent.ROUTE_APPROVED:
             if not {"route_approval_receipt", "route_lock"}.issubset(roles):
                 raise ContractError("路线批准事件必须附带批准回执与路线锁")
+            manifest = verify_problem_manifest(run_dir)
+            if not manifest["valid"]:
+                raise ContractError("问题全集校验失败: " + "; ".join(manifest["errors"]))
+            approval = verify_route_approval(run_dir)
+            if not approval["valid"]:
+                raise ContractError("路线批准复验失败: " + "; ".join(approval["errors"]))
         if event is WorkflowEvent.ROUTE_DRIFT and not {"drift_memo", "approval_request"}.issubset(
             roles
         ):
@@ -408,19 +430,43 @@ class StateService:
             qa = load_json(run_dir / "review" / "QA_AGGREGATE.json")
             if qa.get("status") != "pass" or qa.get("hard_failures"):
                 raise ContractError("QA 未通过，不能等待最终批准")
+            final_gate_ids = (
+                "R3_PAPER_LOGIC",
+                "R4_FORMAT_VISUAL",
+                "R5_STANDARD_FINAL",
+                "J0_FINAL_BLIND_JUDGE",
+            )
+            self._require_gate_presence(state, final_gate_ids)
+            source_report = verify_source_manifest(run_dir)
+            if not source_report["valid"]:
+                raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
+            if qa.get("source_manifest_sha256") != source_report["manifest_sha256"]:
+                raise ContractError("QA 报告未绑定当前 SOURCE_MANIFEST.json")
+            self._require_current_production_integrity(run_dir)
+            integrity = verify_run_integrity(run_dir, "WAITING_HUMAN_FINAL", repo_root=self.repo_root)
+            if not integrity["valid"]:
+                raise ContractError("运行完整性校验失败: " + "; ".join(integrity["errors"]))
             self._require_passed_review_gates(
                 run_dir,
                 state,
                 (
-                    "R3_PAPER_LOGIC",
-                    "R4_FORMAT_VISUAL",
-                    "R5_STANDARD_FINAL",
-                    "J0_FINAL_BLIND_JUDGE",
+                    *final_gate_ids,
                 ),
             )
-            self._require_current_production_integrity(run_dir)
         if event is WorkflowEvent.FINAL_APPROVED:
             self._assert_complete_invariants(run_dir, state)
+            integrity = verify_run_integrity(run_dir, "COMPLETE", repo_root=self.repo_root)
+            if not integrity["valid"]:
+                raise ContractError("COMPLETE 运行完整性校验失败: " + "; ".join(integrity["errors"]))
+
+    @staticmethod
+    def _require_gate_presence(state: dict[str, Any], gate_ids: tuple[str, ...]) -> None:
+        """先以稳定错误优先级报告缺失审核门，再执行哈希复验。"""
+        gates = state.get("review_gates", {})
+        for gate_id in gate_ids:
+            gate = gates.get(gate_id, {})
+            if gate.get("status") != "passed" or not gate.get("receipt"):
+                raise ContractError(f"审核门未通过或缺少回执: {gate_id}")
 
     @staticmethod
     def _require_current_production_integrity(
@@ -469,7 +515,29 @@ class StateService:
         """复验 COMPLETE 所绑定的全部当前事实。"""
         if state.get("paper_ready") is not True:
             raise ContractError("COMPLETE 要求 paper_ready=true")
+        manifest = load_json(run_dir / "problem/PROBLEM_MANIFEST.json")
+        required_reviews = tuple(
+            ["R1_MODELING"]
+            + [
+                f"R2_EXPERIMENT_{item['question_id']}"
+                for item in manifest["questions"]
+                if item["required"]
+            ]
+            + [
+                "R3_PAPER_LOGIC",
+                "R4_FORMAT_VISUAL",
+                "R5_STANDARD_FINAL",
+                "J0_FINAL_BLIND_JUDGE",
+            ]
+        )
+        self._require_passed_review_gates(run_dir, state, required_reviews)
+        approval = verify_route_approval(run_dir)
+        if not approval["valid"]:
+            raise ContractError("COMPLETE 路线批准复验失败: " + "; ".join(approval["errors"]))
         self._require_current_production_integrity(run_dir)
+        source_report = verify_source_manifest(run_dir)
+        if not source_report["valid"]:
+            raise ContractError("COMPLETE 源码包校验失败: " + "; ".join(source_report["errors"]))
         verify_run_config_lock(self.repo_root, run_dir)
         qa_path = run_dir / "review" / "QA_AGGREGATE.json"
         evidence_path = run_dir / "review" / "EVIDENCE_VALIDATION.json"
@@ -497,6 +565,7 @@ class StateService:
             "qa_report_sha256": sha256_file(qa_path),
             "evidence_report_sha256": sha256_file(evidence_path),
             "run_config_lock_sha256": sha256_file(run_dir / "config" / "RUN_CONFIG_LOCK.json"),
+            "source_manifest_sha256": source_report["manifest_sha256"],
         }
         if receipt.get("approval_request_sha256") != sha256_file(request_path):
             raise ContractError("最终批准回执未绑定当前请求")

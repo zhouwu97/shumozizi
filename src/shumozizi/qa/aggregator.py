@@ -17,6 +17,7 @@ from shumozizi.profiles.lock import verify_run_config_lock
 from shumozizi.qa.adapters import run_mechanical_qa
 from shumozizi.qa.visual import inspect_pdf_visual
 from shumozizi.results.sealing import verify_sealed_result
+from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
 
 PLACEHOLDER = re.compile(r"\b(?:TODO|TBD|PLACEHOLDER)\b", re.IGNORECASE)
 
@@ -79,6 +80,13 @@ def run_submission_qa(run_id: str, final_pdf: Path) -> dict[str, Any]:
         )
     except Exception as exc:
         check("sealed-results", False, str(exc))
+    source_package = verify_source_manifest(run_dir, expected_final_pdf=pdf)
+    check(
+        "source-package",
+        source_package["valid"],
+        "; ".join(source_package["errors"])
+        or "Python 与 MATLAB/Octave 源码包及其事实绑定通过",
+    )
     evidence = validate_evidence(run_dir, pdf)
     check(
         "paper-evidence",
@@ -134,6 +142,8 @@ def run_submission_qa(run_id: str, final_pdf: Path) -> dict[str, Any]:
         if (run_dir / "config" / "RUN_CONFIG_LOCK.json").is_file()
         else "0" * 64,
         "evidence_report_sha256": sha256_file(run_dir / "review" / "EVIDENCE_VALIDATION.json"),
+        "source_manifest_path": SOURCE_MANIFEST_PATH,
+        "source_manifest_sha256": source_package["manifest_sha256"] or "0" * 64,
         "checks": checks,
         "hard_failures": hard_failures,
         "warnings": [*evidence_adapter["warnings"], *mechanical_adapter["warnings"], *visual["warnings"]],

@@ -14,6 +14,8 @@
     "state_revision": {"type": "integer", "minimum": 0},
     "bindings": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
     "decision": {"enum": ["accepted", "accepted_with_warnings", "rejected", "superseded"]},
+    "repair_plan_path": {"type": "string"},
+    "repair_plan_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "issued_at": {"type": "string", "format": "date-time"}
   }
 }
