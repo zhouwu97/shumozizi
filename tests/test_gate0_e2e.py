@@ -34,8 +34,7 @@ class Gate0EndToEndTests(unittest.TestCase):
 
     def test_v2_authority_chains_reach_complete(self) -> None:
         """两份人工回执绑定全部当前事实后才能进入 COMPLETE。"""
-        if shutil.which("typst") is None:
-            self.skipTest("本机未安装 Typst")
+        self.assertIsNotNone(shutil.which("typst"), "E2E 测试需要安装 Typst")
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             problem = root / "problems/linear/problem.md"

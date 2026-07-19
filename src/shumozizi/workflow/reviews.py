@@ -127,7 +127,7 @@ def materialize_review_receipt(request_path: Path, report_path: Path, *, decisio
         raise ContractError("审核报告与请求不匹配")
     actual_bindings = {}
     run_dir = request_path.parents[3]
-    for name, expected in request["bindings"].items():
+    for name, _expected in request["bindings"].items():
         path = resolve_inside(run_dir, request["binding_paths"][name])
         if path.is_file():
             actual_bindings[name] = sha256_file(path)

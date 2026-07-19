@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import atomic_json, load_json, sha256_file
+from shumozizi.core.io import atomic_json, sha256_file
 from shumozizi.core.schema import require_valid
 
 
