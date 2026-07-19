@@ -49,6 +49,8 @@ class InitRunCliTests(unittest.TestCase):
             self.assertEqual(0, initialized.returncode, initialized.stderr)
             run_dir = repo_root / "runs" / "sample-001"
             self.assertTrue((run_dir / "brief" / "ROUTE_LOCK.template.json").is_file())
+            self.assertTrue((run_dir / "experiments" / "plans").is_dir())
+            self.assertTrue((run_dir / "claims").is_dir())
             self.assertFalse((run_dir / "brief" / "ROUTE_LOCK.template.yaml").exists())
 
             validated = subprocess.run(

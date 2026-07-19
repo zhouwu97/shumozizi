@@ -18,6 +18,8 @@ RUN_DIRECTORIES = (
     "results/metric_specs",
     "results/sealed",
     "results/revocations",
+    "experiments/plans",
+    "claims",
     "figures",
     "paper/sections",
     "paper/generated",
