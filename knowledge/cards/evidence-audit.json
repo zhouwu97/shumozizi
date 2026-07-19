@@ -1,0 +1,13 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "sealed-result-paper-evidence",
+  "title": "封存结果到论文主张的最小证据链",
+  "source_ids": ["neoxue-math-modeling-solver"],
+  "tags": ["evidence", "paper", "result", "metric", "traceability"],
+  "guidance": [
+    "论文数值必须追溯到可复验执行、metric provenance 与仍有效的 sealed result",
+    "多输入主张必须显式记录输入、表达式、舍入和单位转换",
+    "审计 Adapter 只能报告证据缺口，不能直接接受 candidate 或新增人工检查点"
+  ]
+}

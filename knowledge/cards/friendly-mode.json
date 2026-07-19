@@ -1,0 +1,13 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "friendly-human-checkpoints",
+  "title": "低认知负担人工确认",
+  "source_ids": ["handsomezr-mathmodel-skill"],
+  "tags": ["friendly", "approval", "profile"],
+  "guidance": [
+    "人工确认使用简短编号选项并标明推荐项",
+    "原始回复必须进入 approval receipt，友好交互不能降低哈希绑定强度",
+    "只保留路线与最终提交两个比赛运行时人工暂停点"
+  ]
+}

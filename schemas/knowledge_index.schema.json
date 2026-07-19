@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/knowledge_index.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "source_registry_sha256", "cards"],
+  "properties": {
+    "schema_name": {"const": "knowledge_index"},
+    "schema_version": {"const": "2.0"},
+    "source_registry_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["card_id", "path", "sha256", "source_ids", "tags"],
+        "properties": {
+          "card_id": {"type": "string"},
+          "path": {"type": "string", "pattern": "^knowledge/cards/"},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "source_ids": {"type": "array", "items": {"type": "string"}},
+          "tags": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

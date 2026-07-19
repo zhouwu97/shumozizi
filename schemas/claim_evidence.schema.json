@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/claim_evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "evaluator_version",
+    "route_lock_sha256",
+    "result_registry_sha256",
+    "experiment_plan_sha256",
+    "comparison_output_sha256",
+    "stale",
+    "claims"
+  ],
+  "properties": {
+    "schema_name": {"const": "claim_evidence"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "evaluator_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "route_lock_sha256": {"$ref": "#/$defs/sha"},
+    "result_registry_sha256": {"$ref": "#/$defs/sha"},
+    "experiment_plan_sha256": {"$ref": "#/$defs/sha"},
+    "comparison_output_sha256": {"$ref": "#/$defs/sha"},
+    "stale": {"type": "boolean"},
+    "stale_reason": {"type": "string", "minLength": 2},
+    "claimability": {"enum": ["claims", "none"]},
+    "claimability_reason": {"type": "string", "minLength": 2},
+    "reason": {"type": "string", "minLength": 2},
+    "claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/claim"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"stale": {"const": true}}},
+      "then": {"required": ["stale_reason"]}
+    },
+    {
+      "if": {"properties": {"stale": {"const": false}}},
+      "then": {"not": {"required": ["stale_reason"]}}
+    },
+    {
+      "if": {
+        "required": ["claimability"],
+        "properties": {"claimability": {"const": "none"}}
+      },
+      "then": {
+        "anyOf": [
+          {"required": ["claimability_reason"]},
+          {"required": ["reason"]}
+        ],
+        "properties": {"claims": {"maxItems": 0}}
+      }
+    }
+  ],
+  "$defs": {
+    "sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "prediction_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prediction_id", "role", "status"],
+      "properties": {
+        "prediction_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "role": {"enum": ["required_support", "falsification"]},
+        "status": {"enum": ["passed", "failed", "inconclusive", "not_evaluated"]},
+        "metric": {"type": "string", "minLength": 1},
+        "unit": {"type": "string", "minLength": 1},
+        "aggregation": {"type": "string", "minLength": 1},
+        "relation": {"type": "string", "minLength": 1},
+        "baseline": {"type": "number"},
+        "target": {"type": "number"},
+        "observed": {"type": "number"},
+        "relative_change": {"type": ["number", "null"]},
+        "required": {"type": "number"},
+        "observed_relative_loss": {"type": "number"},
+        "maximum_allowed": {"type": "number", "minimum": 0},
+        "plan_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "reason": {"type": "string", "minLength": 2}
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "status",
+        "evidence_result_ids",
+        "prediction_checks",
+        "required_experiment_roles",
+        "satisfied_experiment_roles",
+        "missing_experiment_roles",
+        "paper_permissions"
+      ],
+      "properties": {
+        "claim_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "claim": {"type": "string", "minLength": 2},
+        "status": {
+          "enum": ["supported", "partially_supported", "rejected", "inconclusive"]
+        },
+        "evidence_result_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}
+        },
+        "prediction_checks": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/prediction_check"}
+        },
+        "required_experiment_roles": {"$ref": "#/$defs/experiment_roles"},
+        "satisfied_experiment_roles": {"$ref": "#/$defs/experiment_roles"},
+        "missing_experiment_roles": {"$ref": "#/$defs/experiment_roles"},
+        "reason": {"type": "string", "minLength": 2},
+        "paper_permissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contribution_section", "results_section", "limitations_section"],
+          "properties": {
+            "contribution_section": {"type": "boolean"},
+            "results_section": {"type": "boolean"},
+            "limitations_section": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "experiment_roles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["baseline", "primary", "robustness", "ablation"]}
+    }
+  }
+}

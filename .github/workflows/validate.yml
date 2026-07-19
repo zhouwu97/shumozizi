@@ -1,0 +1,50 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-contracts:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[test]"
+
+      - name: Setup Typst
+        uses: typst-community/setup-typst@v4
+        with:
+          typst-version: "0.15.0"
+
+      - name: Run behavior tests
+        run: python -m pytest -v
+
+      - name: Run Ruff
+        run: python -m ruff check src scripts tests
+
+      - name: Compile Python entry points
+        run: >-
+          python -m py_compile
+          scripts/codex/init_run.py
+          scripts/codex/validate_state.py
+          scripts/runtime/execute_experiment.py
+          scripts/runtime/verify_execution.py
+          scripts/runtime/accept_result.py
+          tests/test_init_run.py
+          tests/test_validate_state.py
+          tests/test_runtime_execution.py

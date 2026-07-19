@@ -1,0 +1,67 @@
+{
+  "schema_name": "knowledge_index",
+  "schema_version": "2.0",
+  "source_registry_sha256": "0b8ac7d63287d712d9bbd92c7c76d456d031f1accbffb328923b690842be9da5",
+  "cards": [
+    {
+      "card_id": "sealed-result-paper-evidence",
+      "path": "knowledge/cards/evidence-audit.json",
+      "sha256": "a4dba11ca283fc9b2da1710f2bdaf61d91218381245bf3d9066b7548698a49a3",
+      "source_ids": [
+        "neoxue-math-modeling-solver"
+      ],
+      "tags": [
+        "evidence",
+        "paper",
+        "result",
+        "metric",
+        "traceability"
+      ]
+    },
+    {
+      "card_id": "friendly-human-checkpoints",
+      "path": "knowledge/cards/friendly-mode.json",
+      "sha256": "6a93d8d8b61b3a702b2353ba181f2743ac18f079d555385abe8b188dc08e0e70",
+      "source_ids": [
+        "handsomezr-mathmodel-skill"
+      ],
+      "tags": [
+        "friendly",
+        "approval",
+        "profile"
+      ]
+    },
+    {
+      "card_id": "bounded-mechanical-submission-qa",
+      "path": "knowledge/cards/mechanical-qa.json",
+      "sha256": "75ec7da324131997704081c94b5672f617f18c59969213d89002afc25aad3896",
+      "source_ids": [
+        "sweetcornna-mathodology"
+      ],
+      "tags": [
+        "qa",
+        "pdf",
+        "figure",
+        "caption",
+        "anonymous",
+        "submission"
+      ]
+    },
+    {
+      "card_id": "model-selection-controlled",
+      "path": "knowledge/cards/model-selection.json",
+      "sha256": "524d1d459b79ac054b0fd864257115be2eca1858998dc29a9156f266a3f1ddf1",
+      "source_ids": [
+        "lupynow-math-modeling-skills"
+      ],
+      "tags": [
+        "prediction",
+        "optimization",
+        "evaluation",
+        "mechanistic",
+        "network",
+        "clustering"
+      ]
+    }
+  ]
+}

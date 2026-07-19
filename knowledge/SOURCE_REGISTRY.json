@@ -1,0 +1,76 @@
+{
+  "schema_name": "external_source_registry",
+  "schema_version": "2.0",
+  "sources": [
+    {
+      "source_id": "jihe520-mathmodelagent",
+      "repository": "https://github.com/jihe520/MathModelAgent",
+      "commit": "be9c59c1aaa13c3dcb74452ea5cae11dada27589",
+      "license_status": "not-declared-at-repository-root",
+      "usage_mode": "existing-baseline-only",
+      "allowed_assets": ["existing-skills-baseline", "paper-template-baseline"],
+      "forbidden_assets": ["new-code-copy-without-license-review"]
+    },
+    {
+      "source_id": "jihe520-mathmodelagent-example",
+      "repository": "https://github.com/jihe520/MathModelAgent-Example",
+      "commit": "4251c4dec7026ac94132628079f814f3c9c37a3e",
+      "license_status": "not-declared-at-repository-root",
+      "usage_mode": "behavioral-research-only",
+      "allowed_assets": ["expected-output-shape-research"],
+      "forbidden_assets": ["quality-baseline", "code-copy", "paper-copy"]
+    },
+    {
+      "source_id": "lupynow-math-modeling-skills",
+      "repository": "https://github.com/Lupynow/math-modeling-skills",
+      "commit": "856816bda312ca9c02082f1d026d1416ebbaa861",
+      "license_status": "scoped-mit",
+      "license_paths": [
+        "skills/math-modeling-solver/LICENSE",
+        "skills/math-modeling-paper/LICENSE"
+      ],
+      "usage_mode": "ideas-and-scoped-mit-assets",
+      "allowed_assets": [
+        "model-selection-knowledge",
+        "algorithm-cookbook-ideas",
+        "selected-template-provenance"
+      ],
+      "forbidden_assets": ["workflow-controller", "state-machine", "approval-policy"]
+    },
+    {
+      "source_id": "sweetcornna-mathodology",
+      "repository": "https://github.com/sweetcornna/mathodology",
+      "commit": "987644876160d105f0fa768248f5d23764f288b2",
+      "license_status": "MIT",
+      "license_paths": ["LICENSE"],
+      "usage_mode": "independent-adapter",
+      "allowed_assets": ["bounded-repair-ideas", "figure-qa-ideas", "pdf-qa-ideas"],
+      "forbidden_assets": ["second-state-machine", "judge-panel", "nine-phase-workflow"]
+    },
+    {
+      "source_id": "handsomezr-mathmodel-skill",
+      "repository": "https://github.com/handsomeZR-netizen/mathmodel-skill",
+      "commit": "b1584e6aa3f05141abf0143575e02005f14bd2ef",
+      "license_status": "not-declared-at-repository-root",
+      "usage_mode": "ideas-only",
+      "allowed_assets": ["competition-profile-ideas", "friendly-mode-ideas"],
+      "forbidden_assets": [
+        "code-copy",
+        "template-copy",
+        "workflow-controller",
+        "decision-log",
+        "scoring-verdict"
+      ]
+    },
+    {
+      "source_id": "neoxue-math-modeling-solver",
+      "repository": "https://github.com/NeoXue-ai/math-modeling-solver",
+      "commit": "a24b8b88385bf3fb846a0e40ddc0a771c37d8f40",
+      "license_status": "MIT",
+      "license_paths": ["LICENSE"],
+      "usage_mode": "independent-adapter",
+      "allowed_assets": ["result-traceability-ideas", "paper-evidence-audit-ideas"],
+      "forbidden_assets": ["second-result-registry", "heavy-quality-gate", "extra-checkpoint"]
+    }
+  ]
+}

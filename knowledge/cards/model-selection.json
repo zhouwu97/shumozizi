@@ -1,0 +1,13 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "model-selection-controlled",
+  "title": "受控模型候选选择",
+  "source_ids": ["lupynow-math-modeling-skills"],
+  "tags": ["prediction", "optimization", "evaluation", "mechanistic", "network", "clustering"],
+  "guidance": [
+    "每个子问题给出至少两个数学本质不同的候选路线",
+    "同时说明基线、边界条件、验证方式、成本、风险和退路",
+    "知识卡只辅助生成 route_candidates，不得自行物化 ROUTE_LOCK"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/zhouwu97/shumozizi/schemas/migration_manifest.schema.json",
+  "type": "object", "additionalProperties": false, "required": ["schema_name", "schema_version", "run_id", "from_version", "to_version", "classification", "source_tree_sha256", "generated_files", "backup_path", "migrated_at"],
+  "properties": {"schema_name": {"const": "migration_manifest"}, "schema_version": {"const": "2.0"}, "run_id": {"type": "string"}, "from_version": {"const": "1.0"}, "to_version": {"const": "2.0"}, "classification": {"enum": ["A", "B"]}, "source_tree_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "generated_files": {"type": "array", "items": {"type": "object", "required": ["path", "sha256"], "properties": {"path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}, "backup_path": {"type": "string"}, "migrated_at": {"type": "string", "format": "date-time"}}
+}

@@ -1,0 +1,12 @@
+{
+  "schema_name": "execution_manifest",
+  "schema_version": "2.0",
+  "execution_id": "q1-baseline-001",
+  "program": "python",
+  "args": ["code/q1.py", "results/q1-baseline.json"],
+  "cwd": ".",
+  "timeout_seconds": 600,
+  "input_files": ["code/q1.py"],
+  "expected_outputs": ["results/q1-baseline.json"],
+  "random_seed": 42
+}

@@ -1,0 +1,7 @@
+{
+  "template_id": "linear-regression-basic",
+  "template_version": "1.0.0",
+  "source_repository": "https://github.com/Lupynow/math-modeling-skills",
+  "source_commit": "856816bda312ca9c02082f1d026d1416ebbaa861",
+  "adaptation": "本仓库独立实现；上游仅作为算法目录与来源语境参考"
+}

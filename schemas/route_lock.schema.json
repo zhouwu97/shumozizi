@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/route_lock.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "approved",
+    "selected_route_id",
+    "run_config_lock_sha256",
+    "route_candidates_sha256",
+    "approval_receipt_sha256",
+    "problem_interpretation",
+    "primary_route",
+    "fallback_route",
+    "required_baselines",
+    "innovation_claims",
+    "validation",
+    "resource_limits",
+    "approved_by",
+    "approved_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "route_lock"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "approved": {"const": true},
+    "selected_route_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+    "run_config_lock_sha256": {"$ref": "#/$defs/sha"},
+    "route_candidates_sha256": {"$ref": "#/$defs/sha"},
+    "approval_receipt_sha256": {"$ref": "#/$defs/sha"},
+    "problem_interpretation": {"type": "string", "minLength": 10},
+    "primary_route": {"type": "string", "minLength": 2},
+    "fallback_route": {"type": "string", "minLength": 2},
+    "required_baselines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "innovation_claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/locked_innovation_claim"}
+    },
+    "validation": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "resource_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_main_experiment_cycles_per_question",
+        "max_web_searches",
+        "max_full_self_reviews",
+        "route_drift_budget_ratio"
+      ],
+      "properties": {
+        "max_main_experiment_cycles_per_question": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "max_web_searches": {"type": "integer", "minimum": 0, "maximum": 10},
+        "max_full_self_reviews": {"const": 1},
+        "route_drift_budget_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "approved_by": {"type": "string", "minLength": 1},
+    "approved_at": {"type": "string", "format": "date-time"},
+    "route_selection_mode": {"const": "direct"},
+    "mechanism_signature": {"$ref": "#/$defs/mechanism_signature"},
+    "minimal_probe_plan": {"$ref": "#/$defs/minimal_probe_plan"}
+  },
+  "$defs": {
+    "sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "mechanism_signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_object",
+        "core_assumptions",
+        "relation_form",
+        "uncertainty_treatment",
+        "decision_rule",
+        "expected_advantage",
+        "failure_boundary"
+      ],
+      "properties": {
+        "decision_object": {"type": "string", "minLength": 2},
+        "core_assumptions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "relation_form": {"type": "string", "minLength": 2},
+        "uncertainty_treatment": {"type": "string", "minLength": 2},
+        "decision_rule": {"type": "string", "minLength": 2},
+        "expected_advantage": {"type": "string", "minLength": 2},
+        "failure_boundary": {"type": "string", "minLength": 2}
+      }
+    },
+    "prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prediction_id", "metric", "expected_direction"],
+      "properties": {
+        "prediction_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "metric": {"type": "string", "minLength": 1},
+        "expected_direction": {
+          "enum": [
+            "increase",
+            "decrease",
+            "not_decrease_beyond",
+            "not_increase_beyond",
+            "stable"
+          ]
+        },
+        "minimum_effect": {"type": "number"},
+        "maximum_effect": {"type": "number"},
+        "maximum_relative_loss": {"type": "number", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "expected_direction": {"enum": ["increase", "decrease"]}
+            }
+          },
+          "then": {"required": ["minimum_effect"]}
+        },
+        {
+          "if": {
+            "properties": {
+              "expected_direction": {
+                "enum": ["not_decrease_beyond", "not_increase_beyond"]
+              }
+            }
+          },
+          "then": {"required": ["maximum_relative_loss"]}
+        }
+      ]
+    },
+    "comparison_predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "metric", "relation", "threshold", "unit", "aggregation"],
+      "properties": {
+        "prediction_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "role": {"enum": ["required_support", "falsification"]},
+        "metric": {"type": "string", "minLength": 1},
+        "relation": {
+          "enum": [
+            "relative_increase",
+            "relative_decrease",
+            "relative_decrease_at_most",
+            "relative_increase_at_most",
+            "absolute_increase",
+            "absolute_decrease",
+            "absolute_decrease_at_most",
+            "absolute_increase_at_most",
+            "stable"
+          ]
+        },
+        "threshold": {"type": "number"},
+        "unit": {"type": "string", "minLength": 1},
+        "aggregation": {"type": "string", "minLength": 1}
+      }
+    },
+    "structured_innovation_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "claim",
+        "mechanism",
+        "baseline_id",
+        "prediction_ids",
+        "required_experiment_roles",
+        "falsified_if",
+        "paper_allowed_only_if_supported"
+      ],
+      "properties": {
+        "claim_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+        "claim": {"type": "string", "minLength": 2},
+        "mechanism": {"type": "string", "minLength": 2},
+        "baseline_id": {"type": "string", "minLength": 1},
+        "baseline_difference": {"type": "string", "minLength": 2},
+        "prediction_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}
+        },
+        "required_experiment_roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"enum": ["baseline", "primary", "robustness", "ablation"]}
+        },
+        "falsified_if": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "paper_allowed_only_if_supported": {"type": "boolean"}
+      }
+    },
+    "legacy_innovation_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "claim"],
+      "properties": {
+        "claim_id": {"type": "string"},
+        "claim": {"type": "string"}
+      }
+    },
+    "locked_innovation_claim": {
+      "oneOf": [
+        {"$ref": "#/$defs/legacy_innovation_claim"},
+        {"$ref": "#/$defs/structured_innovation_claim"}
+      ]
+    },
+    "minimal_probe_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purpose",
+        "compared_routes",
+        "data_scope",
+        "budget_seconds",
+        "metrics",
+        "selection_rule"
+      ],
+      "properties": {
+        "purpose": {"type": "string", "minLength": 2},
+        "compared_routes": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}
+        },
+        "data_scope": {"type": "string", "minLength": 2},
+        "budget_seconds": {"type": "integer", "minimum": 1},
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "selection_rule": {"type": "string", "minLength": 10}
+      }
+    }
+  }
+}

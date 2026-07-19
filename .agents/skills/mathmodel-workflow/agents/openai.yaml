@@ -1,0 +1,7 @@
+interface:
+  display_name: "Math Modeling Workflow"
+  short_description: "Run a complete modeling workflow with two human checkpoints"
+  default_prompt: "Use $mathmodel-workflow to continue the current modeling run to the next human checkpoint."
+
+policy:
+  allow_implicit_invocation: false

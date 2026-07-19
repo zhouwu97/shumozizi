@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/zhouwu97/shumozizi/schemas/approval_request.schema.json",
+  "type": "object", "additionalProperties": false, "required": ["schema_name", "schema_version", "request_id", "run_id", "approval_kind", "bindings", "state_revision", "warnings", "requested_at"],
+  "properties": {"schema_name": {"const": "approval_request"}, "schema_version": {"const": "2.0"}, "request_id": {"type": "string"}, "run_id": {"type": "string"}, "approval_kind": {"enum": ["route", "final", "config_change"]}, "bindings": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "state_revision": {"type": "integer", "minimum": 0}, "warnings": {"type": "array", "items": {"type": "string"}}, "final_pdf_path": {"type": "string"}, "requested_at": {"type": "string", "format": "date-time"}}
+}

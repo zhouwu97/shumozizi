@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/external_source_registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "sources"],
+  "properties": {
+    "schema_name": {"const": "external_source_registry"},
+    "schema_version": {"const": "2.0"},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "repository", "commit", "license_status", "usage_mode", "allowed_assets", "forbidden_assets"],
+        "properties": {
+          "source_id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "repository": {"type": "string", "format": "uri", "pattern": "^https://github\\.com/"},
+          "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+          "license_status": {"enum": ["MIT", "scoped-mit", "not-declared-at-repository-root"]},
+          "license_paths": {"type": "array", "items": {"type": "string"}},
+          "usage_mode": {"enum": ["existing-baseline-only", "behavioral-research-only", "ideas-and-scoped-mit-assets", "independent-adapter", "ideas-only"]},
+          "allowed_assets": {"type": "array", "items": {"type": "string"}},
+          "forbidden_assets": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

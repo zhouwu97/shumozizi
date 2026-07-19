@@ -1,0 +1,4 @@
+interface:
+  display_name: "Math Modeling Review"
+  short_description: "Perform one bounded review and targeted repair pass"
+  default_prompt: "Use $mathmodel-review to verify the draft and stop for final human review."

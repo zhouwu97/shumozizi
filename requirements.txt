@@ -1,0 +1,3 @@
+jsonschema[format]>=4.23,<5
+pypdf>=5,<7
+rfc8785>=0.1.4,<1

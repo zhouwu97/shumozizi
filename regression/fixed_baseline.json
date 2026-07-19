@@ -1,0 +1,13 @@
+{
+  "schema_name": "fixed_regression_baseline",
+  "schema_version": "2.0",
+  "fixture": "tests/fixtures/e2e_linear_fit/data.csv",
+  "data_sha256": "41b8b37c8750e6e8b78e592cc635c0eb1498f05f529f21fde6b886545a83680c",
+  "algorithm_id": "ols-closed-form-v1",
+  "output_sha256": "e3e463afadfc7f99f06e7a649f2b0086376a9f06ee2d74d63dc187da59b0d9b8",
+  "expected": {
+    "intercept": 3.0153846153846153,
+    "rmse": 0.2422697643013642,
+    "slope": 2.006293706293706
+  }
+}

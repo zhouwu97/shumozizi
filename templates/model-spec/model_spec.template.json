@@ -1,0 +1,20 @@
+{
+  "schema_name": "model_spec",
+  "schema_version": "2.0",
+  "run_id": "<run_id>",
+  "route_lock_sha256": "<sha256>",
+  "questions": [
+    {
+      "question_id": "q1",
+      "model_family": "prediction",
+      "target_role": "<target_column>",
+      "feature_roles": ["<feature_column>"],
+      "variables": [{"name": "<target_column>", "role": "target", "unit": "<unit>"}],
+      "assumptions": ["<explicit_assumption>"],
+      "objective": "<objective>",
+      "constraints": ["<constraint>"],
+      "algorithm": "<algorithm_and_stopping_condition>",
+      "validation_plan": ["holdout or cross-validation", "robustness/sensitivity"]
+    }
+  ]
+}
