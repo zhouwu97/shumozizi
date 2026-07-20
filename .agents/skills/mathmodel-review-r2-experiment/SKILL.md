@@ -26,10 +26,31 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 ## 执行步骤
 
 1. 校验 manifest、request、session 绑定及 `R2_EXPERIMENT_<question_id>` 题号。
-2. 运行 `python scripts/runtime/verify_execution.py` 或等价的只读复验，检查退出码、输入/输出哈希、随机种子和预期产物。
-3. 复核 metric provenance、单位、基线引用、硬约束、验证检查和 sealed result seal。
-4. 在允许预算内复现一次；若环境不具备复现条件，明确区分 BLOCKED 与可复现警告。
-5. 记录图表数据是否来自 accepted result，不对生产文件做修复。
+2. 在查看 primary 结果前，核对实验计划中预注册的 oracle；至少选择一种能证伪核心结论的 oracle。
+3. 运行 `python scripts/runtime/verify_execution.py` 或等价的只读复验，检查退出码、输入/输出哈希、随机种子和预期产物。
+4. 独立检查数据划分与重复测量边界、时间/目标泄漏、指标对目标的适用性、单位、硬约束和解的可信度。
+5. 检查参数可辨识性与多初值稳定性、结论是否超出证据，以及 robustness/ablation 的扰动是否足以区分竞争模型。
+6. 在允许预算内复现一次并执行预注册 oracle；环境不足时明确区分 `unknown` 与 `challenged`。
+7. 记录图表是否来自 accepted sealed result，不对生产文件做修复。
+
+## 双轴报告
+
+`review_report.json` v3 必须分别写入：
+
+- `execution_reproducibility`：`code_execution`、`config_reproducibility`、`hash_integrity`、
+  `random_seed_control`、`result_figure_consistency`、`accepted_result_seal`；
+- `scientific_correctness`：`split_design`、`leakage_control`、`metric_suitability`、
+  `constraint_completeness`、`solution_credibility`、`parameter_stability`、
+  `conclusion_bounds`、`robustness_discrimination`。
+
+每项状态只能是 `verified`、`challenged`、`unknown` 或 `not_applicable`，并附定位证据。
+任一 `challenged` 或 `unknown` 都必须有同 `check_id` 的 finding；`unknown` finding 必须用
+`recommended_resolution` 进入 probe、独立二审或人工决定，不能自动通过。
+
+`preregistered_oracles` 必须在查看 primary 结果前冻结，类型只能选自 `exact_solution`、
+`small_instance_exhaustive_solution`、`synthetic_recovery`、`independent_implementation`、
+`known_limiting_case`、`permutation_null`、`multiple_start_consistency`、`grid_convergence` 或
+`constraint_feasibility_oracle`。每项必须给出问题、成功条件和证据路径，禁止事后按结果改 oracle。
 
 ## 基础 Skill 与脚本
 

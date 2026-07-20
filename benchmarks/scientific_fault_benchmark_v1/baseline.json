@@ -1,0 +1,28 @@
+{
+  "schema_name": "scientific_fault_benchmark_baseline",
+  "schema_version": "1.0",
+  "benchmark_id": "scientific-fault-benchmark-v1",
+  "case_set_sha256": "1287848ec6c6a5a75c5f510ee9880a9b8e2461fc46efe79c960f830f1a32a2de",
+  "observations": [
+    {"case_id": "SF-01-time-leakage", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-02-target-derived-feature-leakage", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-03-unit-dimension-error", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-04-nonidentifiable-high-fit", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-05-shared-wrong-formula", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-06-repeated-measurement-split", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-07-hidden-hard-constraint", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-08-weak-robustness", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-09-conclusion-direction-reversal", "outcome": "missed", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-10-clean-control", "outcome": "correct_no_fault", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-11-negative-result-control", "outcome": "correct_no_fault", "predicted_stage": "not_detected", "predicted_severity": null},
+    {"case_id": "SF-12-simple-correct-control", "outcome": "correct_no_fault", "predicted_stage": "not_detected", "predicted_severity": null}
+  ],
+  "metrics": {
+    "deterministic_fault_recall": 0.0,
+    "scientific_fault_recall": 0.0,
+    "false_positive_rate": 0.0,
+    "correct_stage_assignment": 0.0,
+    "severity_calibration": 0.0,
+    "unknown_rate": 0.0
+  }
+}

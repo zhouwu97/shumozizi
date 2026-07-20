@@ -71,6 +71,7 @@ def create_repair_plan(
         item["finding_id"]: item
         for item in adjudication["decisions"]
         if item["main_decision"] == "accepted"
+        and item["gate_effect"] in {"block", "warn"}
     }
     findings = [item for item in report["findings"] if item["finding_id"] in decisions]
     if not findings:

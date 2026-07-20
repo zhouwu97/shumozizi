@@ -24,8 +24,13 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         return ["文档必须显式包含 schema_name 与 schema_version"]
     if expected_name is not None and name != expected_name:
         return [f"schema_name 应为 {expected_name}，实际为 {name}"]
-    if version != "2.0":
-        return [f"Schema v2 校验器拒绝版本 {version}"]
+    supported_non_v2 = {
+        ("review_receipt", "3.0"),
+        ("review_report", "3.0"),
+        ("r1_phase_a", "1.0"),
+    }
+    if version != "2.0" and (name, version) not in supported_non_v2:
+        return [f"Schema 校验器拒绝版本 {version}"]
     path = schema_root() / f"{name}.schema.json"
     try:
         schema = load_json(path)

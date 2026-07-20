@@ -15,6 +15,7 @@ from shumozizi.workflow.approval import (
     verify_route_approval,
 )
 from shumozizi.workflow.initialization import initialize_run
+from shumozizi.workflow.repair import create_repair_plan
 from shumozizi.workflow.reviews import (
     create_review_request,
     materialize_review_receipt,
@@ -27,6 +28,7 @@ from tests.review_contract_helpers import (
     complete_stage_bindings,
     rich_model_spec,
     rich_problem_manifest,
+    write_passing_format_audit,
 )
 from tests.source_package_helpers import write_source_package
 
@@ -259,6 +261,7 @@ def _review_run(tmp_path: Path, stage: str) -> tuple[Path, Path]:
             },
         )
         (run_dir / "paper/final.pdf").write_bytes(b"PDF")
+        write_passing_format_audit(run_dir, run_dir / "paper/final.pdf")
         file_ref = {"path": "fixture", "sha256": "0" * 64}
         atomic_json(
             run_dir / "paper/paper_plan.json",
@@ -368,7 +371,7 @@ def test_r5_joint_verdict_must_match_b_axis_threshold(tmp_path: Path) -> None:
         write_review_report(request, report)
 
 
-def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
+def test_failed_review_requires_explicit_hashed_repair_plan(tmp_path: Path) -> None:
     run_dir, request = _review_run(tmp_path, "R1_MODELING")
     request_doc = load_json(request)
     report = {
@@ -416,12 +419,12 @@ def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
         "generated_at": "2026-07-19T00:00:00Z",
     }
     report_path = write_review_report(request, report)
-    adjudicate_report(report_path)
+    adjudication_path = adjudicate_report(report_path)
     receipt_path = materialize_review_receipt(request, report_path)
     receipt = load_json(receipt_path)
-    repair_path = run_dir / receipt["repair_plan_path"]
+    assert "repair_plan_path" not in receipt
+    repair_path = create_repair_plan(run_dir, report_path, adjudication_path)
     assert repair_path.name == "REPAIR_PLAN.json"
-    assert receipt["repair_plan_sha256"] == sha256_file(repair_path)
     assert load_json(repair_path)["route_reapproval_required"] is False
 
 
@@ -474,9 +477,9 @@ def test_r1_spec_fixes_do_not_require_route_reapproval(
     }
 
     report_path = write_review_report(request, report)
-    adjudicate_report(report_path)
-    receipt_path = materialize_review_receipt(request, report_path)
-    repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
+    adjudication_path = adjudicate_report(report_path)
+    materialize_review_receipt(request, report_path)
+    repair = load_json(create_repair_plan(run_dir, report_path, adjudication_path))
 
     assert repair["route_reapproval_required"] is False
 
@@ -536,8 +539,8 @@ def test_r1_route_core_changes_require_route_reapproval(
     }
 
     report_path = write_review_report(request, report)
-    adjudicate_report(report_path)
-    receipt_path = materialize_review_receipt(request, report_path)
-    repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
+    adjudication_path = adjudicate_report(report_path)
+    materialize_review_receipt(request, report_path)
+    repair = load_json(create_repair_plan(run_dir, report_path, adjudication_path))
 
     assert repair["route_reapproval_required"] is True

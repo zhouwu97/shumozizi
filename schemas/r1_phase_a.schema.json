@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/r1_phase_a.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "review_round_id",
+    "input_bindings",
+    "input_paths",
+    "required_outputs",
+    "decision_variables",
+    "observable_variables",
+    "latent_variables",
+    "units",
+    "hard_constraints",
+    "boundary_conditions",
+    "plausible_model_families",
+    "identifiability_risks",
+    "minimum_validation_requirements",
+    "possible_failure_modes",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "r1_phase_a"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "review_round_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "input_bindings": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    },
+    "input_paths": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "required_outputs": {"$ref": "#/$defs/nonempty_strings"},
+    "decision_variables": {"$ref": "#/$defs/nonempty_strings"},
+    "observable_variables": {"$ref": "#/$defs/nonempty_strings"},
+    "latent_variables": {"$ref": "#/$defs/strings"},
+    "units": {"$ref": "#/$defs/nonempty_strings"},
+    "hard_constraints": {"$ref": "#/$defs/nonempty_strings"},
+    "boundary_conditions": {"$ref": "#/$defs/nonempty_strings"},
+    "plausible_model_families": {"$ref": "#/$defs/nonempty_strings"},
+    "identifiability_risks": {"$ref": "#/$defs/nonempty_strings"},
+    "minimum_validation_requirements": {"$ref": "#/$defs/nonempty_strings"},
+    "possible_failure_modes": {"$ref": "#/$defs/nonempty_strings"},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "strings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "nonempty_strings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

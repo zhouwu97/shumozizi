@@ -29,6 +29,7 @@ from tests.review_contract_helpers import (
     rich_model_spec,
     rich_problem_manifest,
     rich_r1_evidence,
+    write_passing_format_audit,
 )
 from tests.source_package_helpers import write_source_package
 
@@ -91,6 +92,8 @@ def test_model_spec_revised_keeps_route_locked_and_stales_r1(tmp_path: Path) -> 
             "run_id": run_dir.name,
             "source_report_path": "review/r1_modeling/r3/review_report.json",
             "source_report_sha256": "a" * 64,
+            "source_adjudication_path": "review/r1_modeling/r3/REVIEW_ADJUDICATION.json",
+            "source_adjudication_sha256": "b" * 64,
             "axis": "quality",
             "change_level": "L4",
             "affected_questions": ["q1"],
@@ -709,31 +712,28 @@ def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
         atomic_json(run_dir / relative, {"fixture": relative})
 
 
+_J0_BLOCKING_FINDING = {
+    "finding_id": "J0-P1",
+    "severity": "P1",
+    "title": "关键结论证据不足",
+    "evidence": ["最终 PDF 第 3 页"],
+    "remediation": "修正证据链",
+    "status": "open",
+    "change_level": "L2",
+    "affected_questions": ["q1"],
+    "change_class": "EVIDENCE_METADATA",
+    "route_impact": "none",
+    "changed_route_core_fields": [],
+}
+
+
 @pytest.mark.parametrize(
     ("verdict", "findings", "expected_status"),
     [
         ("PROCEED", [], "passed"),
-        ("DO_NOT_PROCEED", [], "failed"),
+        ("DO_NOT_PROCEED", [_J0_BLOCKING_FINDING], "failed"),
         ("ADVISORY", [], "passed"),
-        (
-            "ADVISORY",
-            [
-                {
-                    "finding_id": "J0-P1",
-                    "severity": "P1",
-                    "title": "关键结论证据不足",
-                    "evidence": ["最终 PDF 第 3 页"],
-                    "remediation": "修正证据链",
-                    "status": "open",
-                    "change_level": "L2",
-                    "affected_questions": ["q1"],
-                    "change_class": "EVIDENCE_METADATA",
-                    "route_impact": "none",
-                    "changed_route_core_fields": [],
-                }
-            ],
-            "failed",
-        ),
+        ("ADVISORY", [_J0_BLOCKING_FINDING], "failed"),
     ],
 )
 def test_j0_verdict_semantics_are_enforced_and_retained(
@@ -747,6 +747,7 @@ def test_j0_verdict_semantics_are_enforced_and_retained(
     (run_dir / "paper").mkdir(parents=True)
     (run_dir / "review").mkdir()
     (run_dir / "paper/final.pdf").write_bytes(b"PDF")
+    write_passing_format_audit(run_dir, run_dir / "paper/final.pdf")
     atomic_json(run_dir / "state.json", _qa_running_state(run_dir.name))
     atomic_json(run_dir / "review/QA_AGGREGATE.json", {"status": "pass", "hard_failures": []})
     _write_minimal_production(tmp_path, run_dir)
@@ -771,4 +772,4 @@ def test_j0_verdict_semantics_are_enforced_and_retained(
 
     gate = state["review_gates"]["J0_FINAL_BLIND_JUDGE"]
     assert gate["status"] == expected_status
-    assert gate["verdict"] == verdict
+    assert gate["reviewer_verdict"] == verdict

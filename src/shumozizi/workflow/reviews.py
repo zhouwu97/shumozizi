@@ -12,7 +12,6 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, load_json, resolve_inside, sha256_file
 from shumozizi.core.schema import require_valid
 from shumozizi.workflow.repair import (
-    create_repair_plan,
     finding_requires_route_reapproval,
 )
 from shumozizi.workflow.review_inputs import (
@@ -52,7 +51,18 @@ PASSING_VERDICTS = {
     "R4_FORMAT_VISUAL": {"COMPLIANT"},
     "J0_FINAL_BLIND_JUDGE": {"PROCEED", "ADVISORY"},
 }
-UNRESOLVED_ADJUDICATIONS = {"needs_second_review", "needs_human_decision"}
+UNRESOLVED_ADJUDICATIONS = {
+    "needs_probe",
+    "needs_second_review",
+    "needs_human_decision",
+}
+STRONG_RESOLUTION_EVIDENCE = {
+    "deterministic_machine_evidence",
+    "exact_oracle",
+    "probe_result",
+    "independent_second_review",
+    "human_decision",
+}
 
 R1_COVERAGE_CHECKS = (
     "problem_interpretation",
@@ -76,6 +86,29 @@ R1_COVERAGE_CHECKS = (
 R1_REQUIRED_CHECK_IDS = frozenset(R1_COVERAGE_CHECKS)
 if len(R1_COVERAGE_CHECKS) != 17 or len(R1_REQUIRED_CHECK_IDS) != 17:
     raise RuntimeError("R1 coverage 必须恰好包含 17 个唯一检查项")
+
+R2_EXECUTION_CHECKS = frozenset(
+    {
+        "code_execution",
+        "config_reproducibility",
+        "hash_integrity",
+        "random_seed_control",
+        "result_figure_consistency",
+        "accepted_result_seal",
+    }
+)
+R2_SCIENTIFIC_CHECKS = frozenset(
+    {
+        "split_design",
+        "leakage_control",
+        "metric_suitability",
+        "constraint_completeness",
+        "solution_credibility",
+        "parameter_stability",
+        "conclusion_bounds",
+        "robustness_discrimination",
+    }
+)
 
 
 def utc_now() -> str:
@@ -292,8 +325,17 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
         report = _apply_r5_score_calibration(run_dir, report)
     require_valid(report, "review_report")
     if request["stage"] == "R1_MODELING":
+        if report["schema_version"] == "3.0":
+            phase_a_path = request["binding_paths"].get("phase_a")
+            if not phase_a_path:
+                raise ContractError("R1 v3 报告必须来自绑定 Phase A 的 Phase B 请求")
+            phase_a = resolve_inside(run_dir, phase_a_path, must_exist=True)
+            if report["phase_a_sha256"] != sha256_file(phase_a):
+                raise ContractError("R1 v3 报告未绑定冻结的 Phase A")
         _validate_r1_semantics(report)
         _validate_r1_coverage_against_model_spec(report, request, run_dir)
+    if request["stage"] == "R2_EXPERIMENT" and report["schema_version"] == "3.0":
+        _validate_r2_semantics(report)
     _validate_format_audit_verdict(request, report, run_dir)
     if request["stage"] == "R5_COMPREHENSIVE":
         _validate_r5_axes(report)
@@ -325,17 +367,41 @@ def _validate_adjudication_semantics(
         finding = finding_map[finding_id]
         severity = finding["severity"]
         main_decision = decision["main_decision"]
+        recommended_resolution = finding.get("recommended_resolution")
+        if recommended_resolution and main_decision != recommended_resolution:
+            raise ContractError(
+                f"未验证 finding 必须先进入 {recommended_resolution}: {finding_id}"
+            )
         if decision["reviewer_severity"] != severity:
             raise ContractError(f"裁决严重度与审核报告不一致: {finding_id}")
-        if severity == "P0" and main_decision == "accepted" and not decision["counter_evidence"]:
-            raise ContractError("P0 只有绑定第二次独立复核或人工决定证据后才能接受")
-        if severity in {"P0", "P1"} and main_decision in {
-            "rejected",
-            "accepted_as_advisory",
-        }:
-            raise ContractError(f"{severity} 不能由主 AI 单方面驳回或降为建议")
-        if main_decision == "rejected" and not decision["counter_evidence"]:
-            raise ContractError("驳回 finding 必须提供反证")
+        if decision["effective_severity"] not in {"P0", "P1", "P2", "P3"}:
+            raise ContractError(f"裁决有效严重度非法: {finding_id}")
+        if main_decision == "accepted":
+            if not decision["confirmation_evidence"]:
+                raise ContractError("接受 finding 必须提供 confirmation_evidence")
+            expected_effect = "block" if severity in {"P0", "P1"} else decision["gate_effect"]
+            if decision["gate_effect"] != expected_effect:
+                raise ContractError("接受 P0/P1 的 gate_effect 必须为 block")
+        elif main_decision == "accepted_as_advisory":
+            if decision["gate_effect"] != "warn":
+                raise ContractError("accepted_as_advisory 的 gate_effect 必须为 warn")
+            if severity in {"P0", "P1"} and (
+                not decision["counter_evidence"]
+                or decision["resolution_evidence_type"] not in STRONG_RESOLUTION_EVIDENCE
+            ):
+                raise ContractError(f"{severity} 降为建议必须绑定强反证")
+        elif main_decision == "rejected":
+            if not decision["counter_evidence"] or not decision["resolution_evidence_type"]:
+                raise ContractError("驳回 finding 必须同时提供 counter_evidence 和 resolution_evidence_type")
+            if severity in {"P0", "P1"} and decision["resolution_evidence_type"] not in STRONG_RESOLUTION_EVIDENCE:
+                raise ContractError(f"{severity} 只有强反证类型才能驳回")
+            if decision["gate_effect"] != "none":
+                raise ContractError("rejected finding 的 gate_effect 必须为 none")
+        elif main_decision in UNRESOLVED_ADJUDICATIONS:
+            if decision["gate_effect"] != "block":
+                raise ContractError("未解决 finding 的 gate_effect 必须为 block")
+        else:
+            raise ContractError(f"未知主 AI 裁决: {main_decision}")
         if (
             main_decision == "accepted"
             and decision["effective_change_level"] == "L5"
@@ -370,15 +436,93 @@ def write_review_adjudication(
     if any(adjudication.get(key) != value for key, value in identity.items()):
         raise ContractError("审核裁决未绑定当前请求、报告或生产主体")
     state = load_json(run_dir / "state.json")
-    if state["revision"] != request["state_revision"]:
+    probe_continuation = (
+        adjudication.get("adjudication_sequence") == 2
+        and state["revision"] == request["state_revision"] + 1
+        and report_path.with_name("REVIEW_ADJUDICATION.0001.json").is_file()
+    )
+    if state["revision"] != request["state_revision"] and not probe_continuation:
         raise ContractError("旧 revision 的审核报告不能生成生产裁决")
     require_valid(adjudication, "review_adjudication")
     _validate_adjudication_semantics(report, adjudication)
-    output = report_path.with_name("REVIEW_ADJUDICATION.json")
+    output = _adjudication_output_path(report_path, adjudication)
+    _validate_probe_adjudication_chain(report_path, adjudication, output)
     if output.exists():
         raise ContractError("一份审核报告只能生成一份不可变裁决")
     atomic_json(output, adjudication)
     return output
+
+
+def _adjudication_output_path(
+    report_path: Path, adjudication: dict[str, Any]
+) -> Path:
+    """普通裁决使用固定名，probe 链使用不可变编号文件。"""
+    sequence = adjudication.get("adjudication_sequence")
+    has_needs_probe = any(
+        item["main_decision"] == "needs_probe"
+        for item in adjudication["decisions"]
+    )
+    if has_needs_probe and sequence != 1:
+        raise ContractError("needs_probe 初始裁决必须为 adjudication_sequence=1")
+    if sequence is None:
+        return report_path.with_name("REVIEW_ADJUDICATION.json")
+    return report_path.with_name(f"REVIEW_ADJUDICATION.{sequence:04d}.json")
+
+
+def _validate_probe_adjudication_chain(
+    report_path: Path,
+    adjudication: dict[str, Any],
+    output_path: Path,
+) -> None:
+    """验证 probe 前后两份 adjudication 的哈希链与结论映射。"""
+    sequence = adjudication.get("adjudication_sequence")
+    if sequence is None:
+        if adjudication.get("supersedes_adjudication_sha256") is not None:
+            raise ContractError("非 probe 裁决不得声明 supersedes_adjudication_sha256")
+        if adjudication.get("probe_result_sha256") is not None:
+            raise ContractError("非 probe 裁决不得声明 probe_result_sha256")
+        return
+    if sequence == 1:
+        if adjudication.get("supersedes_adjudication_sha256") is not None:
+            raise ContractError("首份 probe 裁决不能 supersede 其他裁决")
+        if adjudication.get("probe_result_sha256") is not None:
+            raise ContractError("首份 probe 裁决不能提前绑定 probe result")
+        return
+    if sequence != 2:
+        raise ContractError("当前 probe 生命周期只允许 .0001 和 .0002 两份裁决")
+    initial_path = report_path.with_name("REVIEW_ADJUDICATION.0001.json")
+    plan_path = report_path.with_name("PROBE_PLAN.json")
+    result_path = report_path.with_name("PROBE_RESULT.json")
+    initial = load_json(initial_path)
+    plan = load_json(plan_path)
+    result = load_json(result_path)
+    require_valid(initial, "review_adjudication")
+    require_valid(plan, "probe_plan")
+    require_valid(result, "probe_result")
+    if adjudication.get("supersedes_adjudication_sha256") != sha256_file(initial_path):
+        raise ContractError("最终裁决未绑定初始 adjudication 哈希")
+    if adjudication.get("probe_result_sha256") != sha256_file(result_path):
+        raise ContractError("最终裁决未绑定当前 PROBE_RESULT.json")
+    initial_probe_ids = {
+        item["finding_id"]
+        for item in initial["decisions"]
+        if item["main_decision"] == "needs_probe"
+    }
+    if initial_probe_ids != {plan["finding_id"]} or result["finding_id"] != plan["finding_id"]:
+        raise ContractError("probe 计划、结果和初始裁决 finding_id 不一致")
+    final_decision = next(
+        item for item in adjudication["decisions"] if item["finding_id"] == result["finding_id"]
+    )
+    allowed = {
+        "confirmed": {"accepted"},
+        "refuted": {"rejected"},
+        "inconclusive": {"needs_second_review", "needs_human_decision"},
+        "failed": {"needs_second_review", "needs_human_decision"},
+    }[result["status"]]
+    if final_decision["main_decision"] not in allowed:
+        raise ContractError("最终裁决与 PROBE_RESULT status 不一致")
+    if output_path.name != "REVIEW_ADJUDICATION.0002.json":
+        raise ContractError("probe 最终裁决路径必须为 REVIEW_ADJUDICATION.0002.json")
 
 
 def verify_review_adjudication(
@@ -397,8 +541,10 @@ def verify_review_adjudication(
         require_valid(report, "review_report")
         require_valid(adjudication, "review_adjudication")
         require_valid(request, "review_request")
-        if adjudication_path.resolve() != report_path.with_name("REVIEW_ADJUDICATION.json").resolve():
-            raise ContractError("REVIEW_ADJUDICATION.json 必须与审核报告位于同一轮目录")
+        if adjudication_path.parent.resolve() != report_path.parent.resolve():
+            raise ContractError("REVIEW_ADJUDICATION 必须与审核报告位于同一轮目录")
+        if not adjudication_path.name.startswith("REVIEW_ADJUDICATION"):
+            raise ContractError("审核裁决文件名非法")
         expected = {
             "run_id": report["run_id"],
             "request_id": report["request_id"],
@@ -410,6 +556,7 @@ def verify_review_adjudication(
         if any(adjudication.get(key) != value for key, value in expected.items()):
             raise ContractError("审核裁决绑定已失效")
         _validate_adjudication_semantics(report, adjudication)
+        _validate_probe_adjudication_chain(report_path, adjudication, adjudication_path)
         if require_current_revision:
             state = load_json(run_dir / "state.json")
             if state["revision"] != adjudication["state_revision"]:
@@ -422,33 +569,20 @@ def verify_review_adjudication(
 def materialize_review_receipt(
     request_path: Path,
     report_path: Path,
-    *,
-    adjudication_path: Path | None = None,
-    decision: str | None = None,
 ) -> Path:
-    """生产主 AI 裁决后，以请求、报告、裁决和事实哈希生成回执。"""
+    """捕获不可变审核事实；回执不表达生产裁决或修复含义。"""
+    request_path = request_path.resolve()
+    report_path = report_path.resolve()
     request = load_json(request_path)
     report = load_json(report_path)
     require_valid(request, "review_request")
     require_valid(report, "review_report")
     run_dir = request_path.parents[3]
-    resolved_adjudication = adjudication_path or report_path.with_name(
-        "REVIEW_ADJUDICATION.json"
-    )
-    adjudication_report = verify_review_adjudication(
-        run_dir,
-        report_path,
-        resolved_adjudication,
-        require_current_revision=True,
-    )
-    if not adjudication_report["valid"]:
-        raise ContractError(
-            "审核裁决复验失败: " + "; ".join(adjudication_report["errors"])
-        )
-    adjudication = load_json(resolved_adjudication)
-    if adjudication["unresolved_conflicts"]:
-        raise ContractError("审核裁决仍有待独立复核或待人工决定的冲突")
     _require_current_request_policy(request, run_dir)
+    if report_path != request_path.with_name("review_report.json"):
+        raise ContractError("review_receipt 只能捕获同一轮目录中的 review_report.json")
+    if resolve_inside(run_dir, request["output_path"]).resolve() != report_path:
+        raise ContractError("审核报告路径与 review_request.json 声明不一致")
     session_path = request_path.with_name("review_session.json")
     session_report = verify_review_session(
         run_dir, request_path, session_path, require_current_revision=True
@@ -467,12 +601,6 @@ def materialize_review_receipt(
         raise ContractError("审核报告绑定的材料清单哈希不一致")
     if report["session_sha256"] != sha256_file(session_path):
         raise ContractError("审核报告绑定的 session 哈希不一致")
-    if request["stage"] == "R1_MODELING":
-        _validate_r1_semantics(report)
-        _validate_r1_coverage_against_model_spec(report, request, run_dir)
-    if request["stage"] == "R5_COMPREHENSIVE":
-        _validate_r5_axes(report)
-    _validate_format_audit_verdict(request, report, run_dir)
     actual_bindings = {}
     for name, _expected in request["bindings"].items():
         path = resolve_inside(run_dir, request["binding_paths"][name])
@@ -482,48 +610,24 @@ def materialize_review_receipt(
             actual_bindings[name] = sha256_file(run_dir / "state.json")
     if actual_bindings != request["bindings"]:
         raise ContractError("审核请求绑定事实已变化")
-    accepted_ids = {
-        item["finding_id"]
-        for item in adjudication["decisions"]
-        if item["main_decision"] == "accepted"
-    }
-    passed = _report_passed(report) and not accepted_ids
-    if not passed and not accepted_ids:
-        raise ContractError("审核未通过但主 AI 未接受任何可修复 finding")
-    expected_decision = (
-        "accepted_with_warnings"
-        if passed and report["findings"]
-        else ("accepted" if passed else "rejected")
-    )
-    if decision is not None and decision != expected_decision:
-        raise ContractError("审核 decision 与报告结论不一致")
-    repair_plan = (
-        None
-        if passed
-        else create_repair_plan(run_dir, report_path, resolved_adjudication)
-    )
     receipt = {
         "schema_name": "review_receipt",
-        "schema_version": "2.0",
+        "schema_version": "3.0",
+        "receipt_kind": "capture",
         "run_id": request["run_id"],
         "request_id": request["request_id"],
-        "report_sha256": sha256_file(report_path),
         "request_sha256": sha256_file(request_path),
         "session_sha256": sha256_file(session_path),
+        "report_sha256": sha256_file(report_path),
         "input_manifest_sha256": request["input_manifest_sha256"],
-        "adjudication_path": _relative(run_dir, resolved_adjudication),
-        "adjudication_sha256": sha256_file(resolved_adjudication),
         "state_revision": request["state_revision"],
         "bindings": request["bindings"],
-        "decision": decision
-        or expected_decision,
         "issued_at": utc_now(),
     }
-    if repair_plan is not None:
-        receipt["repair_plan_path"] = _relative(run_dir, repair_plan)
-        receipt["repair_plan_sha256"] = sha256_file(repair_plan)
     require_valid(receipt, "review_receipt")
     receipt_path = report_path.with_name("review_receipt.json")
+    if receipt_path.exists():
+        raise ContractError("一份审核报告只能生成一份不可变 capture receipt")
     atomic_json(receipt_path, receipt)
     return receipt_path
 
@@ -531,24 +635,38 @@ def materialize_review_receipt(
 def verify_review_receipt(
     run_dir: Path, receipt_path: Path, *, require_current_revision: bool = True
 ) -> dict[str, Any]:
-    """验证审核回执、报告、请求和当前 revision 是否仍匹配。"""
+    """按版本复验回执；v2 仅保留历史只读兼容。"""
+    try:
+        receipt = load_json(receipt_path)
+        require_valid(receipt, "review_receipt")
+    except (ContractError, OSError) as exc:
+        return {"valid": False, "errors": [str(exc)], "receipt_path": str(receipt_path)}
+    if receipt.get("schema_version") == "2.0":
+        return _verify_review_receipt_v2(
+            run_dir, receipt_path, require_current_revision=require_current_revision
+        )
+    return _verify_review_receipt_v3(
+        run_dir, receipt_path, require_current_revision=require_current_revision
+    )
+
+
+def _verify_review_receipt_v3(
+    run_dir: Path, receipt_path: Path, *, require_current_revision: bool
+) -> dict[str, Any]:
+    """复验 v3 capture receipt 的请求、session、报告和输入事实。"""
     errors: list[str] = []
     try:
         receipt = load_json(receipt_path)
         require_valid(receipt, "review_receipt")
         request_path = receipt_path.with_name("review_request.json")
         report_path = receipt_path.with_name("review_report.json")
-        adjudication_path = receipt_path.with_name("REVIEW_ADJUDICATION.json")
         session_path = receipt_path.with_name("review_session.json")
-        request, report, adjudication = (
-            load_json(request_path),
-            load_json(report_path),
-            load_json(adjudication_path),
-        )
+        request, report = load_json(request_path), load_json(report_path)
         require_valid(request, "review_request")
         require_valid(report, "review_report")
-        require_valid(adjudication, "review_adjudication")
         _require_current_request_policy(request, run_dir)
+        if resolve_inside(run_dir, request["output_path"]).resolve() != report_path.resolve():
+            errors.append("审核报告路径与请求声明不一致")
         session_report = verify_review_session(
             run_dir,
             request_path,
@@ -557,14 +675,6 @@ def verify_review_receipt(
         )
         if not session_report["valid"]:
             errors.extend(session_report["errors"])
-        if report["verdict"] not in VERDICTS[request["stage"]]:
-            errors.append("审核结论不属于该阶段枚举")
-        if request["stage"] == "R1_MODELING":
-            _validate_r1_semantics(report)
-            _validate_r1_coverage_against_model_spec(report, request, run_dir)
-        if request["stage"] == "R5_COMPREHENSIVE":
-            _validate_r5_axes(report)
-        _validate_format_audit_verdict(request, report, run_dir)
         if receipt["request_sha256"] != sha256_file(request_path):
             errors.append("审核请求哈希不一致")
         if receipt["report_sha256"] != sha256_file(report_path):
@@ -575,18 +685,6 @@ def verify_review_receipt(
             errors.append("审核 session 哈希不一致")
         if report["session_sha256"] != receipt["session_sha256"]:
             errors.append("审核报告与回执的 session 绑定不一致")
-        adjudication_report = verify_review_adjudication(
-            run_dir,
-            report_path,
-            adjudication_path,
-            require_current_revision=require_current_revision,
-        )
-        if not adjudication_report["valid"]:
-            errors.extend(adjudication_report["errors"])
-        if receipt["adjudication_path"] != _relative(run_dir, adjudication_path):
-            errors.append("审核回执的裁决路径不一致")
-        if receipt["adjudication_sha256"] != sha256_file(adjudication_path):
-            errors.append("审核裁决哈希不一致")
         manifest_path = resolve_inside(
             run_dir, request["input_manifest_path"], must_exist=True
         )
@@ -607,42 +705,68 @@ def verify_review_receipt(
             errors.append("审核回执、报告和请求身份不一致")
         if receipt["run_id"] != request["run_id"] or report["run_id"] != request["run_id"]:
             errors.append("审核回执、报告和请求 run_id 不一致")
-        accepted_ids = {
-            item["finding_id"]
-            for item in adjudication["decisions"]
-            if item["main_decision"] == "accepted"
-        }
-        passed = _report_passed(report) and not accepted_ids
-        expected_decision = (
-            "accepted_with_warnings"
-            if passed and report["findings"]
-            else ("accepted" if passed else "rejected")
+    except (ContractError, OSError, KeyError) as exc:
+        errors.append(str(exc))
+    return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}
+
+
+def _verify_review_receipt_v2(
+    run_dir: Path, receipt_path: Path, *, require_current_revision: bool
+) -> dict[str, Any]:
+    """只读复验历史 v2 receipt，不用于生成新回执。"""
+    errors: list[str] = []
+    try:
+        receipt = load_json(receipt_path)
+        require_valid(receipt, "review_receipt")
+        request_path = receipt_path.with_name("review_request.json")
+        report_path = receipt_path.with_name("review_report.json")
+        adjudication_path = receipt_path.with_name("REVIEW_ADJUDICATION.json")
+        session_path = receipt_path.with_name("review_session.json")
+        request, report, adjudication = (
+            load_json(request_path),
+            load_json(report_path),
+            load_json(adjudication_path),
         )
-        if adjudication["unresolved_conflicts"]:
-            errors.append("审核裁决仍有未解决冲突")
-        if receipt["decision"] != expected_decision:
-            errors.append("审核回执 decision 与报告结论不一致")
-        if receipt["decision"] == "rejected" and not receipt.get("repair_plan_path"):
-            errors.append("审核失败回执缺少 REPAIR_PLAN.json")
-        if receipt["decision"] != "rejected" and receipt.get("repair_plan_path"):
-            errors.append("通过审核回执不应携带 REPAIR_PLAN.json")
+        require_valid(request, "review_request")
+        require_valid(report, "review_report")
+        require_valid(adjudication, "review_adjudication")
+        session_report = verify_review_session(
+            run_dir,
+            request_path,
+            session_path,
+            require_current_revision=require_current_revision,
+        )
+        if not session_report["valid"]:
+            errors.extend(session_report["errors"])
+        if receipt["request_sha256"] != sha256_file(request_path):
+            errors.append("审核请求哈希不一致")
+        if receipt["report_sha256"] != sha256_file(report_path):
+            errors.append("审核报告哈希不一致")
+        if receipt["session_sha256"] != sha256_file(session_path):
+            errors.append("审核 session 哈希不一致")
+        if receipt["adjudication_path"] != _relative(run_dir, adjudication_path):
+            errors.append("审核回执的裁决路径不一致")
+        if receipt["adjudication_sha256"] != sha256_file(adjudication_path):
+            errors.append("审核裁决哈希不一致")
+        manifest_path = resolve_inside(
+            run_dir, request["input_manifest_path"], must_exist=True
+        )
+        if receipt["input_manifest_sha256"] != sha256_file(manifest_path):
+            errors.append("审核回执的材料清单哈希不一致")
+        for name, expected in request["bindings"].items():
+            bound_path = resolve_inside(
+                run_dir, request["binding_paths"][name], must_exist=True
+            )
+            if sha256_file(bound_path) != expected:
+                errors.append(f"审核绑定事实已变化: {name}")
+        state = load_json(run_dir / "state.json")
+        if require_current_revision and state["revision"] != receipt["state_revision"]:
+            errors.append("作者修复后旧审核回执已失效")
+        if request["bindings"] != receipt["bindings"]:
+            errors.append("审核回执绑定与请求不一致")
         repair_path = receipt.get("repair_plan_path")
         if repair_path:
             resolved_repair = resolve_inside(run_dir, repair_path, must_exist=True)
-            repair = load_json(resolved_repair)
-            require_valid(repair, "repair_plan")
-            if repair.get("source_report_path") != _relative(run_dir, report_path):
-                errors.append("定向修复计划未指向当前审核报告")
-            if repair.get("source_report_sha256") != sha256_file(report_path):
-                errors.append("定向修复计划来源哈希不一致")
-            if repair.get("source_adjudication_path") != _relative(
-                run_dir, adjudication_path
-            ):
-                errors.append("定向修复计划未指向当前审核裁决")
-            if repair.get("source_adjudication_sha256") != sha256_file(
-                adjudication_path
-            ):
-                errors.append("定向修复计划裁决哈希不一致")
             if receipt.get("repair_plan_sha256") != sha256_file(resolved_repair):
                 errors.append("定向修复计划哈希不一致")
     except (ContractError, OSError, KeyError) as exc:
@@ -707,6 +831,10 @@ def _validate_r1_semantics(report: dict[str, Any]) -> None:
     findings = report["findings"]
     verdict = report["verdict"]
     coverage = report["coverage"]
+    if report.get("schema_version") == "3.0":
+        _validate_r1_v3_coverage(report)
+        _validate_r1_route_semantics(report)
+        return
     route_findings = [item for item in findings if finding_requires_route_reapproval(item)]
     severe = any(item["severity"] in {"P0", "P1"} for item in findings)
 
@@ -762,10 +890,108 @@ def _validate_r1_semantics(report: dict[str, Any]) -> None:
         raise ContractError("R1 小修通过仅允许非路线 P2/P3 finding")
 
 
+def _validate_r1_route_semantics(report: dict[str, Any]) -> None:
+    """四态 coverage 之外仍须执行既有路线漂移约束。"""
+    findings = report["findings"]
+    verdict = report["verdict"]
+    route_findings = [item for item in findings if finding_requires_route_reapproval(item)]
+    for finding in findings:
+        material = finding_requires_route_reapproval(finding)
+        changed_fields = finding["changed_route_core_fields"]
+        if material and not changed_fields:
+            raise ContractError("路线实质变化必须列出 changed_route_core_fields")
+        if not material and changed_fields:
+            raise ContractError("非路线变化不得声明 changed_route_core_fields")
+    if route_findings and verdict != "ROUTE_REAPPROVAL_REQUIRED":
+        raise ContractError("存在路线实质变化时 R1 必须要求重新批准路线")
+    if verdict == "ROUTE_REAPPROVAL_REQUIRED" and not route_findings:
+        raise ContractError("R1 要求重新批准路线时必须包含路线实质变化 finding")
+    if verdict == "SPEC_REVISION_REQUIRED" and (not findings or route_findings):
+        raise ContractError("规格修订结论必须包含不影响路线的 finding")
+    if verdict == "BLOCKED_MISSING_INPUT" and (not findings or route_findings):
+        raise ContractError("缺少输入结论不能携带路线实质变化")
+
+
+def _validate_r1_v3_coverage(report: dict[str, Any]) -> None:
+    """R1 v3 的四态 coverage 必须把未知项交给可追踪的后续裁决。"""
+    coverage = report["coverage"]
+    findings = report["findings"]
+    if coverage["unchecked_items"]:
+        raise ContractError("R1 coverage 不得包含 unchecked_items")
+    invalid_statuses = sorted(
+        {coverage[key] for key in R1_COVERAGE_CHECKS}
+        - {"verified", "challenged", "unknown", "not_applicable"}
+    )
+    if invalid_statuses:
+        raise ContractError("R1 v3 coverage 禁止使用旧 pass/fail 状态: " + ", ".join(invalid_statuses))
+    finding_checks = {item.get("check_id") for item in findings if item.get("check_id")}
+    challenged = {key for key in R1_COVERAGE_CHECKS if coverage[key] == "challenged"}
+    unknown = {key for key in R1_COVERAGE_CHECKS if coverage[key] == "unknown"}
+    missing = sorted((challenged | unknown) - finding_checks)
+    if missing:
+        raise ContractError("R1 challenged/unknown 必须有对应 finding: " + ", ".join(missing))
+    for finding in findings:
+        check_id = finding.get("check_id")
+        if check_id not in R1_REQUIRED_CHECK_IDS:
+            continue
+        state = coverage[check_id]
+        if state == "challenged" and finding.get("recommended_resolution"):
+            raise ContractError("R1 challenged finding 不应伪装为待探查")
+        if state == "unknown" and finding.get("recommended_resolution") not in UNRESOLVED_ADJUDICATIONS:
+            raise ContractError("R1 unknown 必须声明 needs_probe、needs_second_review 或 needs_human_decision")
+        if state in {"verified", "not_applicable"}:
+            raise ContractError(f"R1 finding 的 coverage 状态不能为 {state}: {check_id}")
+    severe = any(item["severity"] in {"P0", "P1"} for item in findings)
+    if report["verdict"] == "ACCEPT" and (challenged or unknown or findings):
+        raise ContractError("R1 v3 ACCEPT 必须所有检查 verified/not_applicable 且无 finding")
+    if report["verdict"] == "SPEC_REVISION_REQUIRED" and not challenged:
+        raise ContractError("R1 v3 规格修订必须至少有 challenged 检查")
+    if report["verdict"] == "BLOCKED_MISSING_INPUT" and not unknown:
+        raise ContractError("R1 v3 缺少输入必须至少有 unknown 检查")
+    if report["verdict"] == "ACCEPT_WITH_MINOR_FIXES" and (severe or challenged or unknown or not findings):
+        raise ContractError("R1 v3 小修通过只允许已解决的非路线 P2/P3 finding")
+
+
+def _validate_r2_semantics(report: dict[str, Any]) -> None:
+    """R2 v3 同时覆盖可复现性、科学正确性和预注册 oracle。"""
+    for axis_name, expected in (
+        ("execution_reproducibility", R2_EXECUTION_CHECKS),
+        ("scientific_correctness", R2_SCIENTIFIC_CHECKS),
+    ):
+        axis = report[axis_name]
+        if set(axis["checks"]) != expected:
+            raise ContractError(f"R2 {axis_name} 检查集合不完整")
+        statuses = {item["status"] for item in axis["checks"].values()}
+        expected_status = (
+            "unknown"
+            if "unknown" in statuses
+            else (
+                "challenged"
+                if "challenged" in statuses
+                else ("not_applicable" if statuses == {"not_applicable"} else "verified")
+            )
+        )
+        if axis["status"] != expected_status:
+            raise ContractError(f"R2 {axis_name} 汇总状态与逐项检查不一致")
+    oracle_ids = [item["oracle_id"] for item in report["preregistered_oracles"]]
+    if len(oracle_ids) != len(set(oracle_ids)):
+        raise ContractError("R2 preregistered_oracles 的 oracle_id 必须唯一")
+    findings_by_check = {
+        item["check_id"]: item for item in report["findings"] if item.get("check_id")
+    }
+    for axis_name in ("execution_reproducibility", "scientific_correctness"):
+        for check_id, check in report[axis_name]["checks"].items():
+            finding = findings_by_check.get(check_id)
+            if check["status"] in {"challenged", "unknown"} and finding is None:
+                raise ContractError(f"R2 {check_id} 未验证但缺少对应 finding")
+            if check["status"] == "unknown" and finding.get("recommended_resolution") not in UNRESOLVED_ADJUDICATIONS:
+                raise ContractError(f"R2 {check_id}=unknown 必须进入 probe、二审或人工决定")
+
+
 def _validate_r1_coverage_against_model_spec(
     report: dict[str, Any], request: dict[str, Any], run_dir: Path
 ) -> None:
-    """检查可确定判断的 coverage=pass 是否具有最低结构证据。"""
+    """检查已验证 coverage 是否具有最低结构证据。"""
     model_spec_path = resolve_inside(
         run_dir, request["binding_paths"]["model_spec"], must_exist=True
     )
@@ -781,7 +1007,10 @@ def _validate_r1_coverage_against_model_spec(
         "uncertainty_quantification": _question_has_uncertainty_evidence,
     }
     for check_id, predicate in checks.items():
-        if report["coverage"][check_id] != "pass":
+        expected_verified = (
+            "verified" if report.get("schema_version") == "3.0" else "pass"
+        )
+        if report["coverage"][check_id] != expected_verified:
             continue
         missing = [
             question["question_id"]
@@ -790,10 +1019,11 @@ def _validate_r1_coverage_against_model_spec(
         ]
         if missing:
             raise ContractError(
-                f"R1 coverage={check_id}:pass 缺少最低结构证据: "
+                f"R1 coverage={check_id}:{expected_verified} 缺少最低结构证据: "
                 + ", ".join(missing)
             )
-    if report["coverage"]["evidence_plan"] == "pass":
+    expected_verified = "verified" if report.get("schema_version") == "3.0" else "pass"
+    if report["coverage"]["evidence_plan"] == expected_verified:
         problem_manifest_path = resolve_inside(
             run_dir, request["binding_paths"]["problem_manifest"], must_exist=True
         )
@@ -817,7 +1047,8 @@ def _validate_r1_coverage_against_model_spec(
                 missing.append(question_id)
         if missing:
             raise ContractError(
-                "R1 coverage=evidence_plan:pass 缺少必做输出的完整证据映射: "
+                f"R1 coverage=evidence_plan:{expected_verified} "
+                "缺少必做输出的完整证据映射: "
                 + ", ".join(missing)
             )
 
