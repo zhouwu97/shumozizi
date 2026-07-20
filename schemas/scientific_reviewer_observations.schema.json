@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/scientific_reviewer_observations.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "benchmark_id", "case_set_sha256", "oracle_sha256", "observations"],
+  "properties": {
+    "schema_name": {"const": "scientific_reviewer_observations"},
+    "schema_version": {"const": "1.0"},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "case_set_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "oracle_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "outcome", "review_runs", "findings"],
+        "properties": {
+          "case_id": {"type": "string", "minLength": 1},
+          "outcome": {"enum": ["reviewed", "unknown"]},
+          "review_runs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stage", "skill", "review_request_path", "review_request_sha256", "review_session_path", "review_session_sha256", "review_report_path", "review_report_sha256"],
+              "properties": {
+                "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT"]},
+                "skill": {"enum": ["mathmodel-review-r1-modeling", "mathmodel-review-r2-experiment"]},
+                "review_request_path": {"type": "string", "minLength": 1},
+                "review_request_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "review_session_path": {"type": "string", "minLength": 1},
+                "review_session_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "review_report_path": {"type": "string", "minLength": 1},
+                "review_report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+              }
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fault", "stage", "severity", "evidence"],
+              "properties": {
+                "fault": {"type": "string", "minLength": 1},
+                "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT"]},
+                "severity": {"enum": ["P0", "P1", "P2", "P3"]},
+                "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

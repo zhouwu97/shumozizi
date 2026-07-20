@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/scientific_reviewer_benchmark_status.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "benchmark_id", "case_set_sha256", "oracle_sha256", "status", "metrics", "scientific_capability_claim_allowed", "reason"],
+  "properties": {
+    "schema_name": {"const": "scientific_reviewer_benchmark_status"},
+    "schema_version": {"const": "1.0"},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "case_set_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "oracle_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "status": {"enum": ["not_run", "in_progress", "complete"]},
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer_scientific_fault_recall", "reviewer_false_positive_rate", "reviewer_correct_stage_assignment", "reviewer_severity_calibration", "reviewer_unknown_rate"],
+      "properties": {
+        "reviewer_scientific_fault_recall": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "reviewer_false_positive_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "reviewer_correct_stage_assignment": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "reviewer_severity_calibration": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "reviewer_unknown_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "scientific_capability_claim_allowed": {"type": "boolean"},
+    "reason": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"enum": ["not_run", "in_progress"]}}}, "then": {"properties": {"scientific_capability_claim_allowed": {"const": false}, "metrics": {"properties": {"reviewer_scientific_fault_recall": {"const": null}, "reviewer_false_positive_rate": {"const": null}, "reviewer_correct_stage_assignment": {"const": null}, "reviewer_severity_calibration": {"const": null}, "reviewer_unknown_rate": {"const": null}}}}}},
+    {"if": {"properties": {"status": {"const": "complete"}}}, "then": {"properties": {"scientific_capability_claim_allowed": {"const": true}, "metrics": {"properties": {"reviewer_scientific_fault_recall": {"type": "number"}, "reviewer_false_positive_rate": {"type": "number"}, "reviewer_correct_stage_assignment": {"type": "number"}, "reviewer_severity_calibration": {"type": "number"}, "reviewer_unknown_rate": {"type": "number"}}}}}}
+  ]
+}

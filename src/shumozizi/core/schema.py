@@ -28,6 +28,10 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         ("review_receipt", "3.0"),
         ("review_report", "3.0"),
         ("r1_phase_a", "1.0"),
+        ("scientific_reviewer_cases", "1.0"),
+        ("scientific_reviewer_oracle", "1.0"),
+        ("scientific_reviewer_observations", "1.0"),
+        ("scientific_reviewer_benchmark_status", "1.0"),
     }
     if version != "2.0" and (name, version) not in supported_non_v2:
         return [f"Schema 校验器拒绝版本 {version}"]

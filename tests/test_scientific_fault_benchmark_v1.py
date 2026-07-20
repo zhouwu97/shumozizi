@@ -1,4 +1,4 @@
-"""A2 科学错误基准 v1 的案例完整性、哈希冻结和基线指标复算。"""
+"""A2 确定性科学预检开发集的完整性、冻结和指标复算。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from shumozizi.core.io import sha256_file
-from shumozizi.workflow.scientific_review import evaluate_scientific_benchmark
+from shumozizi.workflow.scientific_review import evaluate_deterministic_prechecks
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES_PATH = ROOT / "benchmarks/scientific_fault_benchmark_v1/cases.json"
@@ -71,18 +71,28 @@ def test_baseline_metrics_recompute_from_frozen_observations() -> None:
         if observations[case_id]["predicted_stage"] == cases[case_id]["expected_stage"]
     }
     metrics = baseline["metrics"]
-    assert metrics["scientific_fault_recall"] == len(detected & fault_ids) / len(fault_ids)
-    assert metrics["false_positive_rate"] == len(false_positive) / len(clean_ids)
-    assert metrics["correct_stage_assignment"] == len(stage_correct) / len(fault_ids)
-    assert metrics["unknown_rate"] == 0.0
+    assert metrics["deterministic_fault_recall"] == len(detected & fault_ids) / len(
+        fault_ids
+    )
+    assert metrics["deterministic_false_positive_rate"] == len(false_positive) / len(
+        clean_ids
+    )
+    assert metrics["deterministic_correct_stage_assignment"] == len(stage_correct) / len(
+        fault_ids
+    )
+    assert metrics["deterministic_unknown_rate"] == 0.0
 
 
-def test_a4_scientific_rules_detect_frozen_faults_without_control_false_positives() -> None:
+def test_a4_deterministic_prechecks_detect_development_cases() -> None:
     cases_doc, _ = _load()
-    result = evaluate_scientific_benchmark(cases_doc["cases"])
+    result = evaluate_deterministic_prechecks(cases_doc["cases"])
     metrics = result["metrics"]
 
-    assert metrics["scientific_fault_recall"] == 1.0
-    assert metrics["false_positive_rate"] == 0.0
-    assert metrics["correct_stage_assignment"] == 1.0
-    assert metrics["severity_calibration"] == 1.0
+    assert metrics == {
+        "deterministic_fault_recall": 1.0,
+        "deterministic_false_positive_rate": 0.0,
+        "deterministic_correct_stage_assignment": 1.0,
+        "deterministic_severity_calibration": 1.0,
+    }
+    assert "reviewer_scientific_fault_recall" not in metrics
+    assert "scientific_fault_recall" not in metrics
