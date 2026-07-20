@@ -232,6 +232,7 @@ class StateService:
         if not verification["valid"]:
             raise ContractError("审核回执复验失败: " + "; ".join(verification["errors"]))
         receipt = load_json(resolved_receipt)
+        adjudication_path = run_dir / receipt["adjudication_path"]
         request = load_json(resolved_receipt.with_name("review_request.json"))
         report = load_json(resolved_receipt.with_name("review_report.json"))
         if receipt["state_revision"] != state["revision"]:
@@ -259,6 +260,8 @@ class StateService:
             "status": "passed" if passed else "failed",
             "receipt": relative_receipt,
             "receipt_sha256": sha256_file(resolved_receipt),
+            "adjudication": receipt["adjudication_path"],
+            "adjudication_sha256": sha256_file(adjudication_path),
             "reviewed_revision": receipt["state_revision"],
             "recorded_revision": next_revision,
             "question_id": question_id,
@@ -283,7 +286,14 @@ class StateService:
                             path=relative_receipt,
                             sha256=sha256_file(resolved_receipt),
                         )
-                    )
+                    ),
+                    asdict(
+                        ArtifactRef(
+                            role=f"{gate_id}_ADJUDICATION",
+                            path=receipt["adjudication_path"],
+                            sha256=sha256_file(adjudication_path),
+                        )
+                    ),
                 ],
                 "note": f"{gate_id}: {'passed' if passed else 'failed'}",
             }
@@ -456,6 +466,8 @@ class StateService:
                 report.get("joint_verdict") == "FINAL_CANDIDATE"
                 and report.get("integrity_axis", {}).get("verdict") == "A_PASS"
                 and report.get("quality_axis", {}).get("verdict") in {"B_STRONG", "B_PASS"}
+                and report.get("competition_claim_allowed") is True
+                and report.get("calibrated_score", 0) >= 75
                 and not severe
             )
         if gate_id == "J0_FINAL_BLIND_JUDGE":
@@ -729,17 +741,21 @@ class StateService:
             raise ContractError("COMPLETE 源码包校验失败: " + "; ".join(source_report["errors"]))
         verify_run_config_lock(self.repo_root, run_dir)
         qa_path = run_dir / "review" / "QA_AGGREGATE.json"
+        format_audit_path = run_dir / "review" / "FORMAT_AUDIT.json"
         evidence_path = run_dir / "review" / "EVIDENCE_VALIDATION.json"
         request_path = run_dir / "review" / "final_approval_request.json"
         receipt_path = run_dir / "review" / "final_approval_receipt.json"
-        qa, evidence, request, receipt = map(
-            load_json, (qa_path, evidence_path, request_path, receipt_path)
+        qa, format_audit, evidence, request, receipt = map(
+            load_json,
+            (qa_path, format_audit_path, evidence_path, request_path, receipt_path),
         )
         require_valid(receipt, "final_approval_receipt")
         if qa.get("status") != "pass" or qa.get("hard_failures"):
             raise ContractError("COMPLETE 要求 QA 聚合无 hard failure")
         if evidence.get("status") != "pass":
             raise ContractError("COMPLETE 要求证据校验通过")
+        if format_audit.get("hard_failures"):
+            raise ContractError("COMPLETE 要求 FORMAT_AUDIT 无机器硬失败")
         registry = load_json(run_dir / "results" / "result_registry.json")
         for item in registry.get("results", []):
             if item.get("status") == "accepted":
@@ -753,6 +769,7 @@ class StateService:
             "final_pdf_sha256": sha256_file(run_dir / request["final_pdf_path"]),
             "qa_report_sha256": sha256_file(qa_path),
             "evidence_report_sha256": sha256_file(evidence_path),
+            "format_audit_sha256": sha256_file(format_audit_path),
             "run_config_lock_sha256": sha256_file(run_dir / "config" / "RUN_CONFIG_LOCK.json"),
             "source_manifest_sha256": source_report["manifest_sha256"],
         }

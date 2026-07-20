@@ -30,6 +30,8 @@
           "status": {"enum": ["pending", "passed", "failed", "stale"]},
           "receipt": {"type": ["string", "null"]},
           "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "adjudication": {"type": "string"},
+          "adjudication_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
           "reviewed_revision": {"type": "integer", "minimum": 0},
           "recorded_revision": {"type": "integer", "minimum": 0},
           "question_id": {"type": ["string", "null"]},

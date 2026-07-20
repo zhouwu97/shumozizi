@@ -11,6 +11,7 @@ import pytest
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.schema import schema_root
+from shumozizi.workflow.repair import create_repair_plan
 from shumozizi.workflow.review_sessions import claim_review_request, verify_review_session
 from shumozizi.workflow.reviews import (
     R1_COVERAGE_CHECKS,
@@ -18,10 +19,12 @@ from shumozizi.workflow.reviews import (
     create_review_request,
     materialize_review_receipt,
     verify_review_receipt,
+    write_review_adjudication,
     write_review_report,
 )
 from shumozizi.workflow.state_service import Actor, StateService
 from tests.review_contract_helpers import (
+    adjudicate_report,
     complete_stage_bindings,
     rich_model_spec,
     rich_problem_manifest,
@@ -124,6 +127,88 @@ def _accept_report(request: Path, session_sha256: str) -> dict:
         "findings": [],
         "read_only_confirmed": True,
         "generated_at": "2026-07-20T00:00:00Z",
+    }
+
+
+def _finding_report(
+    request: Path,
+    session_sha256: str,
+    *,
+    severity: str = "P1",
+    count: int = 1,
+) -> dict:
+    """生成具有合法 R1 coverage 绑定的未通过报告。"""
+    report = _accept_report(request, session_sha256)
+    report["verdict"] = "SPEC_REVISION_REQUIRED"
+    report["coverage"]["baseline_design"] = "fail"
+    report["findings"] = [
+        {
+            "finding_id": f"finding-{index}",
+            "severity": severity,
+            "title": "基线证据不足",
+            "evidence": ["brief/model_spec.json"],
+            "remediation": "补齐公平基线证据",
+            "status": "open",
+            "check_id": "baseline_design" if index == 1 else None,
+            "change_level": "L3",
+            "affected_questions": ["q1"],
+            "change_class": "EXPERIMENT_DESIGN_CHANGE",
+            "affected_stage": "R1_MODELING",
+            "affected_files": ["brief/model_spec.json"],
+            "expected_improvement": "恢复实验可比性",
+            "route_impact": "none",
+            "changed_route_core_fields": [],
+        }
+        for index in range(1, count + 1)
+    ]
+    for finding in report["findings"]:
+        if finding["check_id"] is None:
+            finding.pop("check_id")
+    return report
+
+
+def _adjudication(
+    report_path: Path,
+    decisions: list[dict],
+    *,
+    unresolved: list[str] | None = None,
+) -> dict:
+    """生成绑定当前 R1 报告的生产主 AI 裁决。"""
+    report = load_json(report_path)
+    request = load_json(report_path.with_name("review_request.json"))
+    return {
+        "schema_name": "review_adjudication",
+        "schema_version": "2.0",
+        "run_id": report["run_id"],
+        "request_id": report["request_id"],
+        "stage": report["stage"],
+        "state_revision": request["state_revision"],
+        "review_report_sha256": sha256_file(report_path),
+        "decisions": decisions,
+        "unresolved_conflicts": unresolved or [],
+        "generated_by": "production_main_ai",
+        "generated_at": "2026-07-20T00:00:00Z",
+    }
+
+
+def _decision(
+    finding_id: str,
+    severity: str,
+    main_decision: str,
+    *,
+    counter_evidence: list[str] | None = None,
+) -> dict:
+    """生成最小逐 finding 裁决。"""
+    return {
+        "finding_id": finding_id,
+        "reviewer_severity": severity,
+        "main_decision": main_decision,
+        "decision_reason": "生产主 AI 独立核验",
+        "counter_evidence": counter_evidence or [],
+        "effective_change_level": "L3",
+        "affected_questions": ["q1"],
+        "required_retests": ["R2_EXPERIMENT_q1"],
+        "route_reapproval_required": False,
     }
 
 
@@ -285,6 +370,7 @@ def test_report_and_receipt_bind_immutable_session(tmp_path: Path) -> None:
     run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-bindings")
     report = write_review_report(request, _accept_report(request, sha256_file(session)))
+    adjudicate_report(report)
     receipt = materialize_review_receipt(request, report)
     receipt_doc = load_json(receipt)
 
@@ -298,6 +384,99 @@ def test_report_and_receipt_bind_immutable_session(tmp_path: Path) -> None:
     assert verify_review_receipt(run_dir, receipt)["valid"] is False
 
 
+def test_receipt_requires_production_adjudication(tmp_path: Path) -> None:
+    """审核报告不能绕过主 AI 裁决直接物化回执。"""
+    run_dir, request = _r1_request(tmp_path)
+    session = claim_review_request(request, thread_id="thread-no-adjudication")
+    report = write_review_report(request, _accept_report(request, sha256_file(session)))
+    with pytest.raises(ContractError, match="审核裁决复验失败"):
+        materialize_review_receipt(request, report)
+    assert not (report.parent / "review_receipt.json").exists()
+
+
+def test_p1_cannot_be_rejected_without_independent_counter_evidence(tmp_path: Path) -> None:
+    """P1 不允许主 AI 无反证单方面驳回。"""
+    _, request = _r1_request(tmp_path)
+    session = claim_review_request(request, thread_id="thread-p1-reject")
+    report = write_review_report(
+        request, _finding_report(request, sha256_file(session), severity="P1")
+    )
+    adjudication = _adjudication(
+        report, [_decision("finding-1", "P1", "rejected")]
+    )
+    with pytest.raises(ContractError, match="P1 不能"):
+        write_review_adjudication(report, adjudication)
+
+
+def test_p0_accept_requires_second_review_evidence(tmp_path: Path) -> None:
+    """P0 接受必须绑定第二次独立复核或人工决定证据。"""
+    _, request = _r1_request(tmp_path)
+    session = claim_review_request(request, thread_id="thread-p0-accept")
+    report_doc = _finding_report(request, sha256_file(session), severity="P0")
+    report_doc["verdict"] = "ROUTE_REAPPROVAL_REQUIRED"
+    report_doc["findings"][0]["change_level"] = "L5"
+    report_doc["findings"][0]["change_class"] = "ROUTE_CORE_CHANGE"
+    report_doc["findings"][0]["route_impact"] = "material"
+    report_doc["findings"][0]["changed_route_core_fields"] = ["primary_model"]
+    report = write_review_report(request, report_doc)
+    adjudication = _adjudication(
+        report, [_decision("finding-1", "P0", "accepted")]
+    )
+    adjudication["decisions"][0]["effective_change_level"] = "L5"
+    adjudication["decisions"][0]["route_reapproval_required"] = True
+    with pytest.raises(ContractError, match="P0 只有"):
+        write_review_adjudication(report, adjudication)
+
+
+def test_unresolved_conflict_blocks_receipt(tmp_path: Path) -> None:
+    """待二次复核冲突不能生成审核回执。"""
+    _, request = _r1_request(tmp_path)
+    session = claim_review_request(request, thread_id="thread-unresolved")
+    report = write_review_report(
+        request, _finding_report(request, sha256_file(session), severity="P2")
+    )
+    adjudication = _adjudication(
+        report,
+        [_decision("finding-1", "P2", "needs_second_review")],
+        unresolved=["finding-1"],
+    )
+    write_review_adjudication(report, adjudication)
+    with pytest.raises(ContractError, match="待独立复核"):
+        materialize_review_receipt(request, report)
+
+
+def test_repair_plan_contains_only_accepted_findings(tmp_path: Path) -> None:
+    """修复计划只接收主 AI 明确接受的 finding。"""
+    run_dir, request = _r1_request(tmp_path)
+    session = claim_review_request(request, thread_id="thread-repair-filter")
+    report = write_review_report(
+        request, _finding_report(request, sha256_file(session), severity="P2", count=2)
+    )
+    adjudication = _adjudication(
+        report,
+        [
+            _decision("finding-1", "P2", "accepted"),
+            _decision("finding-2", "P2", "accepted_as_advisory"),
+        ],
+    )
+    adjudication_path = write_review_adjudication(report, adjudication)
+    plan = load_json(create_repair_plan(run_dir, report, adjudication_path))
+    assert [item["finding_id"] for item in plan["repair_scope"]] == ["finding-1"]
+
+
+def test_adjudication_tamper_invalidates_receipt(tmp_path: Path) -> None:
+    """裁决文件变化后，已有回执必须失效。"""
+    run_dir, request = _r1_request(tmp_path)
+    session = claim_review_request(request, thread_id="thread-adjudication-tamper")
+    report = write_review_report(request, _accept_report(request, sha256_file(session)))
+    adjudication_report = adjudicate_report(report)
+    receipt = materialize_review_receipt(request, report)
+    payload = load_json(adjudication_report)
+    payload["generated_at"] = "2026-07-20T02:00:00Z"
+    atomic_json(adjudication_report, payload)
+    assert verify_review_receipt(run_dir, receipt)["valid"] is False
+
+
 @pytest.mark.parametrize("target", ["manifest", "session", "request", "report"])
 def test_record_review_gate_rejects_each_hash_layer_tamper(
     tmp_path: Path, target: str
@@ -306,6 +485,7 @@ def test_record_review_gate_rejects_each_hash_layer_tamper(
     run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id=f"thread-tamper-{target}")
     report = write_review_report(request, _accept_report(request, sha256_file(session)))
+    adjudicate_report(report)
     receipt = materialize_review_receipt(request, report)
     request_doc = load_json(request)
     paths = {

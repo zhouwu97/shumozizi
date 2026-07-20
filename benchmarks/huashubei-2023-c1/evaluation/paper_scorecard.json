@@ -1,6 +1,10 @@
 {
   "schema_name": "paper_ab_scorecard",
   "schema_version": "2.0",
+  "score_type": "relative_ab",
+  "relative_ab_score": 83.0,
+  "mean_delta": 30.3333,
+  "preferred_candidate": "P42",
   "problem_id": "huashubei-2023-c1",
   "same_accepted_results": [
     "q1-primary-leakage-fixed-v4",
@@ -75,5 +79,5 @@
     "used_for_current_gate": false
   },
   "gate_c_pass": true,
-  "limitation": "Gate C 仅证明在相同修复结果下，工作台版本的论文论证、验证口径和结论边界更好。三名评阅者仍共同指出系数/区间、负二项对照和稳定性验证不足，因此它仍是子问题技术报告，不是完整竞赛论文。"
+  "limitation": "P42 的 83 分是相对 A/B 量表得分，不是正式参赛质量分。Gate C 仅证明在相同修复结果下，工作台版本的论文论证、验证口径和结论边界更好。三名评阅者仍共同指出系数/区间、负二项对照和稳定性验证不足，因此它仍是子问题技术报告，不是完整竞赛论文。"
 }

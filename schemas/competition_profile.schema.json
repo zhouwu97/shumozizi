@@ -59,6 +59,18 @@
         "require_figure_qa_receipts": {"type": "boolean"}
       }
     },
+    "format_audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fonts_embedded_required", "keywords_required", "references_required", "citation_links_required", "min_image_dpi"],
+      "properties": {
+        "fonts_embedded_required": {"type": "boolean"},
+        "keywords_required": {"type": "boolean"},
+        "references_required": {"type": "boolean"},
+        "citation_links_required": {"type": "boolean"},
+        "min_image_dpi": {"type": "number", "minimum": 1}
+      }
+    },
     "warnings": {"type": "array", "items": {"type": "string"}}
   }
 }

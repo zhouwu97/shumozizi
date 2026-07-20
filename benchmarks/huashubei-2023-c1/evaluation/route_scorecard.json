@@ -1,6 +1,10 @@
 {
   "schema_name": "route_ab_scorecard",
   "schema_version": "2.0",
+  "score_type": "relative_ab",
+  "relative_ab_score": 92.0,
+  "mean_delta": 28.3333,
+  "preferred_candidate": "R42",
   "problem_id": "huashubei-2023-c1",
   "blind_mapping": {
     "R17": "route_a_without_knowledge",

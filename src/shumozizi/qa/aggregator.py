@@ -15,7 +15,7 @@ from shumozizi.evidence.adapters import audit_paper_evidence
 from shumozizi.evidence.validator import validate_evidence
 from shumozizi.profiles.lock import verify_run_config_lock
 from shumozizi.qa.adapters import run_mechanical_qa
-from shumozizi.qa.visual import inspect_pdf_visual
+from shumozizi.qa.visual import audit_pdf_format
 from shumozizi.results.sealing import verify_sealed_result
 from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
 
@@ -105,20 +105,28 @@ def run_submission_qa(run_id: str, final_pdf: Path) -> dict[str, Any]:
         mechanical_adapter["status"] == "pass",
         "; ".join(mechanical_adapter["errors"]) or "机械提交检查通过",
     )
+    format_audit_path = run_dir / "review" / "FORMAT_AUDIT.json"
     try:
-        lock = load_json(run_dir / "config" / "RUN_CONFIG_LOCK.json")
-        profile = load_json(run_dir.parents[1] / lock["competition_profile"]["profile_path"])
-        visual = inspect_pdf_visual(
-            pdf,
-            max_bytes=profile.get("max_file_size_bytes"),
-            enforce_a4=bool(profile.get("a4_required", False)),
+        existing_audit = (
+            load_json(format_audit_path) if format_audit_path.is_file() else None
         )
+        if (
+            existing_audit
+            and pdf.is_file()
+            and existing_audit.get("final_pdf_sha256") == sha256_file(pdf)
+        ):
+            format_audit = existing_audit
+        else:
+            canonical_pdf = (run_dir / "paper" / "final.pdf").resolve()
+            format_audit = audit_pdf_format(
+                run_dir, pdf, write=pdf == canonical_pdf
+            )
     except Exception as exc:
-        visual = {"status": "blocked", "errors": [str(exc)], "warnings": [], "checks": []}
+        format_audit = {"hard_failures": ["format-audit-runtime"], "warnings": [str(exc)]}
     check(
-        "pdf-visual",
-        visual["status"] == "pass",
-        "; ".join(visual["errors"]) or "A4 页面、字体资源和绘制内容检查通过",
+        "format-audit",
+        not format_audit["hard_failures"],
+        "; ".join(format_audit["hard_failures"]) or "结构化 PDF 格式审计通过",
     )
     source_text = "\n".join(
         path.read_text(encoding="utf-8", errors="replace")
@@ -144,9 +152,17 @@ def run_submission_qa(run_id: str, final_pdf: Path) -> dict[str, Any]:
         "evidence_report_sha256": sha256_file(run_dir / "review" / "EVIDENCE_VALIDATION.json"),
         "source_manifest_path": SOURCE_MANIFEST_PATH,
         "source_manifest_sha256": source_package["manifest_sha256"] or "0" * 64,
+        "format_audit_path": "review/FORMAT_AUDIT.json",
+        "format_audit_sha256": sha256_file(format_audit_path)
+        if format_audit_path.is_file()
+        else "0" * 64,
         "checks": checks,
         "hard_failures": hard_failures,
-        "warnings": [*evidence_adapter["warnings"], *mechanical_adapter["warnings"], *visual["warnings"]],
+        "warnings": [
+            *evidence_adapter["warnings"],
+            *mechanical_adapter["warnings"],
+            *format_audit.get("warnings", []),
+        ],
         "generated_at": utc_now(),
     }
     require_valid(report, "qa_report")

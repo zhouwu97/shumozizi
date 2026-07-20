@@ -25,5 +25,12 @@
     "anonymous_forbidden_patterns": ["学校名称", "学生姓名", "指导教师", "学号"],
     "require_figure_qa_receipts": true
   },
+  "format_audit": {
+    "fonts_embedded_required": true,
+    "keywords_required": false,
+    "references_required": true,
+    "citation_links_required": false,
+    "min_image_dpi": 150
+  },
   "warnings": ["当前仅提供保守通用检查；必须依据当届官方通知确认页数、命名和提交包要求"]
 }

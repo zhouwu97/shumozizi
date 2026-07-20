@@ -7,10 +7,46 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.workflow.repair import create_repair_plan
 from shumozizi.workflow.state_service import Actor, StateService
 from tests.test_review_change_levels import _write_reviewed_state
+
+
+def _accepted_adjudication(report_path: Path, *, effective_level: str) -> Path:
+    """为直接测试 repair producer 写入一份已接受裁决。"""
+    report = load_json(report_path)
+    finding = report["findings"][0]
+    path = report_path.with_name("REVIEW_ADJUDICATION.json")
+    atomic_json(
+        path,
+        {
+            "schema_name": "review_adjudication",
+            "schema_version": "2.0",
+            "run_id": report["run_id"],
+            "request_id": report["request_id"],
+            "stage": report["stage"],
+            "state_revision": 0,
+            "review_report_sha256": sha256_file(report_path),
+            "decisions": [
+                {
+                    "finding_id": finding["finding_id"],
+                    "reviewer_severity": finding["severity"],
+                    "main_decision": "accepted",
+                    "decision_reason": "独立核验后接受",
+                    "counter_evidence": [],
+                    "effective_change_level": effective_level,
+                    "affected_questions": finding["affected_questions"],
+                    "required_retests": [],
+                    "route_reapproval_required": effective_level == "L5",
+                }
+            ],
+            "unresolved_conflicts": [],
+            "generated_by": "production_main_ai",
+            "generated_at": "2026-07-20T00:00:00Z",
+        },
+    )
+    return path
 
 
 def test_q2_l3_preserves_q1_r2_and_local_r3(tmp_path: Path) -> None:
@@ -76,7 +112,8 @@ def test_repair_plan_uses_finding_scope_instead_of_review_number(tmp_path: Path)
         },
     )
 
-    repair = load_json(create_repair_plan(run_dir, report_path))
+    adjudication = _accepted_adjudication(report_path, effective_level="L3")
+    repair = load_json(create_repair_plan(run_dir, report_path, adjudication))
 
     assert repair["change_level"] == "L3"
     assert repair["affected_questions"] == ["q2"]
@@ -121,7 +158,8 @@ def test_material_route_impact_is_normalized_to_l5(tmp_path: Path) -> None:
         },
     )
 
-    repair = load_json(create_repair_plan(run_dir, report_path))
+    adjudication = _accepted_adjudication(report_path, effective_level="L5")
+    repair = load_json(create_repair_plan(run_dir, report_path, adjudication))
 
     assert repair["change_level"] == "L5"
     assert repair["route_reapproval_required"] is True

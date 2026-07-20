@@ -5,7 +5,9 @@ from .reviews import (
     create_review_request,
     evaluate_r5_convergence,
     materialize_review_receipt,
+    verify_review_adjudication,
     verify_review_receipt,
+    write_review_adjudication,
     write_review_report,
 )
 
@@ -14,6 +16,8 @@ __all__ = [
     "claim_review_request",
     "evaluate_r5_convergence",
     "materialize_review_receipt",
+    "verify_review_adjudication",
     "verify_review_receipt",
+    "write_review_adjudication",
     "write_review_report",
 ]

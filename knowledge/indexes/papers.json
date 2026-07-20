@@ -1,8 +1,40 @@
 {
   "schema_name": "paper_card_index",
   "schema_version": "1.0",
-  "paper_count": 9,
+  "paper_count": 10,
   "papers": [
+    {
+      "paper_id": "cumcm-2012-a-wine-evaluation",
+      "title": "葡萄酒的评价",
+      "problem_type": "统计评价、分级与多源回归",
+      "data_structure": "评委-样品评分矩阵与葡萄、葡萄酒、芳香物质多源指标表",
+      "task_types": [
+        "分布与正态性检验",
+        "非参数显著性检验",
+        "评分可信度评价",
+        "标准化与综合评分",
+        "聚类分级与距离判别",
+        "相关矩阵筛选",
+        "逐步线性回归",
+        "多源指标影响分析"
+      ],
+      "domain_terms": [
+        "葡萄酒",
+        "评酒员",
+        "酿酒葡萄",
+        "理化指标",
+        "芳香物质"
+      ],
+      "structural_tags": [
+        "监督标签校准",
+        "多问共享样本键",
+        "小样本多指标",
+        "相关筛选后回归",
+        "分级与可预测性边界"
+      ],
+      "source_sha256": "bf211e0d2901698f856b2b75b528419b89fed8c408950a1596970259ebecae84",
+      "card_path": "knowledge/cards/papers/cumcm-2012-a-wine-evaluation.md"
+    },
     {
       "paper_id": "cumcm-2012-a-wine-quality",
       "title": "葡萄酒的质量分析与评价",

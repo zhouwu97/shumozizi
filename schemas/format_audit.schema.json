@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/format_audit.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "profile_id", "final_pdf_path",
+    "final_pdf_sha256", "page_count", "page_sizes", "file_size_bytes",
+    "measured_margins_cm", "summary_on_first_page", "keywords_present",
+    "font_resources", "fonts_embedded", "body_font_size_distribution",
+    "caption_font_size_distribution", "figure_numbering_complete",
+    "table_numbering_complete", "references_present", "citations_linked",
+    "image_dpi", "clipping_detected", "overlap_detected", "anonymous_check",
+    "checks", "hard_failures", "warnings", "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "format_audit"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "profile_id": {"type": "string", "minLength": 1},
+    "final_pdf_path": {"type": "string", "minLength": 1},
+    "final_pdf_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "page_count": {"type": "integer", "minimum": 0},
+    "page_sizes": {"type": "array", "items": {"type": "object"}},
+    "file_size_bytes": {"type": "integer", "minimum": 0},
+    "measured_margins_cm": {"type": "object"},
+    "summary_on_first_page": {"type": "boolean"},
+    "keywords_present": {"type": "boolean"},
+    "font_resources": {"type": "array", "items": {"type": "object"}},
+    "fonts_embedded": {"type": "boolean"},
+    "body_font_size_distribution": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "caption_font_size_distribution": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "figure_numbering_complete": {"type": "boolean"},
+    "table_numbering_complete": {"type": "boolean"},
+    "references_present": {"type": "boolean"},
+    "citations_linked": {"type": "boolean"},
+    "image_dpi": {"type": "array", "items": {"type": "object"}},
+    "clipping_detected": {"type": "boolean"},
+    "overlap_detected": {"type": "boolean"},
+    "anonymous_check": {"type": "boolean"},
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check_id", "passed", "hard", "details"],
+        "properties": {
+          "check_id": {"type": "string", "minLength": 1},
+          "passed": {"type": "boolean"},
+          "hard": {"type": "boolean"},
+          "details": {"type": "string"}
+        }
+      }
+    },
+    "hard_failures": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

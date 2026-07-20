@@ -23,6 +23,7 @@ from shumozizi.workflow.state_service import (
     WorkflowEvent,
 )
 from tests.review_contract_helpers import (
+    adjudicate_report,
     claim_and_hash,
     complete_stage_bindings,
     rich_model_spec,
@@ -211,6 +212,7 @@ def test_model_spec_revised_keeps_route_locked_and_stales_r1(tmp_path: Path) -> 
             "generated_at": "2026-07-19T00:00:00Z",
         },
     )
+    adjudicate_report(report)
     receipt = materialize_review_receipt(request, report)
     passed = StateService(tmp_path).record_review_gate(
         run_dir.name, "R1_MODELING", receipt, Actor("review-r20")
@@ -456,6 +458,7 @@ def test_real_r1_receipt_is_recorded_before_experiment(tmp_path: Path) -> None:
             "generated_at": "2026-07-19T00:00:00Z",
         },
     )
+    adjudicate_report(report)
     receipt = materialize_review_receipt(request, report)
     service = StateService(tmp_path)
 
@@ -573,6 +576,7 @@ def _record_review(
             }
         )
     report_path = write_review_report(request, report)
+    adjudicate_report(report_path)
     receipt = materialize_review_receipt(request, report_path)
     return service.record_review_gate(run_dir.name, gate_id, receipt, Actor("review"))
 
