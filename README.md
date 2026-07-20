@@ -7,6 +7,7 @@
 ```text
 Codex 读题
 → 人工确认题意与路线
+→ （可选）导入已核验 KNOWLEDGE_PACK 并绑定运行锁
 → Codex 完成建模和有界实验
 → Codex 按真实结果增量写论文
 → Codex 做一次有界自审
@@ -26,6 +27,34 @@ Codex 读题
 - `scripts/codex/`：初始化运行目录和校验工作流状态。
 - `scripts/runtime/`：统一执行实验、复验执行证据和接受结果。
 - `scripts/doctor.py`：跨平台环境诊断，不调用或调度 Codex。
+
+## 知识包迁移接口
+
+`shumozizi` 从 `shumoziyong` 接收唯一的跨仓文件
+`dist/KNOWLEDGE_PACK.json`。知识包是运行输入，不建立第二套锁系统；导入后复用现有
+`RUN_CONFIG_LOCK.json`，并且只能在路线锁定前绑定。
+
+```powershell
+python scripts/codex/import_knowledge_pack.py `
+  runs/2026-A-001 `
+  ..\..\数模\dist\KNOWLEDGE_PACK.json `
+  --problem-source problems/2026-A `
+  --questions-json questions.json `
+  --claims-json claims.json
+```
+
+导入器会校验 Schema、卡片 ID、来源内容哈希和同题泄漏；拒绝越界符号链接；随后把包
+ID、版本、来源 commit、路径和 SHA-256 写入运行锁。导入完成后生成：
+
+```text
+runs/2026-A-001/paper/PAPER_BLUEPRINT.md
+runs/2026-A-001/claims/ARGUMENT_MAP.json
+```
+
+`ARGUMENT_MAP` 允许 `supported`、`partially_supported`、`rejected`、`inconclusive` 和
+`stale`。`failed` 或 `inconclusive` 结果不会被包装成成功结论；知识包中的 advisory
+经验也不会自动成为运行时阻断条件。完整合同见
+[KNOWLEDGE_PACK 导入合同](docs/KNOWLEDGE_PACK_IMPORT.md)。
 
 ## 安全默认值
 
@@ -124,6 +153,7 @@ python scripts/codex/validate_state.py runs/2026-A-001
 主状态枚举不变，但 `state.json.review_gates` 记录不可跳过的阶段证明：
 
 ```text
+MODEL_SPEC_READY --MODEL_SPEC_REVISED--> MODEL_SPEC_READY（规格修订，路线锁不变，旧 R1 失效）
 MODEL_SPEC_READY --R1--> EXPERIMENTING
 每问实验完成 --R2--> RESULTS_ACCEPTED
 完整论文和 PDF --R3/R4--> QA_RUNNING
@@ -165,6 +195,12 @@ $mathmodel-workflow
 详细流程见 [docs/CODEX_WORKFLOW.md](docs/CODEX_WORKFLOW.md)。
 桌面版端到端验收使用 [tests/fixtures/e2e_linear_fit/problem.md](tests/fixtures/e2e_linear_fit/problem.md)
 和 [docs/e2e/DESKTOP_E2E_REPORT.template.md](docs/e2e/DESKTOP_E2E_REPORT.template.md)，当前不把模板视为已验收报告。
+
+## 当前迁移状态
+
+知识包导出、跨仓导入、运行锁绑定、泄漏检查、论文蓝图和论证地图已经实现并通过专项
+回归。陌生题端到端生产、负结果/不确定结果的完整论文验收和 A/B/C 盲评仍未完成，
+因此本仓当前是“迁移接口可运行、能力待验收”，不是已证明的竞赛级自动生产系统。
 
 ## 来源与许可
 
