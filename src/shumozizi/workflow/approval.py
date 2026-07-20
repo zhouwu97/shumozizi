@@ -280,6 +280,7 @@ def materialize_final_approval(
         "final_pdf_sha256",
         "qa_report_sha256",
         "evidence_report_sha256",
+        "format_audit_sha256",
         "run_config_lock_sha256",
         "source_manifest_sha256",
     }
@@ -293,7 +294,15 @@ def materialize_final_approval(
     if request["bindings"]["source_manifest_sha256"] != source_report["manifest_sha256"]:
         raise ContractError("最终批准请求未绑定当前 SOURCE_MANIFEST.json")
     qa = load_json(run_dir / "review" / "QA_AGGREGATE.json")
+    format_audit = load_json(run_dir / "review" / "FORMAT_AUDIT.json")
     require_valid(qa, "qa_report")
+    require_valid(format_audit, "format_audit")
+    if format_audit["hard_failures"]:
+        raise ContractError("最终批准不能覆盖 FORMAT_AUDIT 机器硬失败")
+    if request["bindings"]["format_audit_sha256"] != sha256_file(
+        run_dir / "review" / "FORMAT_AUDIT.json"
+    ):
+        raise ContractError("最终批准请求未绑定当前 FORMAT_AUDIT.json")
     if qa.get("source_manifest_sha256") != source_report["manifest_sha256"]:
         raise ContractError("最终 QA 未绑定当前 SOURCE_MANIFEST.json")
     receipt = {
@@ -331,11 +340,16 @@ def create_final_approval_request(
     evidence_path = run_dir / "review" / "EVIDENCE_VALIDATION.json"
     config_path = run_dir / "config" / "RUN_CONFIG_LOCK.json"
     source_manifest_path = run_dir / "source" / "SOURCE_MANIFEST.json"
+    format_audit_path = run_dir / "review" / "FORMAT_AUDIT.json"
     source_report = verify_source_manifest(run_dir, expected_final_pdf=pdf)
     if not source_report["valid"]:
         raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
     qa = load_json(qa_path)
+    format_audit = load_json(format_audit_path)
     require_valid(qa, "qa_report")
+    require_valid(format_audit, "format_audit")
+    if format_audit["hard_failures"]:
+        raise ContractError("FORMAT_AUDIT 存在机器硬失败，不能创建最终批准请求")
     source_manifest_sha256 = sha256_file(source_manifest_path)
     if qa.get("source_manifest_sha256") != source_manifest_sha256:
         raise ContractError("最终 QA 未绑定当前 SOURCE_MANIFEST.json")
@@ -343,6 +357,7 @@ def create_final_approval_request(
         "final_pdf_sha256": sha256_file(pdf),
         "qa_report_sha256": sha256_file(qa_path),
         "evidence_report_sha256": sha256_file(evidence_path),
+        "format_audit_sha256": sha256_file(format_audit_path),
         "run_config_lock_sha256": sha256_file(config_path),
         "source_manifest_sha256": source_manifest_sha256,
     }

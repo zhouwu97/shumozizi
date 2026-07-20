@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import atomic_json, load_json, relative_inside, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, relative_inside, sha256_file
 from shumozizi.core.schema import require_valid
 
 CHANGE_LEVEL_ORDER = {f"L{level}": level for level in range(6)}
@@ -56,23 +56,25 @@ def _level_retests(change_level: str, questions: list[str]) -> list[str]:
     }[change_level]
 
 
-def create_repair_plan(run_dir: Path, report_path: Path) -> Path:
-    """依据 finding 元数据生成可机器执行的最小重审范围。"""
+def create_repair_plan(
+    run_dir: Path, report_path: Path, adjudication_path: Path
+) -> Path:
+    """只依据主 AI 已接受的 finding 生成可机器执行的最小重审范围。"""
     report = load_json(report_path)
+    adjudication = load_json(adjudication_path)
     require_valid(report, "review_report")
+    require_valid(adjudication, "review_adjudication")
+    if adjudication["review_report_sha256"] != sha256_file(report_path):
+        raise ContractError("审核裁决未绑定当前 review_report.json")
     stage = report["stage"]
-    findings = report["findings"] or [
-        {
-            "finding_id": f"{stage}-VERDICT",
-            "title": f"{stage} 结论未通过",
-            "remediation": "按审核结论修复后重新审核",
-            "change_class": "EVIDENCE_METADATA",
-            "change_level": "L2",
-            "affected_questions": [],
-            "route_impact": "none",
-            "changed_route_core_fields": [],
-        }
-    ]
+    decisions = {
+        item["finding_id"]: item
+        for item in adjudication["decisions"]
+        if item["main_decision"] == "accepted"
+    }
+    findings = [item for item in report["findings"] if item["finding_id"] in decisions]
+    if not findings:
+        raise ContractError("没有被主 AI 接受的 finding，不能生成 REPAIR_PLAN.json")
     scopes: list[dict[str, Any]] = []
     axes: set[str] = set()
     retests = set(report.get("required_retests", []))
@@ -81,16 +83,17 @@ def create_repair_plan(run_dir: Path, report_path: Path) -> Path:
     affected_questions: set[str] = set()
     levels: list[str] = []
     for finding in findings:
+        adjudicated = decisions[finding["finding_id"]]
         axis = finding.get("axis") or ("integrity" if finding.get("severity") == "P0" else "quality")
         axes.add(axis)
         affected = finding.get("affected_stage", stage)
-        level = _finding_change_level(finding)
+        level = adjudicated["effective_change_level"]
         levels.append(level)
-        questions = [str(item) for item in finding.get("affected_questions", [])]
+        questions = [str(item) for item in adjudicated["affected_questions"]]
         if not questions and request_question:
             questions = [str(request_question)]
         affected_questions.update(questions)
-        retests.update(finding.get("required_retests", _level_retests(level, questions)))
+        retests.update(adjudicated["required_retests"] or _level_retests(level, questions))
         scopes.append(
             {
                 "finding_id": finding["finding_id"],
@@ -106,7 +109,10 @@ def create_repair_plan(run_dir: Path, report_path: Path) -> Path:
             }
         )
     axis = "both" if len(axes) > 1 or "both" in axes else next(iter(axes))
-    route_reapproval = any(finding_requires_route_reapproval(finding) for finding in findings)
+    route_reapproval = any(
+        decisions[finding["finding_id"]]["route_reapproval_required"]
+        for finding in findings
+    )
     change_level = max(levels, key=CHANGE_LEVEL_ORDER.__getitem__)
     if change_level == "L5":
         route_reapproval = True
@@ -116,6 +122,8 @@ def create_repair_plan(run_dir: Path, report_path: Path) -> Path:
         "run_id": run_dir.name,
         "source_report_path": relative_inside(run_dir, report_path).as_posix(),
         "source_report_sha256": sha256_file(report_path),
+        "source_adjudication_path": relative_inside(run_dir, adjudication_path).as_posix(),
+        "source_adjudication_sha256": sha256_file(adjudication_path),
         "axis": axis,
         "change_level": change_level,
         "affected_questions": sorted(affected_questions),

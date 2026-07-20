@@ -31,5 +31,12 @@
     "anonymous_forbidden_patterns": ["(?i)author\\s*:", "(?i)university\\s*:", "(?i)school\\s*:", "(?i)student\\s+id\\s*:"] ,
     "require_figure_qa_receipts": true
   },
+  "format_audit": {
+    "fonts_embedded_required": true,
+    "keywords_required": false,
+    "references_required": true,
+    "citation_links_required": false,
+    "min_image_dpi": 150
+  },
   "warnings": ["若使用 AI，仍须按当届官方规则核对披露与附加报告要求"]
 }

@@ -34,6 +34,7 @@ from shumozizi.workflow.state_service import (
     WorkflowEvent,
 )
 from tests.review_contract_helpers import (
+    adjudicate_report,
     claim_and_hash,
     complete_stage_bindings,
     rich_model_spec,
@@ -205,6 +206,51 @@ class Gate0EndToEndTests(unittest.TestCase):
                 paper_allowed=True,
             )
             self.assertEqual("q1-baseline", sealed["result_id"])
+            # R5 机器封顶读取权威结构化模型规格；Gate 0 也覆盖三类实验族。
+            rich_model_spec(
+                run_dir,
+                run_dir / "brief/model_spec.json",
+                route_sha256=sha256_file(run_dir / "brief/ROUTE_LOCK.json"),
+                required_output_id="value",
+            )
+            structured_spec = load_json(run_dir / "brief/model_spec.json")
+            structured_spec["questions"][0]["target_role"] = "y"
+            structured_spec["questions"][0]["feature_roles"] = ["beta"]
+            atomic_json(run_dir / "brief/model_spec.json", structured_spec)
+            for cycle in ("primary", "robustness", "ablation"):
+                admit_candidate(
+                    run_dir,
+                    {
+                        "result_id": f"q1-{cycle}",
+                        "question_id": "q1",
+                        "cycle": cycle,
+                        "execution_record_id": "q1-run-001",
+                        "metrics": [
+                            {
+                                "name": "value",
+                                "metric_spec_id": "q1-value",
+                                "value": provenance["final_value"],
+                                "unit": provenance["final_unit"],
+                            }
+                        ],
+                        "conclusion": f"{cycle} 复验固定标量。",
+                        "constraint_checks": [{"check_id": "finite", "passed": True}],
+                        "validation_checks": [
+                            {
+                                "check_id": "cross-bootstrap-uncertainty",
+                                "passed": True,
+                                "evidence": "holdout cross validation bootstrap uncertainty",
+                            }
+                        ],
+                        "baseline_result_id": "q1-baseline",
+                        "claim_refs": ["Q1-VALUE"],
+                        "route_lock_sha256": sha256_file(run_dir / "brief/ROUTE_LOCK.json"),
+                        "target_role": "y",
+                        "feature_roles": ["beta"],
+                    },
+                    accepted_by="e2e-test",
+                    paper_allowed=True,
+                )
             service.update_question_progress(
                 run_dir.name, "q1", "experiment", "accepted", actor
             )
@@ -283,7 +329,7 @@ class Gate0EndToEndTests(unittest.TestCase):
             paper_source = run_dir / "paper/main.typ"
             paper_source.write_text(
                 '#import "generated/evidence_values.typ": evidence\n'
-                "#set page(width: 120mm, height: 80mm)\n"
+                "#set page(margin: 25mm)\n"
                 "= Gate 0 E2E\n"
                 '核心结果为 #evidence("Q1-VALUE")。\n',
                 encoding="utf-8",
@@ -658,6 +704,7 @@ class Gate0EndToEndTests(unittest.TestCase):
                 }
             )
         report_path = write_review_report(request, report)
+        adjudicate_report(report_path)
         receipt = materialize_review_receipt(request, report_path)
         gate_id = "R2_EXPERIMENT_" + question_id if question_id else stage
         if stage == "R5_COMPREHENSIVE":

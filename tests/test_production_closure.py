@@ -22,6 +22,7 @@ from shumozizi.workflow.reviews import (
 )
 from shumozizi.workflow.state_service import Actor, ArtifactRef, StateService, WorkflowEvent
 from tests.review_contract_helpers import (
+    adjudicate_report,
     claim_and_hash,
     complete_stage_bindings,
     rich_model_spec,
@@ -415,6 +416,7 @@ def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
         "generated_at": "2026-07-19T00:00:00Z",
     }
     report_path = write_review_report(request, report)
+    adjudicate_report(report_path)
     receipt_path = materialize_review_receipt(request, report_path)
     receipt = load_json(receipt_path)
     repair_path = run_dir / receipt["repair_plan_path"]
@@ -472,6 +474,7 @@ def test_r1_spec_fixes_do_not_require_route_reapproval(
     }
 
     report_path = write_review_report(request, report)
+    adjudicate_report(report_path)
     receipt_path = materialize_review_receipt(request, report_path)
     repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
 
@@ -533,6 +536,7 @@ def test_r1_route_core_changes_require_route_reapproval(
     }
 
     report_path = write_review_report(request, report)
+    adjudicate_report(report_path)
     receipt_path = materialize_review_receipt(request, report_path)
     repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
 

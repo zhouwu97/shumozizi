@@ -31,6 +31,9 @@ def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
     """竞赛模式不再要求连续两轮 B/A，且预算上限为三轮。"""
     report_dir = tmp_path / "review/r5_comprehensive/round-1"
     report_dir.mkdir(parents=True)
+    (tmp_path / "state.json").write_text(
+        json.dumps({"mode": "competition"}), encoding="utf-8"
+    )
     report = {
         "schema_name": "review_report",
         "schema_version": "2.0",
@@ -55,9 +58,19 @@ def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
             "checks": ["完整性通过"],
             "blockers": [],
         },
+        "score_type": "competition_quality",
+        "assessment_scope": "full_competition_submission",
+        "raw_score": 80,
+        "calibrated_score": 80,
+        "score_caps_applied": [],
+        "competition_claim_allowed": True,
         "quality_axis": {
             "verdict": "B_PASS",
-            "total_score": 80,
+            "raw_dimensions": {
+                "problem_coverage": 80,
+                "model_depth": 80,
+                "experiment_validation": 80,
+            },
             "dimensions": {
                 "problem_coverage": 80,
                 "model_depth": 80,

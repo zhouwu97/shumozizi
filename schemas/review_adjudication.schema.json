@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/review_adjudication.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "request_id", "stage",
+    "state_revision", "review_report_sha256", "decisions", "unresolved_conflicts",
+    "generated_by", "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "review_adjudication"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT", "R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"]},
+    "state_revision": {"type": "integer", "minimum": 0},
+    "review_report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id", "reviewer_severity", "main_decision", "decision_reason",
+          "counter_evidence", "effective_change_level", "affected_questions",
+          "required_retests", "route_reapproval_required"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "reviewer_severity": {"enum": ["P0", "P1", "P2", "P3"]},
+          "main_decision": {"enum": ["accepted", "rejected", "accepted_as_advisory", "needs_second_review", "needs_human_decision"]},
+          "decision_reason": {"type": "string", "minLength": 1},
+          "counter_evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "effective_change_level": {"enum": ["L0", "L1", "L2", "L3", "L4", "L5"]},
+          "affected_questions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "required_retests": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "route_reapproval_required": {"type": "boolean"}
+        }
+      }
+    },
+    "unresolved_conflicts": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "generated_by": {"const": "production_main_ai"},
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

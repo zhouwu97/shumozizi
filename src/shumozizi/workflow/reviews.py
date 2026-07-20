@@ -52,6 +52,7 @@ PASSING_VERDICTS = {
     "R4_FORMAT_VISUAL": {"COMPLIANT"},
     "J0_FINAL_BLIND_JUDGE": {"PROCEED", "ADVISORY"},
 }
+UNRESOLVED_ADJUDICATIONS = {"needs_second_review", "needs_human_decision"}
 
 R1_COVERAGE_CHECKS = (
     "problem_interpretation",
@@ -117,6 +118,26 @@ def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> N
             raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
         if request["binding_paths"].get("source_manifest") != SOURCE_MANIFEST_PATH:
             raise ContractError("审核请求未绑定权威 SOURCE_MANIFEST.json")
+        if request["binding_paths"].get("format_audit") != "review/FORMAT_AUDIT.json":
+            raise ContractError("审核请求未绑定权威 FORMAT_AUDIT.json")
+
+
+def _validate_format_audit_verdict(
+    request: dict[str, Any], report: dict[str, Any], run_dir: Path
+) -> None:
+    """机器格式硬失败不得被 R4/R5 的文字结论覆盖。"""
+    if request["stage"] not in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE"}:
+        return
+    audit_path = resolve_inside(
+        run_dir, request["binding_paths"]["format_audit"], must_exist=True
+    )
+    audit = load_json(audit_path)
+    require_valid(audit, "format_audit")
+    if request["stage"] == "R4_FORMAT_VISUAL":
+        if report["verdict"] == "COMPLIANT" and audit["hard_failures"]:
+            raise ContractError("FORMAT_AUDIT 存在机器硬失败，R4 不得判 COMPLIANT")
+    elif report.get("joint_verdict") == "FINAL_CANDIDATE" and audit["hard_failures"]:
+        raise ContractError("FORMAT_AUDIT 存在机器硬失败，R5 不得判 FINAL_CANDIDATE")
 
 
 def create_review_request(
@@ -138,6 +159,16 @@ def create_review_request(
     ):
         raise ContractError("J0_FINAL_BLIND_JUDGE 只允许创建一次")
     state = load_json(run_dir / "state.json")
+    effective_mode = state.get("mode", "competition")
+    if mode is not None and mode != effective_mode:
+        raise ContractError("审核轮次模式必须来自当前 state.json，调用方不能临时覆盖")
+    r5_max_rounds = 5 if effective_mode == "training" else 3
+    if stage == "R5_COMPREHENSIVE":
+        existing_r5 = list(
+            (run_dir / "review" / stage.lower()).glob("*/review_request.json")
+        )
+        if len(existing_r5) >= r5_max_rounds:
+            raise ContractError(f"R5 完整审核已达到全局上限 {r5_max_rounds} 轮")
     if state.get("run_id") != run_dir.name:
         raise ContractError("审核请求 run_id 与运行目录不一致")
     if not bindings:
@@ -159,6 +190,11 @@ def create_review_request(
         source_path = bindings["source_manifest"].resolve()
         if source_path != (run_dir / SOURCE_MANIFEST_PATH).resolve():
             raise ContractError("source_manifest 必须绑定 source/SOURCE_MANIFEST.json")
+        format_audit_path = bindings["format_audit"].resolve()
+        if format_audit_path != (run_dir / "review/FORMAT_AUDIT.json").resolve():
+            raise ContractError("format_audit 必须绑定 review/FORMAT_AUDIT.json")
+        format_audit = load_json(format_audit_path)
+        require_valid(format_audit, "format_audit")
     hashes: dict[str, str] = {}
     binding_paths: dict[str, str] = {}
     for name, path in bindings.items():
@@ -187,6 +223,8 @@ def create_review_request(
     round_id = review_round_id or f"{stage.lower()}-r{state['revision']}"
     request_id = f"{run_dir.name}-{stage.lower()}-{round_id}"
     request_dir = run_dir / "review" / stage.lower() / round_id
+    if request_dir.exists():
+        raise ContractError("审核 round_id 已存在，禁止覆盖历史请求")
     manifest_path = create_review_input_manifest(
         run_dir,
         request_id=request_id,
@@ -218,7 +256,7 @@ def create_review_request(
         "read_only": True,
         "budget": {
             "max_minutes": max_minutes,
-            "max_rounds": 1 if stage == "J0_FINAL_BLIND_JUDGE" else (5 if mode == "training" else 3),
+            "max_rounds": r5_max_rounds if stage == "R5_COMPREHENSIVE" else 1,
         },
         "requested_at": utc_now(),
     }
@@ -250,10 +288,13 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
         raise ContractError("审核报告未绑定当前 REVIEW_INPUT_MANIFEST.json")
     if report.get("session_sha256") != sha256_file(session_path):
         raise ContractError("审核报告未绑定当前 review_session.json")
+    if request["stage"] == "R5_COMPREHENSIVE":
+        report = _apply_r5_score_calibration(run_dir, report)
     require_valid(report, "review_report")
     if request["stage"] == "R1_MODELING":
         _validate_r1_semantics(report)
         _validate_r1_coverage_against_model_spec(report, request, run_dir)
+    _validate_format_audit_verdict(request, report, run_dir)
     if request["stage"] == "R5_COMPREHENSIVE":
         _validate_r5_axes(report)
     output = resolve_inside(request_path.parents[3], request["output_path"])
@@ -265,13 +306,148 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
     return output
 
 
-def materialize_review_receipt(request_path: Path, report_path: Path, *, decision: str | None = None) -> Path:
-    """以请求、报告和当前绑定哈希生成审核回执。"""
+def _validate_adjudication_semantics(
+    report: dict[str, Any], adjudication: dict[str, Any]
+) -> None:
+    """验证生产主 AI 对每条 finding 的独立裁决权限与冲突状态。"""
+    findings = report["findings"]
+    finding_map = {item["finding_id"]: item for item in findings}
+    if len(finding_map) != len(findings):
+        raise ContractError("审核报告 finding_id 必须唯一")
+    decisions = adjudication["decisions"]
+    decision_map = {item["finding_id"]: item for item in decisions}
+    if len(decision_map) != len(decisions):
+        raise ContractError("审核裁决 finding_id 必须唯一")
+    if set(decision_map) != set(finding_map):
+        raise ContractError("审核裁决必须逐条覆盖当前报告全部 finding")
+    unresolved: set[str] = set()
+    for finding_id, decision in decision_map.items():
+        finding = finding_map[finding_id]
+        severity = finding["severity"]
+        main_decision = decision["main_decision"]
+        if decision["reviewer_severity"] != severity:
+            raise ContractError(f"裁决严重度与审核报告不一致: {finding_id}")
+        if severity == "P0" and main_decision == "accepted" and not decision["counter_evidence"]:
+            raise ContractError("P0 只有绑定第二次独立复核或人工决定证据后才能接受")
+        if severity in {"P0", "P1"} and main_decision in {
+            "rejected",
+            "accepted_as_advisory",
+        }:
+            raise ContractError(f"{severity} 不能由主 AI 单方面驳回或降为建议")
+        if main_decision == "rejected" and not decision["counter_evidence"]:
+            raise ContractError("驳回 finding 必须提供反证")
+        if (
+            main_decision == "accepted"
+            and decision["effective_change_level"] == "L5"
+            and not decision["route_reapproval_required"]
+        ):
+            raise ContractError("接受的 L5 finding 必须重新批准路线")
+        if main_decision in UNRESOLVED_ADJUDICATIONS:
+            unresolved.add(finding_id)
+    if set(adjudication["unresolved_conflicts"]) != unresolved:
+        raise ContractError("unresolved_conflicts 与待复核/待人工决定 finding 不一致")
+
+
+def write_review_adjudication(
+    report_path: Path, adjudication: dict[str, Any]
+) -> Path:
+    """由生产主 AI 写入独立裁决；审核对话不得调用此函数。"""
+    report_path = report_path.resolve()
+    report = load_json(report_path)
+    require_valid(report, "review_report")
+    request_path = report_path.with_name("review_request.json")
+    request = load_json(request_path)
+    require_valid(request, "review_request")
+    run_dir = report_path.parents[3]
+    identity = {
+        "run_id": report["run_id"],
+        "request_id": report["request_id"],
+        "stage": report["stage"],
+        "state_revision": request["state_revision"],
+        "review_report_sha256": sha256_file(report_path),
+        "generated_by": "production_main_ai",
+    }
+    if any(adjudication.get(key) != value for key, value in identity.items()):
+        raise ContractError("审核裁决未绑定当前请求、报告或生产主体")
+    state = load_json(run_dir / "state.json")
+    if state["revision"] != request["state_revision"]:
+        raise ContractError("旧 revision 的审核报告不能生成生产裁决")
+    require_valid(adjudication, "review_adjudication")
+    _validate_adjudication_semantics(report, adjudication)
+    output = report_path.with_name("REVIEW_ADJUDICATION.json")
+    if output.exists():
+        raise ContractError("一份审核报告只能生成一份不可变裁决")
+    atomic_json(output, adjudication)
+    return output
+
+
+def verify_review_adjudication(
+    run_dir: Path,
+    report_path: Path,
+    adjudication_path: Path,
+    *,
+    require_current_revision: bool = True,
+) -> dict[str, Any]:
+    """复验裁决身份、报告哈希、逐 finding 权限和 revision。"""
+    errors: list[str] = []
+    try:
+        report = load_json(report_path)
+        adjudication = load_json(adjudication_path)
+        request = load_json(report_path.with_name("review_request.json"))
+        require_valid(report, "review_report")
+        require_valid(adjudication, "review_adjudication")
+        require_valid(request, "review_request")
+        if adjudication_path.resolve() != report_path.with_name("REVIEW_ADJUDICATION.json").resolve():
+            raise ContractError("REVIEW_ADJUDICATION.json 必须与审核报告位于同一轮目录")
+        expected = {
+            "run_id": report["run_id"],
+            "request_id": report["request_id"],
+            "stage": report["stage"],
+            "state_revision": request["state_revision"],
+            "review_report_sha256": sha256_file(report_path),
+            "generated_by": "production_main_ai",
+        }
+        if any(adjudication.get(key) != value for key, value in expected.items()):
+            raise ContractError("审核裁决绑定已失效")
+        _validate_adjudication_semantics(report, adjudication)
+        if require_current_revision:
+            state = load_json(run_dir / "state.json")
+            if state["revision"] != adjudication["state_revision"]:
+                raise ContractError("作者 revision 变化后审核裁决已失效")
+    except (ContractError, OSError, KeyError) as exc:
+        errors.append(str(exc))
+    return {"valid": not errors, "errors": errors, "adjudication_path": str(adjudication_path)}
+
+
+def materialize_review_receipt(
+    request_path: Path,
+    report_path: Path,
+    *,
+    adjudication_path: Path | None = None,
+    decision: str | None = None,
+) -> Path:
+    """生产主 AI 裁决后，以请求、报告、裁决和事实哈希生成回执。"""
     request = load_json(request_path)
     report = load_json(report_path)
     require_valid(request, "review_request")
     require_valid(report, "review_report")
     run_dir = request_path.parents[3]
+    resolved_adjudication = adjudication_path or report_path.with_name(
+        "REVIEW_ADJUDICATION.json"
+    )
+    adjudication_report = verify_review_adjudication(
+        run_dir,
+        report_path,
+        resolved_adjudication,
+        require_current_revision=True,
+    )
+    if not adjudication_report["valid"]:
+        raise ContractError(
+            "审核裁决复验失败: " + "; ".join(adjudication_report["errors"])
+        )
+    adjudication = load_json(resolved_adjudication)
+    if adjudication["unresolved_conflicts"]:
+        raise ContractError("审核裁决仍有待独立复核或待人工决定的冲突")
     _require_current_request_policy(request, run_dir)
     session_path = request_path.with_name("review_session.json")
     session_report = verify_review_session(
@@ -296,6 +472,7 @@ def materialize_review_receipt(request_path: Path, report_path: Path, *, decisio
         _validate_r1_coverage_against_model_spec(report, request, run_dir)
     if request["stage"] == "R5_COMPREHENSIVE":
         _validate_r5_axes(report)
+    _validate_format_audit_verdict(request, report, run_dir)
     actual_bindings = {}
     for name, _expected in request["bindings"].items():
         path = resolve_inside(run_dir, request["binding_paths"][name])
@@ -305,13 +482,26 @@ def materialize_review_receipt(request_path: Path, report_path: Path, *, decisio
             actual_bindings[name] = sha256_file(run_dir / "state.json")
     if actual_bindings != request["bindings"]:
         raise ContractError("审核请求绑定事实已变化")
-    passed = _report_passed(report)
-    expected_decision = "accepted_with_warnings" if passed and report["findings"] else (
-        "accepted" if passed else "rejected"
+    accepted_ids = {
+        item["finding_id"]
+        for item in adjudication["decisions"]
+        if item["main_decision"] == "accepted"
+    }
+    passed = _report_passed(report) and not accepted_ids
+    if not passed and not accepted_ids:
+        raise ContractError("审核未通过但主 AI 未接受任何可修复 finding")
+    expected_decision = (
+        "accepted_with_warnings"
+        if passed and report["findings"]
+        else ("accepted" if passed else "rejected")
     )
     if decision is not None and decision != expected_decision:
         raise ContractError("审核 decision 与报告结论不一致")
-    repair_plan = None if passed else create_repair_plan(run_dir, report_path)
+    repair_plan = (
+        None
+        if passed
+        else create_repair_plan(run_dir, report_path, resolved_adjudication)
+    )
     receipt = {
         "schema_name": "review_receipt",
         "schema_version": "2.0",
@@ -321,6 +511,8 @@ def materialize_review_receipt(request_path: Path, report_path: Path, *, decisio
         "request_sha256": sha256_file(request_path),
         "session_sha256": sha256_file(session_path),
         "input_manifest_sha256": request["input_manifest_sha256"],
+        "adjudication_path": _relative(run_dir, resolved_adjudication),
+        "adjudication_sha256": sha256_file(resolved_adjudication),
         "state_revision": request["state_revision"],
         "bindings": request["bindings"],
         "decision": decision
@@ -346,10 +538,16 @@ def verify_review_receipt(
         require_valid(receipt, "review_receipt")
         request_path = receipt_path.with_name("review_request.json")
         report_path = receipt_path.with_name("review_report.json")
+        adjudication_path = receipt_path.with_name("REVIEW_ADJUDICATION.json")
         session_path = receipt_path.with_name("review_session.json")
-        request, report = load_json(request_path), load_json(report_path)
+        request, report, adjudication = (
+            load_json(request_path),
+            load_json(report_path),
+            load_json(adjudication_path),
+        )
         require_valid(request, "review_request")
         require_valid(report, "review_report")
+        require_valid(adjudication, "review_adjudication")
         _require_current_request_policy(request, run_dir)
         session_report = verify_review_session(
             run_dir,
@@ -366,6 +564,7 @@ def verify_review_receipt(
             _validate_r1_coverage_against_model_spec(report, request, run_dir)
         if request["stage"] == "R5_COMPREHENSIVE":
             _validate_r5_axes(report)
+        _validate_format_audit_verdict(request, report, run_dir)
         if receipt["request_sha256"] != sha256_file(request_path):
             errors.append("审核请求哈希不一致")
         if receipt["report_sha256"] != sha256_file(report_path):
@@ -376,6 +575,18 @@ def verify_review_receipt(
             errors.append("审核 session 哈希不一致")
         if report["session_sha256"] != receipt["session_sha256"]:
             errors.append("审核报告与回执的 session 绑定不一致")
+        adjudication_report = verify_review_adjudication(
+            run_dir,
+            report_path,
+            adjudication_path,
+            require_current_revision=require_current_revision,
+        )
+        if not adjudication_report["valid"]:
+            errors.extend(adjudication_report["errors"])
+        if receipt["adjudication_path"] != _relative(run_dir, adjudication_path):
+            errors.append("审核回执的裁决路径不一致")
+        if receipt["adjudication_sha256"] != sha256_file(adjudication_path):
+            errors.append("审核裁决哈希不一致")
         manifest_path = resolve_inside(
             run_dir, request["input_manifest_path"], must_exist=True
         )
@@ -396,11 +607,20 @@ def verify_review_receipt(
             errors.append("审核回执、报告和请求身份不一致")
         if receipt["run_id"] != request["run_id"] or report["run_id"] != request["run_id"]:
             errors.append("审核回执、报告和请求 run_id 不一致")
-        if receipt["decision"] != (
+        accepted_ids = {
+            item["finding_id"]
+            for item in adjudication["decisions"]
+            if item["main_decision"] == "accepted"
+        }
+        passed = _report_passed(report) and not accepted_ids
+        expected_decision = (
             "accepted_with_warnings"
-            if _report_passed(report) and report["findings"]
-            else ("accepted" if _report_passed(report) else "rejected")
-        ):
+            if passed and report["findings"]
+            else ("accepted" if passed else "rejected")
+        )
+        if adjudication["unresolved_conflicts"]:
+            errors.append("审核裁决仍有未解决冲突")
+        if receipt["decision"] != expected_decision:
             errors.append("审核回执 decision 与报告结论不一致")
         if receipt["decision"] == "rejected" and not receipt.get("repair_plan_path"):
             errors.append("审核失败回执缺少 REPAIR_PLAN.json")
@@ -415,6 +635,14 @@ def verify_review_receipt(
                 errors.append("定向修复计划未指向当前审核报告")
             if repair.get("source_report_sha256") != sha256_file(report_path):
                 errors.append("定向修复计划来源哈希不一致")
+            if repair.get("source_adjudication_path") != _relative(
+                run_dir, adjudication_path
+            ):
+                errors.append("定向修复计划未指向当前审核裁决")
+            if repair.get("source_adjudication_sha256") != sha256_file(
+                adjudication_path
+            ):
+                errors.append("定向修复计划裁决哈希不一致")
             if receipt.get("repair_plan_sha256") != sha256_file(resolved_repair):
                 errors.append("定向修复计划哈希不一致")
     except (ContractError, OSError, KeyError) as exc:
@@ -424,6 +652,10 @@ def verify_review_receipt(
 
 def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict[str, Any]:
     """按评级和 P0/P1 规则判断 R5 是否达到人工最终核包门槛。"""
+    state = load_json(run_dir / "state.json")
+    effective_mode = state.get("mode", "competition")
+    if mode != "competition" and mode != effective_mode:
+        raise ContractError("R5 收敛模式必须来自 state.json")
     reports = []
     for path in sorted((run_dir / "review").glob("r5_comprehensive/*/review_report.json")):
         try:
@@ -433,18 +665,24 @@ def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict
                 reports.append(report)
         except ContractError:
             continue
-    max_rounds = 5 if mode == "training" else 3
+    requests = list(
+        (run_dir / "review").glob("r5_comprehensive/*/review_request.json")
+    )
+    max_rounds = 5 if effective_mode == "training" else 3
     good = [
         item
         for item in reports
         if item.get("joint_verdict") == "FINAL_CANDIDATE"
         and item["rating"]["grade"] in {"A", "B"}
+        and item.get("competition_claim_allowed") is True
+        and item.get("calibrated_score", 0) >= 75
         and not any(f["severity"] in {"P0", "P1"} for f in item["findings"])
     ]
     passed = bool(good and good[-1] is reports[-1])
     return {
-        "status": "pass" if passed else ("not_ready_for_submission" if len(reports) >= max_rounds else "continue"),
-        "rounds": len(reports),
+        "status": "pass" if passed else ("not_ready_for_submission" if len(requests) >= max_rounds else "continue"),
+        "rounds": len(requests),
+        "reported_rounds": len(reports),
         "max_rounds": max_rounds,
         "passing_rounds": len(good),
         "consecutive_passing_rounds": 1 if passed else 0,
@@ -761,7 +999,7 @@ def _validate_r5_axes(report: dict[str, Any]) -> None:
     integrity_pass = report["integrity_axis"]["verdict"] == "A_PASS"
     quality = report["quality_axis"]
     dimensions = quality["dimensions"]
-    threshold_pass = quality["total_score"] >= 75 and all(
+    threshold_pass = report["calibrated_score"] >= 75 and all(
         dimensions[name] >= 60
         for name in ("problem_coverage", "model_depth", "experiment_validation")
     )
@@ -777,3 +1015,150 @@ def _validate_r5_axes(report: dict[str, Any]) -> None:
     severe = any(item["severity"] in {"P0", "P1"} for item in report["findings"])
     if report["joint_verdict"] == "FINAL_CANDIDATE" and severe:
         raise ContractError("R5 存在 P0/P1 时不能成为 FINAL_CANDIDATE")
+    if report["joint_verdict"] == "FINAL_CANDIDATE" and not report["competition_claim_allowed"]:
+        raise ContractError("机器校准禁止竞赛质量声明时不能成为 FINAL_CANDIDATE")
+    if severe and report.get("competition_claim_allowed"):
+        raise ContractError("存在 P0/P1 时不得宣称正式竞赛分数")
+
+
+def _machine_score_caps(run_dir: Path) -> list[dict[str, Any]]:
+    """从冻结问题、逐问验收和 sealed result 推导不可被评审意见覆盖的封顶条件。"""
+    manifest_path = run_dir / "problem" / "PROBLEM_MANIFEST.json"
+    if not manifest_path.is_file():
+        return []
+    manifest = load_json(manifest_path)
+    required_questions = [item for item in manifest["questions"] if item["required"]]
+    caps: list[dict[str, Any]] = []
+    missing_questions: list[str] = []
+    missing_outputs: list[str] = []
+    missing_core: list[str] = []
+    missing_baseline: list[str] = []
+    missing_robustness: list[str] = []
+    model_spec_path = run_dir / "brief" / "model_spec.json"
+    model_spec = load_json(model_spec_path) if model_spec_path.is_file() else {"questions": []}
+    model_by_question = {item["question_id"]: item for item in model_spec.get("questions", [])}
+    registry_path = run_dir / "results" / "result_registry.json"
+    registry = load_json(registry_path) if registry_path.is_file() else {"results": []}
+    results_by_question: dict[str, list[dict[str, Any]]] = {}
+    for item in registry.get("results", []):
+        if item.get("status") == "accepted" and item.get("paper_allowed"):
+            results_by_question.setdefault(item["question_id"], []).append(item)
+    for question in required_questions:
+        question_id = question["question_id"]
+        acceptance_path = run_dir / "questions" / question_id / "QUESTION_ACCEPTANCE.json"
+        if not acceptance_path.is_file():
+            missing_questions.append(question_id)
+            continue
+        acceptance = load_json(acceptance_path)
+        checks = acceptance.get("checks", {})
+        if acceptance.get("status") != "accepted":
+            missing_questions.append(question_id)
+        if not checks.get("output_mapping", {}).get("passed", False):
+            missing_outputs.extend(
+                f"{question_id}:{output['output_id']}" for output in question["required_outputs"]
+            )
+        if not checks.get("model_output", {}).get("passed", False) or not checks.get("uncertainty", {}).get("passed", False):
+            missing_core.append(question_id)
+        accepted = results_by_question.get(question_id, [])
+        cycles = {item.get("cycle") for item in accepted}
+        primary_valid = False
+        for result in accepted:
+            if result.get("cycle") != "primary" or not result.get("sealed_result_path"):
+                continue
+            result_path = run_dir / result["sealed_result_path"]
+            if not result_path.is_file():
+                continue
+            sealed = load_json(result_path)
+            checks = sealed.get("validation_checks", [])
+            if checks and all(item.get("passed", False) for item in checks if isinstance(item, dict)):
+                primary_valid = True
+        if "baseline" not in cycles or not primary_valid:
+            missing_baseline.append(question_id)
+        if not ({"robustness", "ablation"} & cycles):
+            missing_robustness.append(question_id)
+        spec_question = model_by_question.get(question_id, {})
+        evidence_outputs = {
+            item.get("required_output_id")
+            for item in spec_question.get("r1_evidence", {}).get("evidence_plan", [])
+        }
+        missing_outputs.extend(
+            f"{question_id}:{output['output_id']}"
+            for output in question["required_outputs"]
+            if output["output_id"] not in evidence_outputs
+        )
+    if missing_questions:
+        caps.append({"cap_id": "missing_required_question", "reason": f"缺少必做问题: {', '.join(sorted(set(missing_questions)))}", "maximum_score": 59, "dimension": "problem_coverage", "maximum_dimension": 40})
+    if missing_outputs:
+        caps.append({"cap_id": "missing_required_output", "reason": f"缺少 required_output: {', '.join(sorted(set(missing_outputs)))}", "maximum_score": 59, "dimension": "problem_coverage", "maximum_dimension": 59})
+    if missing_core:
+        caps.append({"cap_id": "missing_core_parameter_or_interval", "reason": f"缺少核心参数/区间证据: {', '.join(sorted(set(missing_core)))}", "maximum_score": None, "dimension": "model_depth", "maximum_dimension": 59})
+    if missing_baseline:
+        caps.append({"cap_id": "missing_fair_baseline_or_validation", "reason": f"缺少公平 baseline 或 primary: {', '.join(sorted(set(missing_baseline)))}", "maximum_score": None, "dimension": "experiment_validation", "maximum_dimension": 59})
+    if missing_robustness:
+        caps.append({"cap_id": "missing_robustness", "reason": f"缺少 robustness/ablation: {', '.join(sorted(set(missing_robustness)))}", "maximum_score": None, "dimension": "experiment_validation", "maximum_dimension": 69})
+    return caps
+
+
+def _apply_r5_score_calibration(run_dir: Path, report: dict[str, Any]) -> dict[str, Any]:
+    """保留评审原始分，并让机器封顶后的 calibrated_score 成为唯一正式分数。"""
+    normalized = dict(report)
+    quality = dict(normalized["quality_axis"])
+    raw_dimensions = dict(quality.get("raw_dimensions") or quality.get("dimensions") or {})
+    legacy_score = quality.pop("total_score", None)
+    raw_score = normalized.get("raw_score", legacy_score)
+    if raw_score is None:
+        raw_score = sum(raw_dimensions.values()) / max(len(raw_dimensions), 1)
+    normalized["score_type"] = "competition_quality"
+    normalized["assessment_scope"] = "full_competition_submission"
+    normalized["raw_score"] = float(raw_score)
+    normalized["score_caps_applied"] = _machine_score_caps(run_dir)
+    dimensions = {
+        name: float(raw_dimensions.get(name, 0))
+        for name in ("problem_coverage", "model_depth", "experiment_validation")
+    }
+    score_upper = 100.0
+    for cap in normalized["score_caps_applied"]:
+        if cap.get("dimension"):
+            dimensions[cap["dimension"]] = min(dimensions[cap["dimension"]], cap["maximum_dimension"])
+        if cap.get("maximum_score") is not None:
+            score_upper = min(score_upper, float(cap["maximum_score"]))
+    severe = any(item["severity"] in {"P0", "P1"} for item in normalized.get("findings", []))
+    if severe:
+        normalized["score_caps_applied"].append(
+            {
+                "cap_id": "unresolved_p0_p1",
+                "reason": "存在 P0/P1，校准分不得用于宣称竞赛水平",
+                "maximum_score": None,
+            }
+        )
+    audit_path = run_dir / "review" / "FORMAT_AUDIT.json"
+    format_blocked = False
+    if audit_path.is_file():
+        audit = load_json(audit_path)
+        if audit.get("hard_failures"):
+            format_blocked = True
+            normalized["score_caps_applied"].append({"cap_id": "format_hard_failure", "reason": "FORMAT_AUDIT 存在机器硬失败", "maximum_score": None})
+    normalized["calibrated_score"] = min(normalized["raw_score"], score_upper)
+    normalized["competition_claim_allowed"] = not severe and not format_blocked
+    quality["raw_dimensions"] = raw_dimensions
+    quality["dimensions"] = dimensions
+    if severe:
+        quality["verdict"] = "B_WEAK"
+    elif normalized["calibrated_score"] >= 85 and all(value >= 75 for value in dimensions.values()):
+        quality["verdict"] = "B_STRONG"
+    elif normalized["calibrated_score"] >= 75 and all(value >= 60 for value in dimensions.values()):
+        quality["verdict"] = "B_PASS"
+    elif normalized["calibrated_score"] >= 60:
+        quality["verdict"] = "B_WEAK"
+    else:
+        quality["verdict"] = "B_REBUILD"
+    quality["evidence"] = list(quality.get("evidence") or [])
+    normalized["quality_axis"] = quality
+    if format_blocked:
+        integrity = dict(normalized["integrity_axis"])
+        integrity["verdict"] = "A_BLOCKED"
+        integrity["blockers"] = sorted(
+            set([*integrity.get("blockers", []), "FORMAT_AUDIT 机器硬失败"])
+        )
+        normalized["integrity_axis"] = integrity
+    return normalized

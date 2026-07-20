@@ -19,7 +19,27 @@
     "coverage": {"type": "object", "additionalProperties": false, "required": ["problem_interpretation", "question_output_mapping", "variable_completeness", "data_and_attachment_mapping", "unit_consistency", "equation_closure", "parameter_identifiability", "objective_definition", "constraint_completeness", "algorithm_executability", "stopping_rule", "baseline_design", "model_selection_criterion", "uncertainty_quantification", "robustness_and_ablation", "failure_boundary", "evidence_plan", "unchecked_items"], "properties": {"problem_interpretation": {"enum": ["pass", "fail"]}, "question_output_mapping": {"enum": ["pass", "fail"]}, "variable_completeness": {"enum": ["pass", "fail"]}, "data_and_attachment_mapping": {"enum": ["pass", "fail"]}, "unit_consistency": {"enum": ["pass", "fail"]}, "equation_closure": {"enum": ["pass", "fail"]}, "parameter_identifiability": {"enum": ["pass", "fail"]}, "objective_definition": {"enum": ["pass", "fail"]}, "constraint_completeness": {"enum": ["pass", "fail"]}, "algorithm_executability": {"enum": ["pass", "fail"]}, "stopping_rule": {"enum": ["pass", "fail"]}, "baseline_design": {"enum": ["pass", "fail"]}, "model_selection_criterion": {"enum": ["pass", "fail"]}, "uncertainty_quantification": {"enum": ["pass", "fail"]}, "robustness_and_ablation": {"enum": ["pass", "fail"]}, "failure_boundary": {"enum": ["pass", "fail"]}, "evidence_plan": {"enum": ["pass", "fail"]}, "unchecked_items": {"type": "array", "maxItems": 0, "items": {"type": "string"}}}},
     "rating": {"type": "object", "additionalProperties": false, "required": ["grade", "confidence", "basis", "downgrade_reasons", "expert_estimate"], "properties": {"grade": {"enum": ["A", "B", "C", "D", "E"]}, "confidence": {"enum": ["low", "medium", "high"]}, "basis": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "downgrade_reasons": {"type": "array", "items": {"type": "string"}}, "expert_estimate": {"const": true}}},
     "integrity_axis": {"type": "object", "additionalProperties": false, "required": ["verdict", "checks", "blockers"], "properties": {"verdict": {"enum": ["A_PASS", "A_BLOCKED"]}, "checks": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "blockers": {"type": "array", "items": {"type": "string"}}}},
-    "quality_axis": {"type": "object", "additionalProperties": false, "required": ["verdict", "total_score", "dimensions", "evidence"], "properties": {"verdict": {"enum": ["B_STRONG", "B_PASS", "B_WEAK", "B_REBUILD"]}, "total_score": {"type": "number", "minimum": 0, "maximum": 100}, "dimensions": {"type": "object", "required": ["problem_coverage", "model_depth", "experiment_validation"], "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100}}, "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}}},
+    "score_type": {"const": "competition_quality"},
+    "assessment_scope": {"const": "full_competition_submission"},
+    "raw_score": {"type": "number", "minimum": 0, "maximum": 100},
+    "calibrated_score": {"type": "number", "minimum": 0, "maximum": 100},
+    "score_caps_applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cap_id", "reason"],
+        "properties": {
+          "cap_id": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "maximum_score": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+          "dimension": {"enum": ["problem_coverage", "model_depth", "experiment_validation"]},
+          "maximum_dimension": {"type": "number", "minimum": 0, "maximum": 100}
+        }
+      }
+    },
+    "competition_claim_allowed": {"type": "boolean"},
+    "quality_axis": {"type": "object", "additionalProperties": false, "required": ["verdict", "raw_dimensions", "dimensions", "evidence"], "properties": {"verdict": {"enum": ["B_STRONG", "B_PASS", "B_WEAK", "B_REBUILD"]}, "raw_dimensions": {"type": "object", "required": ["problem_coverage", "model_depth", "experiment_validation"], "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100}}, "dimensions": {"type": "object", "required": ["problem_coverage", "model_depth", "experiment_validation"], "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100}}, "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}}}},
     "joint_verdict": {"enum": ["FINAL_CANDIDATE", "QUALITY_REPAIR", "INTEGRITY_REPAIR", "FULL_REPAIR"]},
     "repair_scope": {"type": "array", "items": {"type": "string"}},
     "required_retests": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
@@ -28,6 +48,6 @@
   },
   "allOf": [
     {"if": {"properties": {"stage": {"const": "R1_MODELING"}}}, "then": {"required": ["coverage"]}},
-    {"if": {"properties": {"stage": {"const": "R5_COMPREHENSIVE"}}}, "then": {"required": ["rating", "integrity_axis", "quality_axis", "joint_verdict", "repair_scope", "required_retests"]}}
+    {"if": {"properties": {"stage": {"const": "R5_COMPREHENSIVE"}}}, "then": {"required": ["rating", "integrity_axis", "score_type", "assessment_scope", "raw_score", "calibrated_score", "score_caps_applied", "competition_claim_allowed", "quality_axis", "joint_verdict", "repair_scope", "required_retests"]}}
   ]
 }

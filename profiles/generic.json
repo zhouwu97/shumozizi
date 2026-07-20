@@ -25,5 +25,12 @@
     "anonymous_forbidden_patterns": [],
     "require_figure_qa_receipts": true
   },
+  "format_audit": {
+    "fonts_embedded_required": true,
+    "keywords_required": false,
+    "references_required": false,
+    "citation_links_required": false,
+    "min_image_dpi": 150
+  },
   "warnings": ["通用 Profile 不包含特定比赛页数、命名或附加材料规则"]
 }
