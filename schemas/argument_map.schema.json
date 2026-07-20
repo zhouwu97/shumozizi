@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/argument_map.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "run_config_lock_sha256", "knowledge_pack_sha256", "route_lock_sha256", "accepted_results_digest", "claim_evidence_digest", "claims"],
+  "properties": {
+    "schema_name": {"const": "argument_map"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string"},
+    "run_config_lock_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "knowledge_pack_sha256": {"type": "string"},
+    "route_lock_sha256": {"type": "string"},
+    "accepted_results_digest": {"type": "string"},
+    "claim_evidence_digest": {"type": "string"},
+    "knowledge_pack": {"type": ["object", "null"]},
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "claim", "outcome", "scope"],
+        "properties": {
+          "claim_id": {"type": "string"},
+          "claim": {"type": "string"},
+          "model": {"type": "string"},
+          "result_keys": {"type": "array", "items": {"type": "string"}},
+          "evidence": {"type": "array", "items": {"type": "string"}},
+          "validation": {"type": "array", "items": {"type": "string"}},
+          "outcome": {"enum": ["supported", "partially_supported", "rejected", "inconclusive", "stale"]},
+          "scope": {"type": "string"},
+          "paper_location": {"type": "string"}
+        }
+      }
+    }
+  }
+}
