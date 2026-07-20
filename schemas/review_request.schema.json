@@ -24,6 +24,17 @@
     "quality_dimensions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
     "output_path": {"type": "string", "minLength": 1},
     "skill": {"type": "string", "minLength": 1},
+    "codex_thread_id": {"type": "string", "minLength": 1},
+    "execution_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["new_codex_thread", "subagents_forbidden", "context_inheritance"],
+      "properties": {
+        "new_codex_thread": {"const": true},
+        "subagents_forbidden": {"const": true},
+        "context_inheritance": {"const": false}
+      }
+    },
     "read_only": {"const": true},
     "budget": {"type": "object", "required": ["max_minutes", "max_rounds"], "additionalProperties": false, "properties": {"max_minutes": {"type": "integer", "minimum": 1}, "max_rounds": {"type": "integer", "minimum": 1, "maximum": 5}}},
     "requested_at": {"type": "string", "format": "date-time"}

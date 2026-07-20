@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.questions.manifest import create_problem_manifest
 from shumozizi.workflow.reviews import (
     create_review_request,
     materialize_review_receipt,
@@ -19,6 +20,7 @@ from shumozizi.workflow.state_service import (
     StateService,
     WorkflowEvent,
 )
+from tests.source_package_helpers import write_source_package
 
 
 def test_waiting_final_can_return_to_paper_fix() -> None:
@@ -207,10 +209,19 @@ def test_real_r1_receipt_is_recorded_before_experiment(tmp_path: Path) -> None:
     (run_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
     model_spec = run_dir / "brief" / "model_spec.json"
     model_spec.write_text(json.dumps({"run_id": "r1-record-test"}), encoding="utf-8")
+    problem_manifest = run_dir / "problem/PROBLEM_MANIFEST.json"
+    route_lock = run_dir / "brief/ROUTE_LOCK.json"
+    problem_manifest.parent.mkdir(parents=True)
+    problem_manifest.write_text("{}\n", encoding="utf-8")
+    route_lock.write_text("{}\n", encoding="utf-8")
     request = create_review_request(
         run_dir,
         "R1_MODELING",
-        {"model_spec": model_spec},
+        {
+            "problem_manifest": problem_manifest,
+            "route_lock": route_lock,
+            "model_spec": model_spec,
+        },
     )
     request_doc = json.loads(request.read_text(encoding="utf-8"))
     report = write_review_report(
@@ -278,7 +289,25 @@ def _record_review(
 ) -> dict:
     """创建并登记真实审核请求、报告和回执。"""
     bound = run_dir / "paper/final.pdf"
-    request = create_review_request(run_dir, stage, {"final_pdf": bound})
+    if stage == "R5_COMPREHENSIVE":
+        bindings = {
+            "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
+            "run_config_lock": run_dir / "config/RUN_CONFIG_LOCK.json",
+            "result_registry": run_dir / "results/result_registry.json",
+            "paper_plan": run_dir / "paper/paper_plan.json",
+            "final_pdf": bound,
+            "qa_report": run_dir / "review/QA_AGGREGATE.json",
+            "evidence_report": run_dir / "review/EVIDENCE_VALIDATION.json",
+            "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
+        }
+    else:
+        bindings = {
+            "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
+            "final_pdf": bound,
+            "submission_manifest": run_dir / "paper/SUBMISSION_MANIFEST.json",
+            "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
+        }
+    request = create_review_request(run_dir, stage, bindings)
     request_doc = json.loads(request.read_text(encoding="utf-8"))
     report = {
         "schema_name": "review_report",
@@ -300,6 +329,28 @@ def _record_review(
             "downgrade_reasons": [],
             "expert_estimate": True,
         }
+        report.update(
+            {
+                "integrity_axis": {
+                    "verdict": "A_PASS",
+                    "checks": ["生产事实复验通过"],
+                    "blockers": [],
+                },
+                "quality_axis": {
+                    "verdict": "B_PASS",
+                    "total_score": 80,
+                    "dimensions": {
+                        "problem_coverage": 80,
+                        "model_depth": 80,
+                        "experiment_validation": 80,
+                    },
+                    "evidence": ["冻结提交包达到最低竞赛质量"],
+                },
+                "joint_verdict": "FINAL_CANDIDATE",
+                "repair_scope": [],
+                "required_retests": [],
+            }
+        )
     report_path = write_review_report(request, report)
     receipt = materialize_review_receipt(request, report_path)
     return service.record_review_gate(run_dir.name, gate_id, receipt, Actor("review"))
@@ -311,6 +362,8 @@ def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
         "mathmodel_paper": repo_root / "skills/mathmodel-paper/SKILL.md",
         "writing_skill": repo_root / "skills/5writing/SKILL.md",
         "typst_author": repo_root / "skills/typst-author/SKILL.md",
+        "figure_templates": repo_root / "skills/mathmodel-figure-templates/SKILL.md",
+        "coding_visual": repo_root / "skills/3coding-visual/SKILL.md",
         "competition_template": repo_root / "profiles/generic.json",
         "model_spec": run_dir / "reports/model_spec.md",
         "claim_gate": run_dir / "paper/claim_gate.json",
@@ -327,7 +380,20 @@ def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
             "schema_name": "result_registry",
             "schema_version": "2.0",
             "run_id": run_dir.name,
-            "results": [],
+            "results": [
+                {
+                    "result_id": "source-fixture",
+                    "question_id": "q1",
+                    "cycle": "baseline",
+                    "status": "accepted",
+                    "paper_allowed": True,
+                    "execution_record_id": "source-fixture",
+                    "metric_spec_ids": [],
+                    "sealed_result_path": None,
+                    "result_seal_path": None,
+                    "supersedes_result_id": None,
+                }
+            ],
         },
     )
     bindings = {
@@ -381,6 +447,32 @@ def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
             "figures": [],
         },
     )
+    write_source_package(run_dir, question_id="q1", result_id="source-fixture")
+    problem_path = repo_root / "problems/sample.md"
+    problem_path.parent.mkdir(parents=True, exist_ok=True)
+    problem_path.write_text("测试题面\n", encoding="utf-8")
+    state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+    state["problem_source"] = "problems/sample.md"
+    atomic_json(run_dir / "state.json", state)
+    atomic_json(run_dir / "config/RUN_CONFIG_LOCK.json", {"fixture": "config"})
+    create_problem_manifest(
+        run_dir,
+        [
+            {
+                "question_id": "q1",
+                "title": "可选测试问题",
+                "required": False,
+                "required_outputs": [{"output_id": "x", "description": "测试输出", "unit": None}],
+                "depends_on": [],
+                "source_refs": ["题面"],
+            }
+        ],
+    )
+    for relative in (
+        "review/EVIDENCE_VALIDATION.json",
+        "paper/SUBMISSION_MANIFEST.json",
+    ):
+        atomic_json(run_dir / relative, {"fixture": relative})
 
 
 @pytest.mark.parametrize(

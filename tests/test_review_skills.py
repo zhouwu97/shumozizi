@@ -47,6 +47,24 @@ def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
             "downgrade_reasons": [],
             "expert_estimate": True,
         },
+        "integrity_axis": {
+            "verdict": "A_PASS",
+            "checks": ["完整性通过"],
+            "blockers": [],
+        },
+        "quality_axis": {
+            "verdict": "B_PASS",
+            "total_score": 80,
+            "dimensions": {
+                "problem_coverage": 80,
+                "model_depth": 80,
+                "experiment_validation": 80,
+            },
+            "evidence": ["质量达到 B 轴阈值"],
+        },
+        "joint_verdict": "FINAL_CANDIDATE",
+        "repair_scope": [],
+        "required_retests": [],
         "read_only_confirmed": True,
         "generated_at": "2026-07-19T00:00:00Z",
     }

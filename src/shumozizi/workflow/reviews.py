@@ -86,6 +86,7 @@ def create_review_request(
     read_paths: list[Path] | None = None,
     max_minutes: int = 60,
     mode: str | None = None,
+    codex_thread_id: str | None = None,
 ) -> Path:
     """冻结当前 revision 并创建供新桌面任务领取的只读审核请求。"""
     if stage not in REVIEW_STAGES:
@@ -164,6 +165,15 @@ def create_review_request(
         },
         "requested_at": utc_now(),
     }
+    if codex_thread_id is not None:
+        if not codex_thread_id.strip():
+            raise ContractError("Codex 审核任务 ID 不能为空")
+        request["codex_thread_id"] = codex_thread_id.strip()
+        request["execution_policy"] = {
+            "new_codex_thread": True,
+            "subagents_forbidden": True,
+            "context_inheritance": False,
+        }
     require_valid(request, "review_request")
     request_path = run_dir / "review" / stage.lower() / round_id / "review_request.json"
     atomic_json(request_path, request)

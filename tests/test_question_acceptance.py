@@ -2,10 +2,11 @@
 
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from shumozizi.core.io import atomic_json
+from shumozizi.core.io import atomic_json, relative_inside
 from shumozizi.questions.acceptance import verify_question_acceptance
 from tests.runtime_helpers import RuntimeFixture
 
@@ -94,6 +95,15 @@ def test_completed_question_requires_acceptance_receipt(tmp_path: Path) -> None:
 
     assert not report["valid"]
     assert any("Q1" in error for error in report["errors"])
+
+
+def test_relative_inside_uses_canonical_root_for_windows_aliases() -> None:
+    """Windows 短路径别名不应把同一目录误判为越界。"""
+    root = Mock(spec=Path)
+    root.resolve.return_value = Path("C:/Users/runneradmin/AppData/Local/Temp/run")
+    child = Path("C:/Users/runneradmin/AppData/Local/Temp/run/paper/sections/q1.typ")
+
+    assert relative_inside(root, child).as_posix() == "paper/sections/q1.typ"
 
 
 def test_rejected_question_cannot_supply_paper_chapter(

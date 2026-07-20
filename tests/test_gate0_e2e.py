@@ -11,6 +11,7 @@ from pathlib import Path
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.evidence.validator import generate_paper_evidence
 from shumozizi.qa.aggregator import run_submission_qa
+from shumozizi.questions.manifest import create_problem_manifest
 from shumozizi.results.metrics import materialize_metric
 from shumozizi.results.sealing import admit_candidate
 from shumozizi.runtime.execution import execute
@@ -32,6 +33,7 @@ from shumozizi.workflow.state_service import (
     StateService,
     WorkflowEvent,
 )
+from tests.source_package_helpers import write_source_package
 
 
 class Gate0EndToEndTests(unittest.TestCase):
@@ -65,6 +67,21 @@ class Gate0EndToEndTests(unittest.TestCase):
             }
             candidates_path = run_dir / "brief/route_candidates.json"
             atomic_json(candidates_path, candidates)
+            create_problem_manifest(
+                run_dir,
+                [
+                    {
+                        "question_id": "q1",
+                        "title": "输出可复验标量",
+                        "required": True,
+                        "required_outputs": [
+                            {"output_id": "value", "description": "确定性标量结果", "unit": None}
+                        ],
+                        "depends_on": [],
+                        "source_refs": ["题面第 1 行"],
+                    }
+                ],
+            )
             create_approval_request(
                 run_dir,
                 "route",
@@ -342,6 +359,8 @@ class Gate0EndToEndTests(unittest.TestCase):
                     "mathmodel_paper": {"path": "skills/mathmodel-paper/SKILL.md", "sha256": sha256_file(root / "skills/mathmodel-paper/SKILL.md")},
                     "writing_skill": {"path": "skills/5writing/SKILL.md", "sha256": sha256_file(root / "skills/5writing/SKILL.md")},
                     "typst_author": {"path": "skills/typst-author/SKILL.md", "sha256": sha256_file(root / "skills/typst-author/SKILL.md")},
+                    "figure_templates": {"path": "skills/mathmodel-figure-templates/SKILL.md", "sha256": sha256_file(root / "skills/mathmodel-figure-templates/SKILL.md")},
+                    "coding_visual": {"path": "skills/3coding-visual/SKILL.md", "sha256": sha256_file(root / "skills/3coding-visual/SKILL.md")},
                     "competition_template": {"path": "profiles/generic.json", "sha256": sha256_file(root / "profiles/generic.json")},
                     "model_spec": {"path": "reports/model_spec.md", "sha256": sha256_file(run_dir / "reports/model_spec.md")},
                     "result_registry": {"path": "results/result_registry.json", "sha256": sha256_file(run_dir / "results/result_registry.json")},
@@ -357,6 +376,7 @@ class Gate0EndToEndTests(unittest.TestCase):
                 "final_pdf_path": "paper/final.pdf",
             }
             atomic_json(run_dir / "paper/paper_plan.json", paper_plan)
+            write_source_package(run_dir, question_id="q1", result_id="q1-baseline")
             state = load_json(run_dir / "state.json")
             atomic_json(
                 run_dir / "paper/PAPER_BUILD_RECEIPT.json",
@@ -410,6 +430,14 @@ class Gate0EndToEndTests(unittest.TestCase):
             service.transition(run_dir.name, WorkflowEvent.QA_STARTED, actor, [])
             passed = run_submission_qa(run_dir.name, final_pdf)
             self.assertEqual("pass", passed["status"], passed["hard_failures"])
+            atomic_json(
+                run_dir / "paper/SUBMISSION_MANIFEST.json",
+                {
+                    "run_id": run_dir.name,
+                    "final_pdf_sha256": sha256_file(final_pdf),
+                    "qa_report_sha256": sha256_file(run_dir / "review/QA_AGGREGATE.json"),
+                },
+            )
             self._record_review(
                 service,
                 run_dir,
@@ -489,10 +517,62 @@ class Gate0EndToEndTests(unittest.TestCase):
         rating: bool = False,
     ) -> None:
         """生成并通过公开审核接口登记一个阶段回执。"""
+        effective = dict(bindings)
+        if "qa" in effective:
+            effective["qa_report"] = effective.pop("qa")
+        if stage not in {"R3_PAPER_LOGIC", "R4_FORMAT_VISUAL"}:
+            effective.pop("paper_source", None)
+        stage_bindings = {
+            "R1_MODELING": {
+                "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
+                "route_lock": run_dir / "brief/ROUTE_LOCK.json",
+                "model_spec": run_dir / "reports/model_spec.md",
+            },
+            "R2_EXPERIMENT": {
+                "model_spec": run_dir / "reports/model_spec.md",
+                "execution_manifest": run_dir / "executions/manifests/q1.json",
+                "execution_record": run_dir / "executions/q1-run-001/execution_record.json",
+                "source_code": run_dir / "code/model.py",
+                "result_registry": run_dir / "results/result_registry.json",
+                "sealed_result": run_dir / "results/sealed/q1-baseline.result.json",
+            },
+            "R3_PAPER_LOGIC": {
+                "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
+                "model_spec": run_dir / "reports/model_spec.md",
+                "result_registry": run_dir / "results/result_registry.json",
+                "question_acceptance": run_dir / "questions/q1/QUESTION_ACCEPTANCE.json",
+                "paper_plan": run_dir / "paper/paper_plan.json",
+                "final_pdf": run_dir / "paper/final.pdf",
+            },
+            "R4_FORMAT_VISUAL": {
+                "run_config_lock": run_dir / "config/RUN_CONFIG_LOCK.json",
+                "paper_plan": run_dir / "paper/paper_plan.json",
+                "figure_plan": run_dir / "figures/FIGURE_PLAN.json",
+                "final_pdf": run_dir / "paper/final.pdf",
+                "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
+            },
+            "R5_COMPREHENSIVE": {
+                "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
+                "run_config_lock": run_dir / "config/RUN_CONFIG_LOCK.json",
+                "result_registry": run_dir / "results/result_registry.json",
+                "paper_plan": run_dir / "paper/paper_plan.json",
+                "final_pdf": run_dir / "paper/final.pdf",
+                "qa_report": run_dir / "review/QA_AGGREGATE.json",
+                "evidence_report": run_dir / "review/EVIDENCE_VALIDATION.json",
+                "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
+            },
+            "J0_FINAL_BLIND_JUDGE": {
+                "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
+                "final_pdf": run_dir / "paper/final.pdf",
+                "submission_manifest": run_dir / "paper/SUBMISSION_MANIFEST.json",
+                "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
+            },
+        }[stage]
+        effective.update(stage_bindings)
         request = create_review_request(
             run_dir,
             stage,
-            bindings,
+            effective,
             question_id=question_id,
         )
         request_doc = load_json(request)
@@ -516,6 +596,28 @@ class Gate0EndToEndTests(unittest.TestCase):
                 "downgrade_reasons": [],
                 "expert_estimate": True,
             }
+            report.update(
+                {
+                    "integrity_axis": {
+                        "verdict": "A_PASS",
+                        "checks": ["Gate 0 全部完整性检查通过"],
+                        "blockers": [],
+                    },
+                    "quality_axis": {
+                        "verdict": "B_PASS",
+                        "total_score": 80,
+                        "dimensions": {
+                            "problem_coverage": 80,
+                            "model_depth": 80,
+                            "experiment_validation": 80,
+                        },
+                        "evidence": ["Gate 0 冻结包达到最低质量阈值"],
+                    },
+                    "joint_verdict": "FINAL_CANDIDATE",
+                    "repair_scope": [],
+                    "required_retests": [],
+                }
+            )
         report_path = write_review_report(request, report)
         receipt = materialize_review_receipt(request, report_path)
         gate_id = "R2_EXPERIMENT_" + question_id if question_id else stage

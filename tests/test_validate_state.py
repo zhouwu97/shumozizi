@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 from shumozizi.core.io import sha256_file
+from shumozizi.questions.manifest import create_problem_manifest
 from shumozizi.workflow.approval import (
     create_approval_request,
     materialize_route_approval,
@@ -66,6 +67,21 @@ class ValidateStateCliTests(unittest.TestCase):
                     }
                 ],
             },
+        )
+        create_problem_manifest(
+            self.run_dir,
+            [
+                {
+                    "question_id": "q1",
+                    "title": "求解约束优化问题",
+                    "required": True,
+                    "required_outputs": [
+                        {"output_id": "solution", "description": "最优决策", "unit": None}
+                    ],
+                    "depends_on": [],
+                    "source_refs": ["题面"],
+                }
+            ],
         )
         self.write_json(
             "brief/route_candidates.json",

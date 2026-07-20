@@ -33,8 +33,8 @@ class ProfileTests(unittest.TestCase):
                 if profile["rules_status"] == "official-confirmation-required":
                     self.assertTrue(profile["warnings"])
 
-    def test_config_lock_rejects_profile_tampering(self) -> None:
-        """锁定后改动 Profile 必须让统一配置复验失败。"""
+    def test_config_lock_uses_immutable_profile_snapshot(self) -> None:
+        """仓库 Profile 后续变化不影响运行；篡改运行快照仍会失败。"""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             shutil.copytree(REPO_ROOT / "profiles", root / "profiles")
@@ -52,7 +52,10 @@ class ProfileTests(unittest.TestCase):
 
             from shumozizi.profiles.lock import verify_run_config_lock
 
-            with self.assertRaisesRegex(ContractError, "哈希已变化"):
+            verify_run_config_lock(root, run_dir)
+            snapshot = run_dir / "config/PROFILE_SNAPSHOT.v1.json"
+            snapshot.write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "schema|哈希已变化"):
                 verify_run_config_lock(root, run_dir)
 
 
