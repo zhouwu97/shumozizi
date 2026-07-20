@@ -1,0 +1,157 @@
+{
+  "advisory_patterns": [
+    "先做评价模型，再把评价指标转化为优化目标。",
+    "复杂优化可先利用前一问结果发现结构，再进行降维求解。",
+    "工程优化题适合采用机理公式、仿真估计和约束优化组合。",
+    "结果分析应同时给出表格、趋势图、空间分布图和优化对比图。"
+  ],
+  "anti_patterns": [
+    "把优秀论文中的题目、数字、公式或代码直接复制到新题",
+    "把 advisory 建议解释为生产阻断条件",
+    "用 submission ready 或资格状态替代证据核验"
+  ],
+  "applicable_problem_types": [
+    "仿真计算",
+    "优化决策",
+    "布局优化",
+    "机理建模"
+  ],
+  "cards": [
+    {
+      "card_id": "paper-a092",
+      "core_problem": "计算塔式太阳能定日镜场的光学效率和输出功率，并优化吸收塔位置、定日镜位置、尺寸与安装高度，使单位镜面面积年平均输出热功率最大。",
+      "main_value": "先建立可复用的光学效率与输出功率计算模型，再把后续问题转化为约束优化问题，形成评价模型到优化模型的连续建模链路。",
+      "model_route": [
+        {
+          "input": "太阳赤纬、太阳时角、当地纬度",
+          "method": "地平坐标系下计算太阳高度角和方位角",
+          "necessity": "为定日镜姿态和光线追踪提供基础",
+          "output": "太阳入射方向",
+          "step": "太阳位置计算"
+        },
+        {
+          "input": "入射光线、反射光线、集热器位置",
+          "method": "由入射方向和反射方向确定镜面法向量",
+          "necessity": "确定每一时刻定日镜如何转动",
+          "output": "俯仰角、方位角",
+          "step": "定日镜姿态计算"
+        },
+        {
+          "input": "镜场几何、光线方向、距离、镜面参数",
+          "method": "分别计算反射率、大气透射率、余弦效率、阴影遮挡效率、截断效率",
+          "necessity": "将复杂能量损失拆成可解释指标",
+          "output": "综合光学效率",
+          "step": "光学效率分解"
+        },
+        {
+          "input": "DNI、采光面积、光学效率",
+          "method": "计算时刻输出功率并取年平均",
+          "necessity": "形成优化目标",
+          "output": "年平均输出热功率和单位面积输出热功率",
+          "step": "功率计算"
+        },
+        {
+          "input": "目标函数、设计变量、约束条件",
+          "method": "问题二使用遗传算法结合遍历，问题三使用同心圆降维和变步长遍历",
+          "necessity": "完成由评价到设计的转化",
+          "output": "最优镜场设计参数",
+          "step": "优化求解"
+        }
+      ],
+      "models": [
+        {
+          "advantages": "物理意义明确，可解释性强",
+          "input": "日期、时刻、纬度",
+          "limitations": "理想化程度较高，未充分考虑天气扰动",
+          "model_name": "太阳位置计算模型",
+          "output": "太阳方向角",
+          "used_for": "计算太阳高度角和方位角",
+          "why_suitable": "太阳视运动具有明确天文公式，适合作为机理模型输入"
+        },
+        {
+          "advantages": "结构清晰，结果可解释",
+          "input": "镜面几何、光线方向、距离和反射参数",
+          "limitations": "误差会在多个效率项之间累积",
+          "model_name": "光学效率分解模型",
+          "output": "综合光学效率",
+          "used_for": "计算镜场综合效率",
+          "why_suitable": "定日镜损失来源多，分解后便于逐项计算和解释"
+        },
+        {
+          "advantages": "适合复杂几何概率估计",
+          "input": "随机入射光线、随机反射点、集热器几何",
+          "limitations": "存在随机误差，需要说明样本数和稳定性",
+          "model_name": "蒙特卡洛算法",
+          "output": "截断效率估计值",
+          "used_for": "估计集热器截断效率",
+          "why_suitable": "锥形光束与曲面集热器相交难以直接解析"
+        },
+        {
+          "advantages": "目标清晰，便于比较",
+          "input": "设计变量、目标函数、约束",
+          "limitations": "多目标权衡表达不足",
+          "model_name": "单目标优化模型",
+          "output": "最优设计参数",
+          "used_for": "优化单位镜面面积年平均输出热功率",
+          "why_suitable": "题目目标明确，约束条件可数学表达"
+        },
+        {
+          "advantages": "可处理高维非线性优化",
+          "input": "定日镜位置编码、约束条件、适应度函数",
+          "limitations": "参数敏感，全局最优证明不足",
+          "model_name": "遗传算法",
+          "output": "近似最优布局",
+          "used_for": "搜索统一定日镜场布局",
+          "why_suitable": "决策变量多且约束复杂"
+        }
+      ],
+      "paper_id": "A092",
+      "problem_types": [
+        "仿真计算",
+        "优化决策",
+        "布局优化",
+        "机理建模"
+      ],
+      "provenance_level": "source_verified",
+      "reusable_experience": [
+        "先做评价模型，再把评价指标转化为优化目标。",
+        "复杂优化可先利用前一问结果发现结构，再进行降维求解。",
+        "工程优化题适合采用机理公式、仿真估计和约束优化组合。",
+        "结果分析应同时给出表格、趋势图、空间分布图和优化对比图。"
+      ],
+      "source_sha256": "22d54360c4a89122d27f955351d5f874633ad6f1178df9fc068df4d27aa3e353",
+      "title": "定日镜场的优化设计"
+    }
+  ],
+  "generated_at": "2026-07-20T00:00:00Z",
+  "hard_rules": [],
+  "leakage_exclusions": [
+    {
+      "forbidden_tokens": [
+        "A092",
+        "定日镜场的优化设计"
+      ],
+      "paper_id": "A092"
+    }
+  ],
+  "pack_id": "cumcm-general-core",
+  "pack_version": "0.1.0",
+  "schema_name": "excellent_paper_knowledge_pack",
+  "schema_version": "0.1.0",
+  "source_commit": "188bc15d62f2ba297c33ed86a18370f67643e78b",
+  "source_summary": [
+    {
+      "paper_id": "A092",
+      "problem_types": [
+        "仿真计算",
+        "优化决策",
+        "布局优化",
+        "机理建模"
+      ],
+      "provenance_level": "source_verified",
+      "sha256": "22d54360c4a89122d27f955351d5f874633ad6f1178df9fc068df4d27aa3e353",
+      "title": "定日镜场的优化设计",
+      "verification_status": "verified"
+    }
+  ]
+}
