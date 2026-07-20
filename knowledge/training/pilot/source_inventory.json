@@ -1,0 +1,168 @@
+{
+  "schema_name": "paper_source_inventory",
+  "schema_version": "1.0",
+  "generated_at": "2026-07-20T07:48:07.286522Z",
+  "sources": [
+    {
+      "source_id": "source-1",
+      "root_name": "cache"
+    },
+    {
+      "source_id": "source-2",
+      "root_name": "optical-inversion"
+    }
+  ],
+  "file_count": 21,
+  "extension_counts": {
+    ".pdf": 21
+  },
+  "files": [
+    {
+      "source_id": "source-1",
+      "relative_path": "2012-A-1191829/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1361240,
+      "sha256": "015c3dfaafbf06a93ae52a00c952373772aec0d006f5883dac202b9927a7a55e"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2012-A-1699440/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 913961,
+      "sha256": "bf211e0d2901698f856b2b75b528419b89fed8c408950a1596970259ebecae84"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2013-B-1700247/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 2666854,
+      "sha256": "4c01b66554a65ea520ee4f5a7207dee89c6a53986599648b7435143629b5061f"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-A-1699712/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1056990,
+      "sha256": "9b08e99456ed3c04c248bc3d0e1b0f9eacc787092bb4b895719dc754220c0eb3"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-A-1699713/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 2457973,
+      "sha256": "363f09e31f67e52fc937b9dc69ca5fed57df1e15cb2480866542fafddfa152c1"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-A-1700968/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1174294,
+      "sha256": "cca2c661efc4591dc47e6595447884d1e716d4c9cd98af6b3582ef2565e36067"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-A-1700969/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 999459,
+      "sha256": "599b0fb7f67d87a75a4b4b07ec46733510dcddfe9f4d5f91993f5b4c1cec4569"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-A-1700970/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 448186,
+      "sha256": "d5e84577b43c4f20c6a3d2094879121e10ca45e9b82e44384b0467e0faf829d2"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-B-1699714/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 4929206,
+      "sha256": "c2c9ee2437f222c91b3997c01fa667e45aabc50fa8e3c9758213d4e4170cc4e5"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-B-1699784/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1272690,
+      "sha256": "ae20fef8ede16464b255735fea6527a26de7342e3d326c0a977a029e04f43546"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2015-B-1699785/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1102793,
+      "sha256": "6b7d6cd1fcbbfe3f4558700a76a1a8c687e70f6f82c000591340741cfae7286b"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2016-A-1699719/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1292911,
+      "sha256": "b7aa78f24f98ff96856422d9306013df8d8a2e992f4ff9bd8e0db0831a4fad20"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2017-A-1699823/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1817740,
+      "sha256": "c942b6a33b4faaeb6681e0118c3752da8a4fee0d3a03eaa96104f18859c5a56c"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2018-A-1699833/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 2082692,
+      "sha256": "3d417571cfa11d287427d78f0aa4aae3aa8fc614d0df9abc977e242282a48cec"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2018-A-1699834/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1015982,
+      "sha256": "af222ef2d082f9c484c323bdd4fe51b034e6ec2fd251f4d015f2eb0541025b9e"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2018-A-1699835/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 761581,
+      "sha256": "4f8b6dc697c89904554c37c3dad77969accf0e7bffa19157eee3ec8b737b7473"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2018-B-1699829/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 521186,
+      "sha256": "4c4afd10a66b390d8a962609c31ef36792258561852f6b7d19545b847d897851"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2018-B-1699831/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1601411,
+      "sha256": "ce53c39095293cced5c3433cc7a43abff76dfa74088a759ade07639533f3beac"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "2018-B-1699832/001.pdf",
+      "extension": ".pdf",
+      "size_bytes": 651089,
+      "sha256": "68d38397dad75d86fb01df81376faa026869ac220ba31a5d3bd7a35c9bfe8cc4"
+    },
+    {
+      "source_id": "source-2",
+      "relative_path": "biopolymer-thin-film-thickness-review.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1286816,
+      "sha256": "5381125fce3d4cc0d8a2632a2018e61d1c13910b880092f2a8762cba6a43d5b5"
+    },
+    {
+      "source_id": "source-2",
+      "relative_path": "thin-film-neural-networks-optical-inverse.pdf",
+      "extension": ".pdf",
+      "size_bytes": 3561472,
+      "sha256": "543ede7b3870a02268acf823655d3f6c03e243985c078d8ebdfe93b7439760ce"
+    }
+  ]
+}

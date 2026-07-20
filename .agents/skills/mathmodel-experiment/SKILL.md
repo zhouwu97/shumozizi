@@ -5,7 +5,7 @@ description: 在人工路线已锁定后，按子问题执行 baseline、primary
 
 # 有界建模实验
 
-包装上游编程能力，但把实验限制为可执行、可比较、可追踪的三轮主循环。
+包装上游编程能力，把实验组织为可执行、可比较、可追踪的三个实验族。
 
 ## 前置条件
 
@@ -15,12 +15,16 @@ description: 在人工路线已锁定后，按子问题执行 baseline、primary
 4. 当结果图型命中项目原生模板目录时，读取 `skills/mathmodel-figure-templates/SKILL.md`，复制对应脚本后替换为当前 accepted-result 数据；模板中的模拟数据只能用于样式预览，禁止直接写入论文。
 5. 已完成的循环从状态和结果注册表恢复，不要因为新会话而重跑。
 
-## 每个子问题的三个循环
+## 每个子问题的三个实验族
 
 1. `baseline`：先实现简单、可靠、可解释方法，验证数据、单位、指标和约束。
 2. `primary`：实现锁定主模型，量化相对基线改善、代价、可行率和稳定性。
 3. `robustness` 或 `ablation`：按题型选择灵敏度、误差、扰动、交叉验证、蒙特卡洛、
    外推或约束边界测试。
+
+实验族不是一次程序执行。每个实验族可在冻结预算内包含多随机种子、交叉验证、多初值、
+参数搜索、情景模拟、扰动实验、消融和收敛测试。每次执行清单必须登记计划的模型拟合次数、
+优化评估次数和无效调参次数；不得通过拆分清单绕过每族最大执行时间和次数预算。
 
 每轮都必须先按 `schemas/execution_manifest.schema.json` 写结构化执行清单，再调用：
 
@@ -52,10 +56,10 @@ python scripts/runtime/accept_result.py runs/<run_id> --result-id <result_id> --
 Codex 不得直接把 `status` 改成 `accepted`。准入脚本会复验执行记录 Schema、退出码、当前
 输入/输出哈希、全部预期输出、非空指标、单位、强约束、验证和基线。结果只用
 `claim_refs` 关联可能相关的主张，不保存“创新已成立”的判断；旧候选中的
-`innovation_claims` 仅兼容读取并转换为引用。primary 可以在第三轮实验前 accepted。
+`innovation_claims` 仅兼容读取并转换为引用。primary 可以在第三实验族完成前 accepted。
 
 创新主张必须由 `scripts/runtime/evaluate_claims.py` 独立评估。缺少路线要求的 robustness 或
-ablation 证据时状态必须为 `inconclusive`；第三轮结果接受后再使用 `--refresh` 更新评估。
+ablation 证据时状态必须为 `inconclusive`；稳健性/消融实验族结果接受后再使用 `--refresh` 更新评估。
 主张被 rejected 只限制论文贡献表述，不得撤销事实正确的 accepted result，也不得改写其
 sealed result。
 

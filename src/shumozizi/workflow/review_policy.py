@@ -128,7 +128,16 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
             "required_retests",
         ],
         "hard_blocks": ["A_BLOCKED", "重大模型错误", "某问基本未回答", "虚假创新"],
-        "quality_dimensions": ["题目覆盖", "模型深度", "实验验证", "论文表达", "图表质量"],
+        "quality_dimensions": [
+            "题目覆盖",
+            "模型深度",
+            "实验验证",
+            "论文表达",
+            "图表质量",
+            "judge_readability",
+            "overall_persuasiveness",
+            "award_competitiveness",
+        ],
     },
     "J0_FINAL_BLIND_JUDGE": {
         "mandatory_inputs": [
@@ -159,10 +168,33 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
 
 
 def get_review_stage_policy(
-    stage: str, run_dir: Path | None = None
+    stage: str,
+    run_dir: Path | None = None,
+    *,
+    question_id: str | None = None,
 ) -> dict[str, Any]:
-    """返回阶段策略；J0 的评委可见角色来自冻结比赛 Profile。"""
+    """返回阶段策略；局部 R3 只冻结该问章节所需证据。"""
     policy = deepcopy(REVIEW_STAGE_POLICIES[stage])
+    if stage == "R3_PAPER_LOGIC" and question_id is not None:
+        policy["mandatory_inputs"] = [
+            "problem_source",
+            "problem_manifest",
+            "model_spec",
+            "result_registry",
+            "claim_evidence",
+            "paper_source",
+        ]
+        policy["optional_inputs"] = [
+            "question_acceptance",
+            "sealed_results_manifest",
+            "claim_gate",
+            "evidence_map",
+            "paper_plan",
+            "figure_receipts",
+            "bibliography",
+            "final_pdf",
+            "figure_plan",
+        ]
     if stage != "J0_FINAL_BLIND_JUDGE" or run_dir is None:
         return policy
     repo_root = run_dir.parent.parent

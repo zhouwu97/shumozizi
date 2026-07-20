@@ -28,8 +28,8 @@ MODEL_SPEC_READY --MODEL_SPEC_REVISED--> MODEL_SPEC_READY
 MODEL_SPEC_READY --R1_MODELING--> EXPERIMENTING
 每问实验完成 --R2_EXPERIMENT_<question_id>--> RESULTS_ACCEPTED
 PAPER_DRAFTED --R3_PAPER_LOGIC + R4_FORMAT_VISUAL--> QA_RUNNING
-QA 机械通过 --R5_STANDARD_FINAL--> J0_FINAL_BLIND_JUDGE
-J0 一次性回执 --> WAITING_HUMAN_FINAL
+QA 机械通过 --R5_STANDARD_FINAL--> WAITING_HUMAN_FINAL
+J0 仅作为可选自然评委模拟，不是最终硬门
 ```
 
 R1 发现规格补全、实现澄清或验证细节问题时，使用 `MODEL_SPEC_REVISED`，绑定旧/新模型规格、
@@ -106,8 +106,8 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 
 ## 第二个暂停点
 
-完整论文和 PDF 后依次创建 R3/R4 请求；机械 QA 通过后由全新对话执行 R5，随后只执行一次 J0
-自然评委盲评。竞赛模式 R5 最多两轮，仅 P0/P1 或低于 B 才重跑。所有回执必须登记到
+完整论文和 PDF 后按依赖创建 R3/R4 请求；机械 QA 通过后由全新对话执行 R5，原 J0 的自然
+评委视角并入 R5。竞赛模式 R5 最多三轮，仅 P0/P1 或低于 B 才重跑。所有回执必须登记到
 `review_gates` 并绑定当前生产事实；未登记或任一绑定变化时，不能进入 `WAITING_HUMAN_FINAL`。
 R5 必须同时给出 A 轴（`A_PASS`/`A_BLOCKED`）和 B 轴（质量分数及题目覆盖、模型深度、实验验证
 分项）；联合结论由程序校验，失败时自动生成 `REPAIR_PLAN.json`，只重跑受影响审核阶段。

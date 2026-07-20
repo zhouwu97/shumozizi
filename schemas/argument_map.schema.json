@@ -3,31 +3,45 @@
   "$id": "https://github.com/zhouwu97/shumozizi/schemas/argument_map.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_name", "schema_version", "run_id", "run_config_lock_sha256", "knowledge_pack_sha256", "route_lock_sha256", "accepted_results_digest", "claim_evidence_digest", "claims"],
+  "required": [
+    "schema_name", "schema_version", "run_id", "run_config_lock_sha256",
+    "paper_index_sha256", "task_fingerprint_sha256", "pattern_transfer_plan_sha256",
+    "route_lock_sha256", "accepted_results_digest", "claim_evidence_digest", "claims"
+  ],
   "properties": {
     "schema_name": {"const": "argument_map"},
-    "schema_version": {"const": "1.0.0"},
+    "schema_version": {"const": "2.0"},
     "run_id": {"type": "string"},
     "run_config_lock_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "knowledge_pack_sha256": {"type": "string"},
+    "paper_index_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "task_fingerprint_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "pattern_transfer_plan_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "route_lock_sha256": {"type": "string"},
     "accepted_results_digest": {"type": "string"},
     "claim_evidence_digest": {"type": "string"},
-    "knowledge_pack": {"type": ["object", "null"]},
     "claims": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["claim_id", "claim", "outcome", "scope"],
+        "additionalProperties": false,
+        "required": [
+          "claim_id", "question_id", "claim", "motivation", "baseline_limitation",
+          "model_support", "result_ids", "comparison_evidence", "validation_evidence",
+          "figure_ids", "boundary", "outcome", "paper_location"
+        ],
         "properties": {
           "claim_id": {"type": "string"},
+          "question_id": {"type": "string"},
           "claim": {"type": "string"},
-          "model": {"type": "string"},
-          "result_keys": {"type": "array", "items": {"type": "string"}},
-          "evidence": {"type": "array", "items": {"type": "string"}},
-          "validation": {"type": "array", "items": {"type": "string"}},
+          "motivation": {"type": "string"},
+          "baseline_limitation": {"type": "string"},
+          "model_support": {"type": "string"},
+          "result_ids": {"type": "array", "items": {"type": "string"}},
+          "comparison_evidence": {"type": "array", "items": {"type": "string"}},
+          "validation_evidence": {"type": "array", "items": {"type": "string"}},
+          "figure_ids": {"type": "array", "items": {"type": "string"}},
+          "boundary": {"type": "string"},
           "outcome": {"enum": ["supported", "partially_supported", "rejected", "inconclusive", "stale"]},
-          "scope": {"type": "string"},
           "paper_location": {"type": "string"}
         }
       }

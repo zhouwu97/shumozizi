@@ -1,0 +1,253 @@
+{
+  "schema_name": "r2_experiment_reproduction_review",
+  "schema_version": "1.0",
+  "review_id": "R2_LEAKAGE_FIX_REVIEW",
+  "review_gate": "R2_EXPERIMENT_q1",
+  "run_id": "desktop-e2e-20260719-training",
+  "question_id": "q1",
+  "verdict": "REPRODUCIBLE_WITH_WARNINGS",
+  "summary": "泄漏修复后的 primary 与同折 baseline 均可在隔离目录精确复现；四个响应的输入只包含 10 个基础协变量，未包含目标、其他响应或 sleep_hours 派生列。15 个指标 provenance、单位、RFC 8785 seal、随机种子和 accepted/superseded 准入状态均通过复验。存在 4 项不阻断复现的 P2 警告：baseline manifest 的源文件与执行记录采用不同序列化、睡眠目标的单条异常值在交叉验证前使用全样本中位数填补、primary 计划拟合次数低报、注册表 supersede 指针语义双向化。",
+  "review_scope": {
+    "candidate_results": [
+      "q1-primary-leakage-fixed-v4",
+      "q1-robustness-cv-baselines-v1"
+    ],
+    "read_scope_policy": "仅读取任务明确允许的候选代码、data.xlsx、两组 manifest/record、两组核心 JSON、15 个 metric provenance、两组新 sealed result/seal、注册表、指定 revocation、路线锁、配置锁、复验实现及其直接 schema。未读取聊天、论文、交付报告、其他审核报告或旧 q1-primary sealed 内容。",
+    "production_write_policy": "除本报告外未修改任何生产文件；复现产物仅写入 tmp/r2-leakage-fix-reproduction。",
+    "verification_method": "由于 scripts/runtime/verify_execution.py 会越过本次严格 read allowlist 读取执行目录中的 manifest 副本及未授权 CSV/图片，未直接调用该入口；改用等价的只读 Schema、哈希、JSON Pointer、RFC 8785 和隔离复现检查，仅核对允许材料。"
+  },
+  "reproduction": {
+    "workspace": "tmp/r2-leakage-fix-reproduction",
+    "environment": {
+      "python": "3.12.10",
+      "numpy": "2.4.4",
+      "pandas": "2.3.3",
+      "scikit_learn": "1.8.0",
+      "openpyxl": "3.1.5",
+      "matplotlib": "3.10.8"
+    },
+    "numeric_tolerance": {
+      "absolute": 1e-12,
+      "relative": 1e-12
+    },
+    "commands": [
+      {
+        "execution_id": "q1-mixed-models-leakage-fixed-v4",
+        "command": "python code/clean_and_model_v4.py code/data.xlsx E:/AI/shumo/MathModelAgent-main/tmp/r2-leakage-fix-reproduction/model_results_v4.reproduced.json E:/AI/shumo/MathModelAgent-main/tmp/r2-leakage-fix-reproduction/cleaned_data_v4.reproduced.csv E:/AI/shumo/MathModelAgent-main/tmp/r2-leakage-fix-reproduction/figures",
+        "cwd": "runs/desktop-e2e-20260719-training",
+        "exit_code": 0,
+        "production_sha256": "078ab19e1c90ecdcb60a362bcc5ab69694369abcbb146cfeb44624d88e54bdae",
+        "reproduced_sha256": "078ab19e1c90ecdcb60a362bcc5ab69694369abcbb146cfeb44624d88e54bdae",
+        "full_json_exact_match": true,
+        "maximum_metric_absolute_difference": 0.0,
+        "notes": "运行时出现 OneHotEncoder 未见类别和中文字体缺字警告；不改变 JSON 数值或退出码。"
+      },
+      {
+        "execution_id": "q1-cv-baselines-v1",
+        "command": "python code/evaluate_cv_baselines_v1.py code/data.xlsx E:/AI/shumo/MathModelAgent-main/tmp/r2-leakage-fix-reproduction/cv_baselines_v1.reproduced.json",
+        "cwd": "runs/desktop-e2e-20260719-training",
+        "exit_code": 0,
+        "production_sha256": "da6fb0c4d546c22752f8ee9fd2515c1e1282229504ab7948116e749013154557",
+        "reproduced_sha256": "da6fb0c4d546c22752f8ee9fd2515c1e1282229504ab7948116e749013154557",
+        "full_json_exact_match": true,
+        "maximum_metric_absolute_difference": 0.0
+      }
+    ]
+  },
+  "checks": {
+    "schema_validation": {
+      "status": "PASS",
+      "documents_checked": 27,
+      "details": "2 个 execution manifest、2 个 execution record、15 个 metric provenance、2 个 sealed result、2 个 result seal、result_registry、revocation_record、ROUTE_LOCK 和 RUN_CONFIG_LOCK 均通过其直接 JSON Schema。"
+    },
+    "input_hashes": {
+      "status": "PASS",
+      "data_xlsx_sha256": "55c732467f1afce4dd3b00bfd495b6cab73a7c469574bf8a77be9257a926f07f",
+      "primary_code_sha256": "8ba2d6b4c7b7373cf2c4519112c51e54fef3c49303636702ab23f3ad6b45fccb",
+      "baseline_code_sha256": "8a42b7123190e0ad6f49f746e8d5b19c51bee4595b245822ec9df6e0f911650b",
+      "details": "三项哈希及字节数均与对应 execution record 一致。"
+    },
+    "response_feature_isolation": {
+      "status": "PASS",
+      "responses": {
+        "sleep_duration": "target=sleep_hours；输入为 10 个基础协变量；排除原始睡眠时间、sleep_hours、睡醒次数、婴儿行为特征、入睡方式",
+        "wake_count": "target=睡醒次数；输入为相同 10 个基础协变量；五个响应/派生字段交集为空",
+        "behavior": "target=婴儿行为特征；输入为相同 10 个基础协变量；五个响应/派生字段交集为空",
+        "sleep_method": "target=入睡方式；输入为相同 10 个基础协变量；五个响应/派生字段交集为空"
+      },
+      "input_fields": [
+        "母亲年龄",
+        "妊娠时间（周数）",
+        "CBTS",
+        "EPDS",
+        "HADS",
+        "婴儿年龄（月）",
+        "婚姻状况",
+        "教育程度",
+        "分娩方式",
+        "婴儿性别"
+      ],
+      "forbidden_fields": [
+        "整晚睡眠时间（时：分：秒）",
+        "sleep_hours",
+        "睡醒次数",
+        "婴儿行为特征",
+        "入睡方式"
+      ],
+      "data_formula_columns": [],
+      "details": "data.xlsx 共 15 列且无公式列；除编号、10 个基础协变量和 4 个原始响应外没有其他数据列。唯一新增派生列 sleep_hours 仅用于构造睡眠目标并被所有特征矩阵排除。"
+    },
+    "same_fold_baselines": {
+      "status": "PASS",
+      "sample_count": 390,
+      "folds": 5,
+      "random_seed": 42,
+      "regression_splitter": "KFold(n_splits=5, shuffle=True, random_state=42)",
+      "classification_splitter": "StratifiedKFold(n_splits=5, shuffle=True, random_state=42)",
+      "details": "primary 与 robustness 使用同一清洗队列、相同折数、相同种子及相同分层策略。DummyRegressor/DummyClassifier 通过 cross_val_predict 在每个训练折内估计均值或多数类。同折 baseline 以 cv_baselines_v1 和 q1-robustness-cv-baselines-v1 为准；primary JSON 中未带 cv 前缀的分类 baseline 是全样本描述值，不作为同折比较依据。"
+    },
+    "metric_provenance_and_units": {
+      "status": "PASS",
+      "metric_count": 15,
+      "extractor_implementation_sha256": "00c561df8b2f435e7cad09fc50440c5254b042e0eb50116d68eb5ccadd8bfab9",
+      "units": {
+        "sleep_rmse": "hours",
+        "awakening_mae": "times",
+        "accuracies_and_f1": "dimensionless",
+        "r2_and_dispersion": "dimensionless",
+        "clean_sample_count": "samples"
+      },
+      "details": "15 个 JSON Pointer 均从已哈希核心输出重新提取出与 raw_value/final_value 完全相同的值；输出哈希、提取器实现哈希和 sealed result 中的值/单位均一致。"
+    },
+    "seals": {
+      "status": "PASS",
+      "primary_result_sha256": "a6ef17247d936d29221a95ca6a670413f30dab63dcfce7c82b34f064d2b9b89f",
+      "robustness_result_sha256": "6e4ce2cbc95aa140c1efa7604932b2cb7f96d3355816b35617b99ab213b81055",
+      "details": "两份 RFC 8785 canonical result 哈希、execution record 哈希及全部 metric provenance 哈希均与 seal 一致。"
+    },
+    "result_lifecycle": {
+      "status": "PASS_WITH_WARNING",
+      "details": "旧 q1-primary 为 superseded 且 paper_allowed=false；新 q1-primary-leakage-fixed-v4 与 q1-robustness-cv-baselines-v1 均为 accepted 且 paper_allowed=true；revocation 明确 superseded_by 新结果。准入资格正确，但注册表指针语义见 finding R2-P2-004。"
+    },
+    "route_config_binding": {
+      "status": "PASS",
+      "declared_sha256": "b98e3e36ff866f625abcddaa59aac472a74842b5458fef3c40f0e46ff61ceaf2",
+      "actual_sha256": "b98e3e36ff866f625abcddaa59aac472a74842b5458fef3c40f0e46ff61ceaf2"
+    }
+  },
+  "findings": [
+    {
+      "finding_id": "R2-P2-001",
+      "severity": "P2",
+      "change_level": "L1",
+      "affected_questions": [
+        "q1"
+      ],
+      "change_class": "execution_provenance_metadata",
+      "route_impact": false,
+      "changed_route_core_fields": [],
+      "title": "baseline 源 manifest 与执行记录使用不同 JSON 序列化",
+      "description": "允许清单中的 q1-cv-baselines-v1 manifest 原始字节哈希不等于 execution record.manifest_sha256；将同一 JSON 语义对象按 indent=2 且末尾换行重新序列化后，哈希精确等于记录值。全部执行核心字段相同，因此不影响程序或数值复现，但源 manifest 不能直接进行原始字节绑定。",
+      "evidence": [
+        {
+          "path": "runs/desktop-e2e-20260719-training/executions/manifests/q1-cv-baselines-v1.json",
+          "field_or_hash": "raw_sha256=a3cd219cdc94ea9e52463b038ae6f6024adf3bf6a0045b8a9eeb8923dd0805f3; normalized_indent2_sha256=34aae1597933591eed20c3c9bc551cdcb2afc4b46ebeab3bc26361682b46cc7f"
+        },
+        {
+          "path": "runs/desktop-e2e-20260719-training/executions/q1-cv-baselines-v1/execution_record.json",
+          "field_or_hash": "manifest_sha256=34aae1597933591eed20c3c9bc551cdcb2afc4b46ebeab3bc26361682b46cc7f; args/cwd/timeout/expected_outputs/random_seed 与源 manifest 一致"
+        }
+      ]
+    },
+    {
+      "finding_id": "R2-P2-002",
+      "severity": "P2",
+      "change_level": "L3",
+      "affected_questions": [
+        "q1"
+      ],
+      "change_class": "cross_validation_target_preprocessing",
+      "route_impact": false,
+      "changed_route_core_fields": [],
+      "title": "单条异常睡眠目标在划分折前用全样本中位数填补",
+      "description": "这不是目标作为输入特征的泄漏；四个特征矩阵已经正确隔离。但是 sleep_hours 的 1 条异常目标先使用 390 条样本中的全局有效目标中位数填补，再进入五折评价，使验证折目标分布轻微参与了目标构造。当前复现完全一致且仅影响 1/390 条记录，未发现足以推翻弱关联结论的证据，但后续若强调睡眠 CV 指标的精确差异，应补做删除该条记录的敏感性复验。",
+      "evidence": [
+        {
+          "path": "runs/desktop-e2e-20260719-training/code/clean_and_model_v4.py",
+          "field_or_hash": "_load_rows 第 83-90 行在 CV splitter 创建前，以 selected 全集的 valid_sleep 中位数填补 sleep_hours"
+        },
+        {
+          "path": "runs/desktop-e2e-20260719-training/results/model_results_v4.json",
+          "field_or_hash": "sleep_time_imputed=1; sleep_cv_rmse_hours=1.457578688320064; sleep_cv_r2=-0.01671992511756648"
+        },
+        {
+          "path": "runs/desktop-e2e-20260719-training/results/sealed/q1-primary-leakage-fixed-v4.result.json",
+          "field_or_hash": "validation_checks[cleaning] 声明 1 条异常时间按中位数填补"
+        }
+      ]
+    },
+    {
+      "finding_id": "R2-P2-003",
+      "severity": "P2",
+      "change_level": "L2",
+      "affected_questions": [
+        "q1"
+      ],
+      "change_class": "experiment_budget_accounting",
+      "route_impact": false,
+      "changed_route_core_fields": [],
+      "title": "primary manifest 低报模型拟合次数",
+      "description": "manifest 计划 model_fits=24，但代码按实际 estimator.fit 次数计为 36：睡眠 6、睡醒次数 6、行为 Logistic 11 加 Dummy 1、入睡方式 Logistic 11 加 Dummy 1。当前路线锁只限制每问主实验周期数，没有每族 model_fits 硬上限，因此不构成已锁预算超限，也不影响复现数值；但会削弱预算审计。",
+      "evidence": [
+        {
+          "path": "runs/desktop-e2e-20260719-training/executions/manifests/q1-mixed-models-leakage-fixed-v4.json",
+          "field_or_hash": "planned_budget_usage.model_fits=24"
+        },
+        {
+          "path": "runs/desktop-e2e-20260719-training/code/clean_and_model_v4.py",
+          "field_or_hash": "显式 full-data fit、两次分类五折调用、两次回归五折调用及两个 Dummy fit 合计 36 次"
+        },
+        {
+          "path": "runs/desktop-e2e-20260719-training/brief/ROUTE_LOCK.json",
+          "field_or_hash": "resource_limits.max_main_experiment_cycles_per_question=3，未设置每族模型拟合上限"
+        }
+      ]
+    },
+    {
+      "finding_id": "R2-P2-004",
+      "severity": "P2",
+      "change_level": "L1",
+      "affected_questions": [
+        "q1"
+      ],
+      "change_class": "result_lifecycle_metadata",
+      "route_impact": false,
+      "changed_route_core_fields": [],
+      "title": "supersede 关系在同名字段中形成双向指针",
+      "description": "新结果用 supersedes_result_id 指向旧结果，符合字段名称；旧结果在变为 superseded 后，同一字段又被写成新结果 ID，实际表达 superseded_by。revocation_record 的 superseded_by 方向正确，且 status/paper_allowed 准入状态正确，因此不会让旧结果进入论文，但仅解析注册表指针的下游消费者可能误解谱系方向。",
+      "evidence": [
+        {
+          "path": "runs/desktop-e2e-20260719-training/results/result_registry.json",
+          "field_or_hash": "q1-primary.supersedes_result_id=q1-primary-leakage-fixed-v4；q1-primary-leakage-fixed-v4.supersedes_result_id=q1-primary"
+        },
+        {
+          "path": "runs/desktop-e2e-20260719-training/results/revocations/q1-primary.2026-07-20T07-05-17.847776Z.json",
+          "field_or_hash": "status=superseded; superseded_by=q1-primary-leakage-fixed-v4"
+        },
+        {
+          "path": "src/shumozizi/results/sealing.py",
+          "field_or_hash": "revoke_result 在 status=superseded 时把旧条目的 supersedes_result_id 赋值为 superseded_by"
+        }
+      ]
+    }
+  ],
+  "blocking_findings": [],
+  "review_conclusion": {
+    "core_metrics_reproducible": true,
+    "baseline_fairness_verified": true,
+    "target_feature_leakage_fixed": true,
+    "accepted_result_eligibility_verified": true,
+    "route_reapproval_required": false,
+    "paper_use_condition": "允许使用当前 accepted 且 paper_allowed=true 的 v4 primary 与 robustness 数值，但表述必须保持为弱关联/有限预测增益；睡眠 CV 精细差值不应在未做异常目标删除敏感性复验时被夸大。"
+  }
+}

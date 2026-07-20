@@ -10,6 +10,7 @@
     "request_id": {"type": "string", "minLength": 1},
     "run_id": {"type": "string", "minLength": 1},
     "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT", "R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"]},
+    "question_id": {"type": ["string", "null"]},
     "review_round_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "state_revision": {"type": "integer", "minimum": 0},
     "materials": {

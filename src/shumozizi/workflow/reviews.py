@@ -92,7 +92,9 @@ def _relative(run_dir: Path, path: Path) -> str:
 
 def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> None:
     """拒绝调用方削减固定审核材料或伪造源码包角色。"""
-    policy = get_review_stage_policy(request["stage"], run_dir)
+    policy = get_review_stage_policy(
+        request["stage"], run_dir, question_id=request.get("question_id")
+    )
     for key, expected in policy.items():
         if request.get(key) != expected:
             raise ContractError(f"审核请求策略字段已被修改: {key}")
@@ -140,7 +142,7 @@ def create_review_request(
         raise ContractError("审核请求 run_id 与运行目录不一致")
     if not bindings:
         raise ContractError("审核请求必须绑定至少一个当前产物")
-    policy = get_review_stage_policy(stage, run_dir)
+    policy = get_review_stage_policy(stage, run_dir, question_id=question_id)
     binding_roles = set(bindings)
     mandatory_roles = set(policy["mandatory_inputs"])
     missing_roles = sorted(mandatory_roles - binding_roles)
@@ -189,6 +191,7 @@ def create_review_request(
         run_dir,
         request_id=request_id,
         stage=stage,
+        question_id=question_id,
         review_round_id=round_id,
         state_revision=state["revision"],
         bindings=hashes,
@@ -215,7 +218,7 @@ def create_review_request(
         "read_only": True,
         "budget": {
             "max_minutes": max_minutes,
-            "max_rounds": 1 if stage == "J0_FINAL_BLIND_JUDGE" else (5 if mode == "training" else 2),
+            "max_rounds": 1 if stage == "J0_FINAL_BLIND_JUDGE" else (5 if mode == "training" else 3),
         },
         "requested_at": utc_now(),
     }
@@ -430,7 +433,7 @@ def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict
                 reports.append(report)
         except ContractError:
             continue
-    max_rounds = 5 if mode == "training" else 2
+    max_rounds = 5 if mode == "training" else 3
     good = [
         item
         for item in reports

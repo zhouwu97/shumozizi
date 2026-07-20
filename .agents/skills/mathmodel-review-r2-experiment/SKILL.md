@@ -34,8 +34,9 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 ## Finding 证据格式
 
 `evidence` 至少包含 execution record、metric_spec 或 sealed result 的相对路径及字段/哈希；
-复现数值必须记录单位、容差和命令退出码。每条 finding 同时声明 `change_class`、
-`route_impact` 和 `changed_route_core_fields`；问题所在阶段不得替代路线影响判断。
+复现数值必须记录单位、容差和命令退出码。每条 finding 同时声明 `change_level`、
+`affected_questions`、`change_class`、`route_impact` 和 `changed_route_core_fields`；
+问题所在阶段不得替代路线影响判断，只有最终有效等级为 `L5` 才要求路线重新批准。
 
 ## 严重度
 

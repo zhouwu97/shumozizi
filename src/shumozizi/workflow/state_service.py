@@ -246,7 +246,7 @@ class StateService:
             if request.get("binding_paths", {}).get("source_manifest") != SOURCE_MANIFEST_PATH:
                 raise ContractError(f"{gate_id} 审核请求未绑定权威 SOURCE_MANIFEST.json")
         if question_id is not None and request.get("question_id") != question_id:
-            raise ContractError(f"R2 审核回执 question_id 不匹配: {question_id}")
+            raise ContractError(f"局部审核回执 question_id 不匹配: {question_id}")
         self._check_review_gate_timing(run_dir, state, gate_id, question_id)
         passed = self._review_gate_passed(gate_id, receipt, report)
         if gate_id == "J0_FINAL_BLIND_JUDGE" and state.get("review_gates", {}).get(
@@ -292,6 +292,126 @@ class StateService:
         atomic_json(state_path, state)
         return state
 
+    def record_change_impact(
+        self,
+        run_id: str,
+        change_level: str,
+        affected_questions: list[str],
+        actor: Actor,
+        *,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """按 L0-L5 只失效受影响轨道和审核门，并记录定向返工状态。"""
+        if change_level not in {"L0", "L1", "L2", "L3", "L4", "L5"}:
+            raise ContractError(f"未知修改等级: {change_level}")
+        run_dir = self.repo_root / "runs" / run_id
+        state_path = run_dir / "state.json"
+        state = load_json(state_path)
+        require_valid(state, "workflow_state")
+        if expected_revision is not None and state["revision"] != expected_revision:
+            raise ContractError("状态 revision 已变化，拒绝登记修改影响")
+        questions = sorted({item for item in affected_questions if item.strip()})
+        known_questions = set(state.get("question_progress", {}))
+        unknown = sorted(set(questions) - known_questions)
+        if unknown and change_level in {"L2", "L3", "L4"}:
+            raise ContractError("修改影响包含未知问题: " + ", ".join(unknown))
+
+        gates = state.setdefault("review_gates", {})
+
+        def stale_gate(gate_id: str) -> None:
+            gate = gates.get(gate_id)
+            if gate and gate.get("receipt") and gate.get("status") != "stale":
+                gate["status"] = "stale"
+
+        if change_level == "L1":
+            stale_gate("R4_FORMAT_VISUAL")
+        elif change_level == "L2":
+            stale_gate("R3_PAPER_LOGIC")
+            for question in questions:
+                stale_gate(f"R3_PAPER_LOGIC_{question}")
+        elif change_level in {"L3", "L4"}:
+            if change_level == "L4":
+                stale_gate("R1_MODELING")
+            for question in questions:
+                stale_gate(f"R2_EXPERIMENT_{question}")
+                stale_gate(f"R3_PAPER_LOGIC_{question}")
+            for gate_id in ("R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_STANDARD_FINAL"):
+                stale_gate(gate_id)
+        elif change_level == "L5":
+            for gate_id in tuple(gates):
+                stale_gate(gate_id)
+
+        tracks_by_level = {
+            "L0": (),
+            "L1": (),
+            "L2": ("paper", "review"),
+            "L3": ("experiment", "paper", "review"),
+            "L4": ("model", "experiment", "paper", "review"),
+            "L5": ("model", "experiment", "paper", "review"),
+        }
+        target_questions = questions or (
+            sorted(known_questions) if change_level == "L5" else []
+        )
+        for question in target_questions:
+            tracks = state["question_progress"].setdefault(question, {})
+            for track in tracks_by_level[change_level]:
+                if track in tracks and tracks[track] != "pending":
+                    tracks[track] = "stale"
+
+        fallback_status = {
+            "L1": "PAPER_DRAFTED",
+            "L2": "PAPER_DRAFTED",
+            "L3": "EXPERIMENTING",
+            "L4": "MODEL_SPEC_READY",
+            "L5": "WAITING_HUMAN_ROUTE",
+        }.get(change_level)
+        status_order = [
+            "NEW",
+            "WAITING_HUMAN_ROUTE",
+            "ROUTE_LOCKED",
+            "MODEL_SPEC_READY",
+            "EXPERIMENTING",
+            "RESULTS_ACCEPTED",
+            "PAPER_DRAFTED",
+            "QA_RUNNING",
+            "WAITING_HUMAN_FINAL",
+            "COMPLETE",
+        ]
+        current = state["status"]
+        if fallback_status == "WAITING_HUMAN_ROUTE" or (
+            fallback_status
+            and current in status_order
+            and status_order.index(current) > status_order.index(fallback_status)
+        ):
+            state["status"] = fallback_status
+            state["active_stage"] = ACTIVE_STAGES[fallback_status]
+            state["route_locked"] = fallback_status != "WAITING_HUMAN_ROUTE"
+            state["paper_ready"] = fallback_status in {
+                "PAPER_DRAFTED",
+                "QA_RUNNING",
+                "WAITING_HUMAN_FINAL",
+                "COMPLETE",
+            }
+
+        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        state["revision"] += 1
+        state["last_updated_by"] = actor.actor_id
+        state["updated_at"] = now
+        state["history"].append(
+            {
+                "from_status": current,
+                "status": state["status"],
+                "event": "CHANGE_IMPACT_RECORDED",
+                "timestamp": now,
+                "actor": asdict(actor),
+                "artifact_refs": [],
+                "note": f"{change_level}; affected_questions={','.join(questions) or 'none'}",
+            }
+        )
+        require_valid(state, "workflow_state")
+        atomic_json(state_path, state)
+        return state
+
     @staticmethod
     def _review_gate_identity(gate_id: str) -> tuple[str, str | None]:
         """解析审核门对应的请求阶段和可选题号。"""
@@ -300,6 +420,11 @@ class StateService:
             if not question_id:
                 raise ContractError("R2 审核门缺少 question_id")
             return "R2_EXPERIMENT", question_id
+        if gate_id.startswith("R3_PAPER_LOGIC_"):
+            question_id = gate_id.removeprefix("R3_PAPER_LOGIC_")
+            if not question_id:
+                raise ContractError("局部 R3 审核门缺少 question_id")
+            return "R3_PAPER_LOGIC", question_id
         stage = REVIEW_GATE_STAGES.get(gate_id)
         if stage is None:
             raise ContractError(f"未知审核门: {gate_id}")
@@ -348,20 +473,35 @@ class StateService:
         gate_id: str,
         question_id: str | None,
     ) -> None:
-        """保证每类审核只在主状态链规定的阶段登记。"""
-        expected_status = {
-            "R1_MODELING": "MODEL_SPEC_READY",
-            "R3_PAPER_LOGIC": "PAPER_DRAFTED",
-            "R4_FORMAT_VISUAL": "PAPER_DRAFTED",
-            "R5_STANDARD_FINAL": "QA_RUNNING",
-            "J0_FINAL_BLIND_JUDGE": "QA_RUNNING",
-        }.get(gate_id, "EXPERIMENTING")
-        if state["status"] != expected_status:
-            raise ContractError(f"{gate_id} 只能在 {expected_status} 阶段登记")
+        """按材料依赖而非审核编号顺序限制登记时机。"""
+        if gate_id == "R1_MODELING":
+            allowed_statuses = {"ROUTE_LOCKED", "MODEL_SPEC_READY"}
+        elif gate_id.startswith("R2_EXPERIMENT_"):
+            allowed_statuses = {"EXPERIMENTING", "RESULTS_ACCEPTED", "PAPER_DRAFTED", "QA_RUNNING"}
+        elif gate_id.startswith("R3_PAPER_LOGIC_"):
+            allowed_statuses = {"EXPERIMENTING", "RESULTS_ACCEPTED", "PAPER_DRAFTED", "QA_RUNNING"}
+        elif gate_id == "R3_PAPER_LOGIC":
+            allowed_statuses = {"PAPER_DRAFTED", "QA_RUNNING"}
+        elif gate_id == "R4_FORMAT_VISUAL":
+            allowed_statuses = {"PAPER_DRAFTED", "QA_RUNNING"}
+        else:
+            allowed_statuses = {"QA_RUNNING"}
+        if state["status"] not in allowed_statuses:
+            raise ContractError(
+                f"{gate_id} 当前状态不可登记；允许状态: {', '.join(sorted(allowed_statuses))}"
+            )
         if question_id is not None:
             track = state.get("question_progress", {}).get(question_id, {})
-            if track.get("experiment") not in {"ready", "accepted"}:
-                raise ContractError(f"{question_id} 实验未完成，不能登记 R2")
+            if gate_id.startswith("R2_EXPERIMENT_"):
+                self._require_passed_review_gates(run_dir, state, ("R1_MODELING",))
+                if track.get("experiment") not in {"ready", "accepted"}:
+                    raise ContractError(f"{question_id} 实验未完成，不能登记 R2")
+            elif gate_id.startswith("R3_PAPER_LOGIC_"):
+                self._require_passed_review_gates(
+                    run_dir, state, (f"R2_EXPERIMENT_{question_id}",)
+                )
+                if track.get("paper") not in {"ready", "accepted"}:
+                    raise ContractError(f"{question_id} 章节未完成，不能登记局部 R3")
         if gate_id == "R5_STANDARD_FINAL":
             qa = load_json(run_dir / "review" / "QA_AGGREGATE.json")
             if qa.get("status") != "pass" or qa.get("hard_failures"):
@@ -443,7 +583,6 @@ class StateService:
                 "R3_PAPER_LOGIC",
                 "R4_FORMAT_VISUAL",
                 "R5_STANDARD_FINAL",
-                "J0_FINAL_BLIND_JUDGE",
             )
             self._require_gate_presence(state, final_gate_ids)
             source_report = verify_source_manifest(run_dir)
@@ -578,7 +717,6 @@ class StateService:
                 "R3_PAPER_LOGIC",
                 "R4_FORMAT_VISUAL",
                 "R5_STANDARD_FINAL",
-                "J0_FINAL_BLIND_JUDGE",
             ]
         )
         self._require_passed_review_gates(run_dir, state, required_reviews)

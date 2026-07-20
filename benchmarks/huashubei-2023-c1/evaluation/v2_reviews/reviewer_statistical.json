@@ -1,0 +1,108 @@
+{
+  "reviewer": "statistical_blind_reviewer_1",
+  "rubric": "v2_blind_input/RUBRIC.md",
+  "score_scale": "0-10 per dimension; 100 total",
+  "route_dimensions": [
+    "题意与响应类型覆盖",
+    "数学与统计正确性",
+    "共享对象和问题递进",
+    "baseline 公平性",
+    "验证、稳健性与防泄漏设计",
+    "数据与计算可行性",
+    "方法增量是否与题目相关",
+    "风险、失败退路与结论边界",
+    "论文主线可组织性",
+    "成本与实验预算是否有界"
+  ],
+  "routes": {
+    "R17": {
+      "scores": [9, 6, 7, 5, 5, 8, 6, 5, 7, 6],
+      "total": 64,
+      "mathematical_correctness_declined": true,
+      "P0": [],
+      "P1": [
+        "只明确排除当前目标，未像 R42 那样统一排除全部响应字段及目标派生列，跨响应泄漏边界不充分。",
+        "树模型路线包含调参与模型比较，却未规定嵌套交叉验证，样本外性能可能因选择偏差而乐观。",
+        "Poisson 路线未预设过度离散诊断后的负二项回退；baseline 是否训练折内估计、是否与主模型共享完全相同预处理也不明确。"
+      ],
+      "brief_evidence": "响应类型与 OLS/Poisson/Logistic 基本匹配，390 样本下 GLM 可行；但两条子路线以并列任务为主，公平基线、防泄漏、计数方差诊断和调参外层验证的规定不够严格。"
+    },
+    "R42": {
+      "scores": [10, 9, 10, 10, 10, 9, 9, 10, 10, 9],
+      "total": 96,
+      "mathematical_correctness_declined": false,
+      "P0": [],
+      "P1": [],
+      "brief_evidence": "共享样本、固定折和响应专用矩阵构成连贯证据链；明确排除响应字段、采用同折训练集 baseline、检验过度离散并回退负二项，同时用 Bootstrap、敏感性、嵌套交叉验证和标签置换限制错误发现。预算虽有界，但尚未量化最大拟合次数。"
+    }
+  },
+  "preferred_route": "R42",
+  "paper_dimensions": [
+    "问题覆盖",
+    "数学与统计正确性",
+    "模型深度与公式说明",
+    "问题递进和研究故事",
+    "baseline 公平性",
+    "实验与样本外验证",
+    "结果解释和结论边界",
+    "图表证据有效性",
+    "摘要与直接回答质量",
+    "文献支持"
+  ],
+  "papers": {
+    "P17": {
+      "scores": [7, 5, 2, 4, 4, 5, 8, 6, 7, 0],
+      "total": 48,
+      "mathematical_correctness_declined": true,
+      "P0": [],
+      "P1": [
+        "异常睡眠时间被置缺后以中位数填补；若该字段是睡眠时长响应，则属于响应标签填补，且未给出删行或替代规则的敏感性分析。",
+        "正文未说明中位数、均值 baseline、多数类 baseline 和编码是否只在训练折拟合，无法排除预处理或 baseline 看见测试折标签。",
+        "未给出多项 Logistic 公式、系数区间、残差或分类校准；图 2 的 0.5 虚线未说明且不等于文中两项多数类 baseline，容易造成比较口径误读。"
+      ],
+      "brief_evidence": "四类结果和五折样本外指标均有报告，也正确承认负 R2、过度离散、低宏 F1、潜在混杂与非因果边界；但模型定义、折内处理、baseline provenance 和统计不确定性不足，且无参考文献。"
+    },
+    "P42": {
+      "scores": [9, 8, 7, 9, 10, 8, 10, 7, 10, 8],
+      "total": 86,
+      "mathematical_correctness_declined": true,
+      "P0": [],
+      "P1": [
+        "同样对异常睡眠时间执行中位数填补，但未报告删去该响应观测或其他处理规则的敏感性结果。",
+        "Pearson 离散度 1.7322 已否定 Poisson 等离散假设，却未完成路线预设的负二项对照；同时未给出系数区间、VIF、残差和 Bootstrap 稳定性，因此只能支持论文已经采用的降级结论。"
+      ],
+      "brief_evidence": "明确给出响应字段隔离、训练折 baseline、同测试折比较、分层五折、多项 Logistic 公式和逐响应直接回答。负 R2、极小 MAE 改善、低宏 F1 与过度离散均被正确解释为不能支持稳定预测或因果结论；不足是诊断与稳健性实验未完全落地，图表也未展示逐折 baseline 或不确定性。"
+    }
+  },
+  "preferred_paper": "P42",
+  "mathematical_correctness_decline_assessment": {
+    "R17_to_P17": {
+      "declined": true,
+      "evidence": "路线中的残差检查和较完整验证没有在论文中呈现，且响应填补、折内预处理和 baseline 估计口径未被严格说明。"
+    },
+    "R42_to_P42": {
+      "declined": true,
+      "evidence": "论文保留了防泄漏和公平 baseline，但未实现路线中的负二项回退、Bootstrap 区间、VIF/残差与异常时间敏感性；数学结论因主动降级仍基本成立。"
+    }
+  },
+  "P0": [],
+  "P1": [
+    {
+      "candidate": "R17",
+      "issues": 3
+    },
+    {
+      "candidate": "R42",
+      "issues": 0
+    },
+    {
+      "candidate": "P17",
+      "issues": 3
+    },
+    {
+      "candidate": "P42",
+      "issues": 2
+    }
+  ],
+  "overall_evidence": "偏好不是由篇幅决定，而由验证口径决定。R42/P42 明确训练折 baseline、响应字段隔离和负结果边界；R17/P17 在相同数值结果下缺少足够的折内 provenance、公式和诊断。两篇论文都不能把当前结果解释为稳定关联、个体预测能力或因果效应。"
+}

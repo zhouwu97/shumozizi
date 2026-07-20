@@ -407,6 +407,8 @@ def test_each_new_r1_structural_precheck_rejects_missing_evidence(
             "remediation": "补充结构化 R1 证据",
             "status": "open",
             "check_id": failed_check,
+            "change_level": "L4",
+            "affected_questions": ["q1"],
             "change_class": "SPEC_COMPLETION",
             "affected_stage": "R1_MODELING",
             "route_impact": "none",

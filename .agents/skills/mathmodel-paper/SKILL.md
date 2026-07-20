@@ -23,6 +23,9 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 
    `paper/claim_gate.json` 的 `stale=true` 时，主张证据完全禁止引用；必须先重新生成
    当前 claim evidence。不得根据路线锁中的自由文本或聊天内容绕过门禁。
+6. 在正文写作前生成并持续更新三个作者侧产物：
+   `paper/PAPER_BLUEPRINT.md`、`claims/ARGUMENT_MAP.json`、`paper/FIGURE_STORYBOARD.md`。
+   它们不增加主状态或审核门，但必须绑定当前路线、结果和证据摘要。
 
 ## 增量写作
 
@@ -32,6 +35,15 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 
 把章节写入 `paper/sections/`，并在 `state.json` 记录已完成章节。不要等所有实验结束后才
 突击写各问内容。
+
+`PAPER_BLUEPRINT.md` 必须规划全文研究故事、共享符号和数学对象、各问章节职责、核心公式、
+baseline、验证、直接答案位置、摘要准备使用的真实结果，以及文献需要支持的判断。
+
+`ARGUMENT_MAP.json` 的每条主张必须包含动机、baseline 局限、模型支持、result IDs、比较证据、
+验证证据、figure IDs、结论边界、结果状态和正文位置。不得只保存 claim、outcome 和 scope。
+
+`FIGURE_STORYBOARD.md` 的每张图必须说明对应问题、数据、待证明主张、必要性、图型、坐标轴与
+单位、正文解释位置。没有论证职责的图不得进入正式图表计划。
 
 ## 全文组装
 

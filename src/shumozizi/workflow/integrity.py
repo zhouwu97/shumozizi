@@ -108,7 +108,7 @@ def _verify_final_review_gates(run_dir: Path, state: dict[str, Any], errors: lis
         f"R2_EXPERIMENT_{item['question_id']}"
         for item in manifest["questions"]
         if item["required"]
-    ] + ["R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_STANDARD_FINAL", "J0_FINAL_BLIND_JUDGE"]
+    ] + ["R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_STANDARD_FINAL"]
     for gate_id in gate_ids:
         gate = state.get("review_gates", {}).get(gate_id, {})
         if gate.get("status") != "passed" or not gate.get("receipt"):

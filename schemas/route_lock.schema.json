@@ -58,17 +58,39 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "max_main_experiment_cycles_per_question",
         "max_web_searches",
         "max_full_self_reviews",
         "route_drift_budget_ratio"
       ],
+      "oneOf": [
+        {
+          "required": ["max_main_experiment_cycles_per_question"]
+        },
+        {
+          "required": [
+            "max_experiment_families_per_question",
+            "max_execution_seconds_per_family",
+            "max_model_fits_per_family",
+            "max_optimization_evaluations_per_family",
+            "max_invalid_tuning_attempts_per_family"
+          ]
+        }
+      ],
       "properties": {
+        "max_experiment_families_per_question": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
         "max_main_experiment_cycles_per_question": {
           "type": "integer",
           "minimum": 1,
           "maximum": 3
         },
+        "max_execution_seconds_per_family": {"type": "integer", "minimum": 1},
+        "max_model_fits_per_family": {"type": "integer", "minimum": 1},
+        "max_optimization_evaluations_per_family": {"type": "integer", "minimum": 1},
+        "max_invalid_tuning_attempts_per_family": {"type": "integer", "minimum": 0},
         "max_web_searches": {"type": "integer", "minimum": 0, "maximum": 10},
         "max_full_self_reviews": {"const": 1},
         "route_drift_budget_ratio": {

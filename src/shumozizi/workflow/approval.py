@@ -172,7 +172,11 @@ def materialize_route_approval(
         "innovation_claims": [],
         "validation": [selected["validation"]],
         "resource_limits": {
-            "max_main_experiment_cycles_per_question": 3,
+            "max_experiment_families_per_question": 3,
+            "max_execution_seconds_per_family": 7200,
+            "max_model_fits_per_family": 100,
+            "max_optimization_evaluations_per_family": 10000,
+            "max_invalid_tuning_attempts_per_family": 3,
             "max_web_searches": 5,
             "max_full_self_reviews": 1,
             "route_drift_budget_ratio": 0.3,

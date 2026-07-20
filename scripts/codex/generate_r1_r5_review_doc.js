@@ -18,7 +18,7 @@ const {
   WidthType,
 } = require('docx');
 
-const outputPath = path.resolve(__dirname, '../../docs/R1-R5审核说明_当前版本.docx');
+const outputPath = path.resolve(__dirname, '../../artifacts/docs/R1-R5审核说明_当前版本.docx');
 const contentWidth = 9026;
 const border = { style: BorderStyle.SINGLE, size: 1, color: 'C9D2DC' };
 const borders = { top: border, bottom: border, left: border, right: border };
@@ -157,10 +157,10 @@ const children = [
     { label: 'B 轴：竞赛质量', value: 'B_STRONG、B_PASS、B_WEAK 或 B_REBUILD。评价题目覆盖、模型深度、实验验证和整体竞赛竞争力。' },
     { label: 'B 轴通过条件', type: 'bullets', items: ['总分至少 75。', '题目覆盖、模型深度、实验验证三项均至少 60。', '质量等级必须为 B_STRONG 或 B_PASS。'] },
     { label: '额外输出', type: 'bullets', items: ['A-E 奖项估计和置信度。', '证据和降级原因。', 'joint_verdict。', 'repair_scope。', 'required_retests。'] },
-    { label: '最终候选条件', value: '只有 A、B 两轴同时通过，且没有 P0/P1 问题，才可以标记为 FINAL_CANDIDATE。竞赛模式 R5 最多 2 轮，训练模式最多 5 轮。' },
+    { label: '最终候选条件', value: '只有 A、B 两轴同时通过，且没有 P0/P1 问题，才可以标记为 FINAL_CANDIDATE。竞赛模式 R5 最多 3 轮，训练模式最多 5 轮。' },
   ]),
   heading('七、整体状态流转', HeadingLevel.HEADING_1),
-  paragraph([code('MODEL_SPEC_READY'), text('  ->  R1  ->  EXPERIMENTING  ->  每个必做问题分别执行 R2  ->  RESULTS_ACCEPTED  ->  论文完成后 R3 + R4  ->  QA 通过  ->  R5  ->  J0  ->  WAITING_HUMAN_FINAL  ->  人工批准  ->  COMPLETE')]),
+    paragraph([code('MODEL_SPEC_READY'), text('  ->  R1  ->  EXPERIMENTING  ->  每个必做问题分别执行 R2  ->  RESULTS_ACCEPTED  ->  论文完成后 R3 + R4  ->  QA 通过  ->  R5  ->  WAITING_HUMAN_FINAL  ->  人工批准  ->  COMPLETE；J0 仅为可选评委模拟。')]),
   heading('八、通用约束', HeadingLevel.HEADING_1),
   bullet('PROBLEM_MANIFEST.json 是权威问题全集，所有必做问题都必须完成。'),
   bullet('state.json 只能由 StateService 写入，不能通过聊天历史或任务 ID 推断工作流状态。'),

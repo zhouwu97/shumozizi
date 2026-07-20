@@ -44,6 +44,7 @@ def create_review_input_manifest(
     *,
     request_id: str,
     stage: str,
+    question_id: str | None,
     review_round_id: str,
     state_revision: int,
     bindings: dict[str, str],
@@ -51,7 +52,7 @@ def create_review_input_manifest(
     output_path: Path,
 ) -> Path:
     """冻结阶段材料及其哈希，作为审核请求的唯一输入权威清单。"""
-    policy = get_review_stage_policy(stage, run_dir)
+    policy = get_review_stage_policy(stage, run_dir, question_id=question_id)
     mandatory = set(policy["mandatory_inputs"])
     materials = []
     for role in sorted(bindings):
@@ -70,6 +71,7 @@ def create_review_input_manifest(
         "request_id": request_id,
         "run_id": run_dir.name,
         "stage": stage,
+        "question_id": question_id,
         "review_round_id": review_round_id,
         "state_revision": state_revision,
         "materials": materials,
@@ -92,7 +94,9 @@ def verify_review_input_manifest(
     try:
         manifest = load_json(manifest_path)
         require_valid(manifest, "review_input_manifest")
-        policy = get_review_stage_policy(manifest["stage"], run_dir)
+        policy = get_review_stage_policy(
+            manifest["stage"], run_dir, question_id=manifest.get("question_id")
+        )
         materials = manifest["materials"]
         roles = [item["role"] for item in materials]
         if len(roles) != len(set(roles)):
@@ -122,6 +126,7 @@ def verify_review_input_manifest(
                 "request_id",
                 "run_id",
                 "stage",
+                "question_id",
                 "review_round_id",
                 "state_revision",
             )

@@ -1,0 +1,10 @@
+{
+  "schema_name": "route_ab_blind_mapping",
+  "schema_version": "1.0",
+  "revealed_after_scoring": true,
+  "mapping": {
+    "X": "route_b_knowledge_assisted",
+    "Y": "route_a_without_knowledge"
+  }
+}
+

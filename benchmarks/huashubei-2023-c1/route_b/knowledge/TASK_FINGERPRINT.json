@@ -1,0 +1,24 @@
+{
+  "schema_name": "task_fingerprint",
+  "schema_version": "1.0",
+  "run_id": "route_b",
+  "problem_type": "统计评价与预测",
+  "data_structure": "混合类型母婴观测表格",
+  "task_types": [
+    "回归分析",
+    "分类分析"
+  ],
+  "keywords": [
+    "母婴",
+    "睡眠"
+  ],
+  "structural_tags": [],
+  "question_chain": [
+    "建立统一清洗和类别编码规则",
+    "分别分析行为、睡眠时长、睡醒次数和入睡方式",
+    "比较基线与主模型并限定统计关联边界"
+  ],
+  "data_constraints": [
+    "390组观察性横截面数据，不能推出因果"
+  ]
+}

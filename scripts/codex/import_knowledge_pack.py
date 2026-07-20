@@ -1,4 +1,4 @@
-"""将旧仓 KNOWLEDGE_PACK 导入运行并生成作者侧产物。"""
+"""兼容历史运行的旧 KNOWLEDGE_PACK 导入器；新运行不得依赖。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from shumozizi.knowledge.pack import bind_knowledge_pack  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="导入并绑定跨仓 KNOWLEDGE_PACK")
+    parser = argparse.ArgumentParser(description="兼容导入旧 KNOWLEDGE_PACK（已废弃）")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("pack", type=Path)
     parser.add_argument("--problem-source", type=Path)
@@ -23,6 +23,10 @@ def main() -> int:
     parser.add_argument("--claims-json", type=Path)
     parser.add_argument("--repo-root")
     args = parser.parse_args()
+    print(
+        "警告：KNOWLEDGE_PACK 跨仓导入已废弃；新运行请使用仓内论文卡检索。",
+        file=sys.stderr,
+    )
     repo_root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
     run_dir = args.run_dir.resolve()
     problem = args.problem_source.resolve() if args.problem_source else None

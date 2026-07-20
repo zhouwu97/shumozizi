@@ -1,0 +1,188 @@
+{
+  "schema_name": "paper_card_index",
+  "schema_version": "1.0",
+  "paper_count": 9,
+  "papers": [
+    {
+      "paper_id": "cumcm-2012-a-wine-quality",
+      "title": "葡萄酒的质量分析与评价",
+      "problem_type": "统计评价与预测",
+      "data_structure": "多评委多指标表格",
+      "task_types": [
+        "显著性检验",
+        "综合评价",
+        "聚类分级",
+        "回归分析"
+      ],
+      "domain_terms": [],
+      "structural_tags": [],
+      "source_sha256": "015c3dfaafbf06a93ae52a00c952373772aec0d006f5883dac202b9927a7a55e",
+      "card_path": "knowledge/cards/papers/cumcm-2012-a-wine-quality.md"
+    },
+    {
+      "paper_id": "cumcm-2013-b-shredded-document",
+      "title": "碎纸复原模型与算法",
+      "problem_type": "组合优化与图像拼接",
+      "data_structure": "大量等尺寸图像片段",
+      "task_types": [
+        "图像预处理",
+        "相似度建模",
+        "TSP排序",
+        "人机协同"
+      ],
+      "domain_terms": [],
+      "structural_tags": [],
+      "source_sha256": "4c01b66554a65ea520ee4f5a7207dee89c6a53986599648b7435143629b5061f",
+      "card_path": "knowledge/cards/papers/cumcm-2013-b-shredded-document.md"
+    },
+    {
+      "paper_id": "cumcm-2015-b-taxi-allocation",
+      "title": "互联网+时代的出租车资源配置",
+      "problem_type": "时空供需评价与政策优化",
+      "data_structure": "多源时空采样与OD矩阵",
+      "task_types": [
+        "指标构建",
+        "时空聚类",
+        "行为模拟",
+        "补贴优化"
+      ],
+      "domain_terms": [],
+      "structural_tags": [],
+      "source_sha256": "c2c9ee2437f222c91b3997c01fa667e45aabc50fa8e3c9758213d4e4170cc4e5",
+      "card_path": "knowledge/cards/papers/cumcm-2015-b-taxi-allocation.md"
+    },
+    {
+      "paper_id": "cumcm-2016-a-mooring-system",
+      "title": "系泊系统状态与多目标设计",
+      "problem_type": "物理机理与多目标优化",
+      "data_structure": "构件参数与连续环境情景",
+      "task_types": [
+        "受力分析",
+        "非线性方程",
+        "多目标优化",
+        "情景分析"
+      ],
+      "domain_terms": [],
+      "structural_tags": [],
+      "source_sha256": "b7aa78f24f98ff96856422d9306013df8d8a2e992f4ff9bd8e0db0831a4fad20",
+      "card_path": "knowledge/cards/papers/cumcm-2016-a-mooring-system.md"
+    },
+    {
+      "paper_id": "cumcm-2017-a-ct-calibration-reconstruction",
+      "title": "CT系统参数标定及反投影重建成像",
+      "problem_type": "机理标定与逆向重建",
+      "data_structure": "已知模板投影与未知对象多角度投影",
+      "task_types": [
+        "参数标定",
+        "数值仿真",
+        "图像重建",
+        "稳定性分析"
+      ],
+      "domain_terms": [
+        "CT",
+        "X射线",
+        "投影",
+        "Radon变换",
+        "吸收率"
+      ],
+      "structural_tags": [
+        "已知模板标定",
+        "前向模型",
+        "逆问题",
+        "多角度观测"
+      ],
+      "source_sha256": "c942b6a33b4faaeb6681e0118c3752da8a4fee0d3a03eaa96104f18859c5a56c",
+      "card_path": "knowledge/cards/papers/cumcm-2017-a-ct-calibration-reconstruction.md"
+    },
+    {
+      "paper_id": "cumcm-2018-a-heat-protection",
+      "title": "高温作业专用服装设计",
+      "problem_type": "传热机理与约束优化",
+      "data_structure": "分层材料参数与温度时间序列",
+      "task_types": [
+        "偏微分方程",
+        "参数标定",
+        "数值仿真",
+        "厚度优化"
+      ],
+      "domain_terms": [],
+      "structural_tags": [],
+      "source_sha256": "3d417571cfa11d287427d78f0aa4aae3aa8fc614d0df9abc977e242282a48cec",
+      "card_path": "knowledge/cards/papers/cumcm-2018-a-heat-protection.md"
+    },
+    {
+      "paper_id": "cumcm-2018-b-rgv-scheduling",
+      "title": "RGV的动态调度优化问题",
+      "problem_type": "离散事件调度优化",
+      "data_structure": "设备状态与事件时序",
+      "task_types": [
+        "状态转移",
+        "动态调度",
+        "故障模拟",
+        "效率评价"
+      ],
+      "domain_terms": [],
+      "structural_tags": [],
+      "source_sha256": "4c4afd10a66b390d8a962609c31ef36792258561852f6b7d19545b847d897851",
+      "card_path": "knowledge/cards/papers/cumcm-2018-b-rgv-scheduling.md"
+    },
+    {
+      "paper_id": "fan-2021-thin-film-neural-networks",
+      "title": "Thin-film neural networks for optical inverse problem",
+      "problem_type": "光学机理与参数反演",
+      "data_structure": "薄膜参数与反射率透射率光谱",
+      "task_types": [
+        "参数标定",
+        "数值仿真",
+        "传递矩阵",
+        "非线性最小二乘"
+      ],
+      "domain_terms": [
+        "光学",
+        "薄膜",
+        "反射率",
+        "透射率",
+        "折射率",
+        "厚度",
+        "干涉"
+      ],
+      "structural_tags": [
+        "前向模型",
+        "参数反演",
+        "光谱拟合",
+        "多初值优化"
+      ],
+      "source_sha256": "543ede7b3870a02268acf823655d3f6c03e243985c078d8ebdfe93b7439760ce",
+      "card_path": "knowledge/cards/papers/fan-2021-thin-film-neural-networks.md"
+    },
+    {
+      "paper_id": "spirk-2021-biopolymer-thin-film-thickness",
+      "title": "Current Opportunities and Challenges in Biopolymer Thin Film Analysis - Determination of Film Thickness",
+      "problem_type": "薄膜厚度测量与模型选择",
+      "data_structure": "多仪器薄膜厚度与环境条件",
+      "task_types": [
+        "参数标定",
+        "测量方法比较",
+        "交叉验证",
+        "不确定性分析"
+      ],
+      "domain_terms": [
+        "薄膜",
+        "厚度",
+        "反射率",
+        "折射率",
+        "椭偏",
+        "干涉",
+        "湿度"
+      ],
+      "structural_tags": [
+        "参数可辨识性",
+        "多方法验证",
+        "测量误差",
+        "环境敏感性"
+      ],
+      "source_sha256": "5381125fce3d4cc0d8a2632a2018e61d1c13910b880092f2a8762cba6a43d5b5",
+      "card_path": "knowledge/cards/papers/spirk-2021-biopolymer-thin-film-thickness.md"
+    }
+  ]
+}

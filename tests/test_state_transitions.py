@@ -91,6 +91,8 @@ def test_model_spec_revised_keeps_route_locked_and_stales_r1(tmp_path: Path) -> 
             "source_report_path": "review/r1_modeling/r3/review_report.json",
             "source_report_sha256": "a" * 64,
             "axis": "quality",
+            "change_level": "L4",
+            "affected_questions": ["q1"],
             "repair_scope": [
                 {
                     "finding_id": "R1-SPEC-001",
@@ -98,6 +100,8 @@ def test_model_spec_revised_keeps_route_locked_and_stales_r1(tmp_path: Path) -> 
                     "affected_stage": "R1_MODELING",
                     "files": ["brief/model_spec.json"],
                     "expected_improvement": "补全目标函数定义",
+                    "change_level": "L4",
+                    "affected_questions": ["q1"],
                     "change_class": "SPEC_COMPLETION",
                     "route_impact": "none",
                     "changed_route_core_fields": [],
@@ -717,6 +721,8 @@ def _write_minimal_production(repo_root: Path, run_dir: Path) -> None:
                     "evidence": ["最终 PDF 第 3 页"],
                     "remediation": "修正证据链",
                     "status": "open",
+                    "change_level": "L2",
+                    "affected_questions": ["q1"],
                     "change_class": "EVIDENCE_METADATA",
                     "route_impact": "none",
                     "changed_route_core_fields": [],

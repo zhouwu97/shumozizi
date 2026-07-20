@@ -28,7 +28,7 @@ def test_review_skills_are_top_level_and_executable() -> None:
 
 
 def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
-    """竞赛模式不再要求连续两轮 B/A，且预算为两轮。"""
+    """竞赛模式不再要求连续两轮 B/A，且预算上限为三轮。"""
     report_dir = tmp_path / "review/r5_comprehensive/round-1"
     report_dir.mkdir(parents=True)
     report = {
@@ -78,5 +78,5 @@ def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
     result = evaluate_r5_convergence(tmp_path)
 
     assert result["status"] == "pass"
-    assert result["max_rounds"] == 2
+    assert result["max_rounds"] == 3
     assert result["consecutive_passing_rounds"] == 1

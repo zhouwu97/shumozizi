@@ -22,7 +22,8 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 1. 校验 manifest、request、session、QA 通过状态、绑定哈希和当前冻结 revision。
 2. 只从评委可见材料判断题目覆盖、结果可信度、论文表达、图表和提交风险。
 3. A 轴复验完整性并给出 `A_PASS` 或 `A_BLOCKED`；B 轴独立评价竞赛质量并给出总分、分项分和
-   `B_STRONG`、`B_PASS`、`B_WEAK` 或 `B_REBUILD`。
+   `B_STRONG`、`B_PASS`、`B_WEAK` 或 `B_REBUILD`，并报告 `judge_readability`、
+   `overall_persuasiveness` 和 `award_competitiveness`，把原 J0 的自然评委视角并入 R5。
 4. 同时给出 A-E grade、confidence、basis、downgrade_reasons 以及与双轴一致的联合结论。
 5. 每条问题按 P0/P1/P2/P3 给出定位证据、所属轴、受影响阶段、文件、重测项和预期改进；不执行修复，不读取前轮报告。
 
@@ -35,8 +36,9 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 ## Finding 证据格式
 
 `evidence` 必须是评委可见材料中的 PDF 页码、题目条目、表格/图号、代码路径或结果 ID；
-不得引用 R1-R4 报告和作者陈述。每条 finding 同时声明 `change_class`、`route_impact` 和
-`changed_route_core_fields`；问题所在阶段不得替代路线影响判断。
+不得引用 R1-R4 报告和作者陈述。每条 finding 同时声明 `change_level`、
+`affected_questions`、`change_class`、`route_impact` 和 `changed_route_core_fields`；
+问题所在阶段不得替代路线影响判断，只有最终有效等级为 `L5` 才要求路线重新批准。
 
 ## 严重度与竞赛预算
 
@@ -44,8 +46,9 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 - P1：核心结论、数字或硬约束有重大问题；
 - P2：不影响主结论的表达、引用或次要视觉问题。
 
-竞赛模式最多 2 轮：第一轮达到 A/B 且无 P0/P1 直接结束；只有出现 P0/P1 或低于 B 才允许
-第二轮。训练模式最多 5 轮，但不要求连续两轮 B/A。J0 不属于 R5 循环且只执行一次。
+竞赛模式最多 3 轮：第一轮达到 A/B 且无 P0/P1 直接结束；只有出现 P0/P1 或低于 B 才允许
+第二轮或第三轮。训练模式最多 5 轮，但不要求连续两轮 B/A。
+L0/L1 和纯 L2 修改不消耗完整 R5 轮次。J0 不属于 R5 循环、只执行一次且不是最终硬门。
 
 ## 通过条件
 
