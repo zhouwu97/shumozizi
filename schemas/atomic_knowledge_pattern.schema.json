@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atomic_knowledge_pattern.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "pattern_id", "pattern_type", "title", "applicable_when", "not_applicable_when", "required_evidence", "common_misuses", "counterexamples", "source_paper_ids", "origin", "review_status", "authoring_session_id"],
+  "properties": {
+    "schema_name": {"const": "atomic_knowledge_pattern"},
+    "schema_version": {"const": "1.0"},
+    "pattern_id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "pattern_type": {"enum": ["problem_decomposition", "model_selection", "validation", "uncertainty", "figure_narrative", "argument_chain", "failure_disclosure", "negative_result"]},
+    "title": {"type": "string", "minLength": 1},
+    "applicable_when": {"$ref": "#/$defs/strings"},
+    "not_applicable_when": {"$ref": "#/$defs/strings"},
+    "required_evidence": {"$ref": "#/$defs/strings"},
+    "common_misuses": {"$ref": "#/$defs/strings"},
+    "counterexamples": {"$ref": "#/$defs/strings"},
+    "source_paper_ids": {"$ref": "#/$defs/strings"},
+    "origin": {"enum": ["paper_card", "postmortem", "manual_research"]},
+    "review_status": {"enum": ["provisional", "revision_required"]},
+    "authoring_session_id": {"type": "string", "minLength": 1}
+  },
+  "$defs": {"strings": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}
+}

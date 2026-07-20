@@ -1,0 +1,234 @@
+{
+  "schema_name": "atomic_pattern_index",
+  "schema_version": "1.0",
+  "review_registry_sha256": "9aa79f32c1fd8943517c560e3157e3cb9c2c89e26c53b493f8e0d6bc9a983bd9",
+  "index_kind": "provisional",
+  "pattern_count": 15,
+  "patterns": [
+    {
+      "pattern_id": "argument-chain-calibrate-then-model",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "argument_chain",
+      "title": "先校准代理标签再进入监督建模",
+      "path": "knowledge/patterns/atomic/argument-chain-calibrate-then-model.json",
+      "sha256": "3bb4d1f048584f11a06409196307a2560f4a613b9b8ff8a225d2dfe7a4c360cd",
+      "content_sha256": "38b855bc91634e50314672d3a144745f8640b100ea242740ec7d4edd13d65b74",
+      "source_paper_ids": [
+        "cumcm-2012-a-wine-evaluation"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "failure-disclosure-reproducibility-boundary",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "failure_disclosure",
+      "title": "把不可复现环节和输入缺口显式写入结论边界",
+      "path": "knowledge/patterns/atomic/failure-disclosure-reproducibility-boundary.json",
+      "sha256": "c7dbee48c296377fa05588e9e0b28da1e33fc473669007ca1d789cb4d90d1654",
+      "content_sha256": "3d9a12d1f63f7afd6df7907fbd101316619ba0d86b6ba8b6143c9a583737fa99",
+      "source_paper_ids": [
+        "spirk-2021-biopolymer-thin-film-thickness"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "figure-narrative-evidence-role",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "figure_narrative",
+      "title": "每张图承担单一证据职责",
+      "path": "knowledge/patterns/atomic/figure-narrative-evidence-role.json",
+      "sha256": "a67f43d4561723875d4c07225fb778079af272b391fec88fde89b50465717b1f",
+      "content_sha256": "4e4f92da335b0f625b4e5fa52d36a14ee35adbde9aae387e84e30be902aad0b9",
+      "source_paper_ids": [
+        "fan-2021-thin-film-neural-networks"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "model-selection-mechanism-first",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "model_selection",
+      "title": "以前向机制和可辨识性选择反演模型",
+      "path": "knowledge/patterns/atomic/model-selection-mechanism-first.json",
+      "sha256": "18a80e719b1b53899f64f35524819ae653ba67c395da17a4e2d7c4bb4420f2a8",
+      "content_sha256": "b3e831b039731e026dfffc7ef9ddefb95f45e641625a59f3bafa9c4b22d01768",
+      "source_paper_ids": [
+        "fan-2021-thin-film-neural-networks"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "negative-result-preserve-boundary",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "negative_result",
+      "title": "保留不能替代测量的负面结论",
+      "path": "knowledge/patterns/atomic/negative-result-preserve-boundary.json",
+      "sha256": "03b8a76a3bd1bcb0695b91d5b09172a84dcc7794fd7934cee6ae65a8bac07935",
+      "content_sha256": "64ca9abe55d6ee9eef676733fa0da139e4526e7fac1b4577f3e7693b177aa4c6",
+      "source_paper_ids": [
+        "cumcm-2012-a-wine-evaluation"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "problem-decomposition-shared-objects",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "problem_decomposition",
+      "title": "以共享数学对象组织多问递进",
+      "path": "knowledge/patterns/atomic/problem-decomposition-shared-objects.json",
+      "sha256": "f1f8e9e860e4a7026bf76dc019deac125f544c41edaad714c08ad6fc73905d5e",
+      "content_sha256": "2d1411a6f99dd0156274b529227c9905308b3c5e15616cd72b9b303748654307",
+      "source_paper_ids": [
+        "cumcm-2012-a-wine-evaluation"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "uncertainty-perturb-identifiable-directions",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "uncertainty",
+      "title": "沿可辨识方向设计不确定性扰动",
+      "path": "knowledge/patterns/atomic/uncertainty-perturb-identifiable-directions.json",
+      "sha256": "5e7a63b7ea64a63984ad433e3fd3a65110204f1109543dc5ecd7268e0c19cdb7",
+      "content_sha256": "aafe51f1bad4567c7eb10f886302d92af07dc710dc654bd75189863ee791360f",
+      "source_paper_ids": [
+        "spirk-2021-biopolymer-thin-film-thickness"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "validation-independent-oracle",
+      "schema_name": "atomic_knowledge_pattern",
+      "pattern_type": "validation",
+      "title": "用独立 oracle 区分正确模型与共同错误",
+      "path": "knowledge/patterns/atomic/validation-independent-oracle.json",
+      "sha256": "543f9fc8de0e1ac6b7fb776c9171b1ef91801c99d162fe120d2492d9d9164c72",
+      "content_sha256": "3801723162437eadf8d9f75b09edc445d629f953d36f1195f8b8035cad4dfb8e",
+      "source_paper_ids": [
+        "fan-2021-thin-film-neural-networks"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "antipattern-complexity-without-decision-value",
+      "schema_name": "knowledge_antipattern",
+      "pattern_type": "complexity_without_decision_value",
+      "title": "复杂度提高但不改变决策价值",
+      "path": "knowledge/patterns/antipatterns/complexity-without-decision-value.json",
+      "sha256": "73b3865fb4198090f87a60c22a42f7fbbefe8fa76281a087d838ef7550fd9dc9",
+      "content_sha256": "94721811c91063b717170288596ea54304c8f57771cf21d21708285069ef4da5",
+      "source_paper_ids": [
+        "cumcm-2018-b-rgv-scheduling"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "antipattern-data-leakage",
+      "schema_name": "knowledge_antipattern",
+      "pattern_type": "data_leakage",
+      "title": "训练或特征处理中泄漏目标信息",
+      "path": "knowledge/patterns/antipatterns/data-leakage.json",
+      "sha256": "bb70b76c0dc906be1f6c1bedf0c3fa4c8c2df91e253c4a22d5299b4dc0a39140",
+      "content_sha256": "e269814e661db0af39db54a43e7c1bbd9d5f044079ef9f988eedfefaff08e276",
+      "source_paper_ids": [
+        "cumcm-2015-b-taxi-allocation"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "antipattern-figure-conclusion-disconnect",
+      "schema_name": "knowledge_antipattern",
+      "pattern_type": "figure_conclusion_disconnect",
+      "title": "图表数字与正文结论方向脱节",
+      "path": "knowledge/patterns/antipatterns/figure-conclusion-disconnect.json",
+      "sha256": "1d630c8fb42637ff881d1eb400b6952b976cd6ae055c288fee33039cb8160238",
+      "content_sha256": "34fe4cb887cbe38ea42649c6d33f8f394fba5667257df89b498b8e4c9d5efb0b",
+      "source_paper_ids": [
+        "cumcm-2012-a-wine-quality"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "antipattern-good-fit-unidentifiable",
+      "schema_name": "knowledge_antipattern",
+      "pattern_type": "good_fit_unidentifiable",
+      "title": "拟合良好但参数不可辨识",
+      "path": "knowledge/patterns/antipatterns/good-fit-unidentifiable.json",
+      "sha256": "051cd877deeaf9914cd0c245b0ec022d4a64f596cf86c8a07a8f653c2e2feccb",
+      "content_sha256": "7fc126ec248dff8e0f39e7903e4223d6006530f30aa0f93faf5a5f24b5a8de15",
+      "source_paper_ids": [
+        "fan-2021-thin-film-neural-networks"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "antipattern-model-stacking",
+      "schema_name": "knowledge_antipattern",
+      "pattern_type": "model_stacking",
+      "title": "多模型堆叠替代问题机制分析",
+      "path": "knowledge/patterns/antipatterns/model-stacking.json",
+      "sha256": "b0353ad03998d2c141727d1486b40b1ff5390fbd3134971d4be252eda2ac49e5",
+      "content_sha256": "83a13bd68bae366707afbe7d6b7c6aeffe1ec05b3b3d4e279f489327176458d1",
+      "source_paper_ids": [
+        "cumcm-2013-b-shredded-document"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "antipattern-non-discriminating-robustness",
+      "schema_name": "knowledge_antipattern",
+      "pattern_type": "non_discriminating_robustness",
+      "title": "没有辨识力的稳健性扰动",
+      "path": "knowledge/patterns/antipatterns/non-discriminating-robustness.json",
+      "sha256": "72b273f60e4e76bd54f04dd184d3f73c5dbe7579fed025d87e9380f772acbbbe",
+      "content_sha256": "51cb172529b4fb52865df61ed8d303635925eef9912e88445848baccbd4c8a87",
+      "source_paper_ids": [
+        "cumcm-2016-a-mooring-system"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    },
+    {
+      "pattern_id": "antipattern-pseudo-innovation",
+      "schema_name": "knowledge_antipattern",
+      "pattern_type": "pseudo_innovation",
+      "title": "没有可证伪增益的复杂模型包装",
+      "path": "knowledge/patterns/antipatterns/pseudo-innovation.json",
+      "sha256": "5b1b47b05a23bfa033a9945d45d22a71e63687dbb793578b75e2c0ced2d5d4f1",
+      "content_sha256": "d69eb5c0a3c3778f24c2eb721f56c860a43ff5d4c1d0cc996cf9c1fffe6cdae3",
+      "source_paper_ids": [
+        "cumcm-2018-b-rgv-scheduling"
+      ],
+      "origin": "paper_card",
+      "review_status": "provisional",
+      "promotion_receipt_sha256": null
+    }
+  ]
+}

@@ -5,12 +5,70 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from shumozizi.core.io import atomic_json, sha256_file
 from shumozizi.knowledge.papers import (
     REQUIRED_CARD_SECTIONS,
-    build_paper_index,
+    build_paper_indexes,
     retrieve_papers,
     write_retrieval_artifacts,
 )
+
+
+def _build_verified_index(tmp_path: Path, card_path: Path, paper_id: str) -> Path:
+    metadata = card_path.read_text(encoding="utf-8")
+    source_sha256 = next(
+        line.split(":", 1)[1].strip()
+        for line in metadata.splitlines()
+        if line.startswith("source_sha256:")
+    )
+    canonical_problem_id = next(
+        line.split(":", 1)[1].strip()
+        for line in metadata.splitlines()
+        if line.startswith("canonical_problem_id:")
+    )
+    problem_asset_sha256 = next(
+        line.split(":", 1)[1].strip()
+        for line in metadata.splitlines()
+        if line.startswith("problem_asset_sha256:")
+    )
+    receipt_path = tmp_path / f"knowledge/reviews/promotions/{paper_id}.json"
+    atomic_json(
+        receipt_path,
+        {
+            "schema_name": "paper_card_promotion_receipt",
+            "schema_version": "1.0",
+            "paper_id": paper_id,
+            "card_version": "2.0",
+            "card_sha256": sha256_file(card_path),
+            "source_sha256": source_sha256,
+            "canonical_problem_id": canonical_problem_id,
+            "problem_asset_sha256": problem_asset_sha256,
+        },
+    )
+    registry_path = tmp_path / "knowledge/reviews/paper_card_review_registry.json"
+    atomic_json(
+        registry_path,
+        {
+            "schema_name": "paper_card_review_registry",
+            "schema_version": "1.0",
+            "default_status": "legacy_provisional",
+            "cards": {
+                paper_id: {
+                    "review_status": "verified",
+                    "promotion_receipt": f"knowledge/reviews/promotions/{paper_id}.json",
+                    "promotion_receipt_sha256": sha256_file(receipt_path),
+                }
+            },
+        },
+    )
+    index = tmp_path / "knowledge/indexes/papers_verified.json"
+    build_paper_indexes(
+        tmp_path / "knowledge/cards/papers",
+        registry_path,
+        tmp_path / "knowledge/indexes/papers_provisional.json",
+        index,
+    )
+    return index
 
 
 def _seed_index(tmp_path: Path) -> Path:
@@ -25,9 +83,16 @@ def _seed_index(tmp_path: Path) -> Path:
             [
                 "---",
                 "paper_id: heat",
+                "card_version: '2.0'",
                 "title: 热防护机理模型",
                 "source_file: heat.pdf",
                 f"source_sha256: {'b' * 64}",
+                "competition_id: cumcm",
+                "competition_year: 2018",
+                "problem_code: A",
+                "canonical_problem_id: cumcm-2018-a",
+                f"problem_asset_sha256: {'a' * 64}",
+                f"paper_asset_sha256: {'b' * 64}",
                 "problem_type: mechanism",
                 "data_structure: time-series",
                 "task_types:",
@@ -40,9 +105,7 @@ def _seed_index(tmp_path: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    index = tmp_path / "knowledge/indexes/papers.json"
-    build_paper_index(cards, index)
-    return index
+    return _build_verified_index(tmp_path, cards / "heat.md", "heat")
 
 
 def test_high_confidence_match_writes_all_route_artifacts(tmp_path: Path) -> None:
@@ -57,6 +120,8 @@ def test_high_confidence_match_writes_all_route_artifacts(tmp_path: Path) -> Non
             "task_types": ["heat-transfer"],
             "keywords": ["热防护"],
             "question_chain": ["识别参数", "优化厚度"],
+            "canonical_problem_id": "unseen-heat-problem",
+            "problem_asset_sha256": "e" * 64,
         },
     )
 
@@ -65,6 +130,7 @@ def test_high_confidence_match_writes_all_route_artifacts(tmp_path: Path) -> Non
         "retrieved_patterns",
         "pattern_transfer_plan",
         "model_storyboard",
+        "retrieval_snapshot",
     }
     assert all(path.is_file() for path in outputs.values())
     fingerprint = json.loads(outputs["task_fingerprint"].read_text(encoding="utf-8"))
@@ -85,6 +151,8 @@ def test_no_match_degrades_without_blocking_route_design(tmp_path: Path) -> None
             "data_structure": "graph",
             "task_types": ["community-detection"],
             "keywords": ["社团"],
+            "canonical_problem_id": "unseen-network-problem",
+            "problem_asset_sha256": "f" * 64,
         },
     )
 
@@ -105,9 +173,16 @@ def test_domain_distant_statistical_match_is_not_high_confidence(tmp_path: Path)
             [
                 "---",
                 "paper_id: wine",
+                "card_version: '2.0'",
                 "title: 葡萄酒质量评价",
                 "source_file: wine.pdf",
                 f"source_sha256: {'c' * 64}",
+                "competition_id: cumcm",
+                "competition_year: 2012",
+                "problem_code: A",
+                "canonical_problem_id: cumcm-2012-a",
+                f"problem_asset_sha256: {'d' * 64}",
+                f"paper_asset_sha256: {'c' * 64}",
                 "problem_type: 统计评价与预测",
                 "data_structure: 多评委多指标表格",
                 "task_types:",
@@ -123,8 +198,7 @@ def test_domain_distant_statistical_match_is_not_high_confidence(tmp_path: Path)
         ),
         encoding="utf-8",
     )
-    index = tmp_path / "knowledge/indexes/papers.json"
-    build_paper_index(cards, index)
+    index = _build_verified_index(tmp_path, cards / "wine.md", "wine")
 
     match = retrieve_papers(
         index,

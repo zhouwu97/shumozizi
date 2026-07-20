@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "retrieval_snapshot.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "current_problem_identity",
+    "verified_index_path",
+    "verified_index_sha256",
+    "retrieval_policy",
+    "retrieval_policy_sha256",
+    "task_fingerprint_path",
+    "task_fingerprint_sha256",
+    "retrieval_input",
+    "selected_cards",
+    "same_problem_exclusions",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "retrieval_snapshot"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "current_problem_identity": {"$ref": "#/$defs/problem_identity"},
+    "verified_index_path": {"const": "knowledge/indexes/papers_verified.json"},
+    "verified_index_sha256": {"$ref": "#/$defs/sha256"},
+    "retrieval_policy": {"type": "object"},
+    "retrieval_policy_sha256": {"$ref": "#/$defs/sha256"},
+    "task_fingerprint_path": {"const": "knowledge/TASK_FINGERPRINT.json"},
+    "task_fingerprint_sha256": {"$ref": "#/$defs/sha256"},
+    "retrieval_input": {"type": "object"},
+    "selected_cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "paper_id",
+          "card_version",
+          "card_sha256",
+          "promotion_receipt_sha256"
+        ],
+        "properties": {
+          "paper_id": {"type": "string", "minLength": 1},
+          "card_version": {"type": "string", "minLength": 1},
+          "card_sha256": {"$ref": "#/$defs/sha256"},
+          "promotion_receipt_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "same_problem_exclusions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["paper_id", "reason"],
+        "properties": {
+          "paper_id": {"type": "string", "minLength": 1},
+          "reason": {"enum": ["canonical_problem_id", "problem_asset_sha256"]}
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_string": {"type": ["string", "null"]},
+    "nullable_sha256": {
+      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    },
+    "problem_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical_problem_id", "problem_asset_sha256"],
+      "properties": {
+        "canonical_problem_id": {"$ref": "#/$defs/nullable_string"},
+        "problem_asset_sha256": {"$ref": "#/$defs/nullable_sha256"}
+      }
+    }
+  }
+}

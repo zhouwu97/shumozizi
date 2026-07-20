@@ -22,6 +22,19 @@
     "approved_by",
     "approved_at"
   ],
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          {"required": ["retrieval_snapshot_path"]},
+          {"required": ["retrieval_snapshot_sha256"]}
+        ]
+      },
+      "then": {
+        "required": ["retrieval_snapshot_path", "retrieval_snapshot_sha256"]
+      }
+    }
+  ],
   "properties": {
     "schema_name": {"const": "route_lock"},
     "schema_version": {"const": "2.0"},
@@ -30,6 +43,8 @@
     "selected_route_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
     "run_config_lock_sha256": {"$ref": "#/$defs/sha"},
     "route_candidates_sha256": {"$ref": "#/$defs/sha"},
+    "retrieval_snapshot_path": {"const": "knowledge/RETRIEVAL_SNAPSHOT.json"},
+    "retrieval_snapshot_sha256": {"$ref": "#/$defs/sha"},
     "approval_receipt_sha256": {"$ref": "#/$defs/sha"},
     "problem_manifest_sha256": {"$ref": "#/$defs/sha"},
     "problem_interpretation": {"type": "string", "minLength": 10},

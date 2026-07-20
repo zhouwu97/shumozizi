@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "figure-narrative-evidence-role",
+  "pattern_type": "figure_narrative",
+  "title": "每张图承担单一证据职责",
+  "applicable_when": ["结果需要展示机理、对照或不确定性"],
+  "not_applicable_when": ["表格已经更清楚地表达精确数值"],
+  "required_evidence": ["图对应的 claim", "坐标单位和数据来源"],
+  "common_misuses": ["装饰性图表或正文不解释图中证据"],
+  "counterexamples": ["同一图混合多个无关结论"],
+  "source_paper_ids": ["fan-2021-thin-film-neural-networks"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

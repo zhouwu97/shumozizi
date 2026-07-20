@@ -1,0 +1,17 @@
+{
+  "schema_name": "knowledge_antipattern",
+  "schema_version": "1.0",
+  "pattern_id": "antipattern-data-leakage",
+  "antipattern_type": "data_leakage",
+  "title": "训练或特征处理中泄漏目标信息",
+  "applicable_when": ["监督学习、时序预测或重复测量数据"],
+  "not_applicable_when": ["无预测评价目标的纯描述任务"],
+  "required_evidence": ["按时间或主体的数据划分", "特征生成时点审计"],
+  "detection_signals": ["随机拆分重复主体", "使用未来数据或目标派生特征"],
+  "harms": ["样本外性能被系统性高估"],
+  "corrections": ["按主体或时间重做划分并重跑全部指标"],
+  "source_paper_ids": ["cumcm-2015-b-taxi-allocation"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

@@ -5,16 +5,36 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from shumozizi.knowledge.papers import build_paper_index
+from shumozizi.knowledge.papers import build_paper_indexes
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="构建仓内优秀论文索引")
+    parser = argparse.ArgumentParser(description="构建隔离的 provisional 与 verified 论文索引")
     parser.add_argument("--cards-dir", type=Path, default=Path("knowledge/cards/papers"))
-    parser.add_argument("--output", type=Path, default=Path("knowledge/indexes/papers.json"))
+    parser.add_argument(
+        "--review-registry",
+        type=Path,
+        default=Path("knowledge/reviews/paper_card_review_registry.json"),
+    )
+    parser.add_argument(
+        "--provisional-output",
+        type=Path,
+        default=Path("knowledge/indexes/papers_provisional.json"),
+    )
+    parser.add_argument(
+        "--verified-output",
+        type=Path,
+        default=Path("knowledge/indexes/papers_verified.json"),
+    )
     args = parser.parse_args()
-    document = build_paper_index(args.cards_dir, args.output)
-    print(f"已索引 {document['paper_count']} 篇论文: {args.output}")
+    documents = build_paper_indexes(
+        args.cards_dir,
+        args.review_registry,
+        args.provisional_output,
+        args.verified_output,
+    )
+    print(f"provisional: {documents['provisional']['paper_count']} 篇")
+    print(f"verified: {documents['verified']['paper_count']} 篇")
     return 0
 
 

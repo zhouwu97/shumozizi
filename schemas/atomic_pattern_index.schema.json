@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atomic_pattern_index.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "review_registry_sha256", "index_kind", "pattern_count", "patterns"],
+  "properties": {
+    "schema_name": {"const": "atomic_pattern_index"},
+    "schema_version": {"const": "1.0"},
+    "review_registry_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "index_kind": {"enum": ["provisional", "verified"]},
+    "pattern_count": {"type": "integer", "minimum": 0},
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pattern_id", "schema_name", "pattern_type", "title", "path", "sha256", "content_sha256", "source_paper_ids", "origin", "review_status", "promotion_receipt_sha256"],
+        "properties": {
+          "pattern_id": {"type": "string", "minLength": 1},
+          "schema_name": {"enum": ["atomic_knowledge_pattern", "knowledge_antipattern"]},
+          "pattern_type": {"type": "string", "minLength": 1},
+          "title": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "pattern": "^knowledge/patterns/"},
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "content_sha256": {"$ref": "#/$defs/sha256"},
+          "source_paper_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "origin": {"type": "string", "minLength": 1},
+          "review_status": {"enum": ["provisional", "revision_required", "verified"]},
+          "promotion_receipt_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

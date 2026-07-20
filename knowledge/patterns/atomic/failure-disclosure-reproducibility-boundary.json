@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "failure-disclosure-reproducibility-boundary",
+  "pattern_type": "failure_disclosure",
+  "title": "把不可复现环节和输入缺口显式写入结论边界",
+  "applicable_when": ["原始数据、软件选项或测量条件不完整"],
+  "not_applicable_when": ["全部输入和实现已独立复验"],
+  "required_evidence": ["缺失资产清单", "受影响结论列表"],
+  "common_misuses": ["只写笼统局限而不说明影响范围"],
+  "counterexamples": ["把不可复现结果写成确定性结论"],
+  "source_paper_ids": ["spirk-2021-biopolymer-thin-film-thickness"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

@@ -24,6 +24,17 @@
           "ambiguity_review": {"required": ["none_reason"]}
         }
       }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {"required": ["retrieval_snapshot_path"]},
+          {"required": ["retrieval_snapshot_sha256"]}
+        ]
+      },
+      "then": {
+        "required": ["retrieval_snapshot_path", "retrieval_snapshot_sha256"]
+      }
     }
   ],
   "properties": {
@@ -31,6 +42,8 @@
     "schema_version": {"const": "2.0"},
     "run_id": {"type": "string", "minLength": 1},
     "run_config_lock_sha256": {"$ref": "#/$defs/sha"},
+    "retrieval_snapshot_path": {"const": "knowledge/RETRIEVAL_SNAPSHOT.json"},
+    "retrieval_snapshot_sha256": {"$ref": "#/$defs/sha"},
     "problem_summary": {"type": "string", "minLength": 20},
     "ambiguities": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "ambiguity_review": {"$ref": "#/$defs/ambiguity_review"},

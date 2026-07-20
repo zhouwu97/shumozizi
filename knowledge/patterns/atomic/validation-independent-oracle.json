@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "validation-independent-oracle",
+  "pattern_type": "validation",
+  "title": "用独立 oracle 区分正确模型与共同错误",
+  "applicable_when": ["小规模实例可枚举或存在独立实现"],
+  "not_applicable_when": ["不存在可比较真值且无法构造限制情形"],
+  "required_evidence": ["oracle 预注册", "独立输出逐项比较"],
+  "common_misuses": ["两份代码复用同一错误公式"],
+  "counterexamples": ["只比较运行时间而不比较正确性"],
+  "source_paper_ids": ["fan-2021-thin-film-neural-networks"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

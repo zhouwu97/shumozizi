@@ -1,0 +1,17 @@
+{
+  "schema_name": "knowledge_antipattern",
+  "schema_version": "1.0",
+  "pattern_id": "antipattern-pseudo-innovation",
+  "antipattern_type": "pseudo_innovation",
+  "title": "没有可证伪增益的复杂模型包装",
+  "applicable_when": ["论文声称模型创新"],
+  "not_applicable_when": ["明确作为无创新基线使用"],
+  "required_evidence": ["公平基线", "消融和预设增益判据"],
+  "detection_signals": ["只更换模型名称", "无机制差异和无消融"],
+  "harms": ["复杂度增加但结论证据不增强"],
+  "corrections": ["删除创新措辞或补充可证伪对照"],
+  "source_paper_ids": ["cumcm-2018-b-rgv-scheduling"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

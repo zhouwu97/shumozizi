@@ -1,0 +1,17 @@
+{
+  "schema_name": "knowledge_antipattern",
+  "schema_version": "1.0",
+  "pattern_id": "antipattern-figure-conclusion-disconnect",
+  "antipattern_type": "figure_conclusion_disconnect",
+  "title": "图表数字与正文结论方向脱节",
+  "applicable_when": ["正文依赖图表支持方向性结论"],
+  "not_applicable_when": ["图表仅提供数据清单"],
+  "required_evidence": ["claim 到图表字段映射", "方向和单位机器复核"],
+  "detection_signals": ["图中下降而正文写上升", "单位转换后数量级冲突"],
+  "harms": ["关键结论与真实结果相反"],
+  "corrections": ["从 metric provenance 重建图表和结论"],
+  "source_paper_ids": ["cumcm-2012-a-wine-quality"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

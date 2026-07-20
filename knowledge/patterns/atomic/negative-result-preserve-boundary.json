@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "negative-result-preserve-boundary",
+  "pattern_type": "negative_result",
+  "title": "保留不能替代测量的负面结论",
+  "applicable_when": ["模型有解释力但达不到预设替代阈值"],
+  "not_applicable_when": ["没有预设判据且无法量化失败"],
+  "required_evidence": ["预设决策阈值", "样本外误差或不确定区间"],
+  "common_misuses": ["为了创新把负结果改写成模型成功"],
+  "counterexamples": ["样本内高拟合被当作可替代性证据"],
+  "source_paper_ids": ["cumcm-2012-a-wine-evaluation"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

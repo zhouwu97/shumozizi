@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "uncertainty-perturb-identifiable-directions",
+  "pattern_type": "uncertainty",
+  "title": "沿可辨识方向设计不确定性扰动",
+  "applicable_when": ["输入误差会传播到参数或决策"],
+  "not_applicable_when": ["输出与扰动变量无机制联系"],
+  "required_evidence": ["扰动范围依据", "输出变化和决策稳定性"],
+  "common_misuses": ["扰动过小导致稳健性实验没有辨识力"],
+  "counterexamples": ["任意百分比噪声且不解释来源"],
+  "source_paper_ids": ["spirk-2021-biopolymer-thin-film-thickness"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

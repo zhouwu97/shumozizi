@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "argument-chain-calibrate-then-model",
+  "pattern_type": "argument_chain",
+  "title": "先校准代理标签再进入监督建模",
+  "applicable_when": ["目标标签来自人工评分或代理测量"],
+  "not_applicable_when": ["目标是直接可观测的物理真值"],
+  "required_evidence": ["标签一致性", "校准前后对照"],
+  "common_misuses": ["把低离散度直接等同于高真实性"],
+  "counterexamples": ["没有外部标准时宣称某评委组绝对正确"],
+  "source_paper_ids": ["cumcm-2012-a-wine-evaluation"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

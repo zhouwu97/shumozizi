@@ -1,0 +1,6 @@
+{
+  "schema_name": "atomic_pattern_review_registry",
+  "schema_version": "1.0",
+  "default_status": "provisional",
+  "patterns": {}
+}

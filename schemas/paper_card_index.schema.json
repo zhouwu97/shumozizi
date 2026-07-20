@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "paper_card_index.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "review_registry_path",
+    "review_registry_sha256",
+    "index_kind",
+    "paper_count",
+    "papers"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_card_index"},
+    "schema_version": {"const": "2.0"},
+    "review_registry_path": {"const": "knowledge/reviews/paper_card_review_registry.json"},
+    "review_registry_sha256": {"$ref": "#/$defs/sha256"},
+    "index_kind": {"enum": ["provisional", "verified"]},
+    "paper_count": {"type": "integer", "minimum": 0},
+    "papers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_sha256": {
+      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    },
+    "nullable_string": {"type": ["string", "null"]},
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paper_id",
+        "card_version",
+        "title",
+        "competition_id",
+        "competition_year",
+        "problem_code",
+        "canonical_problem_id",
+        "problem_asset_sha256",
+        "paper_asset_sha256",
+        "problem_type",
+        "data_structure",
+        "task_types",
+        "domain_terms",
+        "structural_tags",
+        "source_sha256",
+        "card_sha256",
+        "card_path",
+        "review_status",
+        "promotion_receipt",
+        "promotion_receipt_sha256"
+      ],
+      "properties": {
+        "paper_id": {"type": "string", "minLength": 1},
+        "card_version": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "competition_id": {"$ref": "#/$defs/nullable_string"},
+        "competition_year": {"type": ["integer", "null"]},
+        "problem_code": {"$ref": "#/$defs/nullable_string"},
+        "canonical_problem_id": {"$ref": "#/$defs/nullable_string"},
+        "problem_asset_sha256": {"$ref": "#/$defs/nullable_sha256"},
+        "paper_asset_sha256": {"$ref": "#/$defs/sha256"},
+        "problem_type": {"type": "string", "minLength": 1},
+        "data_structure": {"type": "string", "minLength": 1},
+        "task_types": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "domain_terms": {"type": "array", "items": {"type": "string"}},
+        "structural_tags": {"type": "array", "items": {"type": "string"}},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "card_sha256": {"$ref": "#/$defs/sha256"},
+        "card_path": {"type": "string", "pattern": "^knowledge/cards/papers/"},
+        "review_status": {
+          "enum": ["legacy_provisional", "provisional", "revision_required", "verified"]
+        },
+        "promotion_receipt": {"$ref": "#/$defs/nullable_string"},
+        "promotion_receipt_sha256": {"$ref": "#/$defs/nullable_sha256"}
+      }
+    }
+  }
+}

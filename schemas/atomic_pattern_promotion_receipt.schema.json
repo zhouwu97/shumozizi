@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atomic_pattern_promotion_receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "pattern_id", "pattern_path", "pattern_sha256", "pattern_content_sha256", "review_report_path", "review_report_sha256", "review_session_id", "reviewer_identity", "promotion_policy_version", "promoted_at"],
+  "properties": {
+    "schema_name": {"const": "atomic_pattern_promotion_receipt"},
+    "schema_version": {"const": "1.0"},
+    "pattern_id": {"type": "string", "minLength": 1},
+    "pattern_path": {"type": "string", "pattern": "^knowledge/patterns/"},
+    "pattern_sha256": {"$ref": "#/$defs/sha256"},
+    "pattern_content_sha256": {"$ref": "#/$defs/sha256"},
+    "review_report_path": {"type": "string", "pattern": "^knowledge/reviews/pattern_reports/"},
+    "review_report_sha256": {"$ref": "#/$defs/sha256"},
+    "review_session_id": {"type": "string", "minLength": 1},
+    "reviewer_identity": {"type": "string", "minLength": 1},
+    "promotion_policy_version": {"const": "atomic-pattern-promotion-v1"},
+    "promoted_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

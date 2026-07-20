@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "paper_card_promotion_receipt.schema.json",
+  "type": "object",
+  "required": [
+    "schema_name",
+    "schema_version",
+    "paper_id",
+    "card_version",
+    "card_sha256",
+    "source_sha256",
+    "canonical_problem_id",
+    "problem_asset_sha256"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_card_promotion_receipt"},
+    "schema_version": {"const": "1.0"},
+    "paper_id": {"type": "string", "minLength": 1},
+    "card_version": {"type": "string", "minLength": 1},
+    "card_sha256": {"$ref": "#/$defs/sha256"},
+    "source_sha256": {"$ref": "#/$defs/sha256"},
+    "canonical_problem_id": {"type": "string", "minLength": 1},
+    "problem_asset_sha256": {"$ref": "#/$defs/sha256"},
+    "source_id": {"type": "string", "minLength": 1},
+    "source_asset_sha256": {"$ref": "#/$defs/sha256"},
+    "evidence_map_sha256": {"$ref": "#/$defs/sha256"},
+    "review_report_sha256": {"$ref": "#/$defs/sha256"},
+    "review_session_id": {"type": "string", "minLength": 1},
+    "reviewer_identity": {"type": "string", "minLength": 1},
+    "reviewer_attestation": {"type": "string", "minLength": 1},
+    "promotion_policy_version": {"const": "paper-card-promotion-v1"},
+    "promoted_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"required": ["source_id"]},
+      "then": {
+        "required": [
+          "source_asset_sha256",
+          "evidence_map_sha256",
+          "review_report_sha256",
+          "review_session_id",
+          "reviewer_identity",
+          "reviewer_attestation",
+          "promotion_policy_version",
+          "promoted_at"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

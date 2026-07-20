@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "model-selection-mechanism-first",
+  "pattern_type": "model_selection",
+  "title": "以前向机制和可辨识性选择反演模型",
+  "applicable_when": ["存在可复验前向机理模型"],
+  "not_applicable_when": ["观测与参数关系无法定义"],
+  "required_evidence": ["前向模型验证", "参数敏感性或可辨识性检查"],
+  "common_misuses": ["仅凭拟合优度选择复杂反演器"],
+  "counterexamples": ["纯描述性汇总任务"],
+  "source_paper_ids": ["fan-2021-thin-film-neural-networks"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

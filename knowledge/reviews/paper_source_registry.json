@@ -1,0 +1,116 @@
+{
+  "schema_name": "paper_source_registry",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "source_id": "src-cumcm-2012-a-wine-evaluation",
+      "paper_id": "cumcm-2012-a-wine-evaluation",
+      "source_asset_sha256": "bf211e0d2901698f856b2b75b528419b89fed8c408950a1596970259ebecae84",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2012-A-1699440/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-cumcm-2012-a-wine-quality",
+      "paper_id": "cumcm-2012-a-wine-quality",
+      "source_asset_sha256": "015c3dfaafbf06a93ae52a00c952373772aec0d006f5883dac202b9927a7a55e",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2012-A-1191829/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-cumcm-2013-b-shredded-document",
+      "paper_id": "cumcm-2013-b-shredded-document",
+      "source_asset_sha256": "4c01b66554a65ea520ee4f5a7207dee89c6a53986599648b7435143629b5061f",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2013-B-1700247/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-cumcm-2015-b-taxi-allocation",
+      "paper_id": "cumcm-2015-b-taxi-allocation",
+      "source_asset_sha256": "c2c9ee2437f222c91b3997c01fa667e45aabc50fa8e3c9758213d4e4170cc4e5",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2015-B-1699714/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-cumcm-2016-a-mooring-system",
+      "paper_id": "cumcm-2016-a-mooring-system",
+      "source_asset_sha256": "b7aa78f24f98ff96856422d9306013df8d8a2e992f4ff9bd8e0db0831a4fad20",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2016-A-1699719/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-cumcm-2017-a-ct-calibration-reconstruction",
+      "paper_id": "cumcm-2017-a-ct-calibration-reconstruction",
+      "source_asset_sha256": "c942b6a33b4faaeb6681e0118c3752da8a4fee0d3a03eaa96104f18859c5a56c",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2017-A-1699823/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-cumcm-2018-a-heat-protection",
+      "paper_id": "cumcm-2018-a-heat-protection",
+      "source_asset_sha256": "3d417571cfa11d287427d78f0aa4aae3aa8fc614d0df9abc977e242282a48cec",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2018-A-1699833/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-cumcm-2018-b-rgv-scheduling",
+      "paper_id": "cumcm-2018-b-rgv-scheduling",
+      "source_asset_sha256": "4c4afd10a66b390d8a962609c31ef36792258561852f6b7d19545b847d897851",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_official_awarded_paper",
+      "origin": "cache/2018-B-1699829/001.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全题面身份和访问说明"
+    },
+    {
+      "source_id": "src-fan-2021-thin-film-neural-networks",
+      "paper_id": "fan-2021-thin-film-neural-networks",
+      "source_asset_sha256": "543ede7b3870a02268acf823655d3f6c03e243985c078d8ebdfe93b7439760ce",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_research_paper",
+      "origin": "optical-inversion/thin-film-neural-networks-optical-inverse.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全访问说明"
+    },
+    {
+      "source_id": "src-spirk-2021-biopolymer-thin-film-thickness",
+      "paper_id": "spirk-2021-biopolymer-thin-film-thickness",
+      "source_asset_sha256": "5381125fce3d4cc0d8a2632a2018e61d1c13910b880092f2a8762cba6a43d5b5",
+      "problem_asset_sha256": null,
+      "canonical_problem_id": null,
+      "source_type": "legacy_research_paper",
+      "origin": "optical-inversion/biopolymer-thin-film-thickness-review.pdf",
+      "retrieved_at": null,
+      "license_or_access_note": "历史只读来源，待逐卡审核时补全访问说明"
+    }
+  ]
+}

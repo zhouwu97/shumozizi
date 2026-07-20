@@ -1,0 +1,17 @@
+{
+  "schema_name": "knowledge_antipattern",
+  "schema_version": "1.0",
+  "pattern_id": "antipattern-good-fit-unidentifiable",
+  "antipattern_type": "good_fit_unidentifiable",
+  "title": "拟合良好但参数不可辨识",
+  "applicable_when": ["从有限观测反演多个相关参数"],
+  "not_applicable_when": ["参数由独立直接测量确定"],
+  "required_evidence": ["多初值", "参数相关性或 profile likelihood"],
+  "detection_signals": ["多组参数产生近似相同输出", "置信区间无界"],
+  "harms": ["参数解释和机制结论不可信"],
+  "corrections": ["减少参数、增加观测或只报告可辨识组合"],
+  "source_paper_ids": ["fan-2021-thin-film-neural-networks"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

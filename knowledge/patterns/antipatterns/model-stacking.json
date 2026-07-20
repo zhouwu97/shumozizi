@@ -1,0 +1,17 @@
+{
+  "schema_name": "knowledge_antipattern",
+  "schema_version": "1.0",
+  "pattern_id": "antipattern-model-stacking",
+  "antipattern_type": "model_stacking",
+  "title": "多模型堆叠替代问题机制分析",
+  "applicable_when": ["候选路线列出多个模型族"],
+  "not_applicable_when": ["模型承担清晰且不重复的子问题职责"],
+  "required_evidence": ["每个模型的独立职责", "删除模型后的影响"],
+  "detection_signals": ["模型输出未进入后续决策", "同一任务重复拟合"],
+  "harms": ["论证主线破碎且难以验证"],
+  "corrections": ["保留最小充分模型链并做职责消融"],
+  "source_paper_ids": ["cumcm-2013-b-shredded-document"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

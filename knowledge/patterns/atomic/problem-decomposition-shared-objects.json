@@ -1,0 +1,16 @@
+{
+  "schema_name": "atomic_knowledge_pattern",
+  "schema_version": "1.0",
+  "pattern_id": "problem-decomposition-shared-objects",
+  "pattern_type": "problem_decomposition",
+  "title": "以共享数学对象组织多问递进",
+  "applicable_when": ["多问共享样本、变量或约束"],
+  "not_applicable_when": ["各问数据和目标完全独立"],
+  "required_evidence": ["问题依赖图", "共享索引和单位定义"],
+  "common_misuses": ["只在文字中声称递进但各问模型互不连接"],
+  "counterexamples": ["独立数据集上的多个无关预测任务"],
+  "source_paper_ids": ["cumcm-2012-a-wine-evaluation"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

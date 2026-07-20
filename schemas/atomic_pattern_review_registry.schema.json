@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atomic_pattern_review_registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "default_status", "patterns"],
+  "properties": {
+    "schema_name": {"const": "atomic_pattern_review_registry"},
+    "schema_version": {"const": "1.0"},
+    "default_status": {"const": "provisional"},
+    "patterns": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["review_status", "promotion_receipt", "promotion_receipt_sha256"],
+        "properties": {
+          "review_status": {"enum": ["provisional", "revision_required", "rejected", "verified", "superseded"]},
+          "promotion_receipt": {"type": ["string", "null"]},
+          "promotion_receipt_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

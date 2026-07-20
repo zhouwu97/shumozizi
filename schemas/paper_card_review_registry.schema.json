@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "paper_card_review_registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "default_status", "cards"],
+  "properties": {
+    "schema_name": {"const": "paper_card_review_registry"},
+    "schema_version": {"const": "1.0"},
+    "default_status": {"const": "legacy_provisional"},
+    "cards": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["review_status", "promotion_receipt", "promotion_receipt_sha256"],
+        "properties": {
+          "review_status": {
+            "enum": [
+              "legacy_provisional",
+              "provisional",
+              "revision_required",
+              "rejected",
+              "verified",
+              "superseded"
+            ]
+          },
+          "promotion_receipt": {
+            "type": ["string", "null"],
+            "pattern": "^knowledge/reviews/promotions/"
+          },
+          "promotion_receipt_sha256": {"$ref": "#/$defs/nullable_sha256"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"review_status": {"const": "verified"}}},
+            "then": {
+              "properties": {
+                "promotion_receipt": {"type": "string"},
+                "promotion_receipt_sha256": {"$ref": "#/$defs/sha256"}
+              }
+            },
+            "else": {
+              "properties": {
+                "promotion_receipt": {"type": "null"},
+                "promotion_receipt_sha256": {"type": "null"}
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_sha256": {
+      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    }
+  }
+}

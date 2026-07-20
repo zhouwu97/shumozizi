@@ -1,0 +1,17 @@
+{
+  "schema_name": "knowledge_antipattern",
+  "schema_version": "1.0",
+  "pattern_id": "antipattern-non-discriminating-robustness",
+  "antipattern_type": "non_discriminating_robustness",
+  "title": "没有辨识力的稳健性扰动",
+  "applicable_when": ["论文声称结论稳健"],
+  "not_applicable_when": ["模型没有不确定输入"],
+  "required_evidence": ["扰动范围依据", "能触及失败边界的压力测试"],
+  "detection_signals": ["只扰动无关参数", "扰动幅度远小于测量误差"],
+  "harms": ["稳定结论只是实验设计过弱"],
+  "corrections": ["沿敏感方向扩大到现实边界并报告失效点"],
+  "source_paper_ids": ["cumcm-2016-a-mooring-system"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

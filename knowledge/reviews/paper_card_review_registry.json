@@ -1,0 +1,57 @@
+{
+  "schema_name": "paper_card_review_registry",
+  "schema_version": "1.0",
+  "default_status": "legacy_provisional",
+  "cards": {
+    "cumcm-2012-a-wine-evaluation": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "cumcm-2012-a-wine-quality": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "cumcm-2013-b-shredded-document": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "cumcm-2015-b-taxi-allocation": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "cumcm-2016-a-mooring-system": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "cumcm-2017-a-ct-calibration-reconstruction": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "cumcm-2018-a-heat-protection": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "cumcm-2018-b-rgv-scheduling": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "fan-2021-thin-film-neural-networks": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    },
+    "spirk-2021-biopolymer-thin-film-thickness": {
+      "review_status": "legacy_provisional",
+      "promotion_receipt": null,
+      "promotion_receipt_sha256": null
+    }
+  }
+}

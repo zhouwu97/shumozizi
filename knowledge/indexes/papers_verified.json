@@ -1,0 +1,9 @@
+{
+  "schema_name": "paper_card_index",
+  "schema_version": "2.0",
+  "review_registry_path": "knowledge/reviews/paper_card_review_registry.json",
+  "review_registry_sha256": "9b9c0cfdc131c632f5e697fe3c6fe87784a75b0b252aabab168aced10676d835",
+  "index_kind": "verified",
+  "paper_count": 0,
+  "papers": []
+}

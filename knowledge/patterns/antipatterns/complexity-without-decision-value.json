@@ -1,0 +1,17 @@
+{
+  "schema_name": "knowledge_antipattern",
+  "schema_version": "1.0",
+  "pattern_id": "antipattern-complexity-without-decision-value",
+  "antipattern_type": "complexity_without_decision_value",
+  "title": "复杂度提高但不改变决策价值",
+  "applicable_when": ["主模型显著复杂于基线"],
+  "not_applicable_when": ["复杂模型解决了基线无法满足的硬约束"],
+  "required_evidence": ["决策指标对照", "计算预算和增益阈值"],
+  "detection_signals": ["预测改进极小且最优决策不变", "运行成本大幅增加"],
+  "harms": ["比赛时间和论文篇幅被低价值复杂性占用"],
+  "corrections": ["回退简单模型或证明新增决策能力"],
+  "source_paper_ids": ["cumcm-2018-b-rgv-scheduling"],
+  "origin": "paper_card",
+  "review_status": "provisional",
+  "authoring_session_id": "b4-seed-session"
+}

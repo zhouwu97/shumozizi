@@ -1,0 +1,8 @@
+{
+  "schema_name": "atomic_pattern_index",
+  "schema_version": "1.0",
+  "review_registry_sha256": "9aa79f32c1fd8943517c560e3157e3cb9c2c89e26c53b493f8e0d6bc9a983bd9",
+  "index_kind": "verified",
+  "pattern_count": 0,
+  "patterns": []
+}

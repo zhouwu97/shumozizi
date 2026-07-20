@@ -43,7 +43,9 @@ def _authoring_digests(run_dir: Path) -> dict[str, str]:
             json.dumps(accepted, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
     return {
-        "paper_index_sha256": _file_digest(repo_root / "knowledge" / "indexes" / "papers.json"),
+        "paper_index_sha256": _file_digest(
+            repo_root / "knowledge" / "indexes" / "papers_verified.json"
+        ),
         "task_fingerprint_sha256": _file_digest(
             run_dir / "knowledge" / "TASK_FINGERPRINT.json"
         ),

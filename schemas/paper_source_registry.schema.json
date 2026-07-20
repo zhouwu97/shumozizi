@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "paper_source_registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "sources"],
+  "properties": {
+    "schema_name": {"const": "paper_source_registry"},
+    "schema_version": {"const": "1.0"},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_id",
+          "paper_id",
+          "source_asset_sha256",
+          "problem_asset_sha256",
+          "canonical_problem_id",
+          "source_type",
+          "origin",
+          "retrieved_at",
+          "license_or_access_note"
+        ],
+        "properties": {
+          "source_id": {"type": "string", "minLength": 1},
+          "paper_id": {"type": "string", "minLength": 1},
+          "source_asset_sha256": {"$ref": "#/$defs/sha256"},
+          "problem_asset_sha256": {"$ref": "#/$defs/nullable_sha256"},
+          "canonical_problem_id": {"type": ["string", "null"]},
+          "source_type": {"type": "string", "minLength": 1},
+          "origin": {"type": "string", "minLength": 1},
+          "retrieved_at": {"type": ["string", "null"], "format": "date-time"},
+          "license_or_access_note": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_sha256": {
+      "anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    }
+  }
+}
