@@ -5,6 +5,12 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 
 # R2 实验复现审核
 
+## 执行主体
+
+本 Skill 只能在用户新开的独立 Codex 桌面版顶层对话中执行。用户只负责提交审核请求；当前
+对话中的审核 AI 必须自动完成领取、校验、复现、判断和报告写入，不得要求用户辅助运行实验、
+判断结果或代填报告。禁止使用子 Agent、fork、生产聊天上下文或生产主对话直接执行本审核。
+
 ## 输入文件
 
 - 当前问的 `REVIEW_INPUT_MANIFEST.json`、`review_request.json`、`review_session.json` 和配置锁；

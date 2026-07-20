@@ -52,8 +52,11 @@ R1 报告必须包含完整 17 项 coverage 矩阵（目标与约束分别检查
 删除，策略外 role 不能加入；`read_paths` 只能引用 manifest 中的材料并覆盖全部强制项。
 运行时会先解析真实路径，再拒绝 `..`、反斜杠别名、越界路径和前轮报告等禁止材料。
 
-`review_request.json` 只绑定材料清单，不包含线程身份。全新顶层 Codex 任务领取请求后生成
-`review_session.json`：领取通过独占创建和仓库级锁串行化，一个 request 只能领取一次；
+`review_request.json` 只绑定材料清单，不包含线程身份。生产主对话写完请求后必须停止，向用户
+输出独立审核交接提示。用户只需在 Codex 桌面版中新建一个顶层对话并提交该请求；该新对话中的
+审核 AI 自动调用对应审核 Skill，读取冻结材料并生成 `review_session.json`、报告和回执。用户
+不需要逐项辅助审核、复现、测量、判分或手工填写报告。领取通过独占创建和仓库级锁串行化，
+一个 request 只能领取一次；
 `.review_registry/thread_claims/` 保证同一 thread ID 在整个仓库的 `runs/*/review` 中只能领取
 一次。subagent、fork、继承上下文和旧 revision 均被拒绝。报告绑定 `session_sha256`，回执继续绑定
 input manifest、session、request 和 report 四层哈希，`StateService.record_review_gate()` 登记前
@@ -101,13 +104,17 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 独立 evaluator 评估，不阻断 primary 的事实准入。每问实验完成后先登记 R2 回执，再进入结果
 汇总和论文。
 
-桌面版 AI 负责读取状态和决定下一阶段；项目不提供调用 AI 的 CLI 调度器。新建任务后再次
-调用 `$mathmodel-workflow`，即可从 `state.json` 恢复。
+审核对话只写本轮审核目录中的 session、报告和回执，不修改生产代码、模型、实验、论文或
+`state.json`，也不直接推进状态。报告返回原生产主对话后，主 AI 必须独立核验 finding 并形成
+裁决，再决定定向修复和状态推进。桌面版 AI 负责读取状态和决定下一阶段；项目不提供调用 AI
+的 CLI 调度器。用户完成一次新对话交接后，生产主对话再次调用 `$mathmodel-workflow`，即可从
+`state.json` 恢复。
 
 ## 第二个暂停点
 
-完整论文和 PDF 后按依赖创建 R3/R4 请求；机械 QA 通过后由全新对话执行 R5，原 J0 的自然
-评委视角并入 R5。竞赛模式 R5 最多三轮，仅 P0/P1 或低于 B 才重跑。所有回执必须登记到
+完整论文和 PDF 后按依赖创建 R3/R4 请求；机械 QA 通过后由用户新开独立对话，交由该对话中的
+AI 自动执行 R5，原 J0 的自然评委视角并入 R5。竞赛模式 R5 最多三轮，仅 P0/P1 或低于 B 才
+重跑。所有回执必须登记到
 `review_gates` 并绑定当前生产事实；未登记或任一绑定变化时，不能进入 `WAITING_HUMAN_FINAL`。
 R5 必须同时给出 A 轴（`A_PASS`/`A_BLOCKED`）和 B 轴（质量分数及题目覆盖、模型深度、实验验证
 分项）；联合结论由程序校验，失败时自动生成 `REPAIR_PLAN.json`，只重跑受影响审核阶段。
