@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: shumozizi
+Version: 0.2.0
+Summary: Codex 原生数学建模工作流的可验证运行时
+Requires-Python: >=3.12
+License-File: LICENSE
+Requires-Dist: jsonschema[format]<5,>=4.23
+Requires-Dist: pypdf<7,>=5
+Requires-Dist: rfc8785<1,>=0.1.4
+Provides-Extra: test
+Requires-Dist: pytest<9,>=8; extra == "test"
+Requires-Dist: ruff<1,>=0.8; extra == "test"
+Dynamic: license-file

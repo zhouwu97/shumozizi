@@ -91,6 +91,11 @@ def verify_run_config_lock(repo_root: Path, run_dir: Path) -> dict[str, Any]:
         raise ContractError("锁定 Profile ID 与 Profile 文件不一致")
     if sha256_file(profile_path) != lock["competition_profile"]["profile_sha256"]:
         raise ContractError("锁定 Profile 的内容哈希已变化")
+    if "knowledge_pack" in lock:
+        # 延迟导入避免 knowledge.pack 与本模块之间形成导入环。
+        from shumozizi.knowledge.pack import verify_bound_knowledge_pack
+
+        verify_bound_knowledge_pack(repo_root, lock)
     return lock
 
 

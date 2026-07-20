@@ -37,6 +37,7 @@ class WorkflowEvent(StrEnum):
     QA_PASSED = "QA_PASSED"
     FINAL_APPROVED = "FINAL_APPROVED"
     ROUTE_DRIFT = "ROUTE_DRIFT"
+    MODEL_SPEC_REVISED = "MODEL_SPEC_REVISED"
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,7 @@ TRANSITIONS: dict[tuple[str, WorkflowEvent], str] = {
     ("NEW", WorkflowEvent.ROUTES_PROPOSED): "WAITING_HUMAN_ROUTE",
     ("WAITING_HUMAN_ROUTE", WorkflowEvent.ROUTE_APPROVED): "ROUTE_LOCKED",
     ("ROUTE_LOCKED", WorkflowEvent.MODEL_SPEC_COMPLETED): "MODEL_SPEC_READY",
+    ("MODEL_SPEC_READY", WorkflowEvent.MODEL_SPEC_REVISED): "MODEL_SPEC_READY",
     ("MODEL_SPEC_READY", WorkflowEvent.EXPERIMENT_STARTED): "EXPERIMENTING",
     ("EXPERIMENTING", WorkflowEvent.RESULTS_ADMITTED): "RESULTS_ACCEPTED",
     ("RESULTS_ACCEPTED", WorkflowEvent.PAPER_COMPLETED): "PAPER_DRAFTED",
@@ -70,6 +72,7 @@ TRANSITIONS: dict[tuple[str, WorkflowEvent], str] = {
     ("WAITING_HUMAN_FINAL", WorkflowEvent.FIX_APPLIED): "PAPER_DRAFTED",
     ("WAITING_HUMAN_FINAL", WorkflowEvent.FINAL_APPROVED): "COMPLETE",
     ("MODEL_SPEC_READY", WorkflowEvent.ROUTE_DRIFT): "WAITING_HUMAN_ROUTE",
+    ("ROUTE_LOCKED", WorkflowEvent.ROUTE_DRIFT): "WAITING_HUMAN_ROUTE",
     ("EXPERIMENTING", WorkflowEvent.ROUTE_DRIFT): "WAITING_HUMAN_ROUTE",
     ("BLOCKED", WorkflowEvent.ROUTE_DRIFT): "WAITING_HUMAN_ROUTE",
 }
@@ -141,6 +144,10 @@ class StateService:
             "WAITING_HUMAN_FINAL",
             "COMPLETE",
         }
+        if normalized_event is WorkflowEvent.MODEL_SPEC_REVISED:
+            gate = state.setdefault("review_gates", {}).get("R1_MODELING")
+            if gate and gate.get("receipt"):
+                gate["status"] = "stale"
         if current not in state["completed_stages"]:
             state["completed_stages"].append(current)
         state["last_updated_by"] = actor.actor_id
@@ -232,7 +239,7 @@ class StateService:
         expected_stage, question_id = self._review_gate_identity(gate_id)
         if request["stage"] != expected_stage or report["stage"] != expected_stage:
             raise ContractError(f"审核回执阶段与门不一致: {gate_id}")
-        if gate_id in {"R4_FORMAT_VISUAL", "R5_STANDARD_FINAL", "J0_FINAL_BLIND_JUDGE"}:
+        if gate_id in {"R4_FORMAT_VISUAL", "R5_STANDARD_FINAL"}:
             source_report = verify_source_manifest(run_dir)
             if not source_report["valid"]:
                 raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
@@ -308,7 +315,7 @@ class StateService:
         if any(finding.get("severity") in {"P0", "P1"} for finding in report.get("findings", [])):
             return False
         verdicts = {
-            "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_FIXES"},
+            "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_MINOR_FIXES"},
             "R2_EXPERIMENT": {"REPRODUCIBLE", "REPRODUCIBLE_WITH_WARNINGS"},
             "R3_PAPER_LOGIC": {"READY_FOR_COMPREHENSIVE_REVIEW"},
             "R4_FORMAT_VISUAL": {"COMPLIANT"},
@@ -398,6 +405,8 @@ class StateService:
             roles
         ):
             raise ContractError("路线漂移必须附带 drift memo 与新批准请求")
+        if event is WorkflowEvent.MODEL_SPEC_REVISED:
+            self._verify_model_spec_revision(run_dir, refs)
         if event is WorkflowEvent.EXPERIMENT_STARTED:
             self._require_passed_review_gates(run_dir, state, ("R1_MODELING",))
         if event is WorkflowEvent.RESULTS_ADMITTED:
@@ -443,7 +452,9 @@ class StateService:
             if qa.get("source_manifest_sha256") != source_report["manifest_sha256"]:
                 raise ContractError("QA 报告未绑定当前 SOURCE_MANIFEST.json")
             self._require_current_production_integrity(run_dir)
-            integrity = verify_run_integrity(run_dir, "WAITING_HUMAN_FINAL", repo_root=self.repo_root)
+            integrity = verify_run_integrity(
+                run_dir, "WAITING_HUMAN_FINAL", repo_root=self.repo_root
+            )
             if not integrity["valid"]:
                 raise ContractError("运行完整性校验失败: " + "; ".join(integrity["errors"]))
             self._require_passed_review_gates(
@@ -457,7 +468,47 @@ class StateService:
             self._assert_complete_invariants(run_dir, state)
             integrity = verify_run_integrity(run_dir, "COMPLETE", repo_root=self.repo_root)
             if not integrity["valid"]:
-                raise ContractError("COMPLETE 运行完整性校验失败: " + "; ".join(integrity["errors"]))
+                raise ContractError(
+                    "COMPLETE 运行完整性校验失败: " + "; ".join(integrity["errors"])
+                )
+
+    @staticmethod
+    def _verify_model_spec_revision(run_dir: Path, refs: list[ArtifactRef]) -> None:
+        """验证规格修订没有越过当前路线锁边界。"""
+        by_role: dict[str, ArtifactRef] = {}
+        for ref in refs:
+            if ref.role in by_role:
+                raise ContractError(f"规格修订事件存在重复产物角色: {ref.role}")
+            by_role[ref.role] = ref
+        required = {"old_model_spec", "new_model_spec", "repair_plan", "route_lock"}
+        if not required.issubset(by_role):
+            missing = ", ".join(sorted(required - set(by_role)))
+            raise ContractError(f"规格修订事件缺少产物: {missing}")
+
+        canonical_spec = (run_dir / "brief" / "model_spec.json").resolve()
+        canonical_lock = (run_dir / "brief" / "ROUTE_LOCK.json").resolve()
+        new_spec_path = (run_dir / by_role["new_model_spec"].path).resolve()
+        route_lock_path = (run_dir / by_role["route_lock"].path).resolve()
+        if new_spec_path != canonical_spec or route_lock_path != canonical_lock:
+            raise ContractError("规格修订必须绑定权威 model_spec.json 与 ROUTE_LOCK.json")
+
+        old_spec_path = (run_dir / by_role["old_model_spec"].path).resolve()
+        repair_path = (run_dir / by_role["repair_plan"].path).resolve()
+        old_spec = load_json(old_spec_path)
+        new_spec = load_json(new_spec_path)
+        repair = load_json(repair_path)
+        require_valid(old_spec, "model_spec")
+        require_valid(new_spec, "model_spec")
+        require_valid(repair, "repair_plan")
+        route_lock_sha256 = sha256_file(route_lock_path)
+        if old_spec["route_lock_sha256"] != route_lock_sha256:
+            raise ContractError("旧模型规格未绑定当前路线锁")
+        if new_spec["route_lock_sha256"] != route_lock_sha256:
+            raise ContractError("新模型规格改变或未绑定当前路线锁")
+        if sha256_file(old_spec_path) == sha256_file(new_spec_path):
+            raise ContractError("MODEL_SPEC_REVISED 要求模型规格实际发生变化")
+        if repair["route_reapproval_required"]:
+            raise ContractError("修复计划要求路线重批时不能使用 MODEL_SPEC_REVISED")
 
     @staticmethod
     def _require_gate_presence(state: dict[str, Any], gate_ids: tuple[str, ...]) -> None:

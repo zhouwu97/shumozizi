@@ -7,7 +7,7 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 
 ## 输入文件
 
-- 原始题面及比赛允许附件；
+- 本轮 manifest、request、session、原始题面及比赛允许附件；
 - 当前冻结的 final PDF、必要代码/结果证据和 request 声明的路径；
 - 当前 QA 通过报告和配置锁，仅用于验证冻结包。
 
@@ -19,7 +19,7 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 
 ## 执行步骤
 
-1. 校验 request、QA 通过状态、绑定哈希和当前冻结 revision。
+1. 校验 manifest、request、session、QA 通过状态、绑定哈希和当前冻结 revision。
 2. 只从评委可见材料判断题目覆盖、结果可信度、论文表达、图表和提交风险。
 3. A 轴复验完整性并给出 `A_PASS` 或 `A_BLOCKED`；B 轴独立评价竞赛质量并给出总分、分项分和
    `B_STRONG`、`B_PASS`、`B_WEAK` 或 `B_REBUILD`。
@@ -35,7 +35,8 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 ## Finding 证据格式
 
 `evidence` 必须是评委可见材料中的 PDF 页码、题目条目、表格/图号、代码路径或结果 ID；
-不得引用 R1-R4 报告和作者陈述。
+不得引用 R1-R4 报告和作者陈述。每条 finding 同时声明 `change_class`、`route_impact` 和
+`changed_route_core_fields`；问题所在阶段不得替代路线影响判断。
 
 ## 严重度与竞赛预算
 

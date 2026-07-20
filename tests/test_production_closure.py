@@ -21,6 +21,12 @@ from shumozizi.workflow.reviews import (
     write_review_report,
 )
 from shumozizi.workflow.state_service import Actor, ArtifactRef, StateService, WorkflowEvent
+from tests.review_contract_helpers import (
+    claim_and_hash,
+    complete_stage_bindings,
+    rich_model_spec,
+    rich_problem_manifest,
+)
 from tests.source_package_helpers import write_source_package
 
 
@@ -280,31 +286,38 @@ def _review_run(tmp_path: Path, stage: str) -> tuple[Path, Path]:
             },
         )
         write_source_package(run_dir, question_id="q1", result_id="source-fixture")
-    roles = {
-        "R1_MODELING": ("problem_manifest", "route_lock", "model_spec"),
-        "R5_COMPREHENSIVE": (
-            "problem_manifest",
-            "run_config_lock",
-            "result_registry",
-            "paper_plan",
-            "final_pdf",
-            "qa_report",
-            "evidence_report",
-            "source_manifest",
-        ),
-    }[stage]
-    bindings: dict[str, Path] = {}
-    for role in roles:
-        path = (
-            run_dir / "source/SOURCE_MANIFEST.json"
-            if role == "source_manifest"
-            else run_dir / "review-inputs" / f"{role}.json"
+    overrides: dict[str, Path] = {}
+    if stage == "R1_MODELING":
+        problem_manifest = rich_problem_manifest(
+            run_dir, run_dir / "problem/PROBLEM_MANIFEST.json"
         )
-        if role != "source_manifest":
+        model_spec = rich_model_spec(
+            run_dir, run_dir / "review-inputs/model_spec.json"
+        )
+        overrides.update(
+            {"model_spec": model_spec, "problem_manifest": problem_manifest}
+        )
+    else:
+        overrides.update(
+            {
+                "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
+                "run_config_lock": run_dir / "review-inputs/run_config_lock.json",
+                "result_registry": run_dir / "results/result_registry.json",
+                "paper_plan": run_dir / "paper/paper_plan.json",
+                "final_pdf": run_dir / "paper/final.pdf",
+                "qa_report": run_dir / "review-inputs/qa_report.json",
+                "evidence_report": run_dir / "review-inputs/evidence_report.json",
+                "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
+            }
+        )
+    bindings = complete_stage_bindings(run_dir, stage, overrides)
+    for path in bindings.values():
+        if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("{}\n", encoding="utf-8")
-        bindings[role] = path
-    return run_dir, create_review_request(run_dir, stage, bindings)
+    request = create_review_request(run_dir, stage, bindings)
+    claim_and_hash(request, f"thread-{stage.lower()}-{run_dir.name}")
+    return run_dir, request
 
 
 def test_review_request_requires_policy_materials(tmp_path: Path) -> None:
@@ -325,6 +338,9 @@ def test_r5_joint_verdict_must_match_b_axis_threshold(tmp_path: Path) -> None:
         "run_id": run_dir.name,
         "stage": "R5_COMPREHENSIVE",
         "review_round_id": request_doc["review_round_id"],
+        "request_sha256": sha256_file(request),
+        "input_manifest_sha256": request_doc["input_manifest_sha256"],
+        "session_sha256": sha256_file(request.with_name("review_session.json")),
         "verdict": "B",
         "findings": [],
         "rating": {
@@ -361,10 +377,24 @@ def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
         "run_id": run_dir.name,
         "stage": "R1_MODELING",
         "review_round_id": request_doc["review_round_id"],
-        "verdict": "REBUILD",
+        "request_sha256": sha256_file(request),
+        "input_manifest_sha256": request_doc["input_manifest_sha256"],
+        "session_sha256": sha256_file(request.with_name("review_session.json")),
+        "verdict": "SPEC_REVISION_REQUIRED",
+        "coverage": {
+            "problem_interpretation": "pass", "question_output_mapping": "pass",
+            "variable_completeness": "pass", "data_and_attachment_mapping": "pass", "unit_consistency": "pass",
+            "equation_closure": "pass", "parameter_identifiability": "pass",
+            "objective_definition": "pass", "constraint_completeness": "pass",
+            "algorithm_executability": "pass", "stopping_rule": "pass",
+            "baseline_design": "pass", "model_selection_criterion": "fail",
+            "uncertainty_quantification": "pass", "robustness_and_ablation": "pass",
+            "failure_boundary": "pass", "evidence_plan": "pass", "unchecked_items": [],
+        },
         "findings": [
             {
                 "finding_id": "R1-001",
+                "check_id": "model_selection_criterion",
                 "severity": "P1",
                 "title": "路线不可证伪",
                 "evidence": ["review-inputs/model-spec.json"],
@@ -374,6 +404,9 @@ def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
                 "affected_files": ["reports/model_spec.md"],
                 "required_retests": ["R1_MODELING"],
                 "expected_improvement": "提高模型可证伪性",
+                "change_class": "VALIDATION_DETAIL",
+                "route_impact": "none",
+                "changed_route_core_fields": [],
             }
         ],
         "read_only_confirmed": True,
@@ -385,3 +418,116 @@ def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
     repair_path = run_dir / receipt["repair_plan_path"]
     assert repair_path.name == "REPAIR_PLAN.json"
     assert receipt["repair_plan_sha256"] == sha256_file(repair_path)
+    assert load_json(repair_path)["route_reapproval_required"] is False
+
+
+@pytest.mark.parametrize("change_class", ["SPEC_COMPLETION", "VALIDATION_DETAIL"])
+def test_r1_spec_fixes_do_not_require_route_reapproval(
+    tmp_path: Path, change_class: str
+) -> None:
+    """R1 规格补全和验证细化只能触发规格修订，不能返回路线审批。"""
+    run_dir, request = _review_run(tmp_path, "R1_MODELING")
+    request_doc = load_json(request)
+    report = {
+        "schema_name": "review_report",
+        "schema_version": "2.0",
+        "request_id": request_doc["request_id"],
+        "run_id": run_dir.name,
+        "stage": "R1_MODELING",
+        "review_round_id": request_doc["review_round_id"],
+        "request_sha256": sha256_file(request),
+        "input_manifest_sha256": request_doc["input_manifest_sha256"],
+        "session_sha256": sha256_file(request.with_name("review_session.json")),
+        "verdict": "SPEC_REVISION_REQUIRED",
+        "coverage": {
+            "problem_interpretation": "pass", "question_output_mapping": "pass",
+            "variable_completeness": "pass", "data_and_attachment_mapping": "pass", "unit_consistency": "pass",
+            "equation_closure": "pass", "parameter_identifiability": "pass",
+            "objective_definition": "pass", "constraint_completeness": "pass",
+            "algorithm_executability": "pass", "stopping_rule": "pass",
+            "baseline_design": "pass", "model_selection_criterion": "fail",
+            "uncertainty_quantification": "pass", "robustness_and_ablation": "pass",
+            "failure_boundary": "pass", "evidence_plan": "pass", "unchecked_items": [],
+        },
+        "findings": [
+            {
+                "finding_id": "R1-SPEC-001",
+                "check_id": "model_selection_criterion",
+                "severity": "P1",
+                "title": "模型规格需要补全",
+                "evidence": ["review-inputs/model_spec.json"],
+                "remediation": "补全定义后重新执行 R1",
+                "affected_stage": "R1_MODELING",
+                "change_class": change_class,
+                "route_impact": "none",
+                "changed_route_core_fields": [],
+            }
+        ],
+        "read_only_confirmed": True,
+        "generated_at": "2026-07-19T00:00:00Z",
+    }
+
+    report_path = write_review_report(request, report)
+    receipt_path = materialize_review_receipt(request, report_path)
+    repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
+
+    assert repair["route_reapproval_required"] is False
+
+
+@pytest.mark.parametrize(
+    ("change_class", "changed_field"),
+    [
+        ("ROUTE_CORE_CHANGE", "model_family"),
+        ("PROBLEM_INTERPRETATION_CHANGE", "problem_interpretation"),
+    ],
+)
+def test_r1_route_core_changes_require_route_reapproval(
+    tmp_path: Path, change_class: str, changed_field: str
+) -> None:
+    """模型大类或题意解释变化必须显式返回路线人工确认。"""
+    run_dir, request = _review_run(tmp_path, "R1_MODELING")
+    request_doc = load_json(request)
+    report = {
+        "schema_name": "review_report",
+        "schema_version": "2.0",
+        "request_id": request_doc["request_id"],
+        "run_id": run_dir.name,
+        "stage": "R1_MODELING",
+        "review_round_id": request_doc["review_round_id"],
+        "request_sha256": sha256_file(request),
+        "input_manifest_sha256": request_doc["input_manifest_sha256"],
+        "session_sha256": sha256_file(request.with_name("review_session.json")),
+        "verdict": "ROUTE_REAPPROVAL_REQUIRED",
+        "coverage": {
+            "problem_interpretation": "fail", "question_output_mapping": "pass", "data_and_attachment_mapping": "pass",
+            "variable_completeness": "pass", "unit_consistency": "pass",
+            "equation_closure": "pass", "parameter_identifiability": "pass",
+            "objective_definition": "pass", "constraint_completeness": "pass",
+            "algorithm_executability": "pass", "stopping_rule": "pass",
+            "baseline_design": "pass", "model_selection_criterion": "pass",
+            "uncertainty_quantification": "pass", "robustness_and_ablation": "pass",
+            "failure_boundary": "pass", "evidence_plan": "pass", "unchecked_items": [],
+        },
+        "findings": [
+            {
+                "finding_id": "R1-ROUTE-001",
+                "check_id": "problem_interpretation",
+                "severity": "P1",
+                "title": "路线核心发生变化",
+                "evidence": ["review-inputs/model_spec.json"],
+                "remediation": "返回路线审批并说明变化",
+                "affected_stage": "R1_MODELING",
+                "change_class": change_class,
+                "route_impact": "material",
+                "changed_route_core_fields": [changed_field],
+            }
+        ],
+        "read_only_confirmed": True,
+        "generated_at": "2026-07-19T00:00:00Z",
+    }
+
+    report_path = write_review_report(request, report)
+    receipt_path = materialize_review_receipt(request, report_path)
+    repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
+
+    assert repair["route_reapproval_required"] is True

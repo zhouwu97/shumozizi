@@ -18,6 +18,19 @@ STAGE_RETESTS = {
     "J0_FINAL_BLIND_JUDGE": ["R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"],
 }
 
+ROUTE_CHANGE_CLASSES = {
+    "ROUTE_CORE_CHANGE",
+    "PROBLEM_INTERPRETATION_CHANGE",
+}
+
+
+def finding_requires_route_reapproval(finding: dict[str, Any]) -> bool:
+    """仅按显式路线影响元数据判断是否需要重新批准路线。"""
+    return (
+        finding.get("route_impact") == "material"
+        or finding.get("change_class") in ROUTE_CHANGE_CLASSES
+    )
+
 
 def create_repair_plan(run_dir: Path, report_path: Path) -> Path:
     """依据 finding 元数据生成可机器执行的最小重审范围。"""
@@ -29,6 +42,9 @@ def create_repair_plan(run_dir: Path, report_path: Path) -> Path:
             "finding_id": f"{stage}-VERDICT",
             "title": f"{stage} 结论未通过",
             "remediation": "按审核结论修复后重新审核",
+            "change_class": "EVIDENCE_METADATA",
+            "route_impact": "none",
+            "changed_route_core_fields": [],
         }
     ]
     scopes: list[dict[str, Any]] = []
@@ -46,10 +62,13 @@ def create_repair_plan(run_dir: Path, report_path: Path) -> Path:
                 "affected_stage": affected,
                 "files": finding.get("affected_files", []),
                 "expected_improvement": finding.get("expected_improvement", finding["remediation"]),
+                "change_class": finding["change_class"],
+                "route_impact": finding["route_impact"],
+                "changed_route_core_fields": finding["changed_route_core_fields"],
             }
         )
     axis = "both" if len(axes) > 1 or "both" in axes else next(iter(axes))
-    route_reapproval = any(scope["affected_stage"] == "R1_MODELING" for scope in scopes)
+    route_reapproval = any(finding_requires_route_reapproval(finding) for finding in findings)
     document = {
         "schema_name": "repair_plan",
         "schema_version": "2.0",

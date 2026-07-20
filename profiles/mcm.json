@@ -18,6 +18,13 @@
   "max_file_size_bytes": null,
   "anonymous_required": true,
   "required_submission_files": ["paper/final.pdf"],
+  "judge_visible_roles": [
+    "problem_source",
+    "problem_attachments_manifest",
+    "competition_rules",
+    "final_pdf",
+    "submission_manifest"
+  ],
   "summary_first_page": true,
   "mechanical_qa": {
     "duplicate_caption_pattern": "(?i)(?:figure|fig\\.|table)\\s*([0-9]+)[：:.\\s]",

@@ -38,6 +38,9 @@ def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
         "run_id": "run-1",
         "stage": "R5_COMPREHENSIVE",
         "review_round_id": "round-1",
+        "request_sha256": "b" * 64,
+        "input_manifest_sha256": "c" * 64,
+        "session_sha256": "a" * 64,
         "verdict": "B",
         "findings": [],
         "rating": {

@@ -9,6 +9,131 @@
     "schema_version": {"const": "2.0"},
     "run_id": {"type": "string"},
     "route_lock_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "questions": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["question_id", "model_family", "target_role", "feature_roles", "variables", "assumptions", "objective", "constraints", "algorithm", "validation_plan"], "properties": {"question_id": {"type": "string"}, "model_family": {"enum": ["statistical", "optimization", "prediction", "simulation", "classification"]}, "target_role": {"type": "string", "minLength": 1}, "feature_roles": {"type": "array", "items": {"type": "string"}}, "variables": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["name", "role", "unit"], "properties": {"name": {"type": "string"}, "role": {"type": "string"}, "unit": {"type": "string"}}}}, "assumptions": {"type": "array", "items": {"type": "string"}}, "objective": {"type": "string"}, "constraints": {"type": "array", "items": {"type": "string"}}, "algorithm": {"type": "string"}, "validation_plan": {"type": "array", "minItems": 1, "items": {"type": "string"}}}}}
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_id", "model_family", "target_role", "feature_roles", "variables", "assumptions", "objective", "constraints", "algorithm", "validation_plan"],
+        "properties": {
+          "question_id": {"type": "string"},
+          "model_family": {"enum": ["statistical", "optimization", "prediction", "simulation", "classification"]},
+          "target_role": {"type": "string", "minLength": 1},
+          "feature_roles": {"type": "array", "items": {"type": "string"}},
+          "variables": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["name", "role", "unit"], "properties": {"name": {"type": "string"}, "role": {"type": "string"}, "unit": {"type": "string"}}}},
+          "assumptions": {"type": "array", "items": {"type": "string"}},
+          "objective": {"type": "string"},
+          "constraints": {"type": "array", "items": {"type": "string"}},
+          "algorithm": {"type": "string"},
+          "validation_plan": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "r1_evidence": {"$ref": "#/$defs/r1_evidence"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nonempty_string": {"type": "string", "minLength": 1},
+    "data_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_fields", "derived_variables", "missing_and_anomaly_handling"],
+      "properties": {
+        "source_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_ref", "raw_field", "variable", "source_unit", "model_unit", "conversion"],
+            "properties": {
+              "source_ref": {"$ref": "#/$defs/nonempty_string"},
+              "raw_field": {"$ref": "#/$defs/nonempty_string"},
+              "variable": {"$ref": "#/$defs/nonempty_string"},
+              "source_unit": {"$ref": "#/$defs/nonempty_string"},
+              "model_unit": {"$ref": "#/$defs/nonempty_string"},
+              "conversion": {"$ref": "#/$defs/nonempty_string"}
+            }
+          }
+        },
+        "derived_variables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "formula", "unit"],
+            "properties": {
+              "name": {"$ref": "#/$defs/nonempty_string"},
+              "formula": {"$ref": "#/$defs/nonempty_string"},
+              "unit": {"$ref": "#/$defs/nonempty_string"}
+            }
+          }
+        },
+        "no_derived_variables_reason": {"$ref": "#/$defs/nonempty_string"},
+        "missing_and_anomaly_handling": {"type": "string", "minLength": 2}
+      }
+    },
+    "equation_closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["equations", "declared_symbols", "output_symbols"],
+      "properties": {
+        "equations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nonempty_string"}},
+        "declared_symbols": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonempty_string"}},
+        "output_symbols": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonempty_string"}}
+      }
+    },
+    "stopping_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "failure_handling", "fallback"],
+      "properties": {
+        "mode": {"enum": ["iterative", "analytic"]},
+        "max_iterations": {"type": "integer", "minimum": 1},
+        "tolerance": {"type": "number", "exclusiveMinimum": 0},
+        "convergence_condition": {"$ref": "#/$defs/nonempty_string"},
+        "analytic_solution": {"$ref": "#/$defs/nonempty_string"},
+        "failure_handling": {"type": "string", "minLength": 2},
+        "fallback": {"type": "string", "minLength": 2}
+      },
+      "allOf": [
+        {"if": {"properties": {"mode": {"const": "iterative"}}}, "then": {"required": ["max_iterations", "tolerance", "convergence_condition"]}},
+        {"if": {"properties": {"mode": {"const": "analytic"}}}, "then": {"required": ["analytic_solution"]}}
+      ]
+    },
+    "baseline_design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_id", "input_equivalence", "metrics", "comparison_rule"],
+      "properties": {
+        "baseline_id": {"$ref": "#/$defs/nonempty_string"},
+        "input_equivalence": {"type": "string", "minLength": 2},
+        "metrics": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonempty_string"}},
+        "comparison_rule": {"type": "string", "minLength": 2}
+      }
+    },
+    "evidence_plan_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_output_id", "experiment_or_result_id", "table_or_figure_id", "paper_section"],
+      "properties": {
+        "required_output_id": {"$ref": "#/$defs/nonempty_string"},
+        "experiment_or_result_id": {"$ref": "#/$defs/nonempty_string"},
+        "table_or_figure_id": {"$ref": "#/$defs/nonempty_string"},
+        "paper_section": {"$ref": "#/$defs/nonempty_string"}
+      }
+    },
+    "r1_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data_and_attachment_mapping", "equation_closure", "stopping_rule", "baseline_design", "evidence_plan"],
+      "properties": {
+        "data_and_attachment_mapping": {"$ref": "#/$defs/data_mapping"},
+        "equation_closure": {"$ref": "#/$defs/equation_closure"},
+        "stopping_rule": {"$ref": "#/$defs/stopping_rule"},
+        "baseline_design": {"$ref": "#/$defs/baseline_design"},
+        "evidence_plan": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidence_plan_item"}}
+      }
+    }
   }
 }

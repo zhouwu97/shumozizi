@@ -1,0 +1,74 @@
+{
+  "version": "1.0",
+  "default_mode": "standard",
+  "hard_gates": [
+    {
+      "id": "G0",
+      "name": "problem_and_route_confirmed"
+    },
+    {
+      "id": "G1",
+      "name": "model_executable_no_fundamental_conflict"
+    },
+    {
+      "id": "G2",
+      "name": "core_claims_reproducible"
+    },
+    {
+      "id": "G3",
+      "name": "submission_compliant"
+    }
+  ],
+  "stages": [
+    {
+      "id": "S0",
+      "name": "problem_brief",
+      "review": "human_confirmation"
+    },
+    {
+      "id": "S1",
+      "name": "modeling_plan",
+      "review": "model_review"
+    },
+    {
+      "id": "S2",
+      "name": "experiments",
+      "review": "experiment_reproduction"
+    },
+    {
+      "id": "S3",
+      "name": "parallel_paper_writing",
+      "review": "continuous"
+    },
+    {
+      "id": "S4",
+      "name": "paper_logic_review",
+      "review": "paper_review"
+    },
+    {
+      "id": "S5",
+      "name": "independent_final_review",
+      "review": "one_full_then_delta"
+    },
+    {
+      "id": "S6",
+      "name": "compliance_and_package",
+      "review": "human_final_check"
+    }
+  ],
+  "modes": {
+    "standard": {
+      "formal_audit": false,
+      "full_independent_reviews": 1
+    },
+    "emergency": {
+      "formal_audit": false,
+      "reduce_noncritical_experiments": true
+    },
+    "formal_audit": {
+      "formal_audit": true,
+      "manifest": true,
+      "seal": true
+    }
+  }
+}

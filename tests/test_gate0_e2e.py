@@ -33,6 +33,11 @@ from shumozizi.workflow.state_service import (
     StateService,
     WorkflowEvent,
 )
+from tests.review_contract_helpers import (
+    claim_and_hash,
+    complete_stage_bindings,
+    rich_model_spec,
+)
 from tests.source_package_helpers import write_source_package
 
 
@@ -294,7 +299,13 @@ class Gate0EndToEndTests(unittest.TestCase):
             )
             self.assertEqual(0, compiled.returncode, compiled.stderr)
             # Gate 0 使用最小但完整的论文和图表生产回执。
-            for relative in ("skills/mathmodel-paper/SKILL.md", "skills/5writing/SKILL.md", "skills/typst-author/SKILL.md", "skills/3coding-visual/SKILL.md"):
+            for relative in (
+                "skills/mathmodel-paper/SKILL.md",
+                "skills/5writing/SKILL.md",
+                "skills/typst-author/SKILL.md",
+                "skills/mathmodel-figure-templates/SKILL.md",
+                "skills/3coding-visual/SKILL.md",
+            ):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("测试 Skill\n", encoding="utf-8")
@@ -315,8 +326,11 @@ class Gate0EndToEndTests(unittest.TestCase):
                     "figures": [
                         {
                             "figure_id": "q1",
-                            "preferred": "Nature Figure",
+                            "preferred": "skills/mathmodel-figure-templates",
                             "fallback": "skills/3coding-visual",
+                            "selected_skill": "skills/3coding-visual",
+                            "template_id": "custom",
+                            "selection_reason": "Gate 0 使用最小自定义图表",
                         }
                     ],
                 },
@@ -329,6 +343,8 @@ class Gate0EndToEndTests(unittest.TestCase):
                     "run_id": run_dir.name,
                     "figure_id": "q1",
                     "question_id": "q1",
+                    "selected_skill": "skills/3coding-visual",
+                    "template_id": "custom",
                     "accepted_result_ids": ["q1-baseline"],
                     "data_files": [
                         {"path": "figures/q1.csv", "sha256": sha256_file(figure_data)}
@@ -526,7 +542,12 @@ class Gate0EndToEndTests(unittest.TestCase):
             "R1_MODELING": {
                 "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
                 "route_lock": run_dir / "brief/ROUTE_LOCK.json",
-                "model_spec": run_dir / "reports/model_spec.md",
+                "model_spec": rich_model_spec(
+                    run_dir,
+                    run_dir / "review-inputs/r1_model_spec.json",
+                    route_sha256=sha256_file(run_dir / "brief/ROUTE_LOCK.json"),
+                    required_output_id="value",
+                ),
             },
             "R2_EXPERIMENT": {
                 "model_spec": run_dir / "reports/model_spec.md",
@@ -562,13 +583,12 @@ class Gate0EndToEndTests(unittest.TestCase):
                 "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
             },
             "J0_FINAL_BLIND_JUDGE": {
-                "problem_manifest": run_dir / "problem/PROBLEM_MANIFEST.json",
                 "final_pdf": run_dir / "paper/final.pdf",
                 "submission_manifest": run_dir / "paper/SUBMISSION_MANIFEST.json",
-                "source_manifest": run_dir / "source/SOURCE_MANIFEST.json",
             },
         }[stage]
         effective.update(stage_bindings)
+        effective = complete_stage_bindings(run_dir, stage, effective)
         request = create_review_request(
             run_dir,
             stage,
@@ -576,6 +596,9 @@ class Gate0EndToEndTests(unittest.TestCase):
             question_id=question_id,
         )
         request_doc = load_json(request)
+        session_sha256 = claim_and_hash(
+            request, f"thread-{stage.lower()}-{request_doc['state_revision']}"
+        )
         report = {
             "schema_name": "review_report",
             "schema_version": "2.0",
@@ -583,11 +606,27 @@ class Gate0EndToEndTests(unittest.TestCase):
             "run_id": run_dir.name,
             "stage": stage,
             "review_round_id": request_doc["review_round_id"],
+            "request_sha256": sha256_file(request),
+            "input_manifest_sha256": request_doc["input_manifest_sha256"],
+            "session_sha256": session_sha256,
             "verdict": verdict,
             "findings": [],
             "read_only_confirmed": True,
             "generated_at": "2026-07-19T00:00:00Z",
         }
+        if stage == "R1_MODELING":
+            report["coverage"] = {
+                key: "pass"
+                for key in (
+                    "problem_interpretation", "question_output_mapping", "variable_completeness", "data_and_attachment_mapping",
+                    "unit_consistency", "equation_closure", "parameter_identifiability",
+                    "objective_definition", "constraint_completeness", "algorithm_executability",
+                    "stopping_rule", "baseline_design", "model_selection_criterion",
+                    "uncertainty_quantification", "robustness_and_ablation", "failure_boundary",
+                    "evidence_plan",
+                )
+            }
+            report["coverage"]["unchecked_items"] = []
         if rating:
             report["rating"] = {
                 "grade": verdict,

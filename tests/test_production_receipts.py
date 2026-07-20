@@ -74,8 +74,11 @@ def _write_figure_receipt(fixture: RuntimeFixture) -> None:
             "figures": [
                 {
                     "figure_id": "q1",
-                    "preferred": "Nature Figure",
+                    "preferred": "skills/mathmodel-figure-templates",
                     "fallback": "skills/3coding-visual",
+                    "selected_skill": "skills/3coding-visual",
+                    "template_id": "custom",
+                    "selection_reason": "测试夹具使用最小自定义图表",
                 }
             ],
         },
@@ -88,6 +91,8 @@ def _write_figure_receipt(fixture: RuntimeFixture) -> None:
             "run_id": run_dir.name,
             "figure_id": "q1",
             "question_id": "q1",
+            "selected_skill": "skills/3coding-visual",
+            "template_id": "custom",
             "accepted_result_ids": ["r1"],
             "data_files": [{"path": "figures/data.csv", "sha256": sha256_file(data)}],
             "script": {"path": "figures/plot.py", "sha256": sha256_file(script)},
@@ -116,6 +121,8 @@ def _write_paper_package(
         "mathmodel_paper": root / "skills/mathmodel-paper/SKILL.md",
         "writing_skill": root / "skills/5writing/SKILL.md",
         "typst_author": root / "skills/typst-author/SKILL.md",
+        "figure_templates": root / "skills/mathmodel-figure-templates/SKILL.md",
+        "coding_visual": root / "skills/3coding-visual/SKILL.md",
         "competition_template": root / "profiles/generic.json",
         "model_spec": run_dir / "reports/model_spec.md",
         "claim_gate": run_dir / "paper/claim_gate.json",
@@ -252,7 +259,16 @@ def test_figure_receipt_rejects_non_accepted_result(tmp_path: Path) -> None:
             "schema_name": "figure_plan",
             "schema_version": "2.0",
             "run_id": run_dir.name,
-            "figures": [{"figure_id": "q1", "preferred": "Nature Figure", "fallback": "skills/3coding-visual"}],
+            "figures": [
+                {
+                    "figure_id": "q1",
+                    "preferred": "skills/mathmodel-figure-templates",
+                    "fallback": "skills/3coding-visual",
+                    "selected_skill": "skills/3coding-visual",
+                    "template_id": "custom",
+                    "selection_reason": "测试夹具使用最小自定义图表",
+                }
+            ],
         },
     )
     atomic_json(
@@ -263,6 +279,8 @@ def test_figure_receipt_rejects_non_accepted_result(tmp_path: Path) -> None:
             "run_id": run_dir.name,
             "figure_id": "q1",
             "question_id": "q1",
+            "selected_skill": "skills/3coding-visual",
+            "template_id": "custom",
             "accepted_result_ids": ["candidate-1"],
             "data_files": [{"path": "figures/data.csv", "sha256": sha256_file(data)}],
             "script": {"path": "figures/plot.py", "sha256": sha256_file(script)},

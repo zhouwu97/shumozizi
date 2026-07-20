@@ -7,7 +7,7 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 
 ## 输入文件
 
-- 当前问的 `review_request.json`、`state.json` 和配置锁；
+- 当前问的 `REVIEW_INPUT_MANIFEST.json`、`review_request.json`、`review_session.json` 和配置锁；
 - request `read_paths` 中的 execution manifest、execution record、代码、输入输出、metric provenance、sealed result 和实验计划；
 - 原始题面中与该问直接相关的要求。
 
@@ -19,7 +19,7 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 
 ## 执行步骤
 
-1. 校验 request 绑定及 `R2_EXPERIMENT_<question_id>` 题号。
+1. 校验 manifest、request、session 绑定及 `R2_EXPERIMENT_<question_id>` 题号。
 2. 运行 `python scripts/runtime/verify_execution.py` 或等价的只读复验，检查退出码、输入/输出哈希、随机种子和预期产物。
 3. 复核 metric provenance、单位、基线引用、硬约束、验证检查和 sealed result seal。
 4. 在允许预算内复现一次；若环境不具备复现条件，明确区分 BLOCKED 与可复现警告。
@@ -34,7 +34,8 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 ## Finding 证据格式
 
 `evidence` 至少包含 execution record、metric_spec 或 sealed result 的相对路径及字段/哈希；
-复现数值必须记录单位、容差和命令退出码。
+复现数值必须记录单位、容差和命令退出码。每条 finding 同时声明 `change_class`、
+`route_impact` 和 `changed_route_core_fields`；问题所在阶段不得替代路线影响判断。
 
 ## 严重度
 

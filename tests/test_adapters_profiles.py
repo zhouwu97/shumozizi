@@ -16,6 +16,7 @@ from shumozizi.profiles.lock import create_run_config_lock
 from shumozizi.qa.adapters import run_mechanical_qa
 from shumozizi.qa.aggregator import run_submission_qa
 from shumozizi.workflow.initialization import initialize_run
+from shumozizi.workflow.review_policy import get_review_stage_policy
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,6 +58,32 @@ class ProfileTests(unittest.TestCase):
             snapshot.write_text("{}\n", encoding="utf-8")
             with self.assertRaisesRegex(ContractError, "schema|哈希已变化"):
                 verify_run_config_lock(root, run_dir)
+
+    def test_j0_visible_roles_come_from_locked_profile(self) -> None:
+        """J0 只能读取冻结 Profile 明确声明的评委可见材料。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(REPO_ROOT / "profiles", root / "profiles")
+            (root / ".shumozizi-root").touch()
+            (root / ".git").mkdir()
+            profile_path = root / "profiles/generic.json"
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile["judge_visible_roles"] = [
+                "problem_source",
+                "final_pdf",
+                "ai_use_statement",
+            ]
+            atomic_json(profile_path, profile)
+            problem = root / "problem.md"
+            problem.write_text("固定题面\n", encoding="utf-8")
+            run_dir = root / "runs/profile-j0"
+            (run_dir / "config").mkdir(parents=True)
+            create_run_config_lock(root, run_dir, problem)
+
+            policy = get_review_stage_policy("J0_FINAL_BLIND_JUDGE", run_dir)
+
+            self.assertEqual(profile["judge_visible_roles"], policy["mandatory_inputs"])
+            self.assertNotIn("source_manifest", policy["mandatory_inputs"])
 
 
 class AdapterTests(unittest.TestCase):

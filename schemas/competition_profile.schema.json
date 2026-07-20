@@ -30,6 +30,24 @@
     "max_file_size_bytes": {"type": ["integer", "null"], "minimum": 1},
     "anonymous_required": {"type": "boolean"},
     "required_submission_files": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "judge_visible_roles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "problem_source",
+          "problem_attachments_manifest",
+          "competition_rules",
+          "final_pdf",
+          "submission_manifest",
+          "allowed_submission_attachments",
+          "submission_code",
+          "commitment_statement",
+          "ai_use_statement"
+        ]
+      }
+    },
     "summary_first_page": {"type": "boolean"},
     "mechanical_qa": {
       "type": "object",

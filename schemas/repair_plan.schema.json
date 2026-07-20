@@ -20,13 +20,29 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding_id", "axis", "affected_stage", "files", "expected_improvement"],
+        "required": [
+          "finding_id", "axis", "affected_stage", "files", "expected_improvement",
+          "change_class", "route_impact", "changed_route_core_fields"
+        ],
         "properties": {
           "finding_id": {"type": "string"},
           "axis": {"enum": ["integrity", "quality", "both"]},
           "affected_stage": {"type": "string"},
           "files": {"type": "array", "items": {"type": "string"}},
-          "expected_improvement": {"type": "string"}
+          "expected_improvement": {"type": "string"},
+          "change_class": {
+            "enum": [
+              "SPEC_CLARIFICATION", "SPEC_COMPLETION", "IMPLEMENTATION_DETAIL",
+              "VALIDATION_DETAIL", "EVIDENCE_METADATA", "EXPERIMENT_DESIGN_CHANGE",
+              "ROUTE_CORE_CHANGE", "PROBLEM_INTERPRETATION_CHANGE"
+            ]
+          },
+          "route_impact": {"enum": ["none", "material"]},
+          "changed_route_core_fields": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          }
         }
       }
     },

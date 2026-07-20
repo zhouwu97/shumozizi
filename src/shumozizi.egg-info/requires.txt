@@ -1,0 +1,7 @@
+jsonschema[format]<5,>=4.23
+pypdf<7,>=5
+rfc8785<1,>=0.1.4
+
+[test]
+pytest<9,>=8
+ruff<1,>=0.8

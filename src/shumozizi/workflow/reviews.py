@@ -11,8 +11,16 @@ from typing import Any
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, resolve_inside, sha256_file
 from shumozizi.core.schema import require_valid
-from shumozizi.workflow.repair import create_repair_plan
+from shumozizi.workflow.repair import (
+    create_repair_plan,
+    finding_requires_route_reapproval,
+)
+from shumozizi.workflow.review_inputs import (
+    create_review_input_manifest,
+    verify_review_input_manifest,
+)
 from shumozizi.workflow.review_policy import get_review_stage_policy
+from shumozizi.workflow.review_sessions import verify_review_session
 from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
 
 REVIEW_STAGES = {
@@ -24,7 +32,13 @@ REVIEW_STAGES = {
     "J0_FINAL_BLIND_JUDGE": "fresh_context_unstructured",
 }
 VERDICTS = {
-    "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_FIXES", "REBUILD"},
+    "R1_MODELING": {
+        "ACCEPT",
+        "ACCEPT_WITH_MINOR_FIXES",
+        "SPEC_REVISION_REQUIRED",
+        "ROUTE_REAPPROVAL_REQUIRED",
+        "BLOCKED_MISSING_INPUT",
+    },
     "R2_EXPERIMENT": {"REPRODUCIBLE", "REPRODUCIBLE_WITH_WARNINGS", "BLOCKED"},
     "R3_PAPER_LOGIC": {"READY_FOR_COMPREHENSIVE_REVIEW", "MAJOR_REVISION", "NOT_READY"},
     "R4_FORMAT_VISUAL": {"COMPLIANT", "FIX_REQUIRED", "NOT_COMPLIANT"},
@@ -32,12 +46,35 @@ VERDICTS = {
     "J0_FINAL_BLIND_JUDGE": {"PROCEED", "DO_NOT_PROCEED", "ADVISORY"},
 }
 PASSING_VERDICTS = {
-    "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_FIXES"},
+    "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_MINOR_FIXES"},
     "R2_EXPERIMENT": {"REPRODUCIBLE", "REPRODUCIBLE_WITH_WARNINGS"},
     "R3_PAPER_LOGIC": {"READY_FOR_COMPREHENSIVE_REVIEW"},
     "R4_FORMAT_VISUAL": {"COMPLIANT"},
     "J0_FINAL_BLIND_JUDGE": {"PROCEED", "ADVISORY"},
 }
+
+R1_COVERAGE_CHECKS = (
+    "problem_interpretation",
+    "question_output_mapping",
+    "variable_completeness",
+    "data_and_attachment_mapping",
+    "unit_consistency",
+    "equation_closure",
+    "parameter_identifiability",
+    "objective_definition",
+    "constraint_completeness",
+    "algorithm_executability",
+    "stopping_rule",
+    "baseline_design",
+    "model_selection_criterion",
+    "uncertainty_quantification",
+    "robustness_and_ablation",
+    "failure_boundary",
+    "evidence_plan",
+)
+R1_REQUIRED_CHECK_IDS = frozenset(R1_COVERAGE_CHECKS)
+if len(R1_COVERAGE_CHECKS) != 17 or len(R1_REQUIRED_CHECK_IDS) != 17:
+    raise RuntimeError("R1 coverage 必须恰好包含 17 个唯一检查项")
 
 
 def utc_now() -> str:
@@ -55,7 +92,7 @@ def _relative(run_dir: Path, path: Path) -> str:
 
 def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> None:
     """拒绝调用方削减固定审核材料或伪造源码包角色。"""
-    policy = get_review_stage_policy(request["stage"])
+    policy = get_review_stage_policy(request["stage"], run_dir)
     for key, expected in policy.items():
         if request.get(key) != expected:
             raise ContractError(f"审核请求策略字段已被修改: {key}")
@@ -64,11 +101,15 @@ def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> N
     allowed = mandatory | set(policy["optional_inputs"])
     if not mandatory.issubset(roles) or not roles.issubset(allowed):
         raise ContractError("审核请求材料角色不符合当前阶段策略")
-    if request["stage"] in {
-        "R4_FORMAT_VISUAL",
-        "R5_COMPREHENSIVE",
-        "J0_FINAL_BLIND_JUDGE",
-    }:
+    manifest_path = resolve_inside(
+        run_dir, request["input_manifest_path"], must_exist=True
+    )
+    if sha256_file(manifest_path) != request["input_manifest_sha256"]:
+        raise ContractError("审核请求绑定的材料清单哈希不一致")
+    manifest_report = verify_review_input_manifest(run_dir, manifest_path, request=request)
+    if not manifest_report["valid"]:
+        raise ContractError("审核材料清单复验失败: " + "; ".join(manifest_report["errors"]))
+    if request["stage"] in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE"}:
         source_report = verify_source_manifest(run_dir)
         if not source_report["valid"]:
             raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
@@ -86,7 +127,6 @@ def create_review_request(
     read_paths: list[Path] | None = None,
     max_minutes: int = 60,
     mode: str | None = None,
-    codex_thread_id: str | None = None,
 ) -> Path:
     """冻结当前 revision 并创建供新桌面任务领取的只读审核请求。"""
     if stage not in REVIEW_STAGES:
@@ -100,7 +140,7 @@ def create_review_request(
         raise ContractError("审核请求 run_id 与运行目录不一致")
     if not bindings:
         raise ContractError("审核请求必须绑定至少一个当前产物")
-    policy = get_review_stage_policy(stage)
+    policy = get_review_stage_policy(stage, run_dir)
     binding_roles = set(bindings)
     mandatory_roles = set(policy["mandatory_inputs"])
     missing_roles = sorted(mandatory_roles - binding_roles)
@@ -110,7 +150,7 @@ def create_review_request(
     unknown_roles = sorted(binding_roles - allowed_roles)
     if unknown_roles:
         raise ContractError("审核请求包含策略未声明的材料角色: " + ", ".join(unknown_roles))
-    if stage in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"}:
+    if stage in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE"}:
         source_report = verify_source_manifest(run_dir)
         if not source_report["valid"]:
             raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
@@ -143,10 +183,22 @@ def create_review_request(
     if forbidden_hits:
         raise ContractError("审核请求包含禁止读取材料: " + ", ".join(forbidden_hits))
     round_id = review_round_id or f"{stage.lower()}-r{state['revision']}"
+    request_id = f"{run_dir.name}-{stage.lower()}-{round_id}"
+    request_dir = run_dir / "review" / stage.lower() / round_id
+    manifest_path = create_review_input_manifest(
+        run_dir,
+        request_id=request_id,
+        stage=stage,
+        review_round_id=round_id,
+        state_revision=state["revision"],
+        bindings=hashes,
+        binding_paths=binding_paths,
+        output_path=request_dir / "REVIEW_INPUT_MANIFEST.json",
+    )
     request = {
         "schema_name": "review_request",
         "schema_version": "2.0",
-        "request_id": f"{run_dir.name}-{stage.lower()}-{round_id}",
+        "request_id": request_id,
         "run_id": run_dir.name,
         "stage": stage,
         "question_id": question_id,
@@ -155,6 +207,8 @@ def create_review_request(
         "bindings": hashes,
         "binding_paths": binding_paths,
         "read_paths": normalized_paths,
+        "input_manifest_path": _relative(run_dir, manifest_path),
+        "input_manifest_sha256": sha256_file(manifest_path),
         **policy,
         "output_path": f"review/{stage.lower()}/{round_id}/review_report.json",
         "skill": REVIEW_STAGES[stage],
@@ -165,17 +219,8 @@ def create_review_request(
         },
         "requested_at": utc_now(),
     }
-    if codex_thread_id is not None:
-        if not codex_thread_id.strip():
-            raise ContractError("Codex 审核任务 ID 不能为空")
-        request["codex_thread_id"] = codex_thread_id.strip()
-        request["execution_policy"] = {
-            "new_codex_thread": True,
-            "subagents_forbidden": True,
-            "context_inheritance": False,
-        }
     require_valid(request, "review_request")
-    request_path = run_dir / "review" / stage.lower() / round_id / "review_request.json"
+    request_path = request_dir / "review_request.json"
     atomic_json(request_path, request)
     return request_path
 
@@ -184,17 +229,35 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
     """校验并写入审核报告；报告不能写到请求声明之外。"""
     request = load_json(request_path)
     require_valid(request, "review_request")
+    run_dir = request_path.parents[3]
+    session_path = request_path.with_name("review_session.json")
+    session_report = verify_review_session(
+        run_dir, request_path, session_path, require_current_revision=True
+    )
+    if not session_report["valid"]:
+        raise ContractError("审核 session 复验失败: " + "; ".join(session_report["errors"]))
     required = {"request_id": request["request_id"], "run_id": request["run_id"], "stage": request["stage"], "review_round_id": request["review_round_id"]}
     if any(report.get(key) != value for key, value in required.items()):
         raise ContractError("审核报告未匹配请求的身份字段")
     if report.get("verdict") not in VERDICTS[request["stage"]]:
         raise ContractError("审核结论不属于该阶段枚举")
+    if report.get("request_sha256") != sha256_file(request_path):
+        raise ContractError("审核报告未绑定当前 review_request.json")
+    if report.get("input_manifest_sha256") != request["input_manifest_sha256"]:
+        raise ContractError("审核报告未绑定当前 REVIEW_INPUT_MANIFEST.json")
+    if report.get("session_sha256") != sha256_file(session_path):
+        raise ContractError("审核报告未绑定当前 review_session.json")
     require_valid(report, "review_report")
+    if request["stage"] == "R1_MODELING":
+        _validate_r1_semantics(report)
+        _validate_r1_coverage_against_model_spec(report, request, run_dir)
     if request["stage"] == "R5_COMPREHENSIVE":
         _validate_r5_axes(report)
     output = resolve_inside(request_path.parents[3], request["output_path"])
     if output.resolve() != request_path.parent / "review_report.json":
         raise ContractError("审核报告路径必须是请求声明的唯一输出路径")
+    if output.exists():
+        raise ContractError("一个审核 session 只能生成一个报告")
     atomic_json(output, report)
     return output
 
@@ -207,12 +270,27 @@ def materialize_review_receipt(request_path: Path, report_path: Path, *, decisio
     require_valid(report, "review_report")
     run_dir = request_path.parents[3]
     _require_current_request_policy(request, run_dir)
+    session_path = request_path.with_name("review_session.json")
+    session_report = verify_review_session(
+        run_dir, request_path, session_path, require_current_revision=True
+    )
+    if not session_report["valid"]:
+        raise ContractError("审核 session 复验失败: " + "; ".join(session_report["errors"]))
     if report["verdict"] not in VERDICTS[request["stage"]]:
         raise ContractError("审核结论不属于该阶段枚举")
     if report["request_id"] != request["request_id"] or report["review_round_id"] != request["review_round_id"]:
         raise ContractError("审核报告与请求不匹配")
     if report["stage"] != request["stage"] or report["run_id"] != request["run_id"]:
         raise ContractError("审核报告身份与请求不匹配")
+    if report["request_sha256"] != sha256_file(request_path):
+        raise ContractError("审核报告绑定的请求哈希不一致")
+    if report["input_manifest_sha256"] != request["input_manifest_sha256"]:
+        raise ContractError("审核报告绑定的材料清单哈希不一致")
+    if report["session_sha256"] != sha256_file(session_path):
+        raise ContractError("审核报告绑定的 session 哈希不一致")
+    if request["stage"] == "R1_MODELING":
+        _validate_r1_semantics(report)
+        _validate_r1_coverage_against_model_spec(report, request, run_dir)
     if request["stage"] == "R5_COMPREHENSIVE":
         _validate_r5_axes(report)
     actual_bindings = {}
@@ -238,6 +316,8 @@ def materialize_review_receipt(request_path: Path, report_path: Path, *, decisio
         "request_id": request["request_id"],
         "report_sha256": sha256_file(report_path),
         "request_sha256": sha256_file(request_path),
+        "session_sha256": sha256_file(session_path),
+        "input_manifest_sha256": request["input_manifest_sha256"],
         "state_revision": request["state_revision"],
         "bindings": request["bindings"],
         "decision": decision
@@ -263,18 +343,43 @@ def verify_review_receipt(
         require_valid(receipt, "review_receipt")
         request_path = receipt_path.with_name("review_request.json")
         report_path = receipt_path.with_name("review_report.json")
+        session_path = receipt_path.with_name("review_session.json")
         request, report = load_json(request_path), load_json(report_path)
         require_valid(request, "review_request")
         require_valid(report, "review_report")
         _require_current_request_policy(request, run_dir)
+        session_report = verify_review_session(
+            run_dir,
+            request_path,
+            session_path,
+            require_current_revision=require_current_revision,
+        )
+        if not session_report["valid"]:
+            errors.extend(session_report["errors"])
         if report["verdict"] not in VERDICTS[request["stage"]]:
             errors.append("审核结论不属于该阶段枚举")
+        if request["stage"] == "R1_MODELING":
+            _validate_r1_semantics(report)
+            _validate_r1_coverage_against_model_spec(report, request, run_dir)
         if request["stage"] == "R5_COMPREHENSIVE":
             _validate_r5_axes(report)
         if receipt["request_sha256"] != sha256_file(request_path):
             errors.append("审核请求哈希不一致")
         if receipt["report_sha256"] != sha256_file(report_path):
             errors.append("审核报告哈希不一致")
+        if report["request_sha256"] != receipt["request_sha256"]:
+            errors.append("审核报告与回执的请求绑定不一致")
+        if receipt["session_sha256"] != sha256_file(session_path):
+            errors.append("审核 session 哈希不一致")
+        if report["session_sha256"] != receipt["session_sha256"]:
+            errors.append("审核报告与回执的 session 绑定不一致")
+        manifest_path = resolve_inside(
+            run_dir, request["input_manifest_path"], must_exist=True
+        )
+        if receipt["input_manifest_sha256"] != sha256_file(manifest_path):
+            errors.append("审核回执的材料清单哈希不一致")
+        if report["input_manifest_sha256"] != receipt["input_manifest_sha256"]:
+            errors.append("审核报告与回执的材料清单绑定不一致")
         for name, expected in request["bindings"].items():
             bound_path = resolve_inside(run_dir, request["binding_paths"][name], must_exist=True)
             if sha256_file(bound_path) != expected:
@@ -354,6 +459,298 @@ def _report_passed(report: dict[str, Any]) -> bool:
         severe = any(item["severity"] in {"P0", "P1"} for item in report["findings"])
         return report["verdict"] in PASSING_VERDICTS[report["stage"]] and not severe
     return report["verdict"] in PASSING_VERDICTS[report["stage"]]
+
+
+def _validate_r1_semantics(report: dict[str, Any]) -> None:
+    """保证 R1 结论、严重度和路线影响分类互相一致。"""
+    findings = report["findings"]
+    verdict = report["verdict"]
+    coverage = report["coverage"]
+    route_findings = [item for item in findings if finding_requires_route_reapproval(item)]
+    severe = any(item["severity"] in {"P0", "P1"} for item in findings)
+
+    if coverage["unchecked_items"]:
+        raise ContractError("R1 coverage 不得包含 unchecked_items")
+    failed_checks = {
+        check_id for check_id in R1_COVERAGE_CHECKS if coverage[check_id] == "fail"
+    }
+    finding_checks = {finding.get("check_id") for finding in findings}
+    missing_findings = sorted(failed_checks - finding_checks)
+    if missing_findings:
+        raise ContractError("R1 coverage fail 缺少对应 finding: " + ", ".join(missing_findings))
+    mismatched_findings = sorted(
+        finding["check_id"]
+        for finding in findings
+        if finding.get("check_id") and coverage.get(finding["check_id"]) != "fail"
+    )
+    if mismatched_findings:
+        raise ContractError(
+            "R1 finding 的 check_id 必须对应 coverage=fail: "
+            + ", ".join(mismatched_findings)
+        )
+
+    if verdict == "ACCEPT" and failed_checks:
+        raise ContractError("R1 ACCEPT 不能包含 coverage=fail")
+    if verdict in {"SPEC_REVISION_REQUIRED", "ROUTE_REAPPROVAL_REQUIRED"} and not failed_checks:
+        raise ContractError(f"R1 {verdict} 必须至少包含一个 coverage=fail")
+    if verdict == "BLOCKED_MISSING_INPUT":
+        if failed_checks:
+            raise ContractError("缺少输入时不能把未执行检查标记为模型失败")
+        if any(item.get("check_id") for item in findings):
+            raise ContractError("缺少输入 finding 不得冒充 coverage 失败项")
+
+    for finding in findings:
+        material = finding_requires_route_reapproval(finding)
+        changed_fields = finding["changed_route_core_fields"]
+        if material and not changed_fields:
+            raise ContractError("路线实质变化必须列出 changed_route_core_fields")
+        if not material and changed_fields:
+            raise ContractError("非路线变化不得声明 changed_route_core_fields")
+
+    if route_findings and verdict != "ROUTE_REAPPROVAL_REQUIRED":
+        raise ContractError("存在路线实质变化时 R1 必须要求重新批准路线")
+    if verdict == "ROUTE_REAPPROVAL_REQUIRED" and not route_findings:
+        raise ContractError("R1 要求重新批准路线时必须包含路线实质变化 finding")
+    if verdict == "SPEC_REVISION_REQUIRED" and (not findings or route_findings):
+        raise ContractError("规格修订结论必须包含不影响路线的 finding")
+    if verdict == "BLOCKED_MISSING_INPUT" and (not findings or route_findings):
+        raise ContractError("缺少输入结论不能携带路线实质变化")
+    if verdict == "ACCEPT" and findings:
+        raise ContractError("R1 ACCEPT 不得包含未关闭 finding")
+    if verdict == "ACCEPT_WITH_MINOR_FIXES" and (not findings or severe or route_findings):
+        raise ContractError("R1 小修通过仅允许非路线 P2/P3 finding")
+
+
+def _validate_r1_coverage_against_model_spec(
+    report: dict[str, Any], request: dict[str, Any], run_dir: Path
+) -> None:
+    """检查可确定判断的 coverage=pass 是否具有最低结构证据。"""
+    model_spec_path = resolve_inside(
+        run_dir, request["binding_paths"]["model_spec"], must_exist=True
+    )
+    model_spec = load_json(model_spec_path)
+    require_valid(model_spec, "model_spec")
+    checks = {
+        "data_and_attachment_mapping": _question_has_data_mapping_evidence,
+        "equation_closure": _question_has_equation_closure_evidence,
+        "parameter_identifiability": _question_has_identifiability_evidence,
+        "stopping_rule": _question_has_stopping_rule_evidence,
+        "baseline_design": _question_has_baseline_evidence,
+        "model_selection_criterion": _question_has_selection_evidence,
+        "uncertainty_quantification": _question_has_uncertainty_evidence,
+    }
+    for check_id, predicate in checks.items():
+        if report["coverage"][check_id] != "pass":
+            continue
+        missing = [
+            question["question_id"]
+            for question in model_spec["questions"]
+            if not predicate(question)
+        ]
+        if missing:
+            raise ContractError(
+                f"R1 coverage={check_id}:pass 缺少最低结构证据: "
+                + ", ".join(missing)
+            )
+    if report["coverage"]["evidence_plan"] == "pass":
+        problem_manifest_path = resolve_inside(
+            run_dir, request["binding_paths"]["problem_manifest"], must_exist=True
+        )
+        problem_manifest = load_json(problem_manifest_path)
+        require_valid(problem_manifest, "problem_manifest")
+        questions = {
+            question["question_id"]: question for question in model_spec["questions"]
+        }
+        missing = []
+        for required_question in problem_manifest["questions"]:
+            if not required_question["required"]:
+                continue
+            question_id = required_question["question_id"]
+            expected_outputs = {
+                item["output_id"] for item in required_question["required_outputs"]
+            }
+            question = questions.get(question_id)
+            if question is None or not _question_has_evidence_plan(
+                question, expected_outputs
+            ):
+                missing.append(question_id)
+        if missing:
+            raise ContractError(
+                "R1 coverage=evidence_plan:pass 缺少必做输出的完整证据映射: "
+                + ", ".join(missing)
+            )
+
+
+def _question_text(question: dict[str, Any]) -> str:
+    """汇总模型规格中允许承载审核证据的文本字段。"""
+    values = [question["objective"], question["algorithm"]]
+    values.extend(question["constraints"])
+    values.extend(question["validation_plan"])
+    values.extend(question["assumptions"])
+    return " ".join(values).casefold()
+
+
+def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
+    """判断文本是否包含任一中英文协议关键词。"""
+    return any(term in text for term in terms)
+
+
+def _r1_evidence(question: dict[str, Any], check_id: str) -> Any:
+    """返回单问的结构化 R1 证据；缺失时由对应 coverage 预检拒绝。"""
+    return question.get("r1_evidence", {}).get(check_id)
+
+
+def _question_has_data_mapping_evidence(question: dict[str, Any]) -> bool:
+    """源字段、派生公式、单位、来源和异常处理必须形成结构化映射。"""
+    evidence = _r1_evidence(question, "data_and_attachment_mapping")
+    if not isinstance(evidence, dict):
+        return False
+    declared = {item["name"] for item in question["variables"]}
+    source_fields = evidence.get("source_fields", [])
+    derived = evidence.get("derived_variables", [])
+    mapped_names = {item.get("variable") for item in source_fields}
+    derived_names = {item.get("name") for item in derived}
+    has_derived_declaration = bool(derived) or bool(
+        evidence.get("no_derived_variables_reason", "").strip()
+    )
+    return (
+        bool(source_fields)
+        and mapped_names.issubset(declared)
+        and derived_names.issubset(declared)
+        and has_derived_declaration
+        and bool(evidence.get("missing_and_anomaly_handling", "").strip())
+    )
+
+
+def _question_has_equation_closure_evidence(question: dict[str, Any]) -> bool:
+    """方程符号和输出必须闭合到变量表，并声明可计算输出。"""
+    evidence = _r1_evidence(question, "equation_closure")
+    if not isinstance(evidence, dict):
+        return False
+    variable_names = {item["name"] for item in question["variables"]}
+    declared_symbols = set(evidence.get("declared_symbols", []))
+    output_symbols = set(evidence.get("output_symbols", []))
+    equations = evidence.get("equations", [])
+    equation_text = " ".join(equations)
+    return (
+        bool(equations)
+        and bool(declared_symbols)
+        and declared_symbols.issubset(variable_names)
+        and bool(output_symbols)
+        and output_symbols.issubset(declared_symbols)
+        and all(symbol in equation_text for symbol in output_symbols)
+    )
+
+
+def _question_has_stopping_rule_evidence(question: dict[str, Any]) -> bool:
+    """停止规则必须区分迭代/解析，并声明失败处理和 fallback。"""
+    evidence = _r1_evidence(question, "stopping_rule")
+    if not isinstance(evidence, dict):
+        return False
+    common = bool(evidence.get("failure_handling", "").strip()) and bool(
+        evidence.get("fallback", "").strip()
+    )
+    if evidence.get("mode") == "analytic":
+        return common and bool(evidence.get("analytic_solution", "").strip())
+    if evidence.get("mode") == "iterative":
+        return (
+            common
+            and isinstance(evidence.get("max_iterations"), int)
+            and evidence["max_iterations"] > 0
+            and isinstance(evidence.get("tolerance"), (int, float))
+            and evidence["tolerance"] > 0
+            and bool(evidence.get("convergence_condition", "").strip())
+        )
+    return False
+
+
+def _question_has_baseline_evidence(question: dict[str, Any]) -> bool:
+    """baseline 必须具名，并固定相同输入、指标和比较口径。"""
+    evidence = _r1_evidence(question, "baseline_design")
+    if not isinstance(evidence, dict):
+        return False
+    return all(
+        (
+            bool(evidence.get("baseline_id", "").strip()),
+            bool(evidence.get("input_equivalence", "").strip()),
+            bool(evidence.get("metrics")),
+            bool(evidence.get("comparison_rule", "").strip()),
+        )
+    )
+
+
+def _question_has_evidence_plan(
+    question: dict[str, Any], expected_outputs: set[str]
+) -> bool:
+    """每个必做输出必须唯一映射到实验、图表和论文章节。"""
+    plan = _r1_evidence(question, "evidence_plan")
+    if not isinstance(plan, list) or not plan:
+        return False
+    output_ids = [item.get("required_output_id") for item in plan]
+    return len(output_ids) == len(set(output_ids)) and set(output_ids) == expected_outputs
+
+
+def _question_has_identifiability_evidence(question: dict[str, Any]) -> bool:
+    """参数、估计/来源、边界和可辨识说明必须同时出现。"""
+    text = _question_text(question)
+    variables_complete = bool(question["variables"]) and all(
+        item.get("name") and item.get("role") and item.get("unit")
+        for item in question["variables"]
+    )
+    return (
+        variables_complete
+        and _contains_any(text, ("可辨识", "identifi", "jacobian", "条件数"))
+        and _contains_any(text, ("估计", "拟合", "优化", "固定", "来源", "estimate", "fit"))
+        and _contains_any(text, ("边界", "范围", "约束", "bounded", "<=", ">=", "∈"))
+    )
+
+
+def _question_has_selection_evidence(question: dict[str, Any]) -> bool:
+    """模型选择 pass 必须声明准则、比较对象和选择方向或阈值。"""
+    text = _question_text(question)
+    return (
+        _contains_any(
+            text,
+            (
+                "aic",
+                "bic",
+                "gcv",
+                "交叉验证",
+                "cross-validation",
+                "cross validation",
+                "留出",
+            ),
+        )
+        and _contains_any(text, ("比较", "对照", "候选", "baseline", "vs", "versus"))
+        and _contains_any(
+            text,
+            ("最小", "最大", "阈值", "排序", "优于", "改善", "minimum", "maximum", ">=", "<="),
+        )
+    )
+
+
+def _question_has_uncertainty_evidence(question: dict[str, Any]) -> bool:
+    """不确定性 pass 必须声明方法、输出口径和计算次数或区间口径。"""
+    text = _question_text(question)
+    return (
+        _contains_any(
+            text,
+            (
+                "bootstrap",
+                "置信区间",
+                "剖面区间",
+                "敏感性",
+                "误差传播",
+                "概率分布",
+                "profile interval",
+            ),
+        )
+        and _contains_any(text, ("报告", "输出", "区间", "标准差", "方差", "report", "interval"))
+        and (
+            _contains_any(text, ("次数", "重采样", "分位数", "计算口径", "samples", "resampling"))
+            or any(character.isdigit() for character in text)
+        )
+    )
 
 
 def _validate_r5_axes(report: dict[str, Any]) -> None:
