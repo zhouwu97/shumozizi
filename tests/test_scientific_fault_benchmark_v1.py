@@ -6,7 +6,10 @@ import json
 from pathlib import Path
 
 from shumozizi.core.io import sha256_file
-from shumozizi.workflow.scientific_review import evaluate_deterministic_prechecks
+from shumozizi.workflow.scientific_review import (
+    audit_deterministic_prechecks,
+    evaluate_deterministic_prechecks,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES_PATH = ROOT / "benchmarks/scientific_fault_benchmark_v1/cases.json"
@@ -96,3 +99,33 @@ def test_a4_deterministic_prechecks_detect_development_cases() -> None:
     }
     assert "reviewer_scientific_fault_recall" not in metrics
     assert "scientific_fault_recall" not in metrics
+    assert all("suspicions" in item for item in result["observations"])
+    assert all("findings" not in item for item in result["observations"])
+
+
+def test_precheck_output_is_suspicion_not_formal_finding() -> None:
+    case = {
+        "problem_fragment": "使用未来预测做滚动评估",
+        "data_or_fixture": "按 subject 分组的数据",
+        "model_spec": "使用 Bootstrap 估计区间",
+        "experiment_plan": "随机抽样但不使用随机切分，按 group 保持边界",
+        "code_or_pseudocode": "train_test_split(..., shuffle=False)",
+    }
+    output = audit_deterministic_prechecks(case)
+    assert output
+    assert all(item["requires_independent_review"] is True for item in output)
+    assert all("finding_id" not in item for item in output)
+    assert all("gate_effect" not in item for item in output)
+    assert all("accepted" not in item for item in output)
+
+
+def test_sensitive_words_in_normal_text_do_not_decide_scientific_error() -> None:
+    case = {
+        "problem_fragment": "未来预测任务，使用 Bootstrap 置信区间",
+        "data_or_fixture": "按 group 保存同一对象的全部观测",
+        "model_spec": "目标仅在训练折内计算，随机种子固定",
+        "experiment_plan": "按 group 划分并使用时间顺序验证",
+        "code_or_pseudocode": "train_test_split(..., shuffle=False)",
+    }
+    output = audit_deterministic_prechecks(case)
+    assert output == []

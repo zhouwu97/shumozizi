@@ -116,6 +116,11 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _reviewer_severity(finding: dict[str, Any]) -> str:
+    """读取 v2 严重度或 v3 reviewer 严重度建议。"""
+    return str(finding.get("severity_recommendation", finding.get("severity", "")))
+
+
 def _relative(run_dir: Path, path: Path) -> str:
     """校验路径位于运行目录内并返回 POSIX 相对路径。"""
     try:
@@ -166,11 +171,28 @@ def _validate_format_audit_verdict(
     )
     audit = load_json(audit_path)
     require_valid(audit, "format_audit")
+    hard_details = {
+        item["check_id"]: item["details"]
+        for item in audit["checks"]
+        if item["check_id"] in audit["hard_failures"]
+    }
     if request["stage"] == "R4_FORMAT_VISUAL":
         if report["verdict"] == "COMPLIANT" and audit["hard_failures"]:
-            raise ContractError("FORMAT_AUDIT 存在机器硬失败，R4 不得判 COMPLIANT")
+            failures = "; ".join(
+                f"{check_id}: {hard_details.get(check_id, '无详情')}"
+                for check_id in audit["hard_failures"]
+            )
+            raise ContractError(
+                f"FORMAT_AUDIT 存在机器硬失败，R4 不得判 COMPLIANT: {failures}"
+            )
     elif report.get("joint_verdict") == "FINAL_CANDIDATE" and audit["hard_failures"]:
-        raise ContractError("FORMAT_AUDIT 存在机器硬失败，R5 不得判 FINAL_CANDIDATE")
+        failures = "; ".join(
+            f"{check_id}: {hard_details.get(check_id, '无详情')}"
+            for check_id in audit["hard_failures"]
+        )
+        raise ContractError(
+            f"FORMAT_AUDIT 存在机器硬失败，R5 不得判 FINAL_CANDIDATE: {failures}"
+        )
 
 
 def create_review_request(
@@ -336,9 +358,9 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
         _validate_r1_coverage_against_model_spec(report, request, run_dir)
     if request["stage"] == "R2_EXPERIMENT" and report["schema_version"] == "3.0":
         _validate_r2_semantics(report)
-    _validate_format_audit_verdict(request, report, run_dir)
     if request["stage"] == "R5_COMPREHENSIVE":
         _validate_r5_axes(report)
+    _validate_format_audit_verdict(request, report, run_dir)
     output = resolve_inside(request_path.parents[3], request["output_path"])
     if output.resolve() != request_path.parent / "review_report.json":
         raise ContractError("审核报告路径必须是请求声明的唯一输出路径")
@@ -365,7 +387,7 @@ def _validate_adjudication_semantics(
     unresolved: set[str] = set()
     for finding_id, decision in decision_map.items():
         finding = finding_map[finding_id]
-        severity = finding["severity"]
+        severity = _reviewer_severity(finding)
         main_decision = decision["main_decision"]
         recommended_resolution = finding.get("recommended_resolution")
         if recommended_resolution and main_decision != recommended_resolution:
@@ -800,7 +822,7 @@ def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict
         and item["rating"]["grade"] in {"A", "B"}
         and item.get("competition_claim_allowed") is True
         and item.get("calibrated_score", 0) >= 75
-        and not any(f["severity"] in {"P0", "P1"} for f in item["findings"])
+        and not any(_reviewer_severity(f) in {"P0", "P1"} for f in item["findings"])
     ]
     passed = bool(good and good[-1] is reports[-1])
     return {
@@ -816,12 +838,12 @@ def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict
 
 def _report_passed(report: dict[str, Any]) -> bool:
     """依据阶段语义而非 finding 是否为空判断审核是否通过。"""
-    if any(item["severity"] in {"P0", "P1"} for item in report["findings"]):
+    if any(_reviewer_severity(item) in {"P0", "P1"} for item in report["findings"]):
         return False
     if report["stage"] == "R5_COMPREHENSIVE":
         return report.get("joint_verdict") == "FINAL_CANDIDATE"
     if report["stage"] == "J0_FINAL_BLIND_JUDGE":
-        severe = any(item["severity"] in {"P0", "P1"} for item in report["findings"])
+        severe = any(_reviewer_severity(item) in {"P0", "P1"} for item in report["findings"])
         return report["verdict"] in PASSING_VERDICTS[report["stage"]] and not severe
     return report["verdict"] in PASSING_VERDICTS[report["stage"]]
 
@@ -833,7 +855,6 @@ def _validate_r1_semantics(report: dict[str, Any]) -> None:
     coverage = report["coverage"]
     if report.get("schema_version") == "3.0":
         _validate_r1_v3_coverage(report)
-        _validate_r1_route_semantics(report)
         return
     route_findings = [item for item in findings if finding_requires_route_reapproval(item)]
     severe = any(item["severity"] in {"P0", "P1"} for item in findings)
@@ -890,28 +911,6 @@ def _validate_r1_semantics(report: dict[str, Any]) -> None:
         raise ContractError("R1 小修通过仅允许非路线 P2/P3 finding")
 
 
-def _validate_r1_route_semantics(report: dict[str, Any]) -> None:
-    """四态 coverage 之外仍须执行既有路线漂移约束。"""
-    findings = report["findings"]
-    verdict = report["verdict"]
-    route_findings = [item for item in findings if finding_requires_route_reapproval(item)]
-    for finding in findings:
-        material = finding_requires_route_reapproval(finding)
-        changed_fields = finding["changed_route_core_fields"]
-        if material and not changed_fields:
-            raise ContractError("路线实质变化必须列出 changed_route_core_fields")
-        if not material and changed_fields:
-            raise ContractError("非路线变化不得声明 changed_route_core_fields")
-    if route_findings and verdict != "ROUTE_REAPPROVAL_REQUIRED":
-        raise ContractError("存在路线实质变化时 R1 必须要求重新批准路线")
-    if verdict == "ROUTE_REAPPROVAL_REQUIRED" and not route_findings:
-        raise ContractError("R1 要求重新批准路线时必须包含路线实质变化 finding")
-    if verdict == "SPEC_REVISION_REQUIRED" and (not findings or route_findings):
-        raise ContractError("规格修订结论必须包含不影响路线的 finding")
-    if verdict == "BLOCKED_MISSING_INPUT" and (not findings or route_findings):
-        raise ContractError("缺少输入结论不能携带路线实质变化")
-
-
 def _validate_r1_v3_coverage(report: dict[str, Any]) -> None:
     """R1 v3 的四态 coverage 必须把未知项交给可追踪的后续裁决。"""
     coverage = report["coverage"]
@@ -932,8 +931,10 @@ def _validate_r1_v3_coverage(report: dict[str, Any]) -> None:
         raise ContractError("R1 challenged/unknown 必须有对应 finding: " + ", ".join(missing))
     for finding in findings:
         check_id = finding.get("check_id")
-        if check_id not in R1_REQUIRED_CHECK_IDS:
+        if check_id is None:
             continue
+        if check_id not in R1_REQUIRED_CHECK_IDS:
+            raise ContractError(f"R1 finding 使用未知 check_id: {check_id}")
         state = coverage[check_id]
         if state == "challenged" and finding.get("recommended_resolution"):
             raise ContractError("R1 challenged finding 不应伪装为待探查")
@@ -941,11 +942,17 @@ def _validate_r1_v3_coverage(report: dict[str, Any]) -> None:
             raise ContractError("R1 unknown 必须声明 needs_probe、needs_second_review 或 needs_human_decision")
         if state in {"verified", "not_applicable"}:
             raise ContractError(f"R1 finding 的 coverage 状态不能为 {state}: {check_id}")
-    severe = any(item["severity"] in {"P0", "P1"} for item in findings)
+    severe = any(_reviewer_severity(item) in {"P0", "P1"} for item in findings)
     if report["verdict"] == "ACCEPT" and (challenged or unknown or findings):
         raise ContractError("R1 v3 ACCEPT 必须所有检查 verified/not_applicable 且无 finding")
-    if report["verdict"] == "SPEC_REVISION_REQUIRED" and not challenged:
-        raise ContractError("R1 v3 规格修订必须至少有 challenged 检查")
+    checklist_external = any(finding.get("check_id") is None for finding in findings)
+    if (
+        report["verdict"] == "SPEC_REVISION_REQUIRED"
+        and not challenged
+        and not unknown
+        and not checklist_external
+    ):
+        raise ContractError("R1 v3 规格修订必须有 challenged、unknown 或清单外 finding")
     if report["verdict"] == "BLOCKED_MISSING_INPUT" and not unknown:
         raise ContractError("R1 v3 缺少输入必须至少有 unknown 检查")
     if report["verdict"] == "ACCEPT_WITH_MINOR_FIXES" and (severe or challenged or unknown or not findings):
@@ -1243,7 +1250,7 @@ def _validate_r5_axes(report: dict[str, Any]) -> None:
     }[(integrity_pass, quality_pass)]
     if report["joint_verdict"] != expected:
         raise ContractError(f"R5 联合结论应为 {expected}")
-    severe = any(item["severity"] in {"P0", "P1"} for item in report["findings"])
+    severe = any(_reviewer_severity(item) in {"P0", "P1"} for item in report["findings"])
     if report["joint_verdict"] == "FINAL_CANDIDATE" and severe:
         raise ContractError("R5 存在 P0/P1 时不能成为 FINAL_CANDIDATE")
     if report["joint_verdict"] == "FINAL_CANDIDATE" and not report["competition_claim_allowed"]:
@@ -1353,7 +1360,10 @@ def _apply_r5_score_calibration(run_dir: Path, report: dict[str, Any]) -> dict[s
             dimensions[cap["dimension"]] = min(dimensions[cap["dimension"]], cap["maximum_dimension"])
         if cap.get("maximum_score") is not None:
             score_upper = min(score_upper, float(cap["maximum_score"]))
-    severe = any(item["severity"] in {"P0", "P1"} for item in normalized.get("findings", []))
+    severe = any(
+        _reviewer_severity(item) in {"P0", "P1"}
+        for item in normalized.get("findings", [])
+    )
     if severe:
         normalized["score_caps_applied"].append(
             {

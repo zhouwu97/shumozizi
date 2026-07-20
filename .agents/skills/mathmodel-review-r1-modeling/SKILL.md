@@ -38,9 +38,16 @@ Phase A 判断作者是否漏问、模型族是否匹配机制、参数是否可
 
 1. 在 Phase A 独立重构题意和最低科学验证要求，并哈希冻结 `PHASE_A.json`。
 2. 领取 Phase B 请求，校验 manifest、request、session、当前 revision、配置锁、Phase A 和全部绑定哈希。
-3. 对照 Phase A 检查每个模型输出、机制、可辨识性、变量单位、目标、硬约束和边界条件。
-4. 检查数据划分、指标、停止规则、失败边界，以及 baseline、primary、robustness/ablation 的辨识力和预算。
-5. 只写本轮报告；不替作者裁决 finding、生成回执或修复。
+3. **先进行独立科学分析**：在填写 coverage 或 finding 表格之前，独立分析题意、数据机制、
+   作者结论、替代解释、反例、失败模式和可证伪方法。不得把 coverage 顺序当作推理顺序；
+   允许发现不属于任何已有 `check_id` 的问题。无法确定时保留 `unknown`，不得为了填满清单
+   而写 `verified`。
+4. **再做结果映射**：完成独立分析后，把判断映射到 coverage 和 findings。coverage 只记录
+   基础检查状态，不是推理步骤，也不是模型正确性评分。清单外科学问题可使用 `check_id=null`，
+   仍需提供证据和建议验证方式。
+5. 对照 Phase A 检查每个模型输出、机制、可辨识性、变量单位、目标、硬约束和边界条件；检查
+   数据划分、指标、停止规则、失败边界，以及 baseline、primary、robustness/ablation 的辨识力和预算。
+6. 只写本轮报告；不替作者裁决 finding、生成回执或修复。
 
 ## 基础 Skill 与脚本
 
@@ -50,9 +57,10 @@ Phase A 判断作者是否漏问、模型族是否匹配机制、参数是否可
 
 ## Finding 证据格式
 
-每条 finding 必须包含 `finding_id`、`severity`、`title`、`evidence`（文件路径、字段或行号）、
-`remediation`、`status`、`change_level`、`affected_questions`、`change_class`、
-`route_impact` 和 `changed_route_core_fields`。证据不得使用聊天记忆或未声明文件。
+v3 reviewer finding 只需说明问题本身：`finding_id`、`severity_recommendation`、`title`、
+`claim`、`evidence` 和 `why_it_may_be_wrong`；可选 `check_id`（清单外问题填 `null`）与
+`recommended_resolution`。生产返工等级、影响题号和路线影响由主 AI 在 adjudication 中裁决，
+不得由 reviewer 报告预先决定。证据不得使用聊天记忆或未声明文件。
 
 报告还必须提供 `coverage`：逐项给出题意解释、问与输出映射、变量完整性、数据与附件映射、单位、方程闭合、
 参数可辨识性、目标、约束、算法、停止规则、基线、模型选择准则、不确定性、稳健性/消融、
@@ -100,11 +108,9 @@ evidence_plan
 
 运行时预检只保证最低结构证据存在，不替代审核员判断公式、方法和实验设计质量。
 
-`change_class` 只能是 `SPEC_CLARIFICATION`、`SPEC_COMPLETION`、
-`IMPLEMENTATION_DETAIL`、`VALIDATION_DETAIL`、`EVIDENCE_METADATA`、
-`EXPERIMENT_DESIGN_CHANGE`、`ROUTE_CORE_CHANGE` 或
-`PROBLEM_INTERPRETATION_CHANGE`。后两类或 `route_impact=material` 应推导为 `L5`；只有最终
-有效等级为 `L5` 才属于路线漂移，`affected_stage=R1_MODELING` 本身绝不代表需要重新批准路线。
+路线影响、修改等级和复测范围不属于 v3 reviewer finding；只有主 AI 在 adjudication 中形成
+最终有效等级后，才判断是否需要路线重新批准。`affected_stage=R1_MODELING` 本身绝不代表
+需要重新批准路线。
 
 ## 严重度
 
@@ -130,7 +136,7 @@ evidence_plan
 ## 结束前自检
 
 - [ ] 只读取 request 的 `read_paths`；
-- [ ] 每个 P0/P1 有可定位证据和修复建议；
+- [ ] 每个 P0/P1 有可定位证据和建议验证方式；
 - [ ] `read_only_confirmed=true`；
 - [ ] 报告绑定当前 request、input manifest 和不可变 session 的 SHA-256；
 - [ ] 报告 Schema、request_id、run_id、stage、review_round_id 全部匹配。

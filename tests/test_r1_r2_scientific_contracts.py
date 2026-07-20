@@ -18,6 +18,7 @@ from shumozizi.workflow.reviews import (
     R1_COVERAGE_CHECKS,
     R2_EXECUTION_CHECKS,
     R2_SCIENTIFIC_CHECKS,
+    _validate_adjudication_semantics,
     _validate_r1_semantics,
     _validate_r2_semantics,
     write_review_report,
@@ -182,6 +183,117 @@ def test_r1_v3_uses_four_states_and_unknown_cannot_pass() -> None:
         require_valid(report, "review_report")
     with pytest.raises(ContractError, match="旧 pass/fail"):
         _validate_r1_semantics(report)
+
+
+def test_r1_v3_external_p1_finding_blocks_even_when_coverage_is_verified() -> None:
+    """清单全绿不能覆盖 reviewer 独立发现的清单外 P1 问题。"""
+    report = _base_report("R1_MODELING")
+    report["verdict"] = "SPEC_REVISION_REQUIRED"
+    report["phase_a_sha256"] = "4" * 64
+    report["coverage"] = {
+        **{check_id: "verified" for check_id in R1_COVERAGE_CHECKS},
+        "unchecked_items": [],
+    }
+    report["findings"] = [
+        {
+            "finding_id": "R1-NOVEL-001",
+            "severity_recommendation": "P1",
+            "title": "清单外的参数耦合风险",
+            "claim": "两个输出只能识别参数乘积",
+            "evidence": ["brief/model_spec.json:equations"],
+            "why_it_may_be_wrong": "所有观测方程都只出现参数乘积",
+            "check_id": None,
+        }
+    ]
+    require_valid(report, "review_report")
+    _validate_r1_semantics(report)
+
+    adjudication = {
+        "decisions": [
+            {
+                "finding_id": "R1-NOVEL-001",
+                "reviewer_severity": "P1",
+                "main_decision": "accepted",
+                "decision_reason": "独立复核确认",
+                "effective_severity": "P1",
+                "gate_effect": "block",
+                "confirmation_evidence": ["probe:identifiability"],
+                "counter_evidence": [],
+                "resolution_evidence_type": "probe_result",
+                "effective_change_level": "L4",
+                "affected_questions": ["q1"],
+                "required_retests": ["R1_MODELING"],
+                "route_reapproval_required": False,
+            }
+        ],
+        "unresolved_conflicts": [],
+    }
+    _validate_adjudication_semantics(report, adjudication)
+
+
+def test_r1_v3_not_applicable_does_not_require_full_verified_count() -> None:
+    """不适用检查项不应因 verified 数量减少而被判为失败。"""
+    report = _base_report("R1_MODELING")
+    report["phase_a_sha256"] = "4" * 64
+    report["coverage"] = {
+        **{check_id: "verified" for check_id in R1_COVERAGE_CHECKS},
+        "uncertainty_quantification": "not_applicable",
+        "unchecked_items": [],
+    }
+    require_valid(report, "review_report")
+    _validate_r1_semantics(report)
+
+
+def test_r1_v3_unknown_requires_resolution_and_cannot_be_hidden_by_verified_items() -> None:
+    """单个 unknown 必须进入后续裁决，不能被其余 verified 项掩盖。"""
+    report = _base_report("R1_MODELING")
+    report["verdict"] = "SPEC_REVISION_REQUIRED"
+    report["phase_a_sha256"] = "4" * 64
+    report["coverage"] = {
+        **{check_id: "verified" for check_id in R1_COVERAGE_CHECKS},
+        "parameter_identifiability": "unknown",
+        "unchecked_items": [],
+    }
+    report["findings"] = [
+        {
+            "finding_id": "R1-UNKNOWN-001",
+            "severity_recommendation": "P1",
+            "title": "参数可辨识性证据不足",
+            "claim": "当前材料无法判断参数是否可分别估计",
+            "evidence": ["brief/model_spec.json"],
+            "why_it_may_be_wrong": "缺少独立参数恢复实验",
+            "check_id": "parameter_identifiability",
+            "recommended_resolution": "needs_probe",
+        }
+    ]
+    require_valid(report, "review_report")
+    _validate_r1_semantics(report)
+
+
+def test_v2_finding_remains_readable_but_is_not_a_v3_finding() -> None:
+    """历史 v2 报告保持可读，新报告不能继续携带 reviewer 生产字段。"""
+    report = _base_report("R3_PAPER_LOGIC")
+    report["schema_version"] = "2.0"
+    report["verdict"] = "MAJOR_REVISION"
+    report["findings"] = [
+        {
+            "finding_id": "R3-LEGACY-001",
+            "severity": "P1",
+            "title": "历史 finding",
+            "evidence": ["paper/main.typ"],
+            "remediation": "修订论证",
+            "change_level": "L3",
+            "affected_questions": ["q1"],
+            "change_class": "VALIDATION_DETAIL",
+            "route_impact": "none",
+            "changed_route_core_fields": [],
+        }
+    ]
+    require_valid(report, "review_report")
+
+    report["schema_version"] = "3.0"
+    with pytest.raises(ContractError, match="review_report.schema.json"):
+        require_valid(report, "review_report")
 
 
 def _verified_axis(check_ids: set[str] | frozenset[str]) -> dict:
