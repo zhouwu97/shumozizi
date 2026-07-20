@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "paper_card_promotion_receipt.schema.json",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_name",
     "schema_version",
@@ -24,10 +25,13 @@
     "source_id": {"type": "string", "minLength": 1},
     "source_asset_sha256": {"$ref": "#/$defs/sha256"},
     "evidence_map_sha256": {"$ref": "#/$defs/sha256"},
+    "review_request_sha256": {"$ref": "#/$defs/sha256"},
+    "review_session_sha256": {"$ref": "#/$defs/sha256"},
     "review_report_sha256": {"$ref": "#/$defs/sha256"},
     "review_session_id": {"type": "string", "minLength": 1},
     "reviewer_identity": {"type": "string", "minLength": 1},
     "reviewer_attestation": {"type": "string", "minLength": 1},
+    "attestation_level": {"enum": ["self_declared", "orchestrator_verified", "platform_verified"]},
     "promotion_policy_version": {"const": "paper-card-promotion-v1"},
     "promoted_at": {"type": "string", "format": "date-time"}
   },
@@ -38,10 +42,13 @@
         "required": [
           "source_asset_sha256",
           "evidence_map_sha256",
+          "review_request_sha256",
+          "review_session_sha256",
           "review_report_sha256",
           "review_session_id",
           "reviewer_identity",
           "reviewer_attestation",
+          "attestation_level",
           "promotion_policy_version",
           "promoted_at"
         ]

@@ -21,6 +21,7 @@ from shumozizi.workflow.reviews import (
     write_review_report,
 )
 from shumozizi.workflow.state_service import Actor, ArtifactRef, StateService, WorkflowEvent
+from tests.knowledge_snapshot_helpers import seed_empty_retrieval_snapshot
 from tests.review_contract_helpers import (
     adjudicate_report,
     claim_and_hash,
@@ -47,16 +48,25 @@ def _candidate(route_id: str) -> dict[str, object]:
     }
 
 
-def _route_run(tmp_path: Path, *, manifest: bool = True) -> Path:
+def _route_run(
+    tmp_path: Path,
+    *,
+    manifest: bool = True,
+    snapshot: bool = True,
+) -> Path:
     problem = tmp_path / "problems/sample/problem.md"
     problem.parent.mkdir(parents=True)
     problem.write_text("输出一个可复验标量。\n", encoding="utf-8")
     run_dir = initialize_run(tmp_path, problem, "closure-route")
+    snapshot_binding = (
+        seed_empty_retrieval_snapshot(tmp_path, run_dir) if snapshot else {}
+    )
     candidates = {
         "schema_name": "route_candidates",
         "schema_version": "2.0",
         "run_id": run_dir.name,
         "run_config_lock_sha256": sha256_file(run_dir / "config/RUN_CONFIG_LOCK.json"),
+        **snapshot_binding,
         "problem_summary": "对固定输入执行确定性计算并输出可复验的结构化标量结果。",
         "ambiguities": [],
         "recommended_route_id": "route_a",

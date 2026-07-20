@@ -25,6 +25,8 @@ class FriendlyModeTests(unittest.TestCase):
                     "schema_version": "2.0",
                     "run_id": "run",
                     "run_config_lock_sha256": "0" * 64,
+                    "retrieval_snapshot_path": "knowledge/RETRIEVAL_SNAPSHOT.json",
+                    "retrieval_snapshot_sha256": "0" * 64,
                     "problem_summary": "固定题面",
                     "ambiguities": [],
                     "recommended_route_id": "r2",

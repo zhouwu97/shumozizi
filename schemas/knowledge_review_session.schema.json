@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge_review_session.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "session_id", "request_id", "paper_id", "authoring_session_id", "reviewer_identity", "executor", "execution_policy", "attestation_level", "request_sha256", "card_sha256", "evidence_map_sha256", "claimed_at", "started_at"],
+  "properties": {
+    "schema_name": {"const": "knowledge_review_session"},
+    "schema_version": {"const": "1.0"},
+    "session_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "paper_id": {"type": "string", "minLength": 1},
+    "authoring_session_id": {"type": "string", "minLength": 1},
+    "reviewer_identity": {"type": "string", "minLength": 1},
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "thread_id", "task_kind", "parent_thread_id"],
+      "properties": {
+        "platform": {"const": "codex_desktop"},
+        "thread_id": {"type": "string", "minLength": 1},
+        "task_kind": {"const": "top_level"},
+        "parent_thread_id": {"type": "null"}
+      }
+    },
+    "execution_policy": {"$ref": "#/$defs/policy"},
+    "attestation_level": {"enum": ["self_declared", "orchestrator_verified", "platform_verified"]},
+    "request_sha256": {"$ref": "#/$defs/sha256"},
+    "card_sha256": {"$ref": "#/$defs/sha256"},
+    "evidence_map_sha256": {"$ref": "#/$defs/sha256"},
+    "claimed_at": {"type": "string", "format": "date-time"},
+    "started_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["new_thread", "subagent", "forked", "context_inherited"],
+      "properties": {
+        "new_thread": {"const": true},
+        "subagent": {"const": false},
+        "forked": {"const": false},
+        "context_inherited": {"const": false}
+      }
+    }
+  }
+}

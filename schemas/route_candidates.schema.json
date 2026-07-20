@@ -8,6 +8,8 @@
     "schema_version",
     "run_id",
     "run_config_lock_sha256",
+    "retrieval_snapshot_path",
+    "retrieval_snapshot_sha256",
     "problem_summary",
     "ambiguities",
     "recommended_route_id",
@@ -23,17 +25,6 @@
         "properties": {
           "ambiguity_review": {"required": ["none_reason"]}
         }
-      }
-    },
-    {
-      "if": {
-        "anyOf": [
-          {"required": ["retrieval_snapshot_path"]},
-          {"required": ["retrieval_snapshot_sha256"]}
-        ]
-      },
-      "then": {
-        "required": ["retrieval_snapshot_path", "retrieval_snapshot_sha256"]
       }
     }
   ],

@@ -11,6 +11,7 @@ from shumozizi.core.io import (
     ContractError,
     atomic_json,
     load_json,
+    relative_inside,
     resolve_inside,
     sha256_bytes,
     sha256_file,
@@ -55,6 +56,19 @@ def _require_strings(value: object, field: str, *, allow_empty: bool = False) ->
     ):
         raise ContractError(f"{field} 必须是字符串数组")
     return value
+
+
+def _write_or_verify_receipt(path: Path, stable_fields: dict[str, Any]) -> None:
+    """首次写入模式晋级回执，或精确复验中断后遗留的回执。"""
+    if path.exists():
+        existing = load_json(path)
+        promoted_at = existing.get("promoted_at")
+        if not isinstance(promoted_at, str) or not promoted_at.strip():
+            raise ContractError("原子模式晋级回执缺少 promoted_at")
+        if existing != {**stable_fields, "promoted_at": promoted_at}:
+            raise ContractError("已存在的原子模式晋级回执与当前晋级事实不一致")
+        return
+    atomic_json(path, {**stable_fields, "promoted_at": _utc_now()})
 
 
 def validate_pattern_document(document: dict[str, Any]) -> None:
@@ -238,6 +252,7 @@ def promote_pattern(repo_root: Path, pattern_id: str, review_report_path: Path) 
     document = load_json(pattern_path)
     validate_pattern_document(document)
     review_path = review_report_path.resolve()
+    relative_inside(root, review_path)
     review = load_json(review_path)
     expected = {
         "schema_name": "atomic_pattern_review_report",
@@ -257,11 +272,8 @@ def promote_pattern(repo_root: Path, pattern_id: str, review_report_path: Path) 
 
     registry_path = root / "knowledge/reviews/atomic_pattern_review_registry.json"
     registry = load_pattern_review_registry(registry_path)
-    if registry["patterns"].get(pattern_id, {}).get("review_status") == "verified":
-        raise ContractError("原子模式已经 verified")
+    current = registry["patterns"].get(pattern_id, {})
     receipt_path = root / f"knowledge/reviews/pattern_promotions/{pattern_id}.json"
-    if receipt_path.exists():
-        raise ContractError("原子模式晋级回执已存在")
     receipt = {
         "schema_name": "atomic_pattern_promotion_receipt",
         "schema_version": "1.0",
@@ -274,15 +286,19 @@ def promote_pattern(repo_root: Path, pattern_id: str, review_report_path: Path) 
         "review_session_id": review["review_session_id"],
         "reviewer_identity": review["reviewer_identity"],
         "promotion_policy_version": PATTERN_PROMOTION_POLICY,
-        "promoted_at": _utc_now(),
     }
-    atomic_json(receipt_path, receipt)
-    registry["patterns"][pattern_id] = {
+    _write_or_verify_receipt(receipt_path, receipt)
+    expected_record = {
         "review_status": "verified",
         "promotion_receipt": receipt_path.relative_to(root).as_posix(),
         "promotion_receipt_sha256": sha256_file(receipt_path),
     }
-    atomic_json(registry_path, registry)
+    if current.get("review_status") == "verified":
+        if current != expected_record:
+            raise ContractError("verified 原子模式注册记录与晋级回执不一致")
+    else:
+        registry["patterns"][pattern_id] = expected_record
+        atomic_json(registry_path, registry)
     build_pattern_indexes(root)
     return receipt_path
 

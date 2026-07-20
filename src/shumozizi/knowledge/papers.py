@@ -260,6 +260,8 @@ def _verify_promotion_receipt(
         if receipt.get(field) != value:
             raise ContractError(f"论文卡 {paper_id} 的 promotion receipt 未绑定 {field}")
     if metadata.get("source_id"):
+        from shumozizi.knowledge.reviews import verify_knowledge_review_session
+
         evidence_map_path = resolve_inside(
             repo_root,
             f"knowledge/reviews/evidence_maps/{paper_id}.json",
@@ -270,11 +272,35 @@ def _verify_promotion_receipt(
             f"knowledge/reviews/reports/{paper_id}.json",
             must_exist=True,
         )
+        request_path = resolve_inside(
+            repo_root,
+            f"knowledge/reviews/requests/{paper_id}/knowledge_review_request.json",
+            must_exist=True,
+        )
+        session_path = resolve_inside(
+            repo_root,
+            f"knowledge/reviews/requests/{paper_id}/knowledge_review_session.json",
+            must_exist=True,
+        )
+        session_report = verify_knowledge_review_session(
+            repo_root, request_path, session_path
+        )
+        if not session_report["valid"]:
+            raise ContractError(
+                "Paper Card v2 知识审核 session 无效: "
+                + "; ".join(session_report["errors"])
+            )
+        session = load_json(session_path)
         v2_expected = {
             "source_id": metadata["source_id"],
             "source_asset_sha256": metadata["source_asset_sha256"],
             "evidence_map_sha256": sha256_file(evidence_map_path),
+            "review_request_sha256": sha256_file(request_path),
+            "review_session_sha256": sha256_file(session_path),
             "review_report_sha256": sha256_file(review_report_path),
+            "review_session_id": session["session_id"],
+            "reviewer_identity": session["reviewer_identity"],
+            "attestation_level": session["attestation_level"],
             "promotion_policy_version": "paper-card-promotion-v1",
         }
         for field, value in v2_expected.items():
@@ -468,23 +494,24 @@ def retrieve_papers(
     data_structure: str,
     task_types: list[str],
     keywords: list[str],
+    current_canonical_problem_id: str,
+    current_problem_asset_sha256: str,
     structural_tags: list[str] | None = None,
-    current_canonical_problem_id: str | None = None,
-    current_problem_asset_sha256: str | None = None,
     limit: int = 6,
 ) -> list[dict[str, Any]]:
     """从 verified 索引检索，并在评分前硬排除同题论文。"""
+    if not isinstance(current_canonical_problem_id, str) or not current_canonical_problem_id.strip():
+        raise ContractError("current_canonical_problem_id 必须是非空字符串")
+    _require_sha256(
+        current_problem_asset_sha256,
+        "current_problem_asset_sha256",
+        "current problem",
+    )
     normalized_tasks = {item.casefold() for item in task_types}
     normalized_keywords = {item.casefold() for item in keywords}
     normalized_structures = {item.casefold() for item in structural_tags or []}
     structural_weights = RETRIEVAL_POLICY["structural_weights"]
     score_weights = RETRIEVAL_POLICY["score_weights"]
-    if current_problem_asset_sha256 is not None:
-        current_problem_asset_sha256 = _require_sha256(
-            current_problem_asset_sha256,
-            "current_problem_asset_sha256",
-            "current problem",
-        )
     ranked: list[tuple[float, str, dict[str, Any]]] = []
     for entry in load_paper_index(index_path, production=True)["papers"]:
         if current_canonical_problem_id and (
@@ -640,9 +667,9 @@ def write_retrieval_artifacts(
         data_structure=normalized["data_structure"],
         task_types=normalized["task_types"],
         keywords=normalized["keywords"],
-        structural_tags=normalized["structural_tags"],
         current_canonical_problem_id=normalized["canonical_problem_id"],
         current_problem_asset_sha256=normalized["problem_asset_sha256"],
+        structural_tags=normalized["structural_tags"],
         limit=limit,
     )
     snapshot_path = write_retrieval_snapshot(

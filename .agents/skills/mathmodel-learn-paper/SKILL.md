@@ -27,17 +27,26 @@ description: 读取一篇优秀数学建模论文及原题，生成 provisional 
 4. 不自动判断论文“优秀程度”，不把原论文数字、结论或代码迁移到新题。
 5. 为每个重要主张写入 `knowledge/reviews/evidence_maps/<paper_id>.json`，绑定页码、章节、
    图表/公式位置和原文片段 SHA-256，不能只检查章节标题。
-6. 执行 `python scripts/knowledge/build_index.py`；草稿只能进入 provisional 索引。
+6. 执行 `python scripts/knowledge/create_review_request.py <paper_id>`，冻结 Card v2、evidence map、
+   制作会话和独立执行策略；同一个 request 只能领取一次。
+7. 执行 `python scripts/knowledge/build_index.py`；草稿只能进入 provisional 索引。
 
 ## 独立审核与晋级
 
 1. 用户必须在 Codex 桌面版新开独立顶层对话；审核会话不得等于 `authoring_session_id`。
-2. 审核对话读取原论文、官方题面、Card v2 和 evidence map，写入
+2. 审核对话先执行
+   `python scripts/knowledge/claim_review_session.py <request> --thread-id <当前顶层任务ID> --reviewer-identity <审核主体>`。
+   领取产物必须声明 `new_thread=true`、`subagent=false`、`forked=false`、
+   `context_inherited=false`；同一 request 和 thread ID 都不可重复领取。
+3. 审核对话读取原论文、官方题面、Card v2 和 evidence map，写入
    `knowledge/reviews/reports/<paper_id>.json`，结论只能是 `verified`、`revision_required` 或 `rejected`。
-3. 审核不能修改原卡；存在 open finding 时不能判 `verified`。
-4. 只有审核结论为 `verified` 后，生产对话才能显式执行：
+   报告必须绑定 knowledge review request、session 及二者 SHA-256。
+4. 审核不能修改原卡；存在 open finding 时不能判 `verified`。
+5. 只有审核结论为 `verified` 后，生产对话才能显式执行：
    `python scripts/knowledge/promote_card.py <paper_id>`。
-5. 晋级命令逐卡生成绑定来源、卡片、证据图、审核报告和审核身份的 promotion receipt；禁止批量自动晋级历史卡。
+6. 晋级命令逐卡生成绑定来源、卡片、证据图、审核 request/session/report、审核身份和
+   attestation level 的 promotion receipt；禁止批量自动晋级历史卡。若进程在 receipt 写入后中断，
+   同事实重试必须恢复 registry 与 indexes；不一致 receipt 必须拒绝。
 
 ## 结束检查
 

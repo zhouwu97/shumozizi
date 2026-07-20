@@ -12,6 +12,7 @@ from shumozizi.knowledge.papers import (
     load_paper_card_review_registry,
     read_paper_card,
 )
+from shumozizi.knowledge.reviews import verify_knowledge_review_session
 
 CARD_V2_FIELDS = {
     "paper_id",
@@ -62,6 +63,17 @@ def _require_string_list(value: object, field: str) -> list[str]:
     ):
         raise ContractError(f"{field} 必须是非空字符串数组")
     return value
+
+
+def _write_or_verify_receipt(path: Path, stable_fields: dict[str, Any]) -> None:
+    """首次写入晋级回执，或精确复验崩溃后遗留的同一回执。"""
+    if path.exists():
+        existing = load_json(path)
+        promoted_at = _require_string(existing.get("promoted_at"), "promoted_at")
+        if existing != {**stable_fields, "promoted_at": promoted_at}:
+            raise ContractError("已存在的论文卡晋级回执与当前晋级事实不一致")
+        return
+    atomic_json(path, {**stable_fields, "promoted_at": _utc_now()})
 
 
 def load_paper_source_registry(path: Path) -> dict[str, Any]:
@@ -194,6 +206,9 @@ def validate_knowledge_review(
     card_path: Path,
     evidence_map_path: Path,
     metadata: dict[str, Any],
+    request_path: Path,
+    session_path: Path,
+    session: dict[str, Any],
 ) -> dict[str, Any]:
     """校验隔离知识审核的结论和输入绑定。"""
     review = load_json(path)
@@ -206,14 +221,22 @@ def validate_knowledge_review(
         "card_sha256": sha256_file(card_path),
         "evidence_map_sha256": sha256_file(evidence_map_path),
         "source_asset_sha256": metadata["source_asset_sha256"],
+        "review_request_sha256": sha256_file(request_path),
+        "review_session_sha256": sha256_file(session_path),
+        "review_session_id": session["session_id"],
+        "reviewer_identity": session["reviewer_identity"],
+        "attestation_level": session["attestation_level"],
     }
     for field, value in expected.items():
         if review.get(field) != value:
             raise ContractError(f"知识审核报告未绑定 {field}")
-    for field in ("review_session_id", "reviewer_identity", "reviewer_attestation"):
+    for field in (
+        "review_session_id",
+        "reviewer_identity",
+        "reviewer_attestation",
+        "attestation_level",
+    ):
         _require_string(review.get(field), field)
-    if review["review_session_id"] == metadata["authoring_session_id"]:
-        raise ContractError("论文卡制作与知识审核必须使用独立会话")
     if review.get("verdict") not in {"verified", "revision_required", "rejected"}:
         raise ContractError("知识审核 verdict 无效")
     findings = review.get("findings")
@@ -241,12 +264,31 @@ def promote_paper_card(repo_root: Path, paper_id: str) -> dict[str, Path]:
     review_report_path = resolve_inside(
         root, f"knowledge/reviews/reports/{paper_id}.json", must_exist=True
     )
+    request_path = resolve_inside(
+        root,
+        f"knowledge/reviews/requests/{paper_id}/knowledge_review_request.json",
+        must_exist=True,
+    )
+    session_path = resolve_inside(
+        root,
+        f"knowledge/reviews/requests/{paper_id}/knowledge_review_session.json",
+        must_exist=True,
+    )
     validate_evidence_map(evidence_map_path, card_path=card_path, metadata=metadata)
+    session_report = verify_knowledge_review_session(root, request_path, session_path)
+    if not session_report["valid"]:
+        raise ContractError(
+            "知识审核 session 复验失败: " + "; ".join(session_report["errors"])
+        )
+    session = load_json(session_path)
     review = validate_knowledge_review(
         review_report_path,
         card_path=card_path,
         evidence_map_path=evidence_map_path,
         metadata=metadata,
+        request_path=request_path,
+        session_path=session_path,
+        session=session,
     )
     if review["verdict"] != "verified":
         raise ContractError("只有 verdict=verified 的独立审核可以晋级")
@@ -254,11 +296,7 @@ def promote_paper_card(repo_root: Path, paper_id: str) -> dict[str, Path]:
     registry_path = root / "knowledge/reviews/paper_card_review_registry.json"
     registry = load_paper_card_review_registry(registry_path)
     current = registry["cards"].get(paper_id, {})
-    if current.get("review_status") == "verified":
-        raise ContractError("论文卡已经 verified，不得覆盖原晋级回执")
     receipt_path = root / f"knowledge/reviews/promotions/{paper_id}.json"
-    if receipt_path.exists():
-        raise ContractError("晋级回执已存在，不得覆盖")
     receipt = {
         "schema_name": "paper_card_promotion_receipt",
         "schema_version": "1.0",
@@ -271,20 +309,29 @@ def promote_paper_card(repo_root: Path, paper_id: str) -> dict[str, Path]:
         "canonical_problem_id": metadata["canonical_problem_id"],
         "problem_asset_sha256": metadata["problem_asset_sha256"],
         "evidence_map_sha256": sha256_file(evidence_map_path),
+        "review_request_sha256": sha256_file(request_path),
+        "review_session_sha256": sha256_file(session_path),
         "review_report_sha256": sha256_file(review_report_path),
         "review_session_id": review["review_session_id"],
         "reviewer_identity": review["reviewer_identity"],
         "reviewer_attestation": review["reviewer_attestation"],
+        "attestation_level": review["attestation_level"],
         "promotion_policy_version": PROMOTION_POLICY_VERSION,
-        "promoted_at": _utc_now(),
     }
-    atomic_json(receipt_path, receipt)
-    registry["cards"][paper_id] = {
+    _write_or_verify_receipt(receipt_path, receipt)
+    receipt_relative = f"knowledge/reviews/promotions/{paper_id}.json"
+    receipt_sha256 = sha256_file(receipt_path)
+    expected_record = {
         "review_status": "verified",
-        "promotion_receipt": f"knowledge/reviews/promotions/{paper_id}.json",
-        "promotion_receipt_sha256": sha256_file(receipt_path),
+        "promotion_receipt": receipt_relative,
+        "promotion_receipt_sha256": receipt_sha256,
     }
-    atomic_json(registry_path, registry)
+    if current.get("review_status") == "verified":
+        if current != expected_record:
+            raise ContractError("verified 论文卡注册记录与晋级回执不一致")
+    else:
+        registry["cards"][paper_id] = expected_record
+        atomic_json(registry_path, registry)
     build_paper_indexes(
         root / "knowledge/cards/papers",
         registry_path,

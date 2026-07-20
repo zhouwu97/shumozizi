@@ -206,6 +206,8 @@ def test_domain_distant_statistical_match_is_not_high_confidence(tmp_path: Path)
         data_structure="混合类型母婴观测表格",
         task_types=["回归分析", "分类分析"],
         keywords=["母婴", "睡眠"],
+        current_canonical_problem_id="unseen-mother-child-problem",
+        current_problem_asset_sha256="e" * 64,
     )[0]
 
     assert match["structural_similarity"] == 0.5

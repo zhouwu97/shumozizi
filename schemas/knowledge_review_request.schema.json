@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge_review_request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "request_id", "paper_id", "authoring_session_id", "card_path", "card_sha256", "evidence_map_path", "evidence_map_sha256", "source_asset_sha256", "required_execution_policy", "output_path", "read_only", "requested_at"],
+  "properties": {
+    "schema_name": {"const": "knowledge_review_request"},
+    "schema_version": {"const": "1.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "paper_id": {"type": "string", "minLength": 1},
+    "authoring_session_id": {"type": "string", "minLength": 1},
+    "card_path": {"type": "string", "pattern": "^knowledge/cards/papers/"},
+    "card_sha256": {"$ref": "#/$defs/sha256"},
+    "evidence_map_path": {"type": "string", "pattern": "^knowledge/reviews/evidence_maps/"},
+    "evidence_map_sha256": {"$ref": "#/$defs/sha256"},
+    "source_asset_sha256": {"$ref": "#/$defs/sha256"},
+    "required_execution_policy": {"$ref": "#/$defs/policy"},
+    "output_path": {"type": "string", "pattern": "^knowledge/reviews/reports/"},
+    "read_only": {"const": true},
+    "requested_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["new_thread", "subagent", "forked", "context_inherited"],
+      "properties": {
+        "new_thread": {"const": true},
+        "subagent": {"const": false},
+        "forked": {"const": false},
+        "context_inherited": {"const": false}
+      }
+    }
+  }
+}

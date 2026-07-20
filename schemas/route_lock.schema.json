@@ -11,6 +11,8 @@
     "selected_route_id",
     "run_config_lock_sha256",
     "route_candidates_sha256",
+    "retrieval_snapshot_path",
+    "retrieval_snapshot_sha256",
     "approval_receipt_sha256",
     "problem_interpretation",
     "primary_route",
@@ -21,19 +23,6 @@
     "resource_limits",
     "approved_by",
     "approved_at"
-  ],
-  "allOf": [
-    {
-      "if": {
-        "anyOf": [
-          {"required": ["retrieval_snapshot_path"]},
-          {"required": ["retrieval_snapshot_sha256"]}
-        ]
-      },
-      "then": {
-        "required": ["retrieval_snapshot_path", "retrieval_snapshot_sha256"]
-      }
-    }
   ],
   "properties": {
     "schema_name": {"const": "route_lock"},

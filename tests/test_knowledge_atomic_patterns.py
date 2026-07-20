@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import shumozizi.knowledge.patterns as patterns_module
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.knowledge.patterns import (
     ANTIPATTERN_TYPES,
@@ -145,3 +146,73 @@ def test_manual_verified_status_without_receipt_is_rejected(tmp_path: Path) -> N
 
     with pytest.raises(ContractError, match="缺少晋级回执"):
         build_pattern_indexes(root)
+
+
+def test_pattern_promotion_recovers_after_registry_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, pattern_path = _isolated_pattern_repo(tmp_path)
+    review_path = root / "knowledge/reviews/pattern_reports/validation.json"
+    atomic_json(
+        review_path,
+        {
+            "schema_name": "atomic_pattern_review_report",
+            "schema_version": "1.0",
+            "pattern_id": "validation-independent-oracle",
+            "pattern_sha256": sha256_file(pattern_path),
+            "review_session_id": "independent-pattern-review",
+            "reviewer_identity": "pattern-reviewer",
+            "verdict": "verified",
+            "findings": [],
+            "reviewed_at": "2026-07-20T02:00:00Z",
+        },
+    )
+    real_atomic_json = patterns_module.atomic_json
+
+    def fail_registry_write(path: Path, document: dict) -> None:
+        if path.name == "atomic_pattern_review_registry.json":
+            raise OSError("injected registry failure")
+        real_atomic_json(path, document)
+
+    monkeypatch.setattr(patterns_module, "atomic_json", fail_registry_write)
+    with pytest.raises(OSError, match="injected registry failure"):
+        promote_pattern(root, "validation-independent-oracle", review_path)
+    receipt_path = (
+        root
+        / "knowledge/reviews/pattern_promotions/validation-independent-oracle.json"
+    )
+    receipt_sha256 = sha256_file(receipt_path)
+
+    monkeypatch.setattr(patterns_module, "atomic_json", real_atomic_json)
+    recovered = promote_pattern(root, "validation-independent-oracle", review_path)
+
+    assert sha256_file(recovered) == receipt_sha256
+    assert build_pattern_indexes(root)["verified"]["pattern_count"] == 1
+
+
+def test_pattern_promotion_rejects_mismatched_existing_receipt(tmp_path: Path) -> None:
+    root, pattern_path = _isolated_pattern_repo(tmp_path)
+    review_path = root / "knowledge/reviews/pattern_reports/validation.json"
+    atomic_json(
+        review_path,
+        {
+            "schema_name": "atomic_pattern_review_report",
+            "schema_version": "1.0",
+            "pattern_id": "validation-independent-oracle",
+            "pattern_sha256": sha256_file(pattern_path),
+            "review_session_id": "independent-pattern-review",
+            "reviewer_identity": "pattern-reviewer",
+            "verdict": "verified",
+            "findings": [],
+            "reviewed_at": "2026-07-20T02:00:00Z",
+        },
+    )
+    receipt_path = promote_pattern(
+        root, "validation-independent-oracle", review_path
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["reviewer_identity"] = "tampered-reviewer"
+    atomic_json(receipt_path, receipt)
+
+    with pytest.raises(ContractError, match="晋级回执与当前晋级事实不一致"):
+        promote_pattern(root, "validation-independent-oracle", review_path)

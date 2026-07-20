@@ -7,15 +7,25 @@ from pathlib import Path
 
 import pytest
 
+import shumozizi.knowledge.promotion as promotion_module
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.knowledge.papers import REQUIRED_CARD_SECTIONS, load_paper_index
 from shumozizi.knowledge.promotion import promote_paper_card
+from shumozizi.knowledge.reviews import (
+    claim_knowledge_review_request,
+    create_knowledge_review_request,
+)
 
 
-def _seed_v2(root: Path) -> tuple[Path, Path, Path]:
-    paper_id = "paper-v2"
+def _seed_v2(
+    root: Path,
+    *,
+    paper_id: str = "paper-v2",
+    claimed: bool = True,
+    thread_id: str = "independent-review-thread",
+) -> tuple[Path, Path, Path]:
     cards = root / "knowledge/cards/papers"
-    cards.mkdir(parents=True)
+    cards.mkdir(parents=True, exist_ok=True)
     sections = "\n\n".join(
         f"## {index}. {name}\n\n测试内容。"
         for index, name in enumerate(REQUIRED_CARD_SECTIONS, 1)
@@ -33,7 +43,7 @@ def _seed_v2(root: Path) -> tuple[Path, Path, Path]:
                 f"source_asset_sha256: {'b' * 64}",
                 f"paper_asset_sha256: {'b' * 64}",
                 f"problem_asset_sha256: {'a' * 64}",
-                "source_id: src-paper-v2",
+                f"source_id: src-{paper_id}",
                 "competition_id: contest",
                 "competition_year: 2026",
                 "problem_code: A",
@@ -67,7 +77,7 @@ def _seed_v2(root: Path) -> tuple[Path, Path, Path]:
             "schema_version": "1.0",
             "sources": [
                 {
-                    "source_id": "src-paper-v2",
+                    "source_id": f"src-{paper_id}",
                     "paper_id": paper_id,
                     "source_asset_sha256": "b" * 64,
                     "problem_asset_sha256": "a" * 64,
@@ -103,7 +113,7 @@ def _seed_v2(root: Path) -> tuple[Path, Path, Path]:
             "schema_version": "1.0",
             "paper_id": paper_id,
             "card_sha256": sha256_file(card_path),
-            "source_id": "src-paper-v2",
+            "source_id": f"src-{paper_id}",
             "source_asset_sha256": "b" * 64,
             "claims": [
                 {
@@ -118,24 +128,43 @@ def _seed_v2(root: Path) -> tuple[Path, Path, Path]:
             ],
         },
     )
+    request_path: Path | None = None
+    session_path: Path | None = None
+    session: dict[str, object] | None = None
+    if claimed:
+        request_path = create_knowledge_review_request(root, paper_id)
+        session_path = claim_knowledge_review_request(
+            request_path,
+            thread_id=thread_id,
+            reviewer_identity="independent-knowledge-reviewer",
+        )
+        session = json.loads(session_path.read_text(encoding="utf-8"))
     review_path = reviews / f"reports/{paper_id}.json"
-    atomic_json(
-        review_path,
-        {
-            "schema_name": "paper_card_review_report",
-            "schema_version": "1.0",
-            "paper_id": paper_id,
-            "card_sha256": sha256_file(card_path),
-            "evidence_map_sha256": sha256_file(evidence_path),
-            "source_asset_sha256": "b" * 64,
-            "review_session_id": "independent-review-session",
-            "reviewer_identity": "independent-knowledge-reviewer",
-            "reviewer_attestation": "未参与论文卡制作并逐项核对原文证据",
-            "verdict": "verified",
-            "findings": [],
-            "reviewed_at": "2026-07-20T01:00:00Z",
-        },
-    )
+    review = {
+        "schema_name": "paper_card_review_report",
+        "schema_version": "1.0",
+        "paper_id": paper_id,
+        "card_sha256": sha256_file(card_path),
+        "evidence_map_sha256": sha256_file(evidence_path),
+        "source_asset_sha256": "b" * 64,
+        "review_session_id": (
+            session["session_id"] if session else "independent-review-session"
+        ),
+        "reviewer_identity": "independent-knowledge-reviewer",
+        "reviewer_attestation": "未参与论文卡制作并逐项核对原文证据",
+        "verdict": "verified",
+        "findings": [],
+        "reviewed_at": "2026-07-20T01:00:00Z",
+    }
+    if request_path and session_path and session:
+        review.update(
+            {
+                "review_request_sha256": sha256_file(request_path),
+                "review_session_sha256": sha256_file(session_path),
+                "attestation_level": session["attestation_level"],
+            }
+        )
+    atomic_json(review_path, review)
     return card_path, evidence_path, review_path
 
 
@@ -151,10 +180,68 @@ def test_single_card_promotion_binds_all_evidence_and_enters_verified_index(
     verified = load_paper_index(outputs["verified_index"], production=True)
     assert receipt["card_sha256"] == sha256_file(card_path)
     assert receipt["evidence_map_sha256"] == sha256_file(evidence_path)
+    assert receipt["review_request_sha256"] == sha256_file(
+        tmp_path
+        / "knowledge/reviews/requests/paper-v2/knowledge_review_request.json"
+    )
+    assert receipt["review_session_sha256"] == sha256_file(
+        tmp_path
+        / "knowledge/reviews/requests/paper-v2/knowledge_review_session.json"
+    )
     assert receipt["review_report_sha256"] == sha256_file(review_path)
+    assert receipt["attestation_level"] == "self_declared"
     assert receipt["promotion_policy_version"] == "paper-card-promotion-v1"
     assert registry["cards"]["paper-v2"]["review_status"] == "verified"
     assert [item["paper_id"] for item in verified["papers"]] == ["paper-v2"]
+
+
+def test_promotion_requires_claimed_knowledge_review_session(tmp_path: Path) -> None:
+    _seed_v2(tmp_path, claimed=False)
+
+    with pytest.raises(ContractError, match="knowledge_review_request"):
+        promote_paper_card(tmp_path, "paper-v2")
+
+
+def test_knowledge_review_request_is_single_claim_and_top_level(tmp_path: Path) -> None:
+    _seed_v2(tmp_path)
+    request_path = (
+        tmp_path
+        / "knowledge/reviews/requests/paper-v2/knowledge_review_request.json"
+    )
+    session = json.loads(
+        request_path.with_name("knowledge_review_session.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert session["execution_policy"] == {
+        "new_thread": True,
+        "subagent": False,
+        "forked": False,
+        "context_inherited": False,
+    }
+    assert session["executor"]["task_kind"] == "top_level"
+    assert session["executor"]["parent_thread_id"] is None
+    with pytest.raises(ContractError, match="只能领取一次"):
+        claim_knowledge_review_request(
+            request_path,
+            thread_id="another-review-thread",
+            reviewer_identity="another-reviewer",
+        )
+
+
+def test_knowledge_review_thread_cannot_claim_two_requests(tmp_path: Path) -> None:
+    _seed_v2(tmp_path, thread_id="shared-review-thread")
+    _, _, report_path = _seed_v2(tmp_path, paper_id="paper-v3", claimed=False)
+    report_path.unlink()
+    request_path = create_knowledge_review_request(tmp_path, "paper-v3")
+
+    with pytest.raises(ContractError, match="thread_id"):
+        claim_knowledge_review_request(
+            request_path,
+            thread_id="shared-review-thread",
+            reviewer_identity="second-reviewer",
+        )
 
 
 def test_revision_required_review_cannot_promote(tmp_path: Path) -> None:
@@ -173,7 +260,7 @@ def test_authoring_and_review_sessions_must_be_independent(tmp_path: Path) -> No
     review["review_session_id"] = "author-session"
     atomic_json(review_path, review)
 
-    with pytest.raises(ContractError, match="独立会话"):
+    with pytest.raises(ContractError, match="review_session_id"):
         promote_paper_card(tmp_path, "paper-v2")
 
 
@@ -184,13 +271,53 @@ def test_evidence_map_tampering_revokes_production_read(tmp_path: Path) -> None:
     evidence["claims"][0]["source_page"] = "99"
     atomic_json(evidence_path, evidence)
 
-    with pytest.raises(ContractError, match="evidence_map_sha256"):
+    with pytest.raises(ContractError, match="evidence map 已变化"):
         load_paper_index(outputs["verified_index"], production=True)
 
 
-def test_promotion_receipt_and_verified_status_cannot_be_overwritten(tmp_path: Path) -> None:
+def test_completed_card_promotion_is_idempotent(tmp_path: Path) -> None:
     _seed_v2(tmp_path)
-    promote_paper_card(tmp_path, "paper-v2")
+    first = promote_paper_card(tmp_path, "paper-v2")
+    receipt_sha256 = sha256_file(first["receipt"])
 
-    with pytest.raises(ContractError, match="已经 verified"):
+    second = promote_paper_card(tmp_path, "paper-v2")
+
+    assert sha256_file(second["receipt"]) == receipt_sha256
+    assert load_paper_index(second["verified_index"], production=True)["paper_count"] == 1
+
+
+def test_card_promotion_rejects_mismatched_existing_receipt(tmp_path: Path) -> None:
+    _seed_v2(tmp_path)
+    outputs = promote_paper_card(tmp_path, "paper-v2")
+    receipt = json.loads(outputs["receipt"].read_text(encoding="utf-8"))
+    receipt["reviewer_identity"] = "tampered-reviewer"
+    atomic_json(outputs["receipt"], receipt)
+
+    with pytest.raises(ContractError, match="晋级回执与当前晋级事实不一致"):
         promote_paper_card(tmp_path, "paper-v2")
+
+
+def test_card_promotion_recovers_after_registry_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_v2(tmp_path)
+    real_atomic_json = promotion_module.atomic_json
+
+    def fail_registry_write(path: Path, document: dict) -> None:
+        if path.name == "paper_card_review_registry.json":
+            raise OSError("injected registry failure")
+        real_atomic_json(path, document)
+
+    monkeypatch.setattr(promotion_module, "atomic_json", fail_registry_write)
+    with pytest.raises(OSError, match="injected registry failure"):
+        promote_paper_card(tmp_path, "paper-v2")
+    receipt_path = tmp_path / "knowledge/reviews/promotions/paper-v2.json"
+    receipt_sha256 = sha256_file(receipt_path)
+
+    monkeypatch.setattr(promotion_module, "atomic_json", real_atomic_json)
+    outputs = promote_paper_card(tmp_path, "paper-v2")
+
+    assert sha256_file(outputs["receipt"]) == receipt_sha256
+    registry = json.loads(outputs["registry"].read_text(encoding="utf-8"))
+    assert registry["cards"]["paper-v2"]["review_status"] == "verified"
+    assert load_paper_index(outputs["verified_index"], production=True)["paper_count"] == 1

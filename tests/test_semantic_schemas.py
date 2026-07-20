@@ -109,6 +109,8 @@ def route_candidates() -> dict:
         "schema_version": "2.0",
         "run_id": "semantic-test",
         "run_config_lock_sha256": SHA,
+        "retrieval_snapshot_path": "knowledge/RETRIEVAL_SNAPSHOT.json",
+        "retrieval_snapshot_sha256": SHA,
         "problem_summary": "这是一个用于验证语义契约的可复验数学建模问题摘要。",
         "ambiguities": [],
         "ambiguity_review": {"performed": True, "none_reason": "题面没有改变模型的实质歧义"},
@@ -130,6 +132,8 @@ def route_lock() -> dict:
         "selected_route_id": "route_a",
         "run_config_lock_sha256": SHA,
         "route_candidates_sha256": SHA,
+        "retrieval_snapshot_path": "knowledge/RETRIEVAL_SNAPSHOT.json",
+        "retrieval_snapshot_sha256": SHA,
         "approval_receipt_sha256": SHA,
         "problem_interpretation": "根据输入数据建立可复现的优化与验证模型。",
         "primary_route": "风险调整模型",
@@ -243,6 +247,12 @@ class SemanticSchemaTests(unittest.TestCase):
     def test_extended_route_candidates_accepts_structured_semantics(self) -> None:
         self.assert_valid(route_candidates(), "route_candidates")
 
+    def test_route_candidates_requires_retrieval_snapshot(self) -> None:
+        document = route_candidates()
+        document.pop("retrieval_snapshot_path")
+        document.pop("retrieval_snapshot_sha256")
+        self.assert_invalid(document, "route_candidates", "retrieval_snapshot_path")
+
     def test_route_candidates_rejects_incomplete_mechanism_signature(self) -> None:
         document = route_candidates()
         del document["candidates"][0]["mechanism_signature"]["failure_boundary"]
@@ -250,6 +260,12 @@ class SemanticSchemaTests(unittest.TestCase):
 
     def test_extended_route_lock_accepts_direct_selection(self) -> None:
         self.assert_valid(route_lock(), "route_lock")
+
+    def test_route_lock_requires_retrieval_snapshot(self) -> None:
+        document = route_lock()
+        document.pop("retrieval_snapshot_path")
+        document.pop("retrieval_snapshot_sha256")
+        self.assert_invalid(document, "route_lock", "retrieval_snapshot_path")
 
     def test_route_lock_rejects_probe_then_select(self) -> None:
         document = route_lock()

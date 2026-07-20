@@ -239,6 +239,34 @@ def test_production_retrieval_rejects_provisional_index(tmp_path: Path) -> None:
             data_structure="tabular",
             task_types=["scheduling"],
             keywords=["优化"],
+            current_canonical_problem_id="unseen-problem",
+            current_problem_asset_sha256="e" * 64,
+        )
+
+
+def test_direct_retrieval_requires_current_problem_identity(tmp_path: Path) -> None:
+    _write_card(tmp_path, with_identity=False)
+    _build(tmp_path, _write_registry(tmp_path, {}))
+    index_path = tmp_path / "knowledge/indexes/papers_verified.json"
+
+    with pytest.raises(TypeError):
+        retrieve_papers(
+            index_path,
+            problem_type="optimization",
+            data_structure="tabular",
+            task_types=["scheduling"],
+            keywords=["优化"],
+        )
+
+    with pytest.raises(ContractError, match="canonical_problem_id"):
+        retrieve_papers(
+            index_path,
+            problem_type="optimization",
+            data_structure="tabular",
+            task_types=["scheduling"],
+            keywords=["优化"],
+            current_canonical_problem_id="",
+            current_problem_asset_sha256="e" * 64,
         )
 
 

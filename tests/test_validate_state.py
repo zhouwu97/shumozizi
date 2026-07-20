@@ -17,6 +17,7 @@ from shumozizi.workflow.approval import (
     materialize_route_approval,
 )
 from shumozizi.workflow.initialization import initialize_run
+from tests.knowledge_snapshot_helpers import seed_empty_retrieval_snapshot
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = REPO_ROOT / "scripts" / "codex" / "validate_state.py"
@@ -83,6 +84,7 @@ class ValidateStateCliTests(unittest.TestCase):
                 }
             ],
         )
+        snapshot_binding = seed_empty_retrieval_snapshot(self.repo_root, self.run_dir)
         self.write_json(
             "brief/route_candidates.json",
             {
@@ -90,6 +92,7 @@ class ValidateStateCliTests(unittest.TestCase):
                 "schema_version": "2.0",
                 "run_id": "test-run",
                 "run_config_lock_sha256": sha256_file(self.run_dir / "config/RUN_CONFIG_LOCK.json"),
+                **snapshot_binding,
                 "problem_summary": "这是一个用于验证路线锁运行时行为的最小数学建模问题摘要。",
                 "ambiguities": [],
                 "recommended_route_id": "route_a",

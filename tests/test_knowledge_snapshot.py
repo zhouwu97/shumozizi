@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from shumozizi.core.io import atomic_json, load_json, sha256_file
+import pytest
+
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.knowledge.papers import build_paper_indexes, write_retrieval_artifacts
 from shumozizi.knowledge.snapshot import verify_retrieval_snapshot
 from shumozizi.producers.route import write_route_candidates
@@ -108,11 +110,33 @@ def test_route_candidates_bind_current_snapshot(tmp_path: Path) -> None:
     assert written["retrieval_snapshot_sha256"] == sha256_file(outputs["retrieval_snapshot"])
 
 
+def test_new_route_candidates_require_retrieval_snapshot(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs/missing-snapshot"
+    atomic_json(run_dir / "config/RUN_CONFIG_LOCK.json", {"placeholder": True})
+
+    with pytest.raises(ContractError, match="RETRIEVAL_SNAPSHOT"):
+        write_route_candidates(run_dir, route_candidates())
+
+
+def test_route_approval_requires_snapshot_file(tmp_path: Path) -> None:
+    run_dir = _route_run(tmp_path, snapshot=False)
+
+    with pytest.raises(ContractError, match="RETRIEVAL_SNAPSHOT"):
+        create_approval_request(
+            run_dir,
+            "route",
+            {
+                "run_config_lock": run_dir / "config/RUN_CONFIG_LOCK.json",
+                "route_candidates": run_dir / "brief/route_candidates.json",
+            },
+        )
+
+
 def test_route_approval_and_lock_bind_snapshot_without_live_index_drift(
     tmp_path: Path,
 ) -> None:
     run_dir = _route_run(tmp_path)
-    (tmp_path / "knowledge/cards/papers").mkdir(parents=True)
+    (tmp_path / "knowledge/cards/papers").mkdir(parents=True, exist_ok=True)
     _build(tmp_path, _write_registry(tmp_path, {}))
     outputs = write_retrieval_artifacts(
         run_dir,

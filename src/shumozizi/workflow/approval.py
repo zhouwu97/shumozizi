@@ -26,20 +26,11 @@ def utc_now() -> str:
 
 def _retrieval_snapshot_binding(
     run_dir: Path, candidates: dict | None = None
-) -> tuple[str, str] | None:
+) -> tuple[str, str]:
     """返回当前快照引用，并确保候选路线没有替换该快照。"""
     path = run_dir / "knowledge" / "RETRIEVAL_SNAPSHOT.json"
-    candidate_has_reference = bool(
-        candidates
-        and (
-            candidates.get("retrieval_snapshot_path")
-            or candidates.get("retrieval_snapshot_sha256")
-        )
-    )
     if not path.is_file():
-        if candidate_has_reference:
-            raise ContractError("候选路线引用的 RETRIEVAL_SNAPSHOT.json 不存在")
-        return None
+        raise ContractError("路线批准要求存在 RETRIEVAL_SNAPSHOT.json")
     report = verify_retrieval_snapshot(run_dir)
     if not report["valid"]:
         raise ContractError("RETRIEVAL_SNAPSHOT 无效: " + "; ".join(report["errors"]))
@@ -114,8 +105,7 @@ def create_approval_request(
         candidates_path = effective_bindings.get("route_candidates")
         candidates = load_json(candidates_path) if candidates_path else None
         snapshot = _retrieval_snapshot_binding(run_dir, candidates)
-        if snapshot is not None:
-            effective_bindings["retrieval_snapshot"] = run_dir / snapshot[0]
+        effective_bindings["retrieval_snapshot"] = run_dir / snapshot[0]
     document = {
         "schema_name": "approval_request",
         "schema_version": "2.0",
@@ -164,8 +154,7 @@ def materialize_route_approval(
         "problem_manifest": sha256_file(manifest_path),
     }
     snapshot = _retrieval_snapshot_binding(run_dir, candidates)
-    if snapshot is not None:
-        bindings["retrieval_snapshot"] = snapshot[1]
+    bindings["retrieval_snapshot"] = snapshot[1]
     if candidates["run_id"] != run_dir.name:
         raise ContractError("候选路线 run_id 与运行目录不一致")
     if candidates["run_config_lock_sha256"] != bindings["run_config_lock"]:
@@ -222,9 +211,8 @@ def materialize_route_approval(
         "approved_by": approved_by,
         "approved_at": receipt["approved_at"],
     }
-    if snapshot is not None:
-        lock["retrieval_snapshot_path"] = snapshot[0]
-        lock["retrieval_snapshot_sha256"] = snapshot[1]
+    lock["retrieval_snapshot_path"] = snapshot[0]
+    lock["retrieval_snapshot_sha256"] = snapshot[1]
     require_valid(lock, "route_lock")
     atomic_json(receipt_path, receipt)
     lock_path = run_dir / "brief" / "ROUTE_LOCK.json"
@@ -256,8 +244,7 @@ def verify_route_approval(run_dir: Path) -> dict[str, object]:
             "problem_manifest": sha256_file(manifest_path),
         }
         snapshot = _retrieval_snapshot_binding(run_dir, candidates)
-        if snapshot is not None:
-            bindings["retrieval_snapshot"] = snapshot[1]
+        bindings["retrieval_snapshot"] = snapshot[1]
         if request["approval_kind"] != "route" or receipt["approval_kind"] != "route":
             errors.append("路线批准请求或回执的 approval_kind 不正确")
         if request["run_id"] != run_dir.name or receipt["run_id"] != run_dir.name:
@@ -283,16 +270,12 @@ def verify_route_approval(run_dir: Path) -> dict[str, object]:
             "route_candidates": lock["route_candidates_sha256"],
             "problem_manifest": lock["problem_manifest_sha256"],
         }
-        if snapshot is not None:
-            lock_bindings["retrieval_snapshot"] = lock.get("retrieval_snapshot_sha256")
-        if snapshot is not None:
-            if (
-                lock.get("retrieval_snapshot_path") != snapshot[0]
-                or lock.get("retrieval_snapshot_sha256") != snapshot[1]
-            ):
-                errors.append("路线锁未绑定批准时的 RETRIEVAL_SNAPSHOT")
-        elif lock.get("retrieval_snapshot_path") or lock.get("retrieval_snapshot_sha256"):
-            errors.append("路线锁包含无效的 RETRIEVAL_SNAPSHOT 引用")
+        lock_bindings["retrieval_snapshot"] = lock.get("retrieval_snapshot_sha256")
+        if (
+            lock.get("retrieval_snapshot_path") != snapshot[0]
+            or lock.get("retrieval_snapshot_sha256") != snapshot[1]
+        ):
+            errors.append("路线锁未绑定批准时的 RETRIEVAL_SNAPSHOT")
         if lock_bindings != bindings:
             errors.append("路线锁绑定事实已失效")
         if lock["approval_receipt_sha256"] != sha256_file(receipt_path):
