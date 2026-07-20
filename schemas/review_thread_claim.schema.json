@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/review_thread_claim.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "thread_id", "run_id", "request_id", "request_path", "request_sha256", "session_path", "session_sha256", "claimed_at"],
+  "properties": {
+    "schema_name": {"const": "review_thread_claim"},
+    "schema_version": {"const": "2.0"},
+    "thread_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "request_path": {"type": "string", "minLength": 1},
+    "request_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "session_path": {"type": "string", "minLength": 1},
+    "session_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "claimed_at": {"type": "string", "format": "date-time"}
+  }
+}

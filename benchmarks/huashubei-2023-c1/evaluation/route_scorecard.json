@@ -1,0 +1,65 @@
+{
+  "schema_name": "route_ab_scorecard",
+  "schema_version": "2.0",
+  "problem_id": "huashubei-2023-c1",
+  "blind_mapping": {
+    "R17": "route_a_without_knowledge",
+    "R42": "route_b_with_repository_patterns"
+  },
+  "frozen_inputs": {
+    "routes_path": "benchmarks/huashubei-2023-c1/evaluation/v2_blind_input/ROUTES.md",
+    "routes_sha256": "9e2355a81ebf4dc6310c8b3829d9bae89c184fc243687d7e752f50245895a9df",
+    "rubric_sha256": "b1740c187dcaba9f45bb64b54ed523157653ce34f51c9663446c870b63133a0d",
+    "mapping_disclosed_to_reviewers": false
+  },
+  "independent_reviews": [
+    {
+      "reviewer": "statistical",
+      "report_sha256": "49ccd537a27f19db57ccc32932a4929081b0c5d59a772a23206a55b41ae38c95",
+      "R17_total": 64,
+      "R42_total": 96,
+      "preferred": "R42",
+      "R42_math_correctness_declined": false,
+      "P0_count": 0
+    },
+    {
+      "reviewer": "paper_logic",
+      "report_sha256": "fbf9fe0bc5c5b9b1a7a29062b0c51645e5acb3fd3ae55af72f04beccbdda683b",
+      "R17_total": 66,
+      "R42_total": 88,
+      "preferred": "R42",
+      "R42_math_correctness_declined": false,
+      "P0_count": 0
+    },
+    {
+      "reviewer": "competition_judge",
+      "report_sha256": "86b5ee763b776284639782d0f5cf5327b3156d4349e96060d26da5be6c1e90dc",
+      "R17_total": 61,
+      "R42_total": 92,
+      "preferred": "R42",
+      "R42_math_correctness_declined": false,
+      "P0_count": 0
+    }
+  ],
+  "aggregate": {
+    "R17_mean": 63.6667,
+    "R42_mean": 92.0,
+    "mean_delta": 28.3333,
+    "reviewers_preferring_R42": 3,
+    "reviewer_count": 3,
+    "P0_count": 0
+  },
+  "gate_criteria": {
+    "at_least_two_of_three_prefer_knowledge_route": true,
+    "mean_delta_at_least_five": true,
+    "mathematical_correctness_not_decreased": true,
+    "data_feasibility_not_decreased": true
+  },
+  "historical_single_task_result": {
+    "knowledge_route_total": 93,
+    "baseline_route_total": 72,
+    "used_for_current_gate": false
+  },
+  "gate_b_pass": true,
+  "limitation": "Gate B 证明修订路线在题意覆盖、防泄漏、公平基线、验证闭环和论文组织上更强；它不证明论文知识本身提高了模型样本外性能。双轴检索回归后，葡萄酒卡被降为结构中等、领域低相关，不再作为高置信迁移。"
+}

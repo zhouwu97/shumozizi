@@ -1,0 +1,4 @@
+interface:
+  display_name: "Learn Excellent Paper"
+  short_description: "Create an evidence-bound modeling paper card"
+  default_prompt: "Use $mathmodel-learn-paper to create one paper card and rebuild the index."

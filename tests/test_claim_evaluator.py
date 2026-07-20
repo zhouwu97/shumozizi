@@ -96,6 +96,7 @@ class ClaimEvaluatorTests(unittest.TestCase):
 
         self.assertEqual("rejected", evidence["claims"][0]["status"])
         self.assertEqual("failed", evidence["claims"][0]["prediction_checks"][0]["status"])
+        self.assertEqual("accepted", registry["results"][1]["status"])
 
     def test_partial_predicate_results_are_partially_supported(self) -> None:
         lock, registry, plans, sealed = evaluation_documents(

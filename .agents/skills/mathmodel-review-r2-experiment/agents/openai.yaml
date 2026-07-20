@@ -1,0 +1,4 @@
+interface:
+  display_name: "R2 Experiment Review"
+  short_description: "Reproduce one question's accepted experiment"
+  default_prompt: "Reproduce only the declared question and write a read-only R2 report."

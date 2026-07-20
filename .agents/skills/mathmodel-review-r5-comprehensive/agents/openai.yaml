@@ -1,0 +1,4 @@
+interface:
+  display_name: "R5 Comprehensive Blind Review"
+  short_description: "Run one bounded fresh-context final review"
+  default_prompt: "Blind-review the frozen submission after QA and stop after the report."

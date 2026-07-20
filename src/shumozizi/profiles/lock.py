@@ -38,6 +38,9 @@ def create_run_config_lock(
     require_valid(profile, "competition_profile")
     if profile["profile_id"] != profile_id:
         raise ContractError("Profile 文件名与 profile_id 不一致")
+    snapshot_name = "PROFILE_SNAPSHOT.v1.json"
+    snapshot_path = run_dir / "config" / snapshot_name
+    atomic_json(snapshot_path, profile)
     lock = {
         "schema_name": "run_config_lock",
         "schema_version": "2.0",
@@ -46,8 +49,8 @@ def create_run_config_lock(
         "competition_profile": {
             "profile_id": profile["profile_id"],
             "profile_version": profile["profile_version"],
-            "profile_path": profile_path.relative_to(repo_root).as_posix(),
-            "profile_sha256": sha256_file(profile_path),
+            "profile_path": snapshot_path.relative_to(repo_root).as_posix(),
+            "profile_sha256": sha256_file(snapshot_path),
         },
         "paper_engine": "typst",
         "language": language,
@@ -88,6 +91,11 @@ def verify_run_config_lock(repo_root: Path, run_dir: Path) -> dict[str, Any]:
         raise ContractError("锁定 Profile ID 与 Profile 文件不一致")
     if sha256_file(profile_path) != lock["competition_profile"]["profile_sha256"]:
         raise ContractError("锁定 Profile 的内容哈希已变化")
+    if "knowledge_pack" in lock:
+        # 延迟导入避免 knowledge.pack 与本模块之间形成导入环。
+        from shumozizi.knowledge.pack import verify_bound_knowledge_pack
+
+        verify_bound_knowledge_pack(repo_root, lock)
     return lock
 
 
@@ -173,14 +181,16 @@ def materialize_config_change(
     shutil.copy2(current_path, archive_lock)
     shutil.copy2(run_dir / "config" / "RUN_CONFIG_LOCK.seal.json", archive_seal)
     profile = load_json(profile_path)
+    snapshot_path = run_dir / "config" / f"PROFILE_SNAPSHOT.v{version}.json"
+    atomic_json(snapshot_path, profile)
     updated = {
         **current,
         "lock_version": version,
         "competition_profile": {
             "profile_id": profile["profile_id"],
             "profile_version": profile["profile_version"],
-            "profile_path": profile_path.relative_to(repo_root).as_posix(),
-            "profile_sha256": sha256_file(profile_path),
+            "profile_path": snapshot_path.relative_to(repo_root).as_posix(),
+            "profile_sha256": sha256_file(snapshot_path),
         },
         "locked_at": utc_now(),
     }

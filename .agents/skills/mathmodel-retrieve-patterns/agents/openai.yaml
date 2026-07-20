@@ -1,0 +1,4 @@
+interface:
+  display_name: "Retrieve Modeling Patterns"
+  short_description: "Build a task fingerprint and transfer plan before route design"
+  default_prompt: "Use $mathmodel-retrieve-patterns before proposing modeling routes."

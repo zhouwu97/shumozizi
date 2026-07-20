@@ -21,6 +21,54 @@ NEW
 → COMPLETE
 ```
 
+主枚举之外，`state.json.review_gates` 是同一状态机内的阶段证明，不是第二套状态机：
+
+```text
+MODEL_SPEC_READY --MODEL_SPEC_REVISED--> MODEL_SPEC_READY
+MODEL_SPEC_READY --R1_MODELING--> EXPERIMENTING
+每问实验完成 --R2_EXPERIMENT_<question_id>--> RESULTS_ACCEPTED
+PAPER_DRAFTED --R3_PAPER_LOGIC + R4_FORMAT_VISUAL--> QA_RUNNING
+QA 机械通过 --R5_STANDARD_FINAL--> WAITING_HUMAN_FINAL
+J0 仅作为可选自然评委模拟，不是最终硬门
+```
+
+R1 发现规格补全、实现澄清或验证细节问题时，使用 `MODEL_SPEC_REVISED`，绑定旧/新模型规格、
+修复计划和当前路线锁，并将旧 R1 门标记为 `stale`。只有题意解释或路线核心字段发生实质变化
+才使用 `ROUTE_DRIFT` 返回人工路线确认。
+
+R1 报告必须包含完整 17 项 coverage 矩阵（目标与约束分别检查），且 `unchecked_items=[]`；矩阵中的每个失败项必须有
+对应 finding，防止审核逐轮只暴露少量问题。
+
+其中八项具有运行时最低证据预检：参数可辨识性、模型选择准则、不确定性读取规格文本中的
+方法与阈值；数据/附件映射、方程闭合、停止规则、baseline 和 evidence plan 读取每问的
+`r1_evidence` 结构。`evidence_plan` 必须与 `PROBLEM_MANIFEST.json` 中该问全部必做
+`required_outputs` 精确对应，并逐项给出实验或结果 ID、图表 ID 和论文章节。预检只证明材料
+结构完整，不替代审核员对公式、方法和实验质量的判断。
+
+## 独立审核材料与领取协议
+
+每轮审核先生成 `review/<stage>/<round>/REVIEW_INPUT_MANIFEST.json`，逐项冻结材料的 role、
+规范化 run 内相对路径、SHA-256、required 和 reviewer 可见性。阶段强制 role 不能由调用方
+删除，策略外 role 不能加入；`read_paths` 只能引用 manifest 中的材料并覆盖全部强制项。
+运行时会先解析真实路径，再拒绝 `..`、反斜杠别名、越界路径和前轮报告等禁止材料。
+
+`review_request.json` 只绑定材料清单，不包含线程身份。全新顶层 Codex 任务领取请求后生成
+`review_session.json`：领取通过独占创建和仓库级锁串行化，一个 request 只能领取一次；
+`.review_registry/thread_claims/` 保证同一 thread ID 在整个仓库的 `runs/*/review` 中只能领取
+一次。subagent、fork、继承上下文和旧 revision 均被拒绝。报告绑定 `session_sha256`，回执继续绑定
+input manifest、session、request 和 report 四层哈希，`StateService.record_review_gate()` 登记前
+重新计算四层哈希、逐文件材料哈希、session 身份和仓库级 thread claim。
+
+`attestation_level=self_declared` 是当前平台未暴露可信父子任务元数据时的诚实声明，不是
+密码学证明。只有编排器或平台提供可核验元数据时，才能提升为 `orchestrator_verified` 或
+`platform_verified`。
+
+R5 使用原题、模型规格、接受结果、关键代码、复现入口和 QA 做技术全面审核，并禁止读取前轮
+审核报告；J0 的强制输入由冻结比赛 Profile 的 `judge_visible_roles` 决定，只能包含该比赛中
+评委实际可见的原题、附件、最终 PDF、提交清单或允许提交物，不读取 Profile 未声明可见的模型
+规格、结果注册表、QA 或源码清单。旧 Profile 缺少该字段时，才根据
+`required_submission_files` 使用兼容推导。
+
 QA hard failure 的唯一修复回路为：
 
 ```text
@@ -38,7 +86,8 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 不同，并同时给出基线、创新、验证、成本、风险和退路。写完后状态变为
 `WAITING_HUMAN_ROUTE`，必须停止。
 
-人工明确回复后，批准协议物化绑定候选路线、配置锁和原始回复的 receipt，再生成
+路线候选生成时同时冻结 `problem/PROBLEM_MANIFEST.json`，列出全部题目、必做输出和依赖关系。
+人工明确回复后，批准协议物化绑定候选路线、配置锁、问题全集和原始回复的 receipt，再生成
 `ROUTE_LOCK.json`。工作流只在批准范围内建模。所有运行时文件显式声明 Schema 名称和 2.0
 版本；随后再检查跨文件 ID、文件哈希和证据引用。
 改变题意、目标函数、核心约束、
@@ -48,18 +97,20 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 
 每问执行 baseline、primary、robustness/ablation。每轮先写执行清单，由统一执行器以结构化
 参数运行 Python，生成包含退出码、日志、输入输出哈希的不可变执行记录。指标由白名单提取器
-生成 provenance，候选结果必须通过约束、基线、创新证据和来源复验后，才按 RFC 8785 封存。
-结果接受后立即写对应论文
-章节，避免把写作挤到最后。全部实验完成后才写摘要和结论。
+生成 provenance，候选结果必须通过约束、基线和来源复验后，才按 RFC 8785 封存；创新主张由
+独立 evaluator 评估，不阻断 primary 的事实准入。每问实验完成后先登记 R2 回执，再进入结果
+汇总和论文。
 
 桌面版 AI 负责读取状态和决定下一阶段；项目不提供调用 AI 的 CLI 调度器。新建任务后再次
 调用 `$mathmodel-workflow`，即可从 `state.json` 恢复。
 
 ## 第二个暂停点
 
-论文完成后依次创建 R1-R4 审核请求，并由全新对话执行 R5 全面盲审。连续两轮 B/A 且无 P0/P1 后
-状态才可变为 `WAITING_HUMAN_FINAL`。人工回执必须绑定当前 PDF、QA、evidence report 和配置锁；
-人工未明确批准或任一绑定已变化时，不能标记完成。
+完整论文和 PDF 后按依赖创建 R3/R4 请求；机械 QA 通过后由全新对话执行 R5，原 J0 的自然
+评委视角并入 R5。竞赛模式 R5 最多三轮，仅 P0/P1 或低于 B 才重跑。所有回执必须登记到
+`review_gates` 并绑定当前生产事实；未登记或任一绑定变化时，不能进入 `WAITING_HUMAN_FINAL`。
+R5 必须同时给出 A 轴（`A_PASS`/`A_BLOCKED`）和 B 轴（质量分数及题目覆盖、模型深度、实验验证
+分项）；联合结论由程序校验，失败时自动生成 `REPAIR_PLAN.json`，只重跑受影响审核阶段。
 
 ## 三种模式
 

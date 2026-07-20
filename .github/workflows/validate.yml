@@ -45,6 +45,13 @@ jobs:
           scripts/runtime/execute_experiment.py
           scripts/runtime/verify_execution.py
           scripts/runtime/accept_result.py
+          src/shumozizi/questions/manifest.py
+          src/shumozizi/questions/acceptance.py
+          src/shumozizi/workflow/approval.py
+          src/shumozizi/workflow/integrity.py
+          src/shumozizi/workflow/repair.py
+          src/shumozizi/workflow/review_policy.py
+          src/shumozizi/workflow/reviews.py
           tests/test_init_run.py
           tests/test_validate_state.py
           tests/test_runtime_execution.py

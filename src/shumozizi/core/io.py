@@ -38,6 +38,11 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def json_bytes(payload: dict[str, Any]) -> bytes:
+    """返回与 ``atomic_json`` 相同的稳定 UTF-8 JSON 字节。"""
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
 def sha256_file(path: Path) -> str:
     """分块计算文件 SHA-256。"""
     digest = hashlib.sha256()
@@ -78,3 +83,13 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
     if must_exist and not candidate.is_file():
         raise ContractError(f"文件不存在: {relative}")
     return candidate
+
+
+def relative_inside(root: Path, path: Path) -> Path:
+    """返回规范路径相对根目录的位置，并拒绝越界路径。"""
+    resolved_root = root.resolve()
+    resolved_path = path.resolve()
+    try:
+        return resolved_path.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ContractError(f"路径越过运行目录边界: {path}") from exc

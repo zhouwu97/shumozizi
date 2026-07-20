@@ -1,0 +1,24 @@
+{
+  "schema_name": "task_fingerprint",
+  "schema_version": "1.0",
+  "run_id": "route_b",
+  "problem_type": "光学机理与参数反演",
+  "data_structure": "双入射角波数-反射率光谱",
+  "task_types": [
+    "参数标定",
+    "数值仿真"
+  ],
+  "keywords": [
+    "干涉",
+    "外延层"
+  ],
+  "structural_tags": [],
+  "question_chain": [
+    "推导单次反射下的厚度模型",
+    "对双角度光谱求解厚度并验证可靠性",
+    "识别多光束干涉并消除偏差"
+  ],
+  "data_constraints": [
+    "四组双列光谱，入射角10度和15度"
+  ]
+}

@@ -1,0 +1,205 @@
+"""验证论文计划和构建回执绑定的生产事实。"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from shumozizi.core.io import ContractError, load_json, sha256_file
+from shumozizi.core.schema import require_valid
+from shumozizi.results.references import verify_referenced_result
+
+
+def _repo_root(run_dir: Path) -> Path:
+    """按标准 runs/<run_id> 布局解析仓库根目录。"""
+    return run_dir.resolve().parents[1]
+
+
+def _resolve_bound_file(run_dir: Path, path: str) -> Path:
+    """解析运行内或仓库内绑定文件，拒绝越界路径。"""
+    candidate = Path(path)
+    if candidate.is_absolute():
+        raise ContractError(f"绑定路径必须为相对路径: {path}")
+    for root in (run_dir.resolve(), _repo_root(run_dir)):
+        resolved = (root / candidate).resolve()
+        if resolved.is_file() and (resolved == root or root in resolved.parents):
+            return resolved
+    raise ContractError(f"绑定文件不存在: {path}")
+
+
+def _check_file_binding(run_dir: Path, item: dict[str, str], label: str) -> list[str]:
+    """校验单个路径和 SHA-256 绑定。"""
+    try:
+        path = _resolve_bound_file(run_dir, item["path"])
+        if sha256_file(path) != item["sha256"]:
+            return [f"{label} 哈希不匹配: {item['path']}"]
+    except (ContractError, KeyError) as exc:
+        return [f"{label} 无效: {exc}"]
+    return []
+
+
+def verify_paper_build_receipt(
+    run_dir: Path,
+    *,
+    expected_state_revision: int | None = None,
+) -> dict[str, Any]:
+    """验证论文计划、构建回执及其所有输入输出绑定。"""
+    errors: list[str] = []
+    plan_path = run_dir / "paper" / "paper_plan.json"
+    receipt_path = run_dir / "paper" / "PAPER_BUILD_RECEIPT.json"
+    try:
+        plan = load_json(plan_path)
+        receipt = load_json(receipt_path)
+        require_valid(plan, "paper_plan")
+        require_valid(receipt, "paper_build_receipt")
+        state = load_json(run_dir / "state.json")
+        if plan["run_id"] != run_dir.name or receipt["run_id"] != run_dir.name:
+            errors.append("论文计划或回执 run_id 与运行目录不一致")
+        if receipt["plan_path"] != "paper/paper_plan.json":
+            errors.append("论文回执 plan_path 必须为 paper/paper_plan.json")
+        if receipt["plan_sha256"] != sha256_file(plan_path):
+            errors.append("论文回执未绑定当前 paper_plan.json")
+        if expected_state_revision is not None:
+            if receipt["state_revision"] != expected_state_revision:
+                errors.append("论文构建回执不是指定 state revision 生成")
+        elif receipt["state_revision"] > state["revision"]:
+            errors.append("论文构建回执来自未来 state revision")
+        if receipt["final_pdf_path"] != plan["final_pdf_path"]:
+            errors.append("论文回执 final_pdf_path 与计划不一致")
+        final_pdf = _resolve_bound_file(run_dir, receipt["final_pdf_path"])
+        if final_pdf.suffix.lower() != ".pdf":
+            errors.append("final_pdf_path 必须指向 PDF")
+        elif sha256_file(final_pdf) != receipt["final_pdf_sha256"]:
+            errors.append("论文回执未绑定当前最终 PDF")
+        bindings = plan["bindings"]
+        for key, value in bindings.items():
+            items = value if key in {"section_files", "figures_used"} else [value]
+            for index, item in enumerate(items):
+                errors.extend(_check_file_binding(run_dir, item, f"论文绑定 {key}[{index}]"))
+        errors.extend(_verify_accepted_result_bindings(run_dir, plan))
+    except (ContractError, KeyError) as exc:
+        errors.append(str(exc))
+    return {"valid": not errors, "errors": errors, "plan_path": str(plan_path), "receipt_path": str(receipt_path)}
+
+
+def _verify_accepted_result_bindings(run_dir: Path, plan: dict[str, Any]) -> list[str]:
+    """只验证论文实际引用的结果，并交叉检查所有证据来源。"""
+    errors: list[str] = []
+    try:
+        registry_path = _resolve_bound_file(run_dir, plan["bindings"]["result_registry"]["path"])
+        registry = load_json(registry_path)
+        require_valid(registry, "result_registry")
+        referenced = set(plan["referenced_result_ids"])
+        for result_id in referenced:
+            errors.extend(
+                f"论文引用结果 {result_id}: {message}"
+                for message in verify_referenced_result(run_dir, registry, result_id)
+            )
+
+        evidence_map_path = run_dir / "paper" / "evidence_map.json"
+        if evidence_map_path.is_file():
+            evidence_map = load_json(evidence_map_path)
+            require_valid(evidence_map, "evidence_map")
+            evidence_ids = {
+                source["result_id"]
+                for claim in evidence_map["claims"]
+                for source in claim["inputs"]
+            }
+            errors.extend(
+                f"evidence_map 引用结果未列入 referenced_result_ids: {result_id}"
+                for result_id in sorted(evidence_ids - referenced)
+            )
+
+        claim_evidence_path = run_dir / "claims" / "claim_evidence.json"
+        if claim_evidence_path.is_file():
+            claim_evidence = load_json(claim_evidence_path)
+            require_valid(claim_evidence, "claim_evidence")
+            claim_ids = {
+                result_id
+                for claim in claim_evidence["claims"]
+                for result_id in claim["evidence_result_ids"]
+            }
+            errors.extend(
+                f"claim evidence 引用结果未列入 referenced_result_ids: {result_id}"
+                for result_id in sorted(claim_ids - referenced)
+            )
+
+        claim_gate_path = _resolve_bound_file(
+            run_dir, plan["bindings"]["claim_gate"]["path"]
+        )
+        claim_gate = load_json(claim_gate_path)
+        gate_ids = set(claim_gate.get("evidence_result_ids", []))
+        errors.extend(
+            f"claim gate 引用结果未列入 referenced_result_ids: {result_id}"
+            for result_id in sorted(gate_ids - referenced)
+        )
+
+        figure_plan = load_json(run_dir / "figures" / "FIGURE_PLAN.json")
+        require_valid(figure_plan, "figure_plan")
+        for figure in figure_plan["figures"]:
+            receipt = load_json(
+                run_dir / "figures" / f"{figure['figure_id']}.receipt.json"
+            )
+            require_valid(receipt, "figure_receipt")
+            errors.extend(
+                f"图表 {figure['figure_id']} 引用结果未列入 referenced_result_ids: {result_id}"
+                for result_id in set(receipt["accepted_result_ids"]) - referenced
+            )
+    except (ContractError, KeyError) as exc:
+        errors.append(f"结果注册表绑定无效: {exc}")
+    return errors
+
+
+def verify_figure_receipts(run_dir: Path) -> dict[str, Any]:
+    """验证图表计划及每张图的 accepted 结果、数据、脚本和输出哈希。"""
+    errors: list[str] = []
+    plan_path = run_dir / "figures" / "FIGURE_PLAN.json"
+    try:
+        plan = load_json(plan_path)
+        require_valid(plan, "figure_plan")
+        if plan["run_id"] != run_dir.name:
+            errors.append("图表计划 run_id 与运行目录不一致")
+        for item in plan["figures"]:
+            figure_id = item["figure_id"]
+            receipt_path = run_dir / "figures" / f"{figure_id}.receipt.json"
+            receipt = load_json(receipt_path)
+            require_valid(receipt, "figure_receipt")
+            if receipt["run_id"] != run_dir.name or receipt["figure_id"] != figure_id:
+                errors.append(f"图表回执身份不一致: {figure_id}")
+            if receipt["selected_skill"] != item["selected_skill"]:
+                errors.append(f"图表 {figure_id}: 回执 selected_skill 与计划不一致")
+            if receipt["template_id"] != item["template_id"]:
+                errors.append(f"图表 {figure_id}: 回执 template_id 与计划不一致")
+            for key in ("data_files", "outputs"):
+                for index, binding in enumerate(receipt[key]):
+                    errors.extend(_check_file_binding(run_dir, binding, f"图表 {figure_id}.{key}[{index}]"))
+            errors.extend(_check_file_binding(run_dir, receipt["script"], f"图表 {figure_id}.script"))
+            registry = load_json(run_dir / "results" / "result_registry.json")
+            require_valid(registry, "result_registry")
+            for result_id in receipt["accepted_result_ids"]:
+                errors.extend(
+                    f"图表 {figure_id}: {message}"
+                    for message in verify_referenced_result(
+                        run_dir,
+                        registry,
+                        result_id,
+                        question_id=receipt["question_id"],
+                    )
+                )
+    except (ContractError, KeyError) as exc:
+        errors.append(str(exc))
+    return {"valid": not errors, "errors": errors, "plan_path": str(plan_path)}
+
+
+def verify_production_receipts(
+    run_dir: Path,
+    *,
+    expected_state_revision: int | None = None,
+) -> dict[str, Any]:
+    """汇总论文和图表生产回执校验，供状态门调用。"""
+    paper = verify_paper_build_receipt(
+        run_dir,
+        expected_state_revision=expected_state_revision,
+    )
+    figures = verify_figure_receipts(run_dir)
+    return {"valid": paper["valid"] and figures["valid"], "errors": [*paper["errors"], *figures["errors"]], "paper": paper, "figures": figures}

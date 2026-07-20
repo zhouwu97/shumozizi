@@ -8,7 +8,10 @@ from typing import Any
 from shumozizi.core.io import ContractError, load_json, sha256_file
 from shumozizi.core.schema import require_valid, validate_document
 from shumozizi.profiles.lock import verify_run_config_lock
+from shumozizi.questions.manifest import verify_problem_manifest
 from shumozizi.results.sealing import verify_sealed_result
+from shumozizi.workflow.approval import verify_route_approval
+from shumozizi.workflow.integrity import verify_run_integrity
 from shumozizi.workflow.reviews import verify_review_receipt
 
 LOCKED = {
@@ -26,6 +29,8 @@ LOCKED = {
 
 def validate_run(run_dir: Path, repo_root: Path | None = None) -> dict[str, Any]:
     """返回完整机器可读校验结果，不写入运行状态。"""
+    integrity = verify_run_integrity(run_dir, repo_root=repo_root)
+    # 保留旧版细粒度错误信息，同时由统一验证器提供唯一 A 轴结论。
     root = repo_root.resolve() if repo_root else run_dir.resolve().parents[1]
     errors: list[str] = []
     warnings: list[str] = []
@@ -69,10 +74,17 @@ def validate_run(run_dir: Path, repo_root: Path | None = None) -> dict[str, Any]
                 errors.append("ROUTE_LOCK 绑定的 RUN_CONFIG_LOCK 已变化")
             if lock["route_candidates_sha256"] != sha256_file(candidates_path):
                 errors.append("ROUTE_LOCK 绑定的候选路线已变化")
+            manifest_report = verify_problem_manifest(run_dir)
+            errors.extend(manifest_report["errors"])
+            manifest_path = run_dir / "problem/PROBLEM_MANIFEST.json"
+            if lock.get("problem_manifest_sha256") != sha256_file(manifest_path):
+                errors.append("ROUTE_LOCK 未绑定当前 PROBLEM_MANIFEST")
             if candidates and lock["selected_route_id"] not in {
                 item["route_id"] for item in candidates["candidates"]
             }:
                 errors.append("selected_route_id 必须引用真实存在的候选路线")
+            route_approval = verify_route_approval(run_dir)
+            errors.extend(route_approval["errors"])
         except Exception as exc:
             errors.append(str(exc))
     try:
@@ -101,6 +113,7 @@ def validate_run(run_dir: Path, repo_root: Path | None = None) -> dict[str, Any]
         if state_revision == state.get("revision"):
             review = verify_review_receipt(run_dir, receipt_path)
             errors.extend(f"审核回执 {receipt_path.relative_to(run_dir).as_posix()}: {message}" for message in review["errors"])
+    errors.extend(item for item in integrity["errors"] if item not in errors)
     return {
         "valid": not errors,
         "status": status,

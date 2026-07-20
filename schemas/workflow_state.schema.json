@@ -19,6 +19,26 @@
     "route_locked": {"type": "boolean"},
     "paper_ready": {"type": "boolean"},
     "question_progress": {"type": "object", "additionalProperties": {"type": "object"}},
+    "review_gates": {
+      "type": "object",
+      "propertyNames": {"pattern": "^(R1_MODELING|R2_EXPERIMENT_[A-Za-z0-9._-]+|R3_PAPER_LOGIC(_[A-Za-z0-9._-]+)?|R4_FORMAT_VISUAL|R5_STANDARD_FINAL|J0_FINAL_BLIND_JUDGE)$"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "receipt"],
+        "properties": {
+          "status": {"enum": ["pending", "passed", "failed", "stale"]},
+          "receipt": {"type": ["string", "null"]},
+          "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "reviewed_revision": {"type": "integer", "minimum": 0},
+          "recorded_revision": {"type": "integer", "minimum": 0},
+          "question_id": {"type": ["string", "null"]},
+          "request_stage": {"type": "string"},
+          "verdict": {"type": "string"},
+          "decision": {"enum": ["accepted", "accepted_with_warnings", "rejected", "superseded"]}
+        }
+      }
+    },
     "artifacts": {"type": "object", "additionalProperties": {"type": "string"}},
     "last_updated_by": {"type": "string", "minLength": 1},
     "updated_at": {"type": "string", "format": "date-time"},

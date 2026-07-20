@@ -1,0 +1,10 @@
+{
+  "schema_name": "paper_ab_blind_mapping",
+  "schema_version": "1.0",
+  "revealed_after_scoring": true,
+  "mapping": {
+    "M": "paper_b_with_blueprint_argument_map_and_figure_storyboard",
+    "N": "paper_a_legacy_authoring"
+  }
+}
+

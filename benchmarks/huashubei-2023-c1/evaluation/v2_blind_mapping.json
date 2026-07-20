@@ -1,0 +1,17 @@
+{
+  "schema_name": "blind_mapping",
+  "schema_version": "2.0",
+  "route_mapping": {
+    "R17": "route_a_without_knowledge",
+    "R42": "route_b_with_repository_patterns"
+  },
+  "paper_mapping": {
+    "P17": "paper_a_legacy_structure",
+    "P42": "paper_b_workbench_structure"
+  },
+  "source_results": [
+    "q1-primary-leakage-fixed-v4",
+    "q1-robustness-cv-baselines-v1"
+  ],
+  "disclosed_to_reviewers": false
+}

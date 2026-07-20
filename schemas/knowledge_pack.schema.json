@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/knowledge_pack.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "pack_id", "pack_version", "source_commit", "generated_at", "applicable_problem_types", "hard_rules", "advisory_patterns", "anti_patterns", "source_summary", "leakage_exclusions", "cards"],
+  "properties": {
+    "schema_name": {"const": "excellent_paper_knowledge_pack"},
+    "schema_version": {"const": "0.1.0"},
+    "pack_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "pack_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "source_commit": {"type": "string", "minLength": 7},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "applicable_problem_types": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "hard_rules": {"type": "array", "items": {"type": "string"}},
+    "advisory_patterns": {"type": "array", "items": {"type": "string"}},
+    "anti_patterns": {"type": "array", "items": {"type": "string"}},
+    "source_summary": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["paper_id", "title", "verification_status", "provenance_level", "sha256", "problem_types"], "properties": {"paper_id": {"type": "string"}, "title": {"type": "string"}, "verification_status": {"const": "verified"}, "provenance_level": {"const": "source_verified"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "source_asset_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "problem_types": {"type": "array", "items": {"type": "string"}}}}},
+    "leakage_exclusions": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["paper_id", "forbidden_tokens"], "properties": {"paper_id": {"type": "string"}, "forbidden_tokens": {"type": "array", "minItems": 1, "items": {"type": "string"}}}}},
+    "cards": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["card_id", "title", "paper_id", "provenance_level", "problem_types", "core_problem", "main_value", "model_route", "models", "reusable_experience", "source_sha256"], "properties": {"card_id": {"type": "string"}, "title": {"type": "string"}, "paper_id": {"type": "string"}, "provenance_level": {"const": "source_verified"}, "problem_types": {"type": "array", "items": {"type": "string"}}, "core_problem": {"type": "string"}, "main_value": {"type": "string"}, "model_route": {"type": "array"}, "models": {"type": "array"}, "reusable_experience": {"type": "array", "items": {"type": "string"}}, "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}
+  }
+}

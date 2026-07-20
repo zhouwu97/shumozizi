@@ -1,0 +1,59 @@
+{
+  "schema_name": "argument_map",
+  "schema_version": "2.0",
+  "run_id": "desktop-e2e-20260719-training",
+  "run_config_lock_sha256": "b98e3e36ff866f625abcddaa59aac472a74842b5458fef3c40f0e46ff61ceaf2",
+  "paper_index_sha256": "9ed4a9cdd327c8ac35ae52fe6930a37132f4eacdedf477c348ed5aaa70923cee",
+  "task_fingerprint_sha256": "116af849230356e49fb185912f9c46376e4174cbb40656118a113c1c0818b370",
+  "pattern_transfer_plan_sha256": "dc0200c2f5649efda8c9d373f5dd9a8c60eae1168d7f203114d8e87bc15d5814",
+  "route_lock_sha256": "b3ca89de31c1c4d6739112c9b39c9127ec6b5f08d1545363cbeedd1f14a55e5c",
+  "accepted_results_digest": "8ce1987595ca6705145a0880c02234a4fb2a862fd8d09041ed2885f1d60829b2",
+  "claim_evidence_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "claims": [
+    {
+      "claim_id": "q1-sleep-no-gain",
+      "question_id": "q1",
+      "claim": "基础协变量未改善睡眠时长的样本外预测。",
+      "motivation": "题目要求判断母亲指标是否为睡眠结果提供稳定信息。",
+      "baseline_limitation": "无协变量均值基线不能解释个体差异。",
+      "model_support": "响应专用矩阵上的多元最小二乘与固定五折验证。",
+      "result_ids": ["q1-primary-leakage-fixed-v4", "q1-robustness-cv-baselines-v1"],
+      "comparison_evidence": ["五折 RMSE 1.4576 h 对同折均值基线 1.4507 h"],
+      "validation_evidence": ["五折样本外 R2=-0.0167；全部响应字段已排除"],
+      "figure_ids": ["F1"],
+      "boundary": "否定的是当前特征与模型的样本外增益，不是否定所有潜在母婴关联。",
+      "outcome": "supported",
+      "paper_location": "结果/睡眠时长"
+    },
+    {
+      "claim_id": "q1-count-limited",
+      "question_id": "q1",
+      "claim": "Poisson 模型只带来很小的睡醒次数误差下降，且存在过度离散风险。",
+      "motivation": "计数响应需要同时检查预测误差和方差假设。",
+      "baseline_limitation": "训练折均值基线不使用协变量。",
+      "model_support": "响应专用矩阵上的 Poisson 回归。",
+      "result_ids": ["q1-primary-leakage-fixed-v4", "q1-robustness-cv-baselines-v1"],
+      "comparison_evidence": ["五折 MAE 1.2172 次对基线 1.2333 次"],
+      "validation_evidence": ["Pearson 离散度 1.7322"],
+      "figure_ids": [],
+      "boundary": "不将小幅误差差异解释为稳定预测提升；负二项模型尚未比较。",
+      "outcome": "partially_supported",
+      "paper_location": "结果/睡醒次数"
+    },
+    {
+      "claim_id": "q1-classification-no-gain",
+      "question_id": "q1",
+      "claim": "行为和入睡方式分类均未形成实质样本外基线增益。",
+      "motivation": "防止类别不平衡和训练拟合夸大预测能力。",
+      "baseline_limitation": "准确率必须与训练折多数类基线和宏平均 F1 联读。",
+      "model_support": "两个独立的多项 Logistic Pipeline 与分层五折验证。",
+      "result_ids": ["q1-primary-leakage-fixed-v4", "q1-robustness-cv-baselines-v1"],
+      "comparison_evidence": ["行为 0.5769 对 0.5769；入睡方式 0.4333 对 0.4282"],
+      "validation_evidence": ["宏平均 F1 分别为 0.3506 和 0.2298；逐折分数已保存"],
+      "figure_ids": ["F1", "F2"],
+      "boundary": "只描述当前样本和预注册模型，不作临床、因果或个体决策解释。",
+      "outcome": "supported",
+      "paper_location": "结果/行为与入睡方式"
+    }
+  ]
+}

@@ -1,61 +1,174 @@
-# shumozizi：Codex 原生数学建模工作流
+# shumozizi：优秀论文驱动的数学建模生产工作台
 
-这是一个可直接放进赛题目录、由 Codex 桌面版 AI 驱动的项目级数学建模工作流包。
+shumozizi 面向数学建模竞赛中的完整作品生产。
 
-项目只保留一条主线：
+项目的核心目标不是构建复杂审批系统，而是通过：
+
+- 优秀论文结构化知识；
+- 相似建模模式检索与迁移；
+- 共享数学对象和逐问递进设计；
+- baseline、主模型和多子实验验证；
+- 论文蓝图、论证地图和图表故事板；
+- 模型、实验、论文三类质量检查；
+
+在有限比赛时间内，产出可运行、可解释、论证完整的高质量数学建模论文。
+
+状态、结果来源和审核记录只承担必要的可恢复性与真实性保障，
+不得反过来限制正常建模、实验和论文修改。
+
+## 评价标准
+
+项目首先回答以下问题：
+
+- 能否从优秀论文中提炼可迁移的建模结构，而不是只保存论文原文；
+- 能否针对新题生成数学本质不同、各自完整且可验证的高质量路线；
+- 能否用共享变量、数据表示、约束和评价指标把各问组织成统一、递进的研究主线；
+- 能否完成充分的基线比较、主模型实验、稳健性检验和必要消融；
+- 能否把模型、实验、结论和图表组织成达到参赛水平的完整论文；
+- 能否在三天比赛时间内完成上述过程。
+
+状态数量、Schema 数量、审核回执数量和哈希绑定覆盖率不是产品价值指标。它们只在保证运行可恢复、结果可复验和事实不被篡改时发挥作用。
+
+## 主流程
 
 ```text
-Codex 读题
-→ 人工确认题意与路线
-→ Codex 完成建模和有界实验
-→ Codex 按真实结果增量写论文
-→ Codex 做一次有界自审
-→ 人工终审
+读取题面与附件
+→ 数据剖面与 TASK_FINGERPRINT
+→ 检索优秀论文案例和建模模式
+→ 生成 PATTERN_TRANSFER_PLAN
+→ 设计共享数学对象和各问依赖
+→ 形成 2—3 条完整研究路线
+→ 人工确认路线
+→ 数学规格与实验组合
+→ 五轮论文生产
+→ 三类审核域
+→ 人工最终核包
 ```
 
-不需要 WebUI、Redis、后端任务队列、自建 Agent 框架、数据库或云端解释器。
+知识检索必须发生在路线候选生成之前。运行顺序固定为：
 
-## 核心设计
-
-- `AGENTS.md`：项目总规则和两个强制人工确认点。
-- `.agents/skills/`：Codex 可原生发现的五个轻量包装 Skill。
-- `skills/`：保留 MathModelAgent 上游原始 Skills，便于对照和同步。
-- `runs/<run_id>/state.json`：唯一工作流状态来源，只能由状态服务写入，可跨会话恢复。
-- `runs/<run_id>/config/RUN_CONFIG_LOCK.json`：不可变比赛 Profile、题面、语言与排版配置。
-- `schemas/`：全部运行时文件的 Schema v2 结构约束；文档必须自声明名称和版本。
-- `scripts/codex/`：初始化运行目录和校验工作流状态。
-- `scripts/runtime/`：统一执行实验、复验执行证据和接受结果。
-- `scripts/doctor.py`：跨平台环境诊断，不调用或调度 Codex。
-
-## 安全默认值
-
-项目级 [.codex/config.toml](.codex/config.toml) 使用：
-
-```toml
-approval_policy = "on-request"
-sandbox_mode = "workspace-write"
-web_search = "cached"
+```text
+初始化运行
+→ 读取仓内优秀论文索引
+→ 题型指纹与模式检索
+→ 路线竞争
+→ 人工确认路线
 ```
 
-桌面版打开仓库后，应先确认工作区和授权范围。项目配置只会在 Codex 信任该仓库时加载。
+知识案例只提供可迁移的结构、适用条件、失败模式和验证方法。`PATTERN_TRANSFER_PLAN` 必须说明哪些结构可以迁移、哪些条件需要重新验证、哪些内容禁止照搬，并把检索结果转化为当前赛题的候选路线，而不是直接复制优秀论文的模型结论。
+
+## 生产组织
+
+### 共享数学对象
+
+路线设计先定义贯穿各问的共享数学对象，包括数据表示、核心变量、参数、约束、目标、评价指标和不确定性来源。各问在共享对象上递进，避免把同一赛题拆成互不相干的若干小论文。
+
+每条候选路线都应覆盖全部必做问题，并说明：
+
+- 各问的输入、输出和依赖关系；
+- baseline、主模型和备用模型；
+- 关键假设、约束与可识别风险；
+- 需要推翻或支持核心主张的实验；
+- 预期论文主线、关键图表和结论边界；
+- 在剩余比赛时间内的实现成本。
+
+### 实验与论证闭环
+
+实验不是单次跑出一个指标。每个核心结论至少应有相匹配的证据组合：公平 baseline、主模型、稳健性或敏感性分析，以及在确有复杂模块时进行的消融或替代模型比较。
+
+所有论文主张都要进入论证地图，明确其数学依据、实验结果、图表位置和适用边界。负结果和不确定结果应如实保留，用于收缩结论或调整路线，而不是包装成成功结果。
+
+### 五轮论文生产
+
+论文从路线确定后就与实验同步演进，而不是等全部代码结束后一次性补写：
+
+1. 建立论文蓝图、逐问叙事和论证地图；
+2. 写清问题重述、假设、符号、共享数学对象和模型规格；
+3. 随每问实验增量写入方法、结果、比较和阶段结论；
+4. 完成图表故事板、稳健性论证、优缺点和结论边界；
+5. 统一摘要、主线、符号、数字、图表、语言和提交格式。
+
+固定五轮表示五类生产任务，不要求每次小改都机械重跑五遍。字体、错别字和分页等局部修改只做受影响范围的检查。
+
+### 三类审核域
+
+- 模型质量：检查题意映射、共享对象、目标与约束、路线差异、算法适配性和各问递进关系；
+- 实验质量：检查数据处理、比较公平性、指标与单位、约束满足、稳健性、复现性和图表来源；
+- 论文质量：检查逐问作答、论证链、数字一致性、图表有效性、结论边界和提交格式。
+
+审核的目的在于发现会影响作品质量的问题，并把修改定向到受影响的模型、实验或论文内容。不得用增加审核轮数代替建模深度，也不得因纯排版修改重跑模型。
+
+## 仓内训练与迁移边界
+
+优秀论文原始文件可以位于仓库外的本地只读目录。知识学习、论文卡生成、索引、检索、迁移和旧题验证全部由 `shumozizi` 完成，仓库不依赖其他项目生成或维护知识包。优秀论文知识应沉淀为可检索的论文卡，至少包含问题链、共享数学对象、适用条件、验证设计、可迁移模式、不可迁移内容、论文不足、复现风险和来源页码。
+
+原文、候选材料和渲染产物不进入源码历史；可发布的结构化知识放在 `knowledge/`。真实本机路径只通过命令参数、环境变量 `SHUMO_EXCELLENT_PAPER_DIR` 或未跟踪的 `knowledge/sources.local.json` 提供，不得硬编码到 Python 模块或提交配置中。
+
+```powershell
+$env:SHUMO_EXCELLENT_PAPER_DIR="D:\path\to\excellent-paper-cache"
+
+python scripts/knowledge/inventory_sources.py `
+  --source-dir $env:SHUMO_EXCELLENT_PAPER_DIR `
+  --output knowledge/training/pilot/source_inventory.json
+
+python scripts/knowledge/build_index.py
+```
+
+旧 `KNOWLEDGE_PACK` 导入器仅保留为兼容工具，不属于主流程，不是运行锁必要输入，也不得替代仓内论文卡检索。
+
+## 试点停止条件
+
+- 知识版路线没有明显优于无知识版时，停止扩大知识运行时，优先改进论文卡内容和路线 Skill；
+- 使用论文蓝图、论证地图和图表故事板后完整 PDF 没有明显改善时，不重构状态机；
+- 一个知识产物若需要新的主状态、锁或批准回执，则暂停该设计；
+- 纯格式修改仍触发 R1/R2 时，优先修复审核失效范围；
+- 未经过真实 PDF 盲评，不得宣布达到竞赛级或国奖级质量。
+
+## 非目标
+
+项目不追求：
+
+- 为每个文件建立独立审批状态；
+- 因字体、错别字或分页修改重跑模型；
+- 通过增加审核轮数代替建模质量；
+- 把优秀论文原文或具体结果直接复制到新题；
+- 仅凭流程通过宣称论文达到国奖水平；
+- 建立数据库、WebUI、任务队列或复杂多 Agent 平台；
+- 用固定页数机械判断论文质量。
+
+同样不引入 Redis、后端调度服务、云端解释器或通过命令行启动 Codex 的机制。Codex 桌面版负责交互式生产，仓库只提供知识、工具、可复现实验和必要的后台保障。
+
+## 仓库结构
+
+- `knowledge/`：可发布的优秀论文卡、简单索引和试点训练记录；
+- `problems/`：本地赛题入口，原始题面和附件默认不提交；
+- `runs/<run_id>/`：单次比赛的代码、实验、图表、论文和必要状态，默认不提交；
+- `tests/fixtures/`：可公开、可复现、用途明确的测试材料；
+- `.agents/skills/`：Codex 原生数学建模生产 Skills；
+- `scripts/runtime/`：实验执行、证据复验和结果准入工具；
+- `scripts/knowledge/`：论文材料清点和论文卡索引工具；
+- `scripts/codex/`：运行初始化和状态校验工具；
+- `schemas/`：必要运行合同的机器可读约束；
+- `skills/`：上游 MathModelAgent Skills 基线，仅用于对照和同步。
 
 ## 快速开始
 
-必须直接以嵌套 Git 根打开 Codex 桌面工作区。打开外层目录后再进入本仓库会被诊断为错误。
-安装正式包并运行环境诊断：
+使用 Codex 桌面版直接打开本仓库。安装项目并检查本机环境：
 
 ```powershell
 python -m pip install -e .[test]
 python scripts/doctor.py
 ```
 
-把题面和附件放到 `problems/<problem-id>/`，初始化运行目录：
+把题面和附件放入 `problems/<problem-id>/`，然后初始化运行：
 
 ```powershell
 python scripts/codex/init_run.py problems/2026-A --run-id 2026-A-001
 ```
 
-在 Codex 桌面版中为该仓库新建任务，并显式调用唯一完整入口：
+在路线竞争开始前完成数据剖面、`TASK_FINGERPRINT`、仓内论文卡检索和 `PATTERN_TRANSFER_PLAN`，再生成 2—3 条完整候选路线供人工确认。检索失败不阻断路线生成，但必须明确记录“无高置信匹配”。
+
+只有用户明确要求完成整道赛题、实验和论文时，才调用完整工作流：
 
 ```text
 $mathmodel-workflow
@@ -63,100 +176,25 @@ $mathmodel-workflow
 读取 runs/2026-A-001/state.json，从当前状态继续，运行到下一个人工确认点后停止。
 ```
 
-完整工作流被设置为不允许隐式调用。用户只说“分析这个 Excel”时，不会自动启动整篇论文流程。
+仅分析数据、调试代码或修改论文时，直接使用对应能力，不启动完整工作流。详细运行约束见 [Codex 工作流](docs/CODEX_WORKFLOW.md)。
 
-## 第一次人工确认：路线锁
+## 后台保障
 
-首次运行会生成：
+`runs/<run_id>/state.json`、配置锁、结果 provenance、sealed result 和审核记录继续用于跨会话恢复、结果真实性和最终核包。它们属于后台安全设施，不定义建模内容，也不阻止以下正常工作：
 
-```text
-runs/2026-A-001/brief/ROUTE_BRIEF.md
-runs/2026-A-001/brief/route_candidates.json
-```
+- 在路线范围内调整参数、求解器和实现；
+- 根据真实实验结果修改论证和论文结构；
+- 对文字、字体、图表位置和分页做局部修订；
+- 保留失败实验并据此收缩结论。
 
-并把状态设为 `WAITING_HUMAN_ROUTE`。此时 Codex 必须停止，不得开始正式建模。
+只有改变题意解释、目标函数、核心约束、模型类别或已确认研究路线等实质方向时，才重新请求路线确认。最终提交前保留一次人工核包，确认 PDF、代码、结果、附件和提交格式对应当前版本。
 
-人工确认前，系统生成绑定 `RUN_CONFIG_LOCK` 与候选路线哈希的批准请求。人类明确回复后，
-批准协议生成 `route_approval_receipt.json` 和 `ROUTE_LOCK.json`；禁止通过复制模板或手改
-`approved=true` 绕过回执。
+## 当前状态
 
-路线锁固定：
+仓库已经具备运行初始化、论文材料清点、首期论文卡与索引、实验执行、结果来源校验、论文产物和审核基础设施，但“优秀论文知识检索 → 模式迁移 → 共享对象设计 → 路线竞争 → 实验与五轮论文生产”的生产主链仍需通过陌生旧题 A/B 试验验收。
 
-- 题意解释；
-- 主路线与备用路线；
-- 必须保留的基线；
-- 创新主张及验证方式；
-- 每问最多三轮主实验；
-- 文献搜索、自审与路线漂移预算。
-
-## 实验和结果
-
-每个子问题最多执行：
-
-1. baseline；
-2. primary；
-3. robustness 或 ablation。
-
-新结果先登记为 `candidate`。指标必须由白名单提取器从执行记录中的已哈希输出生成 provenance；
-派生指标只允许受限 AST。准入后生成不可改写的 sealed result 与 RFC 8785 seal。撤销只追加
-revocation record，论文不得读取 `revoked` 或 `superseded` 结果。
-
-实验必须先写结构化执行清单，再由统一执行器运行：
-
-```powershell
-python scripts/runtime/execute_experiment.py runs/2026-A-001 runs/2026-A-001/executions/manifests/q1-baseline.json
-```
-
-`scripts/runtime/accept_result.py` 是把 `candidate` 提升为 `accepted` 的唯一受支持入口。不得在
-注册表中直接手改 `accepted`。
-
-随时校验状态与结果来源：
-
-```powershell
-python scripts/codex/validate_state.py runs/2026-A-001
-```
-
-论文数字通过 `scripts/generate_paper_evidence.py` 生成 Typst macro，QA 会在最终 PDF 的 claim
-标签附近检查真实展示值，而不是信任手填的 `rendered_value`。
-
-## 第二次人工确认：最终论文
-
-工作流只允许一次机械检查、一次评委视角自审、一次定向修复和一次快速复检。完成后生成：
-
-```text
-runs/2026-A-001/review/FINAL_REVIEW_MEMO.md
-```
-
-状态变为 `WAITING_HUMAN_FINAL`，Codex 再次停止。最终回执绑定当前 PDF、QA 聚合报告、证据
-报告与 Profile 哈希；任何一个发生变化都会使批准自动失效。
-
-## 跨任务继续
-
-本项目不提供调用 AI 的脚本调度或后台续跑。关闭任务或新建桌面任务后，重新发送：
-
-```text
-$mathmodel-workflow
-
-读取 runs/2026-A-001/state.json，从当前状态继续，运行到下一个人工确认点后停止。
-```
-
-恢复只依赖 `state.json` 和运行目录产物，不依赖旧对话历史。
-
-## 包装 Skills
-
-| Skill | 职责 |
-| --- | --- |
-| `$mathmodel-workflow` | 唯一完整入口；按状态推进并在两个人工点停止 |
-| `$mathmodel-route` | 题意、歧义和 2–3 条差异化候选路线 |
-| `$mathmodel-experiment` | baseline → primary → robustness/ablation |
-| `$mathmodel-paper` | 依据已接受结果逐问增量写作 |
-| `$mathmodel-review` | 一次机械检查、自审、定向修复和快速复检 |
-
-详细流程见 [docs/CODEX_WORKFLOW.md](docs/CODEX_WORKFLOW.md)。
-桌面版端到端验收使用 [tests/fixtures/e2e_linear_fit/problem.md](tests/fixtures/e2e_linear_fit/problem.md)
-和 [docs/e2e/DESKTOP_E2E_REPORT.template.md](docs/e2e/DESKTOP_E2E_REPORT.template.md)，当前不把模板视为已验收报告。
+因此，当前项目不能仅凭流程测试通过宣称达到竞赛获奖水平。后续验收必须使用陌生完整赛题，在三天预算约束下检查路线质量、实验充分性、论文完成度和盲评表现。
 
 ## 来源与许可
 
-本仓库以 `jihe520/MathModelAgent` 的 Skills 为能力基线，并在其外部增加 Codex 包装层。
-第三方来源和许可边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本仓库以 `jihe520/MathModelAgent` 的 Skills 为能力基线，并在其外部增加 Codex 原生生产能力。第三方来源和许可边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

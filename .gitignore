@@ -15,6 +15,7 @@ secrets/
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 .pytest_cache/
@@ -27,6 +28,15 @@ venv/
 Thumbs.db
 
 # 编译和临时文件
+tmp/
+cache/
+knowledge/raw/
+knowledge/candidates/
+knowledge/sources.local.json
+knowledge/training/tmp/
+rendered/
+artifacts/
+*.pdf.png/
 *.aux
 *.bbl
 *.blg

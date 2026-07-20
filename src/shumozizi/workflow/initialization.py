@@ -12,6 +12,7 @@ from shumozizi.profiles.lock import create_run_config_lock
 
 RUN_DIRECTORIES = (
     "brief",
+    "problem",
     "reports",
     "code",
     "results/candidates",
@@ -20,6 +21,7 @@ RUN_DIRECTORIES = (
     "results/revocations",
     "experiments/plans",
     "claims",
+    "questions",
     "figures",
     "paper/sections",
     "paper/generated",
@@ -27,6 +29,8 @@ RUN_DIRECTORIES = (
     "logs",
     "executions/manifests",
     "config",
+    "source/python",
+    "source/matlab",
 )
 
 
@@ -97,6 +101,16 @@ def initialize_run(
         "route_locked": False,
         "paper_ready": False,
         "question_progress": {},
+        "review_gates": {
+            gate: {"status": "pending", "receipt": None}
+            for gate in (
+                "R1_MODELING",
+                "R3_PAPER_LOGIC",
+                "R4_FORMAT_VISUAL",
+                "R5_STANDARD_FINAL",
+                "J0_FINAL_BLIND_JUDGE",
+            )
+        },
         "artifacts": {},
         "last_updated_by": "init_run.py",
         "updated_at": now,

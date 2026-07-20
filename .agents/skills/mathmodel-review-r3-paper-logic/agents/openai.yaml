@@ -1,0 +1,4 @@
+interface:
+  display_name: "R3 Paper Logic Review"
+  short_description: "Audit direct answers and evidence in the paper"
+  default_prompt: "Review the frozen paper logic independently and write only the declared report."

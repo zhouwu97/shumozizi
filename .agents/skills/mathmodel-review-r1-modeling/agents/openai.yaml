@@ -1,0 +1,4 @@
+interface:
+  display_name: "R1 Modeling Review"
+  short_description: "Audit model specification before experiments"
+  default_prompt: "Execute R1 from the declared request paths and stop after writing the report."

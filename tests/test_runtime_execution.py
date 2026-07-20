@@ -129,8 +129,8 @@ class RuntimeExecutionTests(unittest.TestCase):
         self.assertNotEqual(0, accepted.returncode)
         self.assertIn("baseline_result_id", accepted.stdout)
 
-    def test_innovation_without_ablation_evidence_is_rejected(self) -> None:
-        """创新主张缺少稳健性或消融结果时不得准入。"""
+    def test_primary_claim_can_be_accepted_before_third_cycle(self) -> None:
+        """primary 的事实准入不依赖后续稳健性或消融证据。"""
         baseline = self.prepare_success("exec_baseline", "q1_baseline")
         self.fixture.set_results([baseline])
         baseline_accept = self.fixture.run_acceptor("q1_baseline")
@@ -142,20 +142,20 @@ class RuntimeExecutionTests(unittest.TestCase):
         primary = self.prepare_success("exec_innovation", "q1_innovation")
         primary["cycle"] = "primary"
         primary["baseline_result_id"] = "q1_baseline"
-        primary["innovation_claims"] = [
-            {
-                "claim_id": "claim_1",
-                "claim": "测试创新主张",
-                "evidence": [],
-                "status": "keep",
-            }
-        ]
+        primary["claim_refs"] = ["claim_1"]
+        primary.pop("innovation_claims")
         self.fixture.set_results([accepted_baseline, primary])
 
         accepted = self.fixture.run_acceptor("q1_innovation")
 
-        self.assertNotEqual(0, accepted.returncode)
-        self.assertIn("innovation_claim_id", accepted.stdout)
+        self.assertEqual(0, accepted.returncode, accepted.stdout + accepted.stderr)
+        sealed = json.loads(
+            (self.fixture.run_dir / "results/sealed/q1_innovation.result.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(["claim_1"], sealed["claim_refs"])
+        self.assertNotIn("innovation_claims", sealed)
 
     def test_cwd_escape_is_rejected(self) -> None:
         """cwd 不得逃出运行目录。"""

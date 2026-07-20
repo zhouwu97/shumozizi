@@ -1,0 +1,79 @@
+{
+  "schema_name": "paper_ab_scorecard",
+  "schema_version": "2.0",
+  "problem_id": "huashubei-2023-c1",
+  "same_accepted_results": [
+    "q1-primary-leakage-fixed-v4",
+    "q1-robustness-cv-baselines-v1"
+  ],
+  "same_execution_record_ids": [
+    "q1-mixed-models-leakage-fixed-v4",
+    "q1-cv-baselines-v1"
+  ],
+  "blind_mapping": {
+    "P17": "paper_a_legacy_structure",
+    "P42": "paper_b_workbench_structure"
+  },
+  "frozen_inputs": {
+    "P17_pdf_sha256": "47b73bea1348f0a96e7e2d8429a20e18e3c70811953a056b7f8fae33e391ca78",
+    "P17_pages": 1,
+    "P42_pdf_sha256": "990ee0da635cb36e13d7185838975fddb49facf792cefbcb3e6e4e335e60c80f",
+    "P42_pages": 2,
+    "rubric_sha256": "b1740c187dcaba9f45bb64b54ed523157653ce34f51c9663446c870b63133a0d",
+    "mapping_disclosed_to_reviewers": false
+  },
+  "independent_reviews": [
+    {
+      "reviewer": "statistical",
+      "report_sha256": "49ccd537a27f19db57ccc32932a4929081b0c5d59a772a23206a55b41ae38c95",
+      "P17_total": 48,
+      "P42_total": 86,
+      "preferred": "P42",
+      "P0_count": 0
+    },
+    {
+      "reviewer": "paper_logic",
+      "report_sha256": "fbf9fe0bc5c5b9b1a7a29062b0c51645e5acb3fd3ae55af72f04beccbdda683b",
+      "P17_total": 55,
+      "P42_total": 75,
+      "preferred": "P42",
+      "P0_count": 0
+    },
+    {
+      "reviewer": "competition_judge",
+      "report_sha256": "86b5ee763b776284639782d0f5cf5327b3156d4349e96060d26da5be6c1e90dc",
+      "P17_total": 55,
+      "P42_total": 88,
+      "preferred": "P42",
+      "P0_count": 0
+    }
+  ],
+  "aggregate": {
+    "P17_mean": 52.6667,
+    "P42_mean": 83.0,
+    "mean_delta": 30.3333,
+    "reviewers_preferring_P42": 3,
+    "reviewer_count": 3,
+    "P0_count": 0
+  },
+  "gate_criteria": {
+    "at_least_two_of_three_prefer_workbench_paper": true,
+    "mean_delta_at_least_five": true,
+    "mathematical_correctness_not_decreased_between_papers": true,
+    "same_results_and_execution_records": true
+  },
+  "visual_checks": {
+    "all_pages_rendered": true,
+    "figures_visible": true,
+    "missing_chinese_glyphs": false,
+    "text_clipped": false,
+    "overlap_detected": false
+  },
+  "historical_single_task_result": {
+    "workbench_paper_total": 81,
+    "legacy_paper_total": 59,
+    "used_for_current_gate": false
+  },
+  "gate_c_pass": true,
+  "limitation": "Gate C 仅证明在相同修复结果下，工作台版本的论文论证、验证口径和结论边界更好。三名评阅者仍共同指出系数/区间、负二项对照和稳定性验证不足，因此它仍是子问题技术报告，不是完整竞赛论文。"
+}
