@@ -60,7 +60,12 @@ REVIEW_MODE_POLICIES: dict[str, dict[str, Any]] = {
         "quality_dimensions": ["原问题关闭", "修改范围", "直接依赖"],
     },
     "diff_check": {
-        "mandatory_inputs": ["before_after_diff", "repair_evidence"],
+        "mandatory_inputs": [
+            "original_finding",
+            "source_adjudication",
+            "before_after_diff",
+            "repair_evidence",
+        ],
         "optional_inputs": ["direct_dependencies"],
         "forbidden_inputs": _SCOPED_FORBIDDEN_INPUTS,
         "required_outputs": ["verdict", "findings"],

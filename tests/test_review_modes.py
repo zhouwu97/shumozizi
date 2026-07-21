@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
-from shumozizi.core.schema import schema_root
+from shumozizi.core.schema import require_valid, schema_root
 from shumozizi.workflow.review_policy import (
     DEFERRED_BLOCK_POINTS,
     FINDING_CONFIDENCE_LEVELS,
@@ -25,6 +25,18 @@ from shumozizi.workflow.reviews import (
     write_review_report,
 )
 from shumozizi.workflow.state_service import Actor, StateService
+from tests.test_review_contracts import (
+    _adjudication as _full_adjudication,
+)
+from tests.test_review_contracts import (
+    _decision as _full_decision,
+)
+from tests.test_review_contracts import (
+    _finding_report as _full_finding_report,
+)
+from tests.test_review_contracts import (
+    _r1_request as _full_r1_request,
+)
 
 
 def _write_state(run_dir: Path, *, with_passed_gates: bool = False) -> None:
@@ -101,13 +113,56 @@ def _reopen_context() -> dict:
     }
 
 
-def _mode_bindings(run_dir: Path, review_mode: str) -> dict[str, Path]:
+def _registered_source(
+    tmp_path: Path, run_id: str, review_mode: str
+) -> tuple[Path, Path, Path]:
+    """登记一个包含目标 finding 的真实完整 R1 根审核。"""
+    run_dir, request = _full_r1_request(
+        tmp_path, run_id=run_id, round_id="base-full"
+    )
+    session = claim_review_request(request, thread_id=f"thread-{run_id}-base")
+    source_severity = "P2" if review_mode == "diff_check" else "P1"
+    report_doc = _full_finding_report(
+        request, sha256_file(session), severity=source_severity
+    )
+    report_doc["findings"][0]["finding_id"] = "F-ORIGINAL"
+    report = write_review_report(request, report_doc)
+    decision = _full_decision("F-ORIGINAL", source_severity, "accepted")
+    decision.update(
+        {
+            "domain": "machine" if review_mode == "machine_check" else "scientific",
+            "verification_mode": review_mode,
+            "scientific_semantic_change": False,
+            "reopen_justification": None,
+        }
+    )
+    adjudication = write_review_adjudication(
+        report, _full_adjudication(report, [decision])
+    )
+    receipt = materialize_review_receipt(request, report)
+    StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", receipt, Actor("base-full")
+    )
+    return run_dir, report, adjudication
+
+
+def _mode_bindings(
+    run_dir: Path,
+    review_mode: str,
+    source_report: Path,
+    source_adjudication: Path,
+) -> dict[str, Path]:
     root = run_dir / "review/recheck_inputs/case-1"
+    finding = next(
+        item
+        for item in load_json(source_report)["findings"]
+        if item["finding_id"] == "F-ORIGINAL"
+    )
+    original_finding = root / "original_finding.json"
+    atomic_json(original_finding, finding)
     common = {
-        "original_finding": _write_text(root / "original_finding.json", "{}\n"),
-        "source_adjudication": _write_text(
-            run_dir / "review/r1_modeling/source/REVIEW_ADJUDICATION.json", "{}\n"
-        ),
+        "original_finding": original_finding,
+        "source_adjudication": source_adjudication,
         "repair_evidence": _write_text(root / "repair_evidence.json", "{}\n"),
     }
     if review_mode == "targeted_recheck":
@@ -118,6 +173,8 @@ def _mode_bindings(run_dir: Path, review_mode: str) -> dict[str, Path]:
         }
     if review_mode == "diff_check":
         return {
+            "original_finding": common["original_finding"],
+            "source_adjudication": common["source_adjudication"],
             "before_after_diff": _write_text(root / "before_after.diff"),
             "repair_evidence": common["repair_evidence"],
         }
@@ -138,15 +195,27 @@ def _request(
     stage: str = "R1_MODELING",
     with_passed_gates: bool = False,
 ) -> tuple[Path, Path]:
-    run_dir = tmp_path / "runs" / run_id
-    run_dir.mkdir(parents=True)
-    _write_state(run_dir, with_passed_gates=with_passed_gates)
+    if stage != "R1_MODELING":
+        raise AssertionError("mode 单元测试统一依附 R1 full root")
+    run_dir, source_report, source_adjudication = _registered_source(
+        tmp_path, run_id, review_mode
+    )
+    if with_passed_gates:
+        state = load_json(run_dir / "state.json")
+        state["review_gates"]["R2_EXPERIMENT_q1"] = {
+            "status": "passed",
+            "receipt": "review/r2-q1.json",
+        }
+        atomic_json(run_dir / "state.json", state)
     request = create_review_request(
         run_dir,
         stage,
-        _mode_bindings(run_dir, review_mode),
+        _mode_bindings(
+            run_dir, review_mode, source_report, source_adjudication
+        ),
         review_mode=review_mode,
         target_finding_id="F-ORIGINAL",
+        source_gate_id="R1_MODELING",
         review_round_id="round-1",
     )
     return run_dir, request
@@ -276,7 +345,11 @@ def test_review_mode_enums_match_schema_and_skill() -> None:
     )
     state_schema = load_json(schema_root() / "workflow_state.schema.json")
     gate = state_schema["properties"]["review_gates"]["additionalProperties"]
-    assert set(gate["properties"]["review_mode"]["enum"]) == expected
+    assert gate["properties"]["review_mode"]["const"] == "full_scientific"
+    closure = gate["properties"]["closures"]["items"]
+    assert set(closure["properties"]["review_mode"]["enum"]) == expected - {
+        "full_scientific"
+    }
     skill = Path(".agents/skills/mathmodel-review/SKILL.md").read_text(encoding="utf-8")
     block = re.search(
         r"REVIEW_MODES_START.*?```text\n(.*?)\n```.*?REVIEW_MODES_END",
@@ -289,10 +362,12 @@ def test_review_mode_enums_match_schema_and_skill() -> None:
 
 def test_targeted_review_receives_only_scoped_inputs(tmp_path: Path) -> None:
     """targeted reviewer 不能通过额外 read path 读取完整题面。"""
-    run_dir = tmp_path / "runs/targeted-inputs"
-    run_dir.mkdir(parents=True)
-    _write_state(run_dir)
-    bindings = _mode_bindings(run_dir, "targeted_recheck")
+    run_dir, source_report, source_adjudication = _registered_source(
+        tmp_path, "targeted-inputs", "targeted_recheck"
+    )
+    bindings = _mode_bindings(
+        run_dir, "targeted_recheck", source_report, source_adjudication
+    )
     problem = _write_text(run_dir / "problems/full-problem.md", "完整题面\n")
 
     with pytest.raises(ContractError, match="限定输入|策略未声明|禁止读取"):
@@ -302,6 +377,7 @@ def test_targeted_review_receives_only_scoped_inputs(tmp_path: Path) -> None:
             bindings,
             review_mode="targeted_recheck",
             target_finding_id="F-ORIGINAL",
+            source_gate_id="R1_MODELING",
             read_paths=[*bindings.values(), problem],
         )
 
@@ -318,10 +394,14 @@ def test_targeted_review_rejects_relabelled_forbidden_material(
     tmp_path: Path, forbidden_path: str
 ) -> None:
     """策略角色不能把题面、其他报告或无关产物伪装成修复证据。"""
-    run_dir = tmp_path / f"runs/targeted-alias-{Path(forbidden_path).stem}"
-    run_dir.mkdir(parents=True)
-    _write_state(run_dir)
-    bindings = _mode_bindings(run_dir, "targeted_recheck")
+    run_dir, source_report, source_adjudication = _registered_source(
+        tmp_path,
+        f"targeted-alias-{Path(forbidden_path).stem}",
+        "targeted_recheck",
+    )
+    bindings = _mode_bindings(
+        run_dir, "targeted_recheck", source_report, source_adjudication
+    )
     bindings["repair_evidence"] = _write_text(
         run_dir / forbidden_path, "禁止材料\n"
     )
@@ -333,6 +413,7 @@ def test_targeted_review_rejects_relabelled_forbidden_material(
             bindings,
             review_mode="targeted_recheck",
             target_finding_id="F-ORIGINAL",
+            source_gate_id="R1_MODELING",
         )
 
 
@@ -398,16 +479,25 @@ def test_full_and_targeted_modes_cannot_impersonate_each_other(tmp_path: Path) -
 
 def test_targeted_r5_does_not_require_or_emit_full_scoring(tmp_path: Path) -> None:
     """局部 R5 复核不能被 Schema 强迫伪装成完整竞赛评分。"""
-    _, request = _request(
-        tmp_path,
-        "targeted_recheck",
-        run_id="targeted-r5",
-        stage="R5_COMPREHENSIVE",
-    )
-    report_path = write_review_report(
-        request, _report(request, [_finding("F-ORIGINAL", "P1")])
-    )
-    report = load_json(report_path)
+    report = {
+        "schema_name": "review_report",
+        "schema_version": "3.0",
+        "request_id": "targeted-r5-request",
+        "run_id": "targeted-r5",
+        "stage": "R5_COMPREHENSIVE",
+        "review_round_id": "round-1",
+        "review_mode": "targeted_recheck",
+        "target_finding_id": "F-ORIGINAL",
+        "request_sha256": "0" * 64,
+        "input_manifest_sha256": "1" * 64,
+        "session_sha256": "2" * 64,
+        "verdict": "B",
+        "findings": [],
+        "read_only_confirmed": True,
+        "generated_at": "2026-07-21T00:00:00Z",
+    }
+
+    require_valid(report, "review_report")
 
     assert report["review_mode"] == "targeted_recheck"
     assert "quality_axis" not in report
@@ -419,24 +509,20 @@ def test_machine_p1_closes_with_machine_check(tmp_path: Path) -> None:
     run_dir, request = _request(
         tmp_path, "machine_check", run_id="machine-p1-close"
     )
-    finding = _finding("F-ORIGINAL", "P1")
-    report_path = write_review_report(request, _report(request, [finding]))
-    decision = _decision(
-        finding,
-        main_decision="rejected",
-        domain="machine",
-        verification_mode="machine_check",
-    )
+    report_path = write_review_report(request, _report(request, []))
     adjudication = write_review_adjudication(
-        report_path, _adjudication(report_path, [decision])
+        report_path, _adjudication(report_path, [])
     )
     receipt = materialize_review_receipt(request, report_path)
-    state = StateService(tmp_path).record_review_gate(
+    state = StateService(tmp_path).record_review_closure(
         run_dir.name, "R1_MODELING", receipt, Actor("machine-check")
     )
 
     assert adjudication.is_file()
     assert state["review_gates"]["R1_MODELING"]["status"] == "passed"
+    assert state["review_gates"]["R1_MODELING"]["closures"][0][
+        "review_mode"
+    ] == "machine_check"
 
 
 def test_scientific_p1_requires_targeted_reviewer(tmp_path: Path) -> None:
@@ -575,7 +661,6 @@ def test_diff_check_does_not_stale_unrelated_r1_r2(tmp_path: Path) -> None:
         tmp_path,
         "diff_check",
         run_id="diff-no-stale",
-        stage="R3_PAPER_LOGIC",
         with_passed_gates=True,
     )
     before = load_json(run_dir / "state.json")["review_gates"]
@@ -584,5 +669,5 @@ def test_diff_check_does_not_stale_unrelated_r1_r2(tmp_path: Path) -> None:
     after = load_json(run_dir / "state.json")["review_gates"]
 
     assert before == after
-    assert after["R1_MODELING"]["status"] == "passed"
+    assert after["R1_MODELING"]["status"] == "failed"
     assert after["R2_EXPERIMENT_q1"]["status"] == "passed"

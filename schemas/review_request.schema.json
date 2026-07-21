@@ -12,6 +12,13 @@
     "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT", "R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"]},
     "review_mode": {"enum": ["full_scientific", "targeted_recheck", "diff_check", "machine_check"]},
     "target_finding_id": {"type": "string", "minLength": 1},
+    "source_gate_id": {"type": "string", "minLength": 1},
+    "source_receipt_path": {"type": "string", "minLength": 1},
+    "source_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_report_path": {"type": "string", "minLength": 1},
+    "source_report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_adjudication_path": {"type": "string", "minLength": 1},
+    "source_adjudication_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "question_id": {"type": ["string", "null"]},
     "review_round_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "state_revision": {"type": "integer", "minimum": 0},
@@ -38,7 +45,7 @@
         "required": ["review_mode"],
         "properties": {"review_mode": {"enum": ["targeted_recheck", "diff_check", "machine_check"]}}
       },
-      "then": {"required": ["target_finding_id"]}
+      "then": {"required": ["target_finding_id", "source_gate_id", "source_receipt_path", "source_receipt_sha256", "source_report_path", "source_report_sha256", "source_adjudication_path", "source_adjudication_sha256"]}
     }
   ]
 }

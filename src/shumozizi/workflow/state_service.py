@@ -19,8 +19,10 @@ from shumozizi.results.sealing import verify_sealed_result
 from shumozizi.workflow.approval import verify_route_approval
 from shumozizi.workflow.integrity import verify_run_integrity
 from shumozizi.workflow.reviews import (
+    PASSING_VERDICTS,
     verify_review_adjudication,
     verify_review_receipt,
+    verify_scoped_review_source,
 )
 from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
 
@@ -199,6 +201,32 @@ REVIEW_GATE_STAGES = {
     "R5_STANDARD_FINAL": "R5_COMPREHENSIVE",
     "J0_FINAL_BLIND_JUDGE": "J0_FINAL_BLIND_JUDGE",
 }
+DEFERRED_BOUNDARY_EVENTS = {
+    "formal_experiment": {
+        WorkflowEvent.EXPERIMENT_STARTED,
+        WorkflowEvent.RESULTS_ADMITTED,
+        WorkflowEvent.PAPER_COMPLETED,
+        WorkflowEvent.QA_STARTED,
+        WorkflowEvent.QA_PASSED,
+        WorkflowEvent.FINAL_APPROVED,
+    },
+    "model_selection": {
+        WorkflowEvent.PAPER_COMPLETED,
+        WorkflowEvent.QA_STARTED,
+        WorkflowEvent.QA_PASSED,
+        WorkflowEvent.FINAL_APPROVED,
+    },
+    "paper_claim": {
+        WorkflowEvent.PAPER_COMPLETED,
+        WorkflowEvent.QA_STARTED,
+        WorkflowEvent.QA_PASSED,
+        WorkflowEvent.FINAL_APPROVED,
+    },
+    "final_submission": {
+        WorkflowEvent.QA_PASSED,
+        WorkflowEvent.FINAL_APPROVED,
+    },
+}
 
 
 class StateService:
@@ -337,6 +365,8 @@ class StateService:
         )
         request = load_json(resolved_receipt.with_name("review_request.json"))
         report = load_json(resolved_receipt.with_name("review_report.json"))
+        if request.get("review_mode", "full_scientific") != "full_scientific":
+            raise ContractError("scoped review 不能创建或替换 full_scientific 完整审核门")
         previous_gate = state.get("review_gates", {}).get(gate_id, {})
         probe_rerecord = (
             previous_gate.get("status") == "failed"
@@ -377,13 +407,21 @@ class StateService:
             and decision["gate_effect"] == "block"
         ]
         unresolved = adjudication["unresolved_conflicts"]
-        passed = not machine_blockers and not unresolved and not accepted_blocking
+        open_blocking = sorted(
+            {item["finding_id"] for item in accepted_blocking} | set(unresolved)
+        )
+        passed = not machine_blockers and not open_blocking
         if gate_id == "J0_FINAL_BLIND_JUDGE" and state.get("review_gates", {}).get(
             gate_id, {}
         ).get("receipt"):
             raise ContractError("J0_FINAL_BLIND_JUDGE 只允许登记一次")
         now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         next_revision = state["revision"] + 1
+        previous_closures = previous_gate.get("closures", [])
+        if previous_closures and previous_gate.get("receipt_sha256") != sha256_file(
+            resolved_receipt
+        ):
+            raise ContractError("已有 scoped closure 时不能替换 full_scientific 根回执")
         state.setdefault("review_gates", {})[gate_id] = {
             "status": "passed" if passed else "failed",
             "receipt": relative_receipt,
@@ -398,7 +436,37 @@ class StateService:
             "request_stage": expected_stage,
             "review_mode": request.get("review_mode", "full_scientific"),
             "reviewer_verdict": report.get("verdict", ""),
+            "open_blocking_findings": open_blocking,
+            "closures": previous_closures,
         }
+        obligations = [
+            item
+            for item in state.get("deferred_obligations", [])
+            if not (
+                item["source_gate_id"] == gate_id
+                and item["source_receipt_sha256"]
+                == previous_gate.get("receipt_sha256")
+                and item["status"] == "open"
+            )
+        ]
+        for finding in report["findings"]:
+            if finding.get("status") != "deferred_empirical":
+                continue
+            obligations.append(
+                {
+                    "finding_id": finding["finding_id"],
+                    "source_gate_id": gate_id,
+                    "block_before": finding["block_before"],
+                    "closure_condition": finding["closure_condition"],
+                    "failure_action": finding["failure_action"],
+                    "status": "open",
+                    "source_receipt_sha256": sha256_file(resolved_receipt),
+                    "created_revision": next_revision,
+                    "closed_by_receipt_sha256": None,
+                    "closed_revision": None,
+                }
+            )
+        state["deferred_obligations"] = obligations
         state["revision"] = next_revision
         state["last_updated_by"] = actor.actor_id
         state["updated_at"] = now
@@ -426,6 +494,143 @@ class StateService:
                     ),
                 ],
                 "note": f"{gate_id}: {'passed' if passed else 'failed'}",
+            }
+        )
+        require_valid(state, "workflow_state")
+        atomic_json(state_path, state)
+        return state
+
+    def record_review_closure(
+        self,
+        run_id: str,
+        gate_id: str,
+        receipt_path: Path,
+        actor: Actor,
+    ) -> dict[str, Any]:
+        """把 scoped review 追加到 full root，不覆盖完整审核根证明。"""
+        run_dir = self.repo_root / "runs" / run_id
+        state_path = run_dir / "state.json"
+        state = load_json(state_path)
+        require_valid(state, "workflow_state")
+        gate = state.get("review_gates", {}).get(gate_id)
+        if not gate or not gate.get("receipt"):
+            raise ContractError("scoped closure 要求已经存在 full_scientific 完整审核根")
+        if gate.get("review_mode", "full_scientific") != "full_scientific":
+            raise ContractError("scoped closure 的 source gate 不是 full_scientific 根")
+        resolved_receipt = receipt_path.resolve()
+        try:
+            relative_receipt = resolved_receipt.relative_to(run_dir.resolve()).as_posix()
+        except ValueError as exc:
+            raise ContractError("scoped closure 回执路径越过运行目录边界") from exc
+        verification = verify_review_receipt(
+            run_dir, resolved_receipt, require_current_revision=False
+        )
+        if not verification["valid"]:
+            raise ContractError("scoped closure 回执复验失败: " + "; ".join(verification["errors"]))
+        receipt = load_json(resolved_receipt)
+        if receipt["schema_version"] != "3.0":
+            raise ContractError("scoped closure 只接受 v3 adjudicated receipt")
+        request = load_json(resolved_receipt.with_name("review_request.json"))
+        report = load_json(resolved_receipt.with_name("review_report.json"))
+        review_mode = request.get("review_mode", "full_scientific")
+        if review_mode == "full_scientific":
+            raise ContractError("full_scientific 回执必须使用 record_review_gate")
+        if request.get("source_gate_id") != gate_id:
+            raise ContractError("scoped closure 的 source_gate_id 与目标门不一致")
+        if receipt["state_revision"] != state["revision"]:
+            raise ContractError("scoped closure 不是针对当前 state revision 创建")
+        verify_scoped_review_source(
+            run_dir, request, state, require_open=True
+        )
+        target_finding_id = request["target_finding_id"]
+        existing_targets = {
+            item["target_finding_id"] for item in gate.get("closures", [])
+        }
+        if target_finding_id in existing_targets:
+            raise ContractError("target finding 已经存在 closure，禁止重复关闭")
+        adjudication_path = resolve_inside(
+            run_dir, receipt["adjudication_path"], must_exist=True
+        )
+        adjudication_verification = verify_review_adjudication(
+            run_dir,
+            resolved_receipt.with_name("review_report.json"),
+            adjudication_path,
+            require_current_revision=False,
+        )
+        if not adjudication_verification["valid"]:
+            raise ContractError(
+                "scoped closure 裁决复验失败: "
+                + "; ".join(adjudication_verification["errors"])
+            )
+        adjudication = load_json(adjudication_path)
+        passing_verdicts = PASSING_VERDICTS.get(report["stage"], {"A", "B"})
+        scoped_blocking = [
+            item
+            for item in adjudication["decisions"]
+            if item["main_decision"] == "accepted" and item["gate_effect"] == "block"
+        ]
+        if (
+            report["verdict"] not in passing_verdicts
+            or scoped_blocking
+            or adjudication["unresolved_conflicts"]
+        ):
+            raise ContractError("scoped review 尚未证明 target finding 已关闭")
+        expected_stage, question_id = self._review_gate_identity(gate_id)
+        if report["stage"] != expected_stage or request.get("question_id") != question_id:
+            raise ContractError("scoped closure 的 stage 或 question_id 与完整门不一致")
+        self._check_review_gate_timing(run_dir, state, gate_id, question_id)
+        machine_blockers = collect_machine_blockers(run_dir, gate_id, state)
+        remaining = [
+            item
+            for item in gate.get("open_blocking_findings", [])
+            if item != target_finding_id
+        ]
+        next_revision = state["revision"] + 1
+        closure = {
+            "target_finding_id": target_finding_id,
+            "review_mode": review_mode,
+            "receipt": relative_receipt,
+            "receipt_sha256": sha256_file(resolved_receipt),
+            "adjudication": adjudication_path.relative_to(run_dir).as_posix(),
+            "adjudication_sha256": sha256_file(adjudication_path),
+            "source_receipt_sha256": request["source_receipt_sha256"],
+            "recorded_revision": next_revision,
+        }
+        gate.setdefault("closures", []).append(closure)
+        gate["open_blocking_findings"] = remaining
+        gate["accepted_blocking_finding_count"] = len(remaining)
+        gate["machine_blocker_count"] = len(machine_blockers)
+        gate["status"] = "passed" if not remaining and not machine_blockers else "failed"
+        for obligation in state.get("deferred_obligations", []):
+            if (
+                obligation["source_gate_id"] == gate_id
+                and obligation["finding_id"] == target_finding_id
+                and obligation["status"] == "open"
+            ):
+                obligation["status"] = "closed"
+                obligation["closed_by_receipt_sha256"] = sha256_file(resolved_receipt)
+                obligation["closed_revision"] = next_revision
+        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        state["revision"] = next_revision
+        state["last_updated_by"] = actor.actor_id
+        state["updated_at"] = now
+        state["history"].append(
+            {
+                "from_status": state["status"],
+                "status": state["status"],
+                "event": "REVIEW_CLOSURE_RECORDED",
+                "timestamp": now,
+                "actor": asdict(actor),
+                "artifact_refs": [
+                    asdict(
+                        ArtifactRef(
+                            role=f"{gate_id}_CLOSURE",
+                            path=relative_receipt,
+                            sha256=sha256_file(resolved_receipt),
+                        )
+                    )
+                ],
+                "note": f"{gate_id}:{target_finding_id} closed by {review_mode}",
             }
         )
         require_valid(state, "workflow_state")
@@ -635,6 +840,7 @@ class StateService:
         refs: list[ArtifactRef],
     ) -> None:
         """检查需要跨文件权威事实的事件。"""
+        self._check_deferred_obligations(state, event)
         roles = {item.role for item in refs}
         if event is WorkflowEvent.ROUTE_APPROVED:
             if not {"route_approval_receipt", "route_lock"}.issubset(roles):
@@ -716,6 +922,23 @@ class StateService:
                 )
 
     @staticmethod
+    def _check_deferred_obligations(
+        state: dict[str, Any], event: WorkflowEvent
+    ) -> None:
+        """在声明的 block_before 边界前拒绝未关闭经验义务。"""
+        blocking = [
+            item
+            for item in state.get("deferred_obligations", [])
+            if item["status"] == "open"
+            and event in DEFERRED_BOUNDARY_EVENTS[item["block_before"]]
+        ]
+        if blocking:
+            details = ", ".join(
+                f"{item['finding_id']}@{item['block_before']}" for item in blocking
+            )
+            raise ContractError("deferred_empirical obligation 尚未关闭: " + details)
+
+    @staticmethod
     def _verify_model_spec_revision(run_dir: Path, refs: list[ArtifactRef]) -> None:
         """验证规格修订没有越过当前路线锁边界。"""
         by_role: dict[str, ArtifactRef] = {}
@@ -791,6 +1014,10 @@ class StateService:
             gate = gates.get(gate_id, {})
             if gate.get("status") != "passed" or not gate.get("receipt"):
                 raise ContractError(f"审核门未通过或缺少回执: {gate_id}")
+            if gate.get("review_mode", "full_scientific") != "full_scientific":
+                raise ContractError(f"审核门缺少 full_scientific 完整审核根: {gate_id}")
+            if gate.get("open_blocking_findings"):
+                raise ContractError(f"审核门仍有未关闭 finding: {gate_id}")
             receipt_path = run_dir / gate["receipt"]
             if not receipt_path.is_file() or gate.get("receipt_sha256") != sha256_file(
                 receipt_path
@@ -804,6 +1031,109 @@ class StateService:
                     f"审核回执绑定已失效: {gate_id}: "
                     + "; ".join(verification["errors"])
                 )
+            base_request = load_json(receipt_path.with_name("review_request.json"))
+            if base_request.get("review_mode", "full_scientific") != "full_scientific":
+                raise ContractError(f"审核根回执不是 full_scientific: {gate_id}")
+            base_report = load_json(receipt_path.with_name("review_report.json"))
+            base_receipt = load_json(receipt_path)
+            base_adjudication_path = resolve_inside(
+                run_dir, base_receipt["adjudication_path"], must_exist=True
+            )
+            base_adjudication = load_json(base_adjudication_path)
+            root_blockers = {
+                item["finding_id"]
+                for item in base_adjudication["decisions"]
+                if item["main_decision"] == "accepted"
+                and item["gate_effect"] == "block"
+            } | set(base_adjudication["unresolved_conflicts"])
+            deferred_targets = {
+                item["finding_id"]
+                for item in base_report["findings"]
+                if item.get("status") == "deferred_empirical"
+            }
+            seen_targets: set[str] = set()
+            for closure in gate.get("closures", []):
+                target = closure["target_finding_id"]
+                if target in seen_targets:
+                    raise ContractError(f"审核 closure 重复关闭同一 finding: {gate_id}:{target}")
+                seen_targets.add(target)
+                closure_path = resolve_inside(
+                    run_dir, closure["receipt"], must_exist=True
+                )
+                if closure["receipt_sha256"] != sha256_file(closure_path):
+                    raise ContractError(f"审核 closure 回执哈希失效: {gate_id}:{target}")
+                closure_verification = verify_review_receipt(
+                    run_dir, closure_path, require_current_revision=False
+                )
+                if not closure_verification["valid"]:
+                    raise ContractError(
+                        f"审核 closure 回执绑定失效: {gate_id}:{target}: "
+                        + "; ".join(closure_verification["errors"])
+                    )
+                closure_request = load_json(
+                    closure_path.with_name("review_request.json")
+                )
+                closure_report = load_json(
+                    closure_path.with_name("review_report.json")
+                )
+                closure_receipt = load_json(closure_path)
+                closure_adjudication_path = resolve_inside(
+                    run_dir, closure_receipt["adjudication_path"], must_exist=True
+                )
+                closure_adjudication = load_json(closure_adjudication_path)
+                closure_adjudication_relative = closure_adjudication_path.relative_to(
+                    run_dir
+                ).as_posix()
+                if (
+                    closure_request.get("review_mode") == "full_scientific"
+                    or closure_request.get("review_mode") != closure["review_mode"]
+                ):
+                    raise ContractError(f"审核 closure 模式不一致: {gate_id}:{target}")
+                if (
+                    closure.get("adjudication") != closure_adjudication_relative
+                    or closure.get("adjudication_sha256")
+                    != sha256_file(closure_adjudication_path)
+                ):
+                    raise ContractError(f"审核 closure 裁决哈希失效: {gate_id}:{target}")
+                if closure_request.get("source_gate_id") != gate_id:
+                    raise ContractError(f"审核 closure source gate 不一致: {gate_id}:{target}")
+                if closure_request.get("source_receipt_sha256") != gate.get(
+                    "receipt_sha256"
+                ):
+                    raise ContractError(f"审核 closure 未绑定当前完整根: {gate_id}:{target}")
+                if closure_request.get("target_finding_id") != target:
+                    raise ContractError(f"审核 closure target finding 不一致: {gate_id}:{target}")
+                passing_verdicts = PASSING_VERDICTS.get(
+                    closure_report["stage"], {"A", "B"}
+                )
+                closure_blockers = [
+                    item
+                    for item in closure_adjudication["decisions"]
+                    if item["main_decision"] == "accepted"
+                    and item["gate_effect"] == "block"
+                ]
+                if (
+                    closure_report["verdict"] not in passing_verdicts
+                    or closure_blockers
+                    or closure_adjudication["unresolved_conflicts"]
+                ):
+                    raise ContractError(
+                        f"审核 closure 未证明 finding 已关闭: {gate_id}:{target}"
+                    )
+                verify_scoped_review_source(
+                    run_dir, closure_request, state, require_open=False
+                )
+            unexpected_targets = seen_targets - root_blockers - deferred_targets
+            if unexpected_targets:
+                details = ", ".join(sorted(unexpected_targets))
+                raise ContractError(f"审核 closure 关闭了非阻断 finding: {gate_id}:{details}")
+            expected_open = root_blockers - seen_targets
+            recorded_open = set(
+                gate.get("open_blocking_findings", root_blockers)
+            )
+            if recorded_open != expected_open or expected_open:
+                details = ", ".join(sorted(expected_open)) or "state 记录不一致"
+                raise ContractError(f"审核门仍有未关闭 finding: {gate_id}: {details}")
 
     def _assert_complete_invariants(self, run_dir: Path, state: dict[str, Any]) -> None:
         """复验 COMPLETE 所绑定的全部当前事实。"""

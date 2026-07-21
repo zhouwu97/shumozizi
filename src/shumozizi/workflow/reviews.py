@@ -135,6 +135,155 @@ def _relative(run_dir: Path, path: Path) -> str:
         raise ContractError(f"审核路径越过运行目录边界: {path}") from exc
 
 
+def _review_gate_identity(gate_id: str) -> tuple[str, str | None]:
+    """把状态门 ID 还原为审核 stage 与可选 question_id。"""
+    if gate_id.startswith("R2_EXPERIMENT_"):
+        return "R2_EXPERIMENT", gate_id.removeprefix("R2_EXPERIMENT_")
+    if gate_id.startswith("R3_PAPER_LOGIC_"):
+        return "R3_PAPER_LOGIC", gate_id.removeprefix("R3_PAPER_LOGIC_")
+    stages = {
+        "R1_MODELING": "R1_MODELING",
+        "R3_PAPER_LOGIC": "R3_PAPER_LOGIC",
+        "R4_FORMAT_VISUAL": "R4_FORMAT_VISUAL",
+        "R5_STANDARD_FINAL": "R5_COMPREHENSIVE",
+        "J0_FINAL_BLIND_JUDGE": "J0_FINAL_BLIND_JUDGE",
+    }
+    if gate_id not in stages:
+        raise ContractError(f"未知 source_gate_id: {gate_id}")
+    return stages[gate_id], None
+
+
+def _open_source_findings(
+    state: dict[str, Any],
+    gate_id: str,
+    gate: dict[str, Any],
+    adjudication: dict[str, Any],
+) -> set[str]:
+    """读取显式 open finding；旧 gate 缺字段时从根裁决兼容推导。"""
+    if "open_blocking_findings" in gate:
+        open_findings = set(gate["open_blocking_findings"])
+    else:
+        open_findings = {
+            item["finding_id"]
+            for item in adjudication["decisions"]
+            if (
+                item["main_decision"] == "accepted" and item["gate_effect"] == "block"
+            )
+            or item["main_decision"] in UNRESOLVED_ADJUDICATIONS
+        }
+    open_findings.update(
+        item["finding_id"]
+        for item in state.get("deferred_obligations", [])
+        if item["source_gate_id"] == gate_id and item["status"] == "open"
+    )
+    return open_findings
+
+
+def _resolve_scoped_review_source(
+    run_dir: Path,
+    state: dict[str, Any],
+    *,
+    stage: str,
+    question_id: str | None,
+    review_mode: str,
+    source_gate_id: str,
+    target_finding_id: str,
+    binding_paths: dict[str, str],
+    require_open: bool,
+) -> dict[str, str]:
+    """复验 scoped request 所依附的 full root 与 target finding 哈希链。"""
+    gate = state.get("review_gates", {}).get(source_gate_id)
+    if not gate or not gate.get("receipt"):
+        raise ContractError("scoped review 必须依附已经存在的 full_scientific 完整审核根")
+    if gate.get("review_mode", "full_scientific") != "full_scientific":
+        raise ContractError("source gate 不是 full_scientific 完整审核根")
+    expected_stage, expected_question = _review_gate_identity(source_gate_id)
+    if stage != expected_stage or question_id != expected_question:
+        raise ContractError("scoped review 的 stage、question_id 与 source gate 不一致")
+    receipt_path = resolve_inside(run_dir, gate["receipt"], must_exist=True)
+    if gate.get("receipt_sha256") != sha256_file(receipt_path):
+        raise ContractError("source receipt 哈希与完整审核根不一致")
+    verification = verify_review_receipt(
+        run_dir, receipt_path, require_current_revision=False
+    )
+    if not verification["valid"]:
+        raise ContractError("source receipt 复验失败: " + "; ".join(verification["errors"]))
+    receipt = load_json(receipt_path)
+    source_request_path = receipt_path.with_name("review_request.json")
+    report_path = receipt_path.with_name("review_report.json")
+    adjudication_path = resolve_inside(
+        run_dir, receipt["adjudication_path"], must_exist=True
+    )
+    source_request = load_json(source_request_path)
+    report = load_json(report_path)
+    adjudication = load_json(adjudication_path)
+    if source_request.get("review_mode", "full_scientific") != "full_scientific":
+        raise ContractError("source receipt 未绑定 full_scientific 请求")
+    if report["stage"] != stage or source_request.get("question_id") != question_id:
+        raise ContractError("source report 身份与 scoped review 不一致")
+    findings = {
+        item["finding_id"]: item
+        for item in report["findings"]
+    }
+    if target_finding_id not in findings:
+        raise ContractError("target_finding_id 不存在于 source report")
+    decisions = {
+        item["finding_id"]: item
+        for item in adjudication["decisions"]
+    }
+    if target_finding_id not in decisions:
+        raise ContractError("source adjudication 未裁决 target_finding_id")
+    if decisions[target_finding_id].get("verification_mode") != review_mode:
+        raise ContractError("scoped 关闭模式与 source decision.verification_mode 不一致")
+    if require_open and target_finding_id not in _open_source_findings(
+        state, source_gate_id, gate, adjudication
+    ):
+        raise ContractError("target finding 当前不存在或已经通过 closure 关闭")
+    source_adjudication_binding = binding_paths.get("source_adjudication")
+    if source_adjudication_binding != _relative(run_dir, adjudication_path):
+        raise ContractError("source_adjudication 必须绑定完整审核根的权威裁决")
+    original_path_value = binding_paths.get("original_finding")
+    if original_path_value is None:
+        raise ContractError("scoped review 缺少 original_finding")
+    original_finding = load_json(
+        resolve_inside(run_dir, original_path_value, must_exist=True)
+    )
+    if original_finding != findings[target_finding_id]:
+        raise ContractError("original_finding 不是 source report 中目标 finding 的真实快照")
+    return {
+        "source_gate_id": source_gate_id,
+        "source_receipt_path": _relative(run_dir, receipt_path),
+        "source_receipt_sha256": sha256_file(receipt_path),
+        "source_report_path": _relative(run_dir, report_path),
+        "source_report_sha256": sha256_file(report_path),
+        "source_adjudication_path": _relative(run_dir, adjudication_path),
+        "source_adjudication_sha256": sha256_file(adjudication_path),
+    }
+
+
+def verify_scoped_review_source(
+    run_dir: Path,
+    request: dict[str, Any],
+    state: dict[str, Any],
+    *,
+    require_open: bool = False,
+) -> None:
+    """复验已冻结 scoped request 的 source chain 字段。"""
+    expected = _resolve_scoped_review_source(
+        run_dir,
+        state,
+        stage=request["stage"],
+        question_id=request.get("question_id"),
+        review_mode=request["review_mode"],
+        source_gate_id=request["source_gate_id"],
+        target_finding_id=request["target_finding_id"],
+        binding_paths=request["binding_paths"],
+        require_open=require_open,
+    )
+    if any(request.get(key) != value for key, value in expected.items()):
+        raise ContractError("scoped request 的 source receipt/report/adjudication 哈希链已失效")
+
+
 def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> None:
     """拒绝调用方削减固定审核材料或伪造源码包角色。"""
     review_mode = request.get("review_mode", "full_scientific")
@@ -160,6 +309,13 @@ def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> N
     manifest_report = verify_review_input_manifest(run_dir, manifest_path, request=request)
     if not manifest_report["valid"]:
         raise ContractError("审核材料清单复验失败: " + "; ".join(manifest_report["errors"]))
+    if review_mode != "full_scientific":
+        verify_scoped_review_source(
+            run_dir,
+            request,
+            load_json(run_dir / "state.json"),
+            require_open=False,
+        )
     if review_mode == "full_scientific" and request["stage"] in {
         "R4_FORMAT_VISUAL",
         "R5_COMPREHENSIVE",
@@ -222,6 +378,7 @@ def create_review_request(
     mode: str | None = None,
     review_mode: str = "full_scientific",
     target_finding_id: str | None = None,
+    source_gate_id: str | None = None,
 ) -> Path:
     """冻结当前 revision 并创建供新桌面任务领取的只读审核请求。"""
     if stage not in REVIEW_STAGES:
@@ -230,8 +387,12 @@ def create_review_request(
         raise ContractError(f"未知审核模式: {review_mode}")
     if review_mode == "full_scientific" and target_finding_id is not None:
         raise ContractError("full_scientific 不得声明 target_finding_id")
+    if review_mode == "full_scientific" and source_gate_id is not None:
+        raise ContractError("full_scientific 不得声明 source_gate_id")
     if review_mode != "full_scientific" and not target_finding_id:
         raise ContractError(f"{review_mode} 必须绑定 target_finding_id")
+    if review_mode != "full_scientific" and not source_gate_id:
+        raise ContractError(f"{review_mode} 必须绑定 source_gate_id")
     if stage == "J0_FINAL_BLIND_JUDGE" and any(
         (run_dir / "review" / stage.lower()).glob("*/review_request.json")
     ):
@@ -290,6 +451,19 @@ def create_review_request(
             raise ContractError(f"审核绑定文件不存在: {path}")
         hashes[name] = sha256_file(resolved)
         binding_paths[name] = _relative(run_dir, resolved)
+    source_fields: dict[str, str] = {}
+    if review_mode != "full_scientific":
+        source_fields = _resolve_scoped_review_source(
+            run_dir,
+            state,
+            stage=stage,
+            question_id=question_id,
+            review_mode=review_mode,
+            source_gate_id=str(source_gate_id),
+            target_finding_id=str(target_finding_id),
+            binding_paths=binding_paths,
+            require_open=True,
+        )
     paths = read_paths or [Path(path) for path in binding_paths.values()]
     if any(not (item if item.is_absolute() else run_dir / item).resolve().is_file() for item in paths):
         raise ContractError("审核允许读取的路径必须是当前存在的文件")
@@ -342,6 +516,7 @@ def create_review_request(
             if target_finding_id is not None
             else {}
         ),
+        **source_fields,
         "question_id": question_id,
         "review_round_id": round_id,
         "state_revision": state["revision"],
