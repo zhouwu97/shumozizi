@@ -39,7 +39,9 @@ shumozizi 面向数学建模竞赛中的完整作品生产。
 → 设计共享数学对象和各问依赖
 → 形成 2—3 条完整研究路线
 → 人工确认路线
-→ 数学规格与实验组合
+→ 数学规格、baseline 与最低成本证伪实验
+→ Scientific Viability Check
+→ 深化、定向修复、并行 fallback 或停止路线
 → 五轮论文生产
 → 三类审核域
 → 人工最终核包
@@ -77,6 +79,12 @@ shumozizi 面向数学建模竞赛中的完整作品生产。
 实验不是单次跑出一个指标。每个核心结论至少应有相匹配的证据组合：公平 baseline、主模型、稳健性或敏感性分析，以及在确有复杂模块时进行的消融或替代模型比较。
 
 所有论文主张都要进入论证地图，明确其数学依据、实验结果、图表位置和适用边界。负结果和不确定结果应如实保留，用于收缩结论或调整路线，而不是包装成成功结果。
+
+正式实验前必须冻结 `analysis/MINIMUM_SCIENTIFIC_CONTRACT.md`，明确 required outputs、核心目标、
+硬约束、baseline、primary 模型族、数据划分、主要指标、正控制、失败判据、fallback 条件和预算。
+最小实验后必须做 `analysis/SCIENTIFIC_VIABILITY.md`，一次只处理当前最高风险，记录反例、证伪
+实验、真实结果、baseline/fallback 比较、决策及时间上限。`ROUTE_AT_RISK` 必须并行最小 fallback，
+`ROUTE_FAILED` 必须停止当前 primary；二者都不能进入正式论文。
 
 ### 五轮论文生产
 
@@ -183,7 +191,8 @@ $mathmodel-workflow
 读取 runs/2026-A-001/state.json，从当前状态继续，运行到下一个人工确认点后停止。
 ```
 
-仅分析数据、调试代码或修改论文时，直接使用对应能力，不启动完整工作流。详细运行约束见 [Codex 工作流](docs/CODEX_WORKFLOW.md)。
+仅分析数据、调试代码或修改论文时，直接使用对应能力，不启动完整工作流。详细运行约束见
+[Codex 工作流](docs/CODEX_WORKFLOW.md) 和 [质量优先试点](docs/QUALITY_FIRST_PILOT.md)。
 
 ## 后台保障
 

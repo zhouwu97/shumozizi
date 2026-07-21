@@ -4,11 +4,91 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from shumozizi.core.io import atomic_json, load_json, sha256_file
 from shumozizi.qa.visual import audit_pdf_format
 from shumozizi.workflow.review_policy import get_review_stage_policy
 from shumozizi.workflow.review_sessions import claim_review_request
 from shumozizi.workflow.reviews import write_review_adjudication
+from shumozizi.workflow.viability import (
+    create_minimum_scientific_contract,
+    create_scientific_viability,
+)
+
+
+def write_minimum_scientific_contract_fixture(run_dir: Path) -> Path:
+    """写入可通过正式实验门的最低科学合同夹具。"""
+    candidates = (
+        run_dir / "brief/model_spec.json",
+        run_dir / "reports/model_spec.md",
+    )
+    source = next((path for path in candidates if path.is_file()), None)
+    if source is None:
+        source = run_dir / "analysis/contract-source.txt"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("frozen test contract source\n", encoding="utf-8")
+    target = run_dir / "analysis/MINIMUM_SCIENTIFIC_CONTRACT.md"
+    if target.exists():
+        return target
+    return create_minimum_scientific_contract(
+        run_dir,
+        source_paths=[source],
+        values={
+            "required_outputs": ["Q1 直接答案"],
+            "core_objective": "最小化冻结验证集误差",
+            "hard_constraints": ["输出满足题目单位与可行域"],
+            "baseline": "冻结均值 baseline",
+            "primary_model_family": "冻结统计模型族",
+            "data_split": "固定训练验证划分",
+            "primary_metrics": ["验证误差"],
+            "positive_control": "已知真值合成恢复",
+            "route_failure_criterion": "正控制无法达到题目误差要求",
+            "fallback_trigger": "正控制失败后启动已批准 baseline",
+            "experiment_budget": "最多 60 分钟与 20 次拟合",
+        },
+    )
+
+
+def write_viable_scientific_viability_fixture(run_dir: Path) -> Path:
+    """写入可通过正式全文门的单风险 viability 夹具。"""
+    source = run_dir / "results/viability-summary.txt"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("positive control and baseline comparison passed\n", encoding="utf-8")
+    target = run_dir / "analysis/SCIENTIFIC_VIABILITY.md"
+    if not target.exists():
+        create_scientific_viability(
+            run_dir,
+            question_scope=["q1"],
+            source_paths=[source],
+        )
+    text = target.read_text(encoding="utf-8")
+    marker = text.find("\n---\n", 4)
+    metadata = yaml.safe_load(text[4:marker])
+    metadata.update(
+        {
+            "verdict": "VIABLE",
+            "evaluated_at": "2026-07-21T00:00:00Z",
+            "threshold_basis": "题目误差要求与冻结 baseline",
+            "highest_risk": "模型可能无法恢复题目要求输出",
+            "counterexample": "已知真值正例恢复失败会推翻路线",
+            "falsification_experiment": "运行冻结正例并与 baseline 比较",
+            "experiment_result": "真实夹具结果通过冻结阈值",
+            "baseline_fallback_comparison": "primary 优于 baseline，无需启动 fallback",
+            "decision_reason": "正控制和直接答案均支持继续",
+            "next_action": "进入正式全文并保持稳健性边界",
+            "action_status": "completed",
+            "remaining_time_minutes": 120,
+            "investment_limit_minutes": 30,
+        }
+    )
+    header = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).rstrip()
+    target.write_text(
+        f"---\n{header}\n---\n{text[marker + 5:]}",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return target
 
 
 def write_passing_format_audit(run_dir: Path, final_pdf: Path) -> Path:

@@ -8,6 +8,7 @@ import pytest
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.paper.receipts import verify_figure_receipts, verify_paper_build_receipt
 from shumozizi.workflow.state_service import Actor, StateService, WorkflowEvent
+from tests.review_contract_helpers import write_viable_scientific_viability_fixture
 from tests.runtime_helpers import RuntimeFixture
 
 
@@ -211,6 +212,7 @@ def test_paper_completed_requires_production_receipts(tmp_path: Path) -> None:
     (run_dir / "paper").mkdir(parents=True)
     (run_dir / "figures").mkdir()
     (run_dir / "state.json").write_text(json.dumps(_state(run_dir.name)), encoding="utf-8")
+    write_viable_scientific_viability_fixture(run_dir)
 
     with pytest.raises(ContractError, match="生产回执"):
         StateService(tmp_path).transition(

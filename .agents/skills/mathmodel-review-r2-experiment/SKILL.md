@@ -45,7 +45,25 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 6. 独立检查数据划分与重复测量边界、时间/目标泄漏、指标对目标的适用性、单位、硬约束和解的可信度。
 7. 检查参数可辨识性与多初值稳定性、结论是否超出证据，以及 robustness/ablation 的扰动是否足以区分竞争模型。
 8. 在允许预算内复现一次并执行预注册 oracle；环境不足时明确区分 `unknown` 与 `challenged`。
-9. 记录图表是否来自 accepted sealed result，不对生产文件做修复。
+9. 对照 `analysis/SCIENTIFIC_VIABILITY.md` 的四个维度作独立判断：是否直接回答、是否有信息量、
+   正控制是否通过、问题是否可由同路线局部修复。不要把“可复现”误写成“值得继续投入”。
+10. 记录图表是否来自 accepted sealed result，不对生产文件做修复。
+
+## Scientific Viability
+
+R2 的首要问题是结果是否支持继续投入，而不是实验文件是否齐全。阈值必须来自当前题目的误差、
+工程尺度、决策边界、baseline 或搜索域。正类灵敏度为零、已知真值无法恢复、区间接近整个搜索
+域、复杂模型长期不优于 baseline、关键输入变化时模型无响应，均是强风险信号。
+
+- `VIABLE`：直接回答、有信息量、正控制通过，继续深化；
+- `WEAK_BUT_REPAIRABLE`：基本回答且有低成本局部修复，定向修复后复查；
+- `ROUTE_AT_RISK`：当前路线与 fallback 并行做最低成本比较，禁止进入正式论文；
+- `ROUTE_FAILED`：停止当前 primary，保留失败证据并返回路线竞争。
+
+共享模型或强耦合问题可以联合执行 R2，但报告必须逐问给出 viability 信号和直接答案。若绑定了
+`scientific_viability`，先复验其来源哈希和结论一致性；Reviewer 仍须独立判断，不能照抄生产结论。
+若结论为 `ROUTE_FAILED`，必须核对失败来源属于路线、实现、目标错位、数据受限还是预算受限，
+并据此建议换路线、局部修复、重定义目标、转向可辨识边界或停止无边界调参。
 
 ## 双轴报告
 
@@ -91,7 +109,8 @@ targeted 模式新增 P0/P1 时必须提供完整 `reopen_context`；`deferred_e
 
 ## 通过条件
 
-无 P0/P1，执行证据、指标、约束、baseline 和 seal 均可复验；允许无阻断的 P2 时使用
+无 P0/P1，执行证据、指标、约束、baseline 和 seal 均可复验，且 viability 不是
+`ROUTE_AT_RISK` 或 `ROUTE_FAILED`；允许无阻断的 P2 时使用
 `REPRODUCIBLE_WITH_WARNINGS`，否则使用 `REPRODUCIBLE` 或 `BLOCKED`。
 
 ## 输出格式

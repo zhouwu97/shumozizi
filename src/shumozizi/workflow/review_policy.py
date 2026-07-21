@@ -85,6 +85,7 @@ REVIEW_MODE_POLICIES: dict[str, dict[str, Any]] = {
         "quality_dimensions": ["确定性复验", "证据完整性"],
     },
 }
+SUPPLEMENTAL_EVIDENCE_ROLE_PREFIX = "supplemental_evidence:"
 
 REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
     "R1_MODELING": {
@@ -100,7 +101,11 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
             "data_profile",
             "validation_plan",
         ],
-        "optional_inputs": ["phase_a"],
+        "optional_inputs": [
+            "phase_a",
+            "scientific_viability",
+            "supplemental_evidence_manifest",
+        ],
         "forbidden_inputs": ["review_report.json", "review_receipt.json"],
         "required_outputs": ["verdict", "findings"],
         "hard_blocks": ["题意错误", "变量或约束不可计算", "必做问题遗漏"],
@@ -123,7 +128,13 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
             "baseline_results",
             "robustness_results",
         ],
-        "optional_inputs": ["figure_plan", "figure_receipts", "failure_samples"],
+        "optional_inputs": [
+            "figure_plan",
+            "figure_receipts",
+            "failure_samples",
+            "scientific_viability",
+            "supplemental_evidence_manifest",
+        ],
         "forbidden_inputs": ["review_report.json", "review_receipt.json"],
         "required_outputs": ["verdict", "findings"],
         "hard_blocks": ["无法复现", "指标不对应题意", "约束失败", "数据泄漏"],
@@ -146,7 +157,11 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
             "bibliography",
             "final_pdf",
         ],
-        "optional_inputs": ["figure_plan"],
+        "optional_inputs": [
+            "figure_plan",
+            "scientific_viability",
+            "supplemental_evidence_manifest",
+        ],
         "forbidden_inputs": ["review_report.json", "review_receipt.json"],
         "required_outputs": ["verdict", "findings"],
         "hard_blocks": ["某问未直接回答", "数字无证据", "重大推导错误"],
@@ -168,7 +183,7 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
             "final_pdf",
             "source_manifest",
         ],
-        "optional_inputs": ["paper_source"],
+        "optional_inputs": ["paper_source", "supplemental_evidence_manifest"],
         "forbidden_inputs": ["review_report.json", "review_receipt.json"],
         "required_outputs": ["verdict", "findings"],
         "hard_blocks": ["匿名失败", "页面或模板违规", "公式图表裁切", "提交包缺失"],
@@ -191,7 +206,13 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
             "evidence_report",
             "source_manifest",
         ],
-        "optional_inputs": ["paper_plan", "submission_manifest", "source_archive"],
+        "optional_inputs": [
+            "paper_plan",
+            "submission_manifest",
+            "source_archive",
+            "scientific_viability",
+            "supplemental_evidence_manifest",
+        ],
         "forbidden_inputs": [
             "review/r1_modeling/",
             "review/r2_experiment/",
@@ -314,3 +335,9 @@ def get_review_stage_policy(
         raise ContractError("冻结 Profile 包含不受支持的 J0 可见角色: " + ", ".join(unknown))
     policy["mandatory_inputs"] = list(roles)
     return policy
+
+
+def review_material_role_allowed(role: str, policy: dict[str, Any]) -> bool:
+    """允许固定策略角色及经过冻结清单约束的动态补充证据角色。"""
+    fixed = set(policy["mandatory_inputs"]) | set(policy["optional_inputs"])
+    return role in fixed or role.startswith(SUPPLEMENTAL_EVIDENCE_ROLE_PREFIX)

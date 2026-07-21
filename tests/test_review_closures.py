@@ -18,7 +18,10 @@ from shumozizi.workflow.reviews import (
     write_review_report,
 )
 from shumozizi.workflow.state_service import Actor, StateService, WorkflowEvent
-from tests.review_contract_helpers import complete_stage_bindings
+from tests.review_contract_helpers import (
+    complete_stage_bindings,
+    write_minimum_scientific_contract_fixture,
+)
 from tests.test_production_closure import _review_run
 from tests.test_r1_r2_scientific_contracts import _phase_a_outputs
 from tests.test_review_contracts import (
@@ -183,6 +186,7 @@ def _registered_deferred_r1(
     run_dir, seed_request = _r1_request(
         tmp_path, run_id=run_id, round_id="phase-a-seed"
     )
+    write_minimum_scientific_contract_fixture(run_dir)
     seed = load_json(seed_request)
     bindings = {
         role: run_dir / relative

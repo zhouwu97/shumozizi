@@ -31,7 +31,7 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
    `B_STRONG`、`B_PASS`、`B_WEAK` 或 `B_REBUILD`，并报告 `judge_readability`、
    `overall_persuasiveness` 和 `award_competitiveness`，把原 J0 的自然评委视角并入 R5。
 4. 同时给出 A-E grade、confidence、basis、downgrade_reasons 以及与双轴一致的联合结论。
-5. 每条问题按 P0/P1/P2/P3 给出定位证据、所属轴、受影响阶段、文件、重测项和预期改进；不执行修复，不读取前轮报告。
+5. 每条问题给出问题、证据、影响、反例、建议验证方式和严重度建议；不执行修复，不读取前轮报告。
 
 ## 基础 Skill 与脚本
 
@@ -42,9 +42,10 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 ## Finding 证据格式
 
 `evidence` 必须是评委可见材料中的 PDF 页码、题目条目、表格/图号、代码路径或结果 ID；
-不得引用 R1-R4 报告和作者陈述。每条 finding 同时声明 `change_level`、
-`affected_questions`、`change_class`、`route_impact` 和 `changed_route_core_fields`；
-问题所在阶段不得替代路线影响判断，只有最终有效等级为 `L5` 才要求路线重新批准。
+不得引用 R1-R4 报告和作者陈述。每条 finding 只需声明 `finding_id`、
+`severity_recommendation`、`title`、`claim`、`evidence`、`why_it_may_be_wrong` 和
+`recommended_resolution`。返工等级、受影响问题、变化类别和路线影响由生产主 AI 在
+`REVIEW_ADJUDICATION.json` 中裁决，Reviewer 不预先填写。
 
 ## 严重度与竞赛预算
 
@@ -52,10 +53,11 @@ description: 在机械 QA 通过后以全新上下文执行有界全面盲审，
 - P1：核心结论、数字或硬约束有重大问题；
 - P2：不影响主结论的表达、引用或次要视觉问题。
 
-竞赛模式最多 3 轮：第一轮达到 A/B 且无 P0/P1 直接结束；只有出现 P0/P1 或低于 B 才允许
-第二轮或第三轮。训练模式最多 5 轮，但不要求连续两轮 B/A。
-L0/L1 和纯 L2 修改不消耗完整 R5 轮次；`targeted_recheck`、`diff_check` 和 `machine_check`
-均不计入完整 R5 配额。J0 不属于 R5 循环、只执行一次且不是最终硬门。
+完整 R5 只由实质变化触发：核心模型、核心数据或数值、核心结论、主要图表改变，或 P0/P1
+重新打开。完整 R5 总时间建议控制在比赛总预算的 5%–10%；没有核心变化时禁止重复完整 R5，
+核心变化但预算不足时由人决定提交或终止。字体、错字、分页、非核心图注和局部格式只做
+scoped recheck。scoped R5 不生成完整竞赛评分，不得冒充完整盲评。J0 不属于 R5 循环、只执行一次且
+不是最终硬门。
 
 ## 通过条件
 

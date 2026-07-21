@@ -23,7 +23,15 @@ description: 从 result_registry.json 中已接受且允许写入论文的真实
 
    `paper/claim_gate.json` 的 `stale=true` 时，主张证据完全禁止引用；必须先重新生成
    当前 claim evidence。不得根据路线锁中的自由文本或聊天内容绕过门禁。
-6. 在正文写作前生成并持续更新三个作者侧产物：
+6. 正式全文组装前执行：
+
+   ```powershell
+   python scripts/codex/scientific_viability.py verify runs/<run_id> --paper-entry
+   ```
+
+   只有 `VIABLE` 或已完成修复/明确人工接受风险的 `WEAK_BUT_REPAIRABLE` 可以继续。
+   `ROUTE_AT_RISK`、`ROUTE_FAILED` 或未执行 action 必须停止；失败 primary 不得作为论文中心。
+7. 在正文写作前生成并持续更新三个作者侧产物：
    `paper/PAPER_BLUEPRINT.md`、`claims/ARGUMENT_MAP.json`、`paper/FIGURE_STORYBOARD.md`。
    它们不增加主状态或审核门，但必须绑定当前路线、结果和证据摘要。
 

@@ -14,7 +14,11 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.schema import require_valid
-from shumozizi.workflow.review_policy import get_review_stage_policy
+from shumozizi.workflow.review_policy import (
+    get_review_stage_policy,
+    review_material_role_allowed,
+)
+from shumozizi.workflow.viability import verify_supplemental_bindings
 
 
 def _canonical_relative(run_dir: Path, declared_path: str, *, must_exist: bool = True) -> str:
@@ -109,14 +113,20 @@ def verify_review_input_manifest(
         if len(roles) != len(set(roles)):
             raise ContractError("审核材料清单包含重复 role")
         mandatory = set(policy["mandatory_inputs"])
-        allowed = mandatory | set(policy["optional_inputs"])
         if not mandatory.issubset(roles):
             raise ContractError(
                 "审核材料清单缺少强制 role: " + ", ".join(sorted(mandatory - set(roles)))
             )
-        if not set(roles).issubset(allowed):
+        if any(not review_material_role_allowed(role, policy) for role in roles):
             raise ContractError(
-                "审核材料清单包含策略外 role: " + ", ".join(sorted(set(roles) - allowed))
+                "审核材料清单包含策略外 role: "
+                + ", ".join(
+                    sorted(
+                        role
+                        for role in set(roles)
+                        if not review_material_role_allowed(role, policy)
+                    )
+                )
             )
         if manifest["forbidden_patterns"] != policy["forbidden_inputs"]:
             raise ContractError("审核材料清单的禁止路径策略已被修改")
@@ -168,6 +178,15 @@ def verify_review_input_manifest(
             }
             if not required_paths.issubset(read_paths):
                 raise ContractError("审核 read_paths 未覆盖全部强制材料")
+            verify_supplemental_bindings(
+                run_dir,
+                stage=request["stage"],
+                question_id=request.get("question_id"),
+                bindings={
+                    role: resolve_inside(run_dir, path, must_exist=True)
+                    for role, path in request["binding_paths"].items()
+                },
+            )
     except (ContractError, OSError, KeyError) as exc:
         errors.append(str(exc))
     return {"valid": not errors, "errors": errors, "manifest_path": str(manifest_path)}

@@ -1,5 +1,10 @@
 # Codex 原生工作流说明
 
+质量优先试点在 baseline 和最小证伪实验后增加 Markdown
+`analysis/SCIENTIFIC_VIABILITY.md`。它不新增状态或回执，只决定继续深化、定向修复、并行
+fallback 或停止路线。`ROUTE_AT_RISK` / `ROUTE_FAILED` 不得进入正式论文；详细规则见
+`docs/QUALITY_FIRST_PILOT.md`。
+
 ## 为什么先做减法
 
 Codex 已能读取题面、操作本地文件、运行 Python/Typst/LaTeX、保存状态并与人工交互。第一版
@@ -138,8 +143,9 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 ## 第二个暂停点
 
 完整论文和 PDF 后按依赖创建 R3/R4 请求；机械 QA 通过后由用户新开独立对话，交由该对话中的
-AI 自动执行 R5，原 J0 的自然评委视角并入 R5。竞赛模式 R5 最多三轮，仅 P0/P1 或低于 B 才
-重跑；该上限只统计 `full_scientific`，必要的 scoped closure 不消耗完整审核轮次。所有回执必须登记到
+AI 自动执行 R5，原 J0 的自然评委视角并入 R5。完整 R5 只由核心模型、数据/数字、结论、主图
+变化或 P0/P1 重新打开触发，总时间建议为比赛预算的 5%–10%；局部修改只做 scoped recheck，
+不生成完整竞赛评分。所有回执必须登记到
 `review_gates` 并绑定当前生产事实；未登记或任一绑定变化时，不能进入 `WAITING_HUMAN_FINAL`。
 R4/R5 必须绑定机器 `FORMAT_AUDIT.json`；其硬失败不可被文字结论覆盖。R5 必须同时给出 A 轴（`A_PASS`/`A_BLOCKED`）和 B 轴（质量分数及题目覆盖、模型深度、实验验证
 分项）；联合结论由程序校验，失败时自动生成 `REPAIR_PLAN.json`，只重跑受影响审核阶段。

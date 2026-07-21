@@ -13,6 +13,15 @@ from .reviews import (
     write_review_adjudication,
     write_review_report,
 )
+from .viability import (
+    create_minimum_scientific_contract,
+    create_scientific_viability,
+    freeze_supplemental_evidence,
+    r5_review_mode_for_changes,
+    verify_minimum_scientific_contract,
+    verify_scientific_viability,
+    verify_supplemental_evidence,
+)
 
 __all__ = [
     "create_review_request",
@@ -29,4 +38,11 @@ __all__ = [
     "verify_review_receipt",
     "write_review_adjudication",
     "write_review_report",
+    "create_minimum_scientific_contract",
+    "create_scientific_viability",
+    "freeze_supplemental_evidence",
+    "r5_review_mode_for_changes",
+    "verify_minimum_scientific_contract",
+    "verify_scientific_viability",
+    "verify_supplemental_evidence",
 ]

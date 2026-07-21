@@ -70,9 +70,14 @@ sealed result。
 
 每个子问题接受结果后：
 
-1. 更新 `state.json` 的该问题循环状态和产物路径；
-2. 执行状态校验；
-3. 立即调用 `$mathmodel-paper` 写该问题章节；
-4. 再继续下一个子问题。
+1. 用当前 accepted 结果和正控制证据更新 `analysis/SCIENTIFIC_VIABILITY.md`。每次只处理一个
+   当前最高风险，必须写明核心失败原因、反例、最低成本证伪实验、真实结果、baseline/fallback
+   比较、当前决策，以及剩余时间和下一步投入上限；禁止写成四项 pass/fail 打勾表；
+2. 运行 `python scripts/codex/scientific_viability.py verify runs/<run_id>`，根据结论执行 continue、
+   targeted repair、parallel fallback 或 stop/reopen route；
+3. 只有 `VIABLE`，或完成修复并复验后的 `WEAK_BUT_REPAIRABLE`，才更新该问进度并进入 R2；
+4. R2 通过后执行状态校验，再调用 `$mathmodel-paper` 写该问题章节；
+5. `ROUTE_FAILED` 必须区分 `route`、`implementation`、`objective_mismatch`、`data_limited` 或
+   `budget_limited`。`ROUTE_AT_RISK` 和失败 primary 禁止进入正式全文；负面实验保留为路线决策证据。
 
 全部子问题完成后，把状态设为 `RESULTS_ACCEPTED`。不要在本 Skill 中集中写整篇论文。

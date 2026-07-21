@@ -24,9 +24,11 @@ from shumozizi.workflow.review_policy import (
     REVIEW_MODES,
     VERIFICATION_MODES,
     get_review_stage_policy,
+    review_material_role_allowed,
 )
 from shumozizi.workflow.review_sessions import verify_review_session
 from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
+from shumozizi.workflow.viability import verify_supplemental_bindings
 
 REVIEW_STAGES = {
     "R1_MODELING": "mathmodel-review-r1-modeling",
@@ -313,8 +315,9 @@ def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> N
             raise ContractError(f"审核请求策略字段已被修改: {key}")
     roles = set(request["bindings"])
     mandatory = set(policy["mandatory_inputs"])
-    allowed = mandatory | set(policy["optional_inputs"])
-    if not mandatory.issubset(roles) or not roles.issubset(allowed):
+    if not mandatory.issubset(roles) or any(
+        not review_material_role_allowed(role, policy) for role in roles
+    ):
         raise ContractError("审核请求材料角色不符合当前阶段策略")
     manifest_path = resolve_inside(
         run_dir, request["input_manifest_path"], must_exist=True
@@ -416,18 +419,6 @@ def create_review_request(
     effective_mode = state.get("mode", "competition")
     if mode is not None and mode != effective_mode:
         raise ContractError("审核轮次模式必须来自当前 state.json，调用方不能临时覆盖")
-    r5_max_rounds = 5 if effective_mode == "training" else 3
-    if stage == "R5_COMPREHENSIVE" and review_mode == "full_scientific":
-        existing_full_r5 = [
-            path
-            for path in (run_dir / "review" / stage.lower()).glob(
-                "*/review_request.json"
-            )
-            if load_json(path).get("review_mode", "full_scientific")
-            == "full_scientific"
-        ]
-        if len(existing_full_r5) >= r5_max_rounds:
-            raise ContractError(f"R5 完整审核已达到全局上限 {r5_max_rounds} 轮")
     if state.get("run_id") != run_dir.name:
         raise ContractError("审核请求 run_id 与运行目录不一致")
     if not bindings:
@@ -443,10 +434,19 @@ def create_review_request(
     missing_roles = sorted(mandatory_roles - binding_roles)
     if missing_roles:
         raise ContractError("审核请求缺少阶段强制材料: " + ", ".join(missing_roles))
-    allowed_roles = mandatory_roles | set(policy["optional_inputs"])
-    unknown_roles = sorted(binding_roles - allowed_roles)
+    unknown_roles = sorted(
+        role
+        for role in binding_roles
+        if not review_material_role_allowed(role, policy)
+    )
     if unknown_roles:
         raise ContractError("审核请求包含策略未声明的材料角色: " + ", ".join(unknown_roles))
+    verify_supplemental_bindings(
+        run_dir,
+        stage=stage,
+        question_id=question_id,
+        bindings=bindings,
+    )
     if review_mode == "full_scientific" and stage in {
         "R4_FORMAT_VISUAL",
         "R5_COMPREHENSIVE",
@@ -549,10 +549,10 @@ def create_review_request(
         "output_path": f"review/{stage.lower()}/{round_id}/review_report.json",
         "skill": REVIEW_STAGES[stage],
         "read_only": True,
-        "budget": {
-            "max_minutes": max_minutes,
-            "max_rounds": r5_max_rounds if stage == "R5_COMPREHENSIVE" else 1,
-        },
+            "budget": {
+                "max_minutes": max_minutes,
+                "max_rounds": 1,
+            },
         "requested_at": utc_now(),
     }
     require_valid(request, "review_request")
@@ -1271,7 +1271,12 @@ def _verify_review_receipt_v2(
     return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}
 
 
-def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict[str, Any]:
+def evaluate_r5_convergence(
+    run_dir: Path,
+    *,
+    mode: str = "competition",
+    competition_minutes: int | None = None,
+) -> dict[str, Any]:
     """按评级和 P0/P1 规则判断 R5 是否达到人工最终核包门槛。"""
     state = load_json(run_dir / "state.json")
     effective_mode = state.get("mode", "competition")
@@ -1289,7 +1294,12 @@ def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict
     requests = list(
         (run_dir / "review").glob("r5_comprehensive/*/review_request.json")
     )
-    max_rounds = 5 if effective_mode == "training" else 3
+    consumed_minutes = sum(
+        int(load_json(path).get("budget", {}).get("max_minutes", 0))
+        for path in requests
+    )
+    budget_min = round(competition_minutes * 0.05) if competition_minutes else None
+    budget_max = round(competition_minutes * 0.10) if competition_minutes else None
     good = [
         item
         for item in reports
@@ -1300,11 +1310,17 @@ def evaluate_r5_convergence(run_dir: Path, *, mode: str = "competition") -> dict
         and not any(_reviewer_severity(f) in {"P0", "P1"} for f in item["findings"])
     ]
     passed = bool(good and good[-1] is reports[-1])
+    budget_exhausted = budget_max is not None and consumed_minutes >= budget_max
     return {
-        "status": "pass" if passed else ("not_ready_for_submission" if len(requests) >= max_rounds else "continue"),
+        "status": "pass" if passed else (
+            "human_budget_decision" if budget_exhausted else "continue"
+        ),
         "rounds": len(requests),
         "reported_rounds": len(reports),
-        "max_rounds": max_rounds,
+        "max_rounds": None,
+        "consumed_minutes": consumed_minutes,
+        "recommended_budget_minutes": {"minimum": budget_min, "maximum": budget_max},
+        "budget_exhausted": budget_exhausted,
         "passing_rounds": len(good),
         "consecutive_passing_rounds": 1 if passed else 0,
         "requires_human_final_package": passed,

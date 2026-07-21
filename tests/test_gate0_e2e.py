@@ -38,6 +38,8 @@ from tests.review_contract_helpers import (
     claim_and_hash,
     complete_stage_bindings,
     rich_model_spec,
+    write_minimum_scientific_contract_fixture,
+    write_viable_scientific_viability_fixture,
 )
 from tests.source_package_helpers import write_source_package
 
@@ -133,6 +135,7 @@ class Gate0EndToEndTests(unittest.TestCase):
                 {"model_spec": model_spec},
                 "ACCEPT",
             )
+            write_minimum_scientific_contract_fixture(run_dir)
             service.transition(
                 run_dir.name,
                 WorkflowEvent.EXPERIMENT_STARTED,
@@ -454,6 +457,7 @@ class Gate0EndToEndTests(unittest.TestCase):
                     "generated_at": "2026-07-19T00:00:00Z",
                 },
             )
+            write_viable_scientific_viability_fixture(run_dir)
             service.transition(
                 run_dir.name,
                 WorkflowEvent.PAPER_COMPLETED,

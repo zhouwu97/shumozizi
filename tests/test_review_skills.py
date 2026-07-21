@@ -28,7 +28,7 @@ def test_review_skills_are_top_level_and_executable() -> None:
 
 
 def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
-    """竞赛模式不再要求连续两轮 B/A，且预算上限为三轮。"""
+    """竞赛模式一轮干净 B 即通过，不再使用固定轮数上限。"""
     report_dir = tmp_path / "review/r5_comprehensive/round-1"
     report_dir.mkdir(parents=True)
     (tmp_path / "state.json").write_text(
@@ -91,5 +91,23 @@ def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:
     result = evaluate_r5_convergence(tmp_path)
 
     assert result["status"] == "pass"
-    assert result["max_rounds"] == 3
+    assert result["max_rounds"] is None
     assert result["consecutive_passing_rounds"] == 1
+
+
+def test_r5_uses_time_budget_instead_of_fixed_round_limit(tmp_path: Path) -> None:
+    """完整 R5 消耗达到比赛时间 10% 时转人工预算决策。"""
+    request_dir = tmp_path / "review/r5_comprehensive/round-1"
+    request_dir.mkdir(parents=True)
+    (tmp_path / "state.json").write_text(
+        json.dumps({"mode": "competition"}), encoding="utf-8"
+    )
+    (request_dir / "review_request.json").write_text(
+        json.dumps({"budget": {"max_minutes": 60}}), encoding="utf-8"
+    )
+
+    result = evaluate_r5_convergence(tmp_path, competition_minutes=600)
+
+    assert result["status"] == "human_budget_decision"
+    assert result["recommended_budget_minutes"] == {"minimum": 30, "maximum": 60}
+    assert result["budget_exhausted"] is True

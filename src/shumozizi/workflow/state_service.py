@@ -25,6 +25,10 @@ from shumozizi.workflow.reviews import (
     verify_scoped_review_source,
 )
 from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
+from shumozizi.workflow.viability import (
+    verify_minimum_scientific_contract,
+    verify_scientific_viability,
+)
 
 
 class WorkflowEvent(StrEnum):
@@ -944,6 +948,11 @@ class StateService:
             self._verify_model_spec_revision(run_dir, refs)
         if event is WorkflowEvent.EXPERIMENT_STARTED:
             self._require_passed_review_gates(run_dir, state, ("R1_MODELING",))
+            contract = verify_minimum_scientific_contract(run_dir)
+            if not contract["valid"]:
+                raise ContractError(
+                    "正式实验前最低科学合同未冻结: " + "; ".join(contract["errors"])
+                )
         if event is WorkflowEvent.RESULTS_ADMITTED:
             completed_questions = [
                 question_id
@@ -958,6 +967,15 @@ class StateService:
                 tuple(f"R2_EXPERIMENT_{question_id}" for question_id in completed_questions),
             )
         if event is WorkflowEvent.PAPER_COMPLETED:
+            viability = verify_scientific_viability(
+                run_dir,
+                require_paper_eligibility=True,
+            )
+            if not viability["valid"]:
+                raise ContractError(
+                    "Scientific Viability 未允许正式全文组装: "
+                    + "; ".join(viability["errors"])
+                )
             self._require_current_production_integrity(
                 run_dir,
                 expected_state_revision=state["revision"],

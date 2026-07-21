@@ -29,6 +29,7 @@ from tests.review_contract_helpers import (
     rich_model_spec,
     rich_problem_manifest,
     rich_r1_evidence,
+    write_minimum_scientific_contract_fixture,
     write_passing_format_audit,
 )
 from tests.source_package_helpers import write_source_package
@@ -220,6 +221,7 @@ def test_model_spec_revised_keeps_route_locked_and_stales_r1(tmp_path: Path) -> 
     passed = StateService(tmp_path).record_review_gate(
         run_dir.name, "R1_MODELING", receipt, Actor("review-r20")
     )
+    write_minimum_scientific_contract_fixture(run_dir)
     progressed = StateService(tmp_path).transition(
         run_dir.name, WorkflowEvent.EXPERIMENT_STARTED, Actor("experiment"), []
     )
@@ -468,6 +470,11 @@ def test_real_r1_receipt_is_recorded_before_experiment(tmp_path: Path) -> None:
     recorded = service.record_review_gate(
         "r1-record-test", "R1_MODELING", receipt, Actor("review-coordinator")
     )
+    with pytest.raises(ContractError, match="最低科学合同"):
+        service.transition(
+            "r1-record-test", WorkflowEvent.EXPERIMENT_STARTED, Actor("experiment"), []
+        )
+    write_minimum_scientific_contract_fixture(run_dir)
     progressed = service.transition(
         "r1-record-test", WorkflowEvent.EXPERIMENT_STARTED, Actor("experiment"), []
     )
