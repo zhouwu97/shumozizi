@@ -20,6 +20,14 @@ CHANGE_CLASS_DEFAULT_LEVEL = {
     "ROUTE_CORE_CHANGE": "L5",
     "PROBLEM_INTERPRETATION_CHANGE": "L5",
 }
+LEVEL_DEFAULT_CHANGE_CLASS = {
+    "L0": "EVIDENCE_METADATA",
+    "L1": "IMPLEMENTATION_DETAIL",
+    "L2": "EVIDENCE_METADATA",
+    "L3": "VALIDATION_DETAIL",
+    "L4": "SPEC_COMPLETION",
+    "L5": "ROUTE_CORE_CHANGE",
+}
 
 def _finding_change_level(finding: dict[str, Any]) -> str:
     declared = finding.get("change_level")
@@ -71,20 +79,25 @@ def create_repair_plan(
         item["finding_id"]: item
         for item in adjudication["decisions"]
         if item["main_decision"] == "accepted"
+        and item["gate_effect"] in {"block", "warn"}
     }
     findings = [item for item in report["findings"] if item["finding_id"] in decisions]
     if not findings:
         raise ContractError("没有被主 AI 接受的 finding，不能生成 REPAIR_PLAN.json")
     scopes: list[dict[str, Any]] = []
     axes: set[str] = set()
-    retests = set(report.get("required_retests", []))
+    v3_reviewer_report = report["schema_version"] == "3.0"
+    retests = set() if v3_reviewer_report else set(report.get("required_retests", []))
     request_path = report_path.with_name("review_request.json")
     request_question = load_json(request_path).get("question_id") if request_path.is_file() else None
     affected_questions: set[str] = set()
     levels: list[str] = []
     for finding in findings:
         adjudicated = decisions[finding["finding_id"]]
-        axis = finding.get("axis") or ("integrity" if finding.get("severity") == "P0" else "quality")
+        effective_severity = adjudicated["effective_severity"]
+        axis = finding.get("axis") or (
+            "integrity" if effective_severity == "P0" else "quality"
+        )
         axes.add(axis)
         affected = finding.get("affected_stage", stage)
         level = adjudicated["effective_change_level"]
@@ -94,18 +107,25 @@ def create_repair_plan(
             questions = [str(request_question)]
         affected_questions.update(questions)
         retests.update(adjudicated["required_retests"] or _level_retests(level, questions))
+        change_class = finding.get("change_class") or LEVEL_DEFAULT_CHANGE_CLASS[level]
+        route_impact = finding.get("route_impact") or (
+            "material" if level == "L5" else "none"
+        )
         scopes.append(
             {
                 "finding_id": finding["finding_id"],
                 "axis": axis,
                 "affected_stage": affected,
                 "files": finding.get("affected_files", []),
-                "expected_improvement": finding.get("expected_improvement", finding["remediation"]),
+                "expected_improvement": finding.get(
+                    "expected_improvement",
+                    finding.get("claim", finding.get("remediation", adjudicated["decision_reason"])),
+                ),
                 "change_level": level,
                 "affected_questions": questions,
-                "change_class": finding["change_class"],
-                "route_impact": finding["route_impact"],
-                "changed_route_core_fields": finding["changed_route_core_fields"],
+                "change_class": change_class,
+                "route_impact": route_impact,
+                "changed_route_core_fields": finding.get("changed_route_core_fields", []),
             }
         )
     axis = "both" if len(axes) > 1 or "both" in axes else next(iter(axes))

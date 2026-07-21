@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/scientific_reviewer_oracle.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "benchmark_id", "case_set_sha256", "cases"],
+  "properties": {
+    "schema_name": {"const": "scientific_reviewer_oracle"},
+    "schema_version": {"const": "1.0"},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "case_set_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "cases": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "is_fault", "expected_findings", "allowed_alternative_judgments"],
+        "properties": {
+          "case_id": {"type": "string", "minLength": 1},
+          "is_fault": {"type": "boolean"},
+          "expected_findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fault_id", "accepted_labels", "expected_stage", "expected_severity_range"],
+              "properties": {
+                "fault_id": {"type": "string", "minLength": 1},
+                "accepted_labels": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+                "expected_stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT"]},
+                "expected_severity_range": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["P0", "P1", "P2", "P3"]}}
+              }
+            }
+          },
+          "allowed_alternative_judgments": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        },
+        "allOf": [
+          {"if": {"properties": {"is_fault": {"const": true}}}, "then": {"properties": {"expected_findings": {"minItems": 1}}}},
+          {"if": {"properties": {"is_fault": {"const": false}}}, "then": {"properties": {"expected_findings": {"maxItems": 0}}}}
+        ]
+      }
+    }
+  }
+}

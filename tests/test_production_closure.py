@@ -15,6 +15,7 @@ from shumozizi.workflow.approval import (
     verify_route_approval,
 )
 from shumozizi.workflow.initialization import initialize_run
+from shumozizi.workflow.repair import create_repair_plan
 from shumozizi.workflow.reviews import (
     create_review_request,
     materialize_review_receipt,
@@ -27,6 +28,7 @@ from tests.review_contract_helpers import (
     complete_stage_bindings,
     rich_model_spec,
     rich_problem_manifest,
+    write_passing_format_audit,
 )
 from tests.source_package_helpers import write_source_package
 
@@ -259,6 +261,7 @@ def _review_run(tmp_path: Path, stage: str) -> tuple[Path, Path]:
             },
         )
         (run_dir / "paper/final.pdf").write_bytes(b"PDF")
+        write_passing_format_audit(run_dir, run_dir / "paper/final.pdf")
         file_ref = {"path": "fixture", "sha256": "0" * 64}
         atomic_json(
             run_dir / "paper/paper_plan.json",
@@ -368,7 +371,7 @@ def test_r5_joint_verdict_must_match_b_axis_threshold(tmp_path: Path) -> None:
         write_review_report(request, report)
 
 
-def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
+def test_failed_review_requires_explicit_hashed_repair_plan(tmp_path: Path) -> None:
     run_dir, request = _review_run(tmp_path, "R1_MODELING")
     request_doc = load_json(request)
     report = {
@@ -416,13 +419,88 @@ def test_failed_review_materializes_hashed_repair_plan(tmp_path: Path) -> None:
         "generated_at": "2026-07-19T00:00:00Z",
     }
     report_path = write_review_report(request, report)
-    adjudicate_report(report_path)
+    adjudication_path = adjudicate_report(report_path)
     receipt_path = materialize_review_receipt(request, report_path)
     receipt = load_json(receipt_path)
-    repair_path = run_dir / receipt["repair_plan_path"]
+    assert "repair_plan_path" not in receipt
+    repair_path = create_repair_plan(run_dir, report_path, adjudication_path)
     assert repair_path.name == "REPAIR_PLAN.json"
-    assert receipt["repair_plan_sha256"] == sha256_file(repair_path)
     assert load_json(repair_path)["route_reapproval_required"] is False
+
+
+def test_v3_repair_plan_uses_adjudication_instead_of_reviewer_management_fields(
+    tmp_path: Path,
+) -> None:
+    """精简 v3 finding 的返工等级、范围和复测项全部来自主 AI 裁决。"""
+    run_dir = tmp_path / "runs" / "v3-repair"
+    report_dir = run_dir / "review" / "r3_paper_logic" / "round-1"
+    report_dir.mkdir(parents=True)
+    report_path = report_dir / "review_report.json"
+    report = {
+        "schema_name": "review_report",
+        "schema_version": "3.0",
+        "request_id": "v3-repair-r3-round-1",
+        "run_id": run_dir.name,
+        "stage": "R3_PAPER_LOGIC",
+        "review_round_id": "round-1",
+        "request_sha256": "1" * 64,
+        "input_manifest_sha256": "2" * 64,
+        "session_sha256": "3" * 64,
+        "verdict": "MAJOR_REVISION",
+        "findings": [
+            {
+                "finding_id": "R3-NOVEL-001",
+                "severity_recommendation": "P1",
+                "title": "结论超出证据",
+                "claim": "正文把样本内结果推广到全部场景",
+                "evidence": ["paper/main.typ:conclusion"],
+                "why_it_may_be_wrong": "实验未覆盖所声明的外推范围",
+                "check_id": None,
+            }
+        ],
+        "read_only_confirmed": True,
+        "generated_at": "2026-07-20T00:00:00Z",
+    }
+    atomic_json(report_path, report)
+    adjudication_path = report_dir / "REVIEW_ADJUDICATION.json"
+    atomic_json(
+        adjudication_path,
+        {
+            "schema_name": "review_adjudication",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "request_id": report["request_id"],
+            "stage": report["stage"],
+            "state_revision": 1,
+            "review_report_sha256": sha256_file(report_path),
+            "decisions": [
+                {
+                    "finding_id": "R3-NOVEL-001",
+                    "reviewer_severity": "P1",
+                    "main_decision": "accepted",
+                    "decision_reason": "主 AI 核验外推边界后确认",
+                    "effective_severity": "P1",
+                    "gate_effect": "block",
+                    "confirmation_evidence": ["paper/main.typ:conclusion"],
+                    "counter_evidence": [],
+                    "resolution_evidence_type": "general_reasoning",
+                    "effective_change_level": "L3",
+                    "affected_questions": ["q1"],
+                    "required_retests": ["R3_PAPER_LOGIC"],
+                    "route_reapproval_required": False,
+                }
+            ],
+            "unresolved_conflicts": [],
+            "generated_by": "production_main_ai",
+            "generated_at": "2026-07-20T00:00:00Z",
+        },
+    )
+
+    repair = load_json(create_repair_plan(run_dir, report_path, adjudication_path))
+    assert repair["change_level"] == "L3"
+    assert repair["affected_questions"] == ["q1"]
+    assert repair["required_retests"] == ["R3_PAPER_LOGIC"]
+    assert repair["repair_scope"][0]["change_class"] == "VALIDATION_DETAIL"
 
 
 @pytest.mark.parametrize("change_class", ["SPEC_COMPLETION", "VALIDATION_DETAIL"])
@@ -474,9 +552,9 @@ def test_r1_spec_fixes_do_not_require_route_reapproval(
     }
 
     report_path = write_review_report(request, report)
-    adjudicate_report(report_path)
-    receipt_path = materialize_review_receipt(request, report_path)
-    repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
+    adjudication_path = adjudicate_report(report_path)
+    materialize_review_receipt(request, report_path)
+    repair = load_json(create_repair_plan(run_dir, report_path, adjudication_path))
 
     assert repair["route_reapproval_required"] is False
 
@@ -536,8 +614,8 @@ def test_r1_route_core_changes_require_route_reapproval(
     }
 
     report_path = write_review_report(request, report)
-    adjudicate_report(report_path)
-    receipt_path = materialize_review_receipt(request, report_path)
-    repair = load_json(run_dir / load_json(receipt_path)["repair_plan_path"])
+    adjudication_path = adjudicate_report(report_path)
+    materialize_review_receipt(request, report_path)
+    repair = load_json(create_repair_plan(run_dir, report_path, adjudication_path))
 
     assert repair["route_reapproval_required"] is True

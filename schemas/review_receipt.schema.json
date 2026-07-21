@@ -1,25 +1,71 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/zhouwu97/shumozizi/schemas/review_receipt.schema.json",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["schema_name", "schema_version", "run_id", "request_id", "report_sha256", "request_sha256", "session_sha256", "input_manifest_sha256", "adjudication_path", "adjudication_sha256", "state_revision", "bindings", "decision", "issued_at"],
-  "properties": {
-    "schema_name": {"const": "review_receipt"},
-    "schema_version": {"const": "2.0"},
-    "run_id": {"type": "string"},
-    "request_id": {"type": "string"},
-    "report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "request_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "session_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "input_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "adjudication_path": {"type": "string", "minLength": 1},
-    "adjudication_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "state_revision": {"type": "integer", "minimum": 0},
-    "bindings": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
-    "decision": {"enum": ["accepted", "accepted_with_warnings", "rejected", "superseded"]},
-    "repair_plan_path": {"type": "string"},
-    "repair_plan_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "issued_at": {"type": "string", "format": "date-time"}
+  "oneOf": [
+    {"$ref": "#/$defs/v3"},
+    {"$ref": "#/$defs/v2"}
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/sha256"}
+    },
+    "v3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_name", "schema_version", "receipt_kind", "run_id", "request_id",
+        "request_sha256", "session_sha256", "report_sha256",
+        "input_manifest_sha256", "adjudication_path", "adjudication_sha256",
+        "state_revision", "bindings", "issued_at"
+      ],
+      "properties": {
+        "schema_name": {"const": "review_receipt"},
+        "schema_version": {"const": "3.0"},
+        "receipt_kind": {"const": "adjudicated"},
+        "run_id": {"type": "string"},
+        "request_id": {"type": "string"},
+        "request_sha256": {"$ref": "#/$defs/sha256"},
+        "session_sha256": {"$ref": "#/$defs/sha256"},
+        "report_sha256": {"$ref": "#/$defs/sha256"},
+        "input_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "adjudication_path": {"type": "string", "minLength": 1},
+        "adjudication_sha256": {"$ref": "#/$defs/sha256"},
+        "state_revision": {"type": "integer", "minimum": 0},
+        "bindings": {"$ref": "#/$defs/bindings"},
+        "issued_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "v2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_name", "schema_version", "run_id", "request_id", "report_sha256",
+        "request_sha256", "session_sha256", "input_manifest_sha256",
+        "adjudication_path", "adjudication_sha256", "state_revision", "bindings",
+        "decision", "issued_at"
+      ],
+      "properties": {
+        "schema_name": {"const": "review_receipt"},
+        "schema_version": {"const": "2.0"},
+        "run_id": {"type": "string"},
+        "request_id": {"type": "string"},
+        "report_sha256": {"$ref": "#/$defs/sha256"},
+        "request_sha256": {"$ref": "#/$defs/sha256"},
+        "session_sha256": {"$ref": "#/$defs/sha256"},
+        "input_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "adjudication_path": {"type": "string", "minLength": 1},
+        "adjudication_sha256": {"$ref": "#/$defs/sha256"},
+        "state_revision": {"type": "integer", "minimum": 0},
+        "bindings": {"$ref": "#/$defs/bindings"},
+        "decision": {
+          "enum": ["accepted", "accepted_with_warnings", "rejected", "superseded"]
+        },
+        "repair_plan_path": {"type": "string"},
+        "repair_plan_sha256": {"$ref": "#/$defs/sha256"},
+        "issued_at": {"type": "string", "format": "date-time"}
+      }
+    }
   }
 }

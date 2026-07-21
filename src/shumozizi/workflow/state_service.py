@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, resolve_inside, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.receipts import verify_production_receipts
@@ -18,7 +18,10 @@ from shumozizi.questions.manifest import verify_problem_manifest
 from shumozizi.results.sealing import verify_sealed_result
 from shumozizi.workflow.approval import verify_route_approval
 from shumozizi.workflow.integrity import verify_run_integrity
-from shumozizi.workflow.reviews import verify_review_receipt
+from shumozizi.workflow.reviews import (
+    verify_review_adjudication,
+    verify_review_receipt,
+)
 from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
 
 
@@ -55,6 +58,101 @@ class ArtifactRef:
     role: str
     path: str
     sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class MachineBlocker:
+    """不可由 AI 裁决覆盖的确定性审核门失败。"""
+
+    blocker_id: str
+    source: str
+    override_allowed: bool
+    evidence: list[str]
+
+
+def collect_machine_blockers(
+    run_dir: Path, gate_id: str, state: dict[str, Any]
+) -> list[MachineBlocker]:
+    """收集当前审核门可确定复验的硬失败事实。"""
+    del state
+    blockers: list[MachineBlocker] = []
+    question_id = (
+        gate_id.removeprefix("R2_EXPERIMENT_")
+        if gate_id.startswith("R2_EXPERIMENT_")
+        else None
+    )
+    if question_id is not None or gate_id == "R5_STANDARD_FINAL":
+        registry_path = run_dir / "results" / "result_registry.json"
+        if registry_path.is_file():
+            try:
+                registry = load_json(registry_path)
+                require_valid(registry, "result_registry")
+                for item in registry["results"]:
+                    if item["status"] != "accepted":
+                        continue
+                    if question_id is not None and item["question_id"] != question_id:
+                        continue
+                    result_path = item.get("sealed_result_path")
+                    seal_path = item.get("result_seal_path")
+                    if result_path is None and seal_path is None:
+                        continue
+                    try:
+                        verification = verify_sealed_result(run_dir, item["result_id"])
+                        errors = verification["errors"]
+                    except (ContractError, OSError, KeyError) as exc:
+                        errors = [str(exc)]
+                    if errors:
+                        blockers.append(
+                            MachineBlocker(
+                                blocker_id=f"sealed-result-invalid:{item['result_id']}",
+                                source="machine",
+                                override_allowed=False,
+                                evidence=errors,
+                            )
+                        )
+            except (ContractError, OSError, KeyError) as exc:
+                blockers.append(
+                    MachineBlocker(
+                        blocker_id="result-registry-invalid",
+                        source="machine",
+                        override_allowed=False,
+                        evidence=[str(exc)],
+                    )
+                )
+    if gate_id in {"R4_FORMAT_VISUAL", "R5_STANDARD_FINAL"}:
+        final_pdf = run_dir / "paper" / "final.pdf"
+        if not final_pdf.is_file():
+            blockers.append(
+                MachineBlocker(
+                    blocker_id="final-pdf-missing",
+                    source="machine",
+                    override_allowed=False,
+                    evidence=["paper/final.pdf 不存在"],
+                )
+            )
+        audit_path = run_dir / "review" / "FORMAT_AUDIT.json"
+        try:
+            audit = load_json(audit_path)
+            require_valid(audit, "format_audit")
+            if audit["hard_failures"]:
+                blockers.append(
+                    MachineBlocker(
+                        blocker_id="format-audit-hard-failure",
+                        source="machine",
+                        override_allowed=False,
+                        evidence=list(audit["hard_failures"]),
+                    )
+                )
+        except (ContractError, OSError, KeyError) as exc:
+            blockers.append(
+                MachineBlocker(
+                    blocker_id="format-audit-invalid",
+                    source="machine",
+                    override_allowed=False,
+                    evidence=[str(exc)],
+                )
+            )
+    return blockers
 
 
 TRANSITIONS: dict[tuple[str, WorkflowEvent], str] = {
@@ -232,11 +330,33 @@ class StateService:
         if not verification["valid"]:
             raise ContractError("审核回执复验失败: " + "; ".join(verification["errors"]))
         receipt = load_json(resolved_receipt)
-        adjudication_path = run_dir / receipt["adjudication_path"]
+        if receipt["schema_version"] != "3.0":
+            raise ContractError("v2 review receipt 仅允许历史只读验证，不能登记新审核门")
+        adjudication_path = resolve_inside(
+            run_dir, receipt["adjudication_path"], must_exist=True
+        )
         request = load_json(resolved_receipt.with_name("review_request.json"))
         report = load_json(resolved_receipt.with_name("review_report.json"))
-        if receipt["state_revision"] != state["revision"]:
+        previous_gate = state.get("review_gates", {}).get(gate_id, {})
+        probe_rerecord = (
+            previous_gate.get("status") == "failed"
+            and previous_gate.get("reviewed_revision") == receipt["state_revision"]
+            and previous_gate.get("recorded_revision") == state["revision"]
+        )
+        if receipt["state_revision"] != state["revision"] and not probe_rerecord:
             raise ContractError("审核回执不是针对当前 state revision 创建")
+        adjudication_verification = verify_review_adjudication(
+            run_dir,
+            resolved_receipt.with_name("review_report.json"),
+            adjudication_path,
+            require_current_revision=False,
+        )
+        if not adjudication_verification["valid"]:
+            raise ContractError(
+                "审核裁决复验失败: "
+                + "; ".join(adjudication_verification["errors"])
+            )
+        adjudication = load_json(adjudication_path)
         expected_stage, question_id = self._review_gate_identity(gate_id)
         if request["stage"] != expected_stage or report["stage"] != expected_stage:
             raise ContractError(f"审核回执阶段与门不一致: {gate_id}")
@@ -249,7 +369,15 @@ class StateService:
         if question_id is not None and request.get("question_id") != question_id:
             raise ContractError(f"局部审核回执 question_id 不匹配: {question_id}")
         self._check_review_gate_timing(run_dir, state, gate_id, question_id)
-        passed = self._review_gate_passed(gate_id, receipt, report)
+        machine_blockers = collect_machine_blockers(run_dir, gate_id, state)
+        accepted_blocking = [
+            decision
+            for decision in adjudication["decisions"]
+            if decision["main_decision"] == "accepted"
+            and decision["gate_effect"] == "block"
+        ]
+        unresolved = adjudication["unresolved_conflicts"]
+        passed = not machine_blockers and not unresolved and not accepted_blocking
         if gate_id == "J0_FINAL_BLIND_JUDGE" and state.get("review_gates", {}).get(
             gate_id, {}
         ).get("receipt"):
@@ -260,14 +388,15 @@ class StateService:
             "status": "passed" if passed else "failed",
             "receipt": relative_receipt,
             "receipt_sha256": sha256_file(resolved_receipt),
-            "adjudication": receipt["adjudication_path"],
+            "adjudication": adjudication_path.relative_to(run_dir).as_posix(),
             "adjudication_sha256": sha256_file(adjudication_path),
             "reviewed_revision": receipt["state_revision"],
             "recorded_revision": next_revision,
+            "machine_blocker_count": len(machine_blockers),
+            "accepted_blocking_finding_count": len(accepted_blocking),
             "question_id": question_id,
             "request_stage": expected_stage,
-            "verdict": report.get("verdict", ""),
-            "decision": receipt["decision"],
+            "reviewer_verdict": report.get("verdict", ""),
         }
         state["revision"] = next_revision
         state["last_updated_by"] = actor.actor_id
@@ -290,7 +419,7 @@ class StateService:
                     asdict(
                         ArtifactRef(
                             role=f"{gate_id}_ADJUDICATION",
-                            path=receipt["adjudication_path"],
+                            path=adjudication_path.relative_to(run_dir).as_posix(),
                             sha256=sha256_file(adjudication_path),
                         )
                     ),
@@ -439,44 +568,6 @@ class StateService:
         if stage is None:
             raise ContractError(f"未知审核门: {gate_id}")
         return stage, None
-
-    @staticmethod
-    def _review_gate_passed(
-        gate_id: str, receipt: dict[str, Any], report: dict[str, Any]
-    ) -> bool:
-        """按各审核阶段的结论规则判断是否通过。"""
-        if receipt.get("decision") not in {"accepted", "accepted_with_warnings"}:
-            return False
-        if any(finding.get("severity") in {"P0", "P1"} for finding in report.get("findings", [])):
-            return False
-        verdicts = {
-            "R1_MODELING": {"ACCEPT", "ACCEPT_WITH_MINOR_FIXES"},
-            "R2_EXPERIMENT": {"REPRODUCIBLE", "REPRODUCIBLE_WITH_WARNINGS"},
-            "R3_PAPER_LOGIC": {"READY_FOR_COMPREHENSIVE_REVIEW"},
-            "R4_FORMAT_VISUAL": {"COMPLIANT"},
-            "J0_FINAL_BLIND_JUDGE": {"PROCEED", "DO_NOT_PROCEED", "ADVISORY"},
-        }
-        request_stage = report["stage"]
-        if gate_id == "R5_STANDARD_FINAL":
-            severe = any(
-                finding.get("severity") in {"P0", "P1"}
-                for finding in report.get("findings", [])
-            )
-            return (
-                report.get("joint_verdict") == "FINAL_CANDIDATE"
-                and report.get("integrity_axis", {}).get("verdict") == "A_PASS"
-                and report.get("quality_axis", {}).get("verdict") in {"B_STRONG", "B_PASS"}
-                and report.get("competition_claim_allowed") is True
-                and report.get("calibrated_score", 0) >= 75
-                and not severe
-            )
-        if gate_id == "J0_FINAL_BLIND_JUDGE":
-            severe = any(
-                finding.get("severity") in {"P0", "P1"}
-                for finding in report.get("findings", [])
-            )
-            return report.get("verdict") in {"PROCEED", "ADVISORY"} and not severe
-        return report.get("verdict") in verdicts[request_stage]
 
     def _check_review_gate_timing(
         self,

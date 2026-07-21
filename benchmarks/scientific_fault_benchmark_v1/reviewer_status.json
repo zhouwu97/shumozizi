@@ -1,0 +1,17 @@
+{
+  "schema_name": "scientific_reviewer_benchmark_status",
+  "schema_version": "1.0",
+  "benchmark_id": "scientific-fault-reviewer-variants-v1",
+  "case_set_sha256": "fbcab92b139a442fcfe452566096773a6b675f4fda74de1a34162b18ce7fc1d9",
+  "oracle_sha256": "c06fb0e7b3d13e0d414d19aae288088789cd4accafb074598a3d1432fd32de91",
+  "status": "not_run",
+  "metrics": {
+    "reviewer_scientific_fault_recall": null,
+    "reviewer_false_positive_rate": null,
+    "reviewer_correct_stage_assignment": null,
+    "reviewer_severity_calibration": null,
+    "reviewer_unknown_rate": null
+  },
+  "scientific_capability_claim_allowed": false,
+  "reason": "尚未由独立顶层 R1/R2 审核任务完成 held-out 变体集复核。"
+}

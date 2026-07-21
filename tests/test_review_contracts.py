@@ -11,6 +11,7 @@ import pytest
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.schema import schema_root
+from shumozizi.workflow.probes import create_probe_plan, write_probe_result
 from shumozizi.workflow.repair import create_repair_plan
 from shumozizi.workflow.review_sessions import claim_review_request, verify_review_session
 from shumozizi.workflow.reviews import (
@@ -22,7 +23,7 @@ from shumozizi.workflow.reviews import (
     write_review_adjudication,
     write_review_report,
 )
-from shumozizi.workflow.state_service import Actor, StateService
+from shumozizi.workflow.state_service import Actor, StateService, collect_machine_blockers
 from tests.review_contract_helpers import (
     adjudicate_report,
     complete_stage_bindings,
@@ -197,14 +198,33 @@ def _decision(
     main_decision: str,
     *,
     counter_evidence: list[str] | None = None,
+    confirmation_evidence: list[str] | None = None,
+    resolution_evidence_type: str | None = None,
+    gate_effect: str | None = None,
 ) -> dict:
     """生成最小逐 finding 裁决。"""
     return {
         "finding_id": finding_id,
         "reviewer_severity": severity,
         "main_decision": main_decision,
+        "effective_severity": severity,
+        "gate_effect": gate_effect
+        or (
+            {
+                "accepted": "block",
+                "accepted_as_advisory": "warn",
+                "needs_second_review": "block",
+                "needs_human_decision": "block",
+            }.get(main_decision, "none")
+        ),
         "decision_reason": "生产主 AI 独立核验",
+        "confirmation_evidence": (
+            ["test:confirmation"]
+            if confirmation_evidence is None and main_decision == "accepted"
+            else (confirmation_evidence or [])
+        ),
         "counter_evidence": counter_evidence or [],
+        "resolution_evidence_type": resolution_evidence_type,
         "effective_change_level": "L3",
         "affected_questions": ["q1"],
         "required_retests": ["R2_EXPERIMENT_q1"],
@@ -384,14 +404,63 @@ def test_report_and_receipt_bind_immutable_session(tmp_path: Path) -> None:
     assert verify_review_receipt(run_dir, receipt)["valid"] is False
 
 
-def test_receipt_requires_production_adjudication(tmp_path: Path) -> None:
-    """审核报告不能绕过主 AI 裁决直接物化回执。"""
+def test_receipt_requires_and_binds_production_adjudication(tmp_path: Path) -> None:
+    """v3 回执只能在生产裁决后生成，并绑定不可变裁决哈希。"""
     run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-no-adjudication")
     report = write_review_report(request, _accept_report(request, sha256_file(session)))
-    with pytest.raises(ContractError, match="审核裁决复验失败"):
+    with pytest.raises(ContractError, match="必须完成生产主 AI 裁决"):
         materialize_review_receipt(request, report)
-    assert not (report.parent / "review_receipt.json").exists()
+
+    adjudication = adjudicate_report(report)
+    receipt_path = materialize_review_receipt(request, report)
+    receipt = load_json(receipt_path)
+
+    assert receipt["schema_version"] == "3.0"
+    assert receipt["receipt_kind"] == "adjudicated"
+    assert receipt["adjudication_path"] == adjudication.relative_to(run_dir).as_posix()
+    assert receipt["adjudication_sha256"] == sha256_file(adjudication)
+    assert verify_review_receipt(run_dir, receipt_path)["valid"] is True
+    assert {
+        "decision",
+        "repair_plan_path",
+        "repair_plan_sha256",
+    }.isdisjoint(receipt)
+
+
+def test_historical_v2_receipt_is_read_only_compatible(tmp_path: Path) -> None:
+    """历史 v2 回执可复验，但不能作为新审核门登记或迁移。"""
+    run_dir, request = _r1_request(tmp_path, run_id="review-v2-history")
+    session = claim_review_request(request, thread_id="thread-v2-history")
+    report = write_review_report(request, _accept_report(request, sha256_file(session)))
+    adjudication = adjudicate_report(report)
+    receipt_path = materialize_review_receipt(request, report)
+    current = load_json(receipt_path)
+    atomic_json(
+        receipt_path,
+        {
+            "schema_name": "review_receipt",
+            "schema_version": "2.0",
+            "run_id": current["run_id"],
+            "request_id": current["request_id"],
+            "report_sha256": current["report_sha256"],
+            "request_sha256": current["request_sha256"],
+            "session_sha256": current["session_sha256"],
+            "input_manifest_sha256": current["input_manifest_sha256"],
+            "adjudication_path": adjudication.relative_to(run_dir).as_posix(),
+            "adjudication_sha256": sha256_file(adjudication),
+            "state_revision": current["state_revision"],
+            "bindings": current["bindings"],
+            "decision": "accepted",
+            "issued_at": current["issued_at"],
+        },
+    )
+
+    assert verify_review_receipt(run_dir, receipt_path)["valid"] is True
+    with pytest.raises(ContractError, match="仅允许历史只读验证"):
+        StateService(tmp_path).record_review_gate(
+            run_dir.name, "R1_MODELING", receipt_path, Actor("gate-recorder")
+        )
 
 
 def test_p1_cannot_be_rejected_without_independent_counter_evidence(tmp_path: Path) -> None:
@@ -404,12 +473,227 @@ def test_p1_cannot_be_rejected_without_independent_counter_evidence(tmp_path: Pa
     adjudication = _adjudication(
         report, [_decision("finding-1", "P1", "rejected")]
     )
-    with pytest.raises(ContractError, match="P1 不能"):
+    with pytest.raises(ContractError, match="counter_evidence|P1"):
         write_review_adjudication(report, adjudication)
 
 
-def test_p0_accept_requires_second_review_evidence(tmp_path: Path) -> None:
-    """P0 接受必须绑定第二次独立复核或人工决定证据。"""
+def test_p1_can_be_rejected_with_exact_oracle_and_gate_passes(tmp_path: Path) -> None:
+    """强 oracle 驳回误报 P1 后，状态门只按最终裁决通过。"""
+    run_dir, request = _r1_request(tmp_path, run_id="review-p1-oracle")
+    session = claim_review_request(request, thread_id="thread-p1-oracle")
+    report = write_review_report(
+        request, _finding_report(request, sha256_file(session), severity="P1")
+    )
+    adjudication = _adjudication(
+        report,
+        [
+            _decision(
+                "finding-1",
+                "P1",
+                "rejected",
+                counter_evidence=["oracle:exact-solution-q1"],
+                resolution_evidence_type="exact_oracle",
+            )
+        ],
+    )
+    write_review_adjudication(report, adjudication)
+    receipt = materialize_review_receipt(request, report)
+
+    state = StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", receipt, Actor("gate-recorder")
+    )
+
+    gate = state["review_gates"]["R1_MODELING"]
+    assert gate["status"] == "passed"
+    assert gate["accepted_blocking_finding_count"] == 0
+    assert not (report.parent / "REPAIR_PLAN.json").exists()
+
+
+def test_accepted_p1_blocks_and_repair_is_explicit(tmp_path: Path) -> None:
+    """主 AI 接受 P1 后审核门阻断，显式 repair 才生成计划。"""
+    run_dir, request = _r1_request(tmp_path, run_id="review-p1-accepted")
+    session = claim_review_request(request, thread_id="thread-p1-accepted")
+    report = write_review_report(
+        request, _finding_report(request, sha256_file(session), severity="P1")
+    )
+    adjudication = _adjudication(
+        report,
+        [
+            _decision(
+                "finding-1",
+                "P1",
+                "accepted",
+                confirmation_evidence=["brief/model_spec.json:line-1"],
+                gate_effect="block",
+            )
+        ],
+    )
+    adjudication_path = write_review_adjudication(report, adjudication)
+    receipt = materialize_review_receipt(request, report)
+
+    state = StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", receipt, Actor("gate-recorder")
+    )
+
+    gate = state["review_gates"]["R1_MODELING"]
+    assert gate["status"] == "failed"
+    assert gate["accepted_blocking_finding_count"] == 1
+    assert not (report.parent / "REPAIR_PLAN.json").exists()
+
+    plan = create_repair_plan(run_dir, report, adjudication_path)
+    assert load_json(plan)["repair_scope"][0]["finding_id"] == "finding-1"
+
+
+def test_invalid_sealed_result_is_machine_blocker(tmp_path: Path) -> None:
+    """accepted result 的 seal 失效时，机器 blocker 独立于 adjudication。"""
+    run_dir, _ = _r1_request(tmp_path, run_id="review-sealed-blocker")
+    atomic_json(
+        run_dir / "results/result_registry.json",
+        {
+            "schema_name": "result_registry",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "results": [
+                {
+                    "result_id": "q1-invalid",
+                    "question_id": "q1",
+                    "cycle": "primary",
+                    "status": "accepted",
+                    "paper_allowed": True,
+                    "execution_record_id": "missing",
+                    "metric_spec_ids": [],
+                    "sealed_result_path": "results/sealed/q1-invalid.result.json",
+                    "result_seal_path": "results/sealed/q1-invalid.seal.json",
+                    "supersedes_result_id": None,
+                }
+            ],
+        },
+    )
+    blockers = collect_machine_blockers(
+        run_dir, "R2_EXPERIMENT_q1", load_json(run_dir / "state.json")
+    )
+
+    assert any(item.blocker_id == "sealed-result-invalid:q1-invalid" for item in blockers)
+    assert all(item.override_allowed is False for item in blockers)
+
+
+def test_probe_lifecycle_preserves_initial_adjudication_and_resolves_gate(
+    tmp_path: Path,
+) -> None:
+    """needs_probe 经受限 probe 后以新裁决解决，初始裁决保持不可变。"""
+    run_dir, request = _r1_request(tmp_path, run_id="review-probe-lifecycle")
+    session = claim_review_request(request, thread_id="thread-probe-lifecycle")
+    report = write_review_report(
+        request, _finding_report(request, sha256_file(session), severity="P2")
+    )
+    initial_doc = _adjudication(
+        report,
+        [_decision("finding-1", "P2", "needs_probe", gate_effect="block")],
+        unresolved=["finding-1"],
+    )
+    initial_doc.update(
+        {
+            "adjudication_sequence": 1,
+            "supersedes_adjudication_sha256": None,
+            "probe_result_sha256": None,
+        }
+    )
+    initial_path = write_review_adjudication(report, initial_doc)
+    initial_sha256 = sha256_file(initial_path)
+    initial_receipt = materialize_review_receipt(request, report)
+
+    pending = StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", initial_receipt, Actor("gate-recorder")
+    )
+    assert pending["review_gates"]["R1_MODELING"]["status"] == "failed"
+    assert not (report.parent / "REPAIR_PLAN.json").exists()
+
+    output_relative = (
+        report.parent / "probe-output.json"
+    ).relative_to(run_dir).as_posix()
+    command = "python -m pytest probe"
+    plan_path = create_probe_plan(
+        run_dir,
+        report,
+        initial_path,
+        {
+            "schema_name": "probe_plan",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "request_id": load_json(request)["request_id"],
+            "finding_id": "finding-1",
+            "source_report_sha256": sha256_file(report),
+            "source_adjudication_sha256": initial_sha256,
+            "question": "该 finding 是否可由确定性 oracle 复现？",
+            "hypothesis": "精确 oracle 将确认审核 finding。",
+            "probe_type": "exact_oracle",
+            "allowed_files": ["brief/model_spec.json"],
+            "allowed_commands": [command],
+            "budget": {
+                "max_minutes": 5,
+                "max_commands": 1,
+                "max_output_bytes": 1024,
+            },
+            "success_condition": "oracle 复现 finding",
+            "failure_condition": "oracle 反驳 finding",
+            "inconclusive_condition": "输入不足以运行 oracle",
+            "expected_outputs": [output_relative],
+            "generated_at": "2026-07-20T00:00:00Z",
+        },
+    )
+    (run_dir / output_relative).write_text("confirmed\n", encoding="utf-8")
+    result_path = write_probe_result(
+        plan_path,
+        {
+            "schema_name": "probe_result",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "request_id": load_json(request)["request_id"],
+            "finding_id": "finding-1",
+            "probe_plan_sha256": sha256_file(plan_path),
+            "status": "confirmed",
+            "evidence": ["probe-output.json:confirmed"],
+            "executed_commands": [command],
+            "outputs": [output_relative],
+            "started_at": "2026-07-20T00:01:00Z",
+            "finished_at": "2026-07-20T00:02:00Z",
+        },
+    )
+    final_doc = _adjudication(
+        report,
+        [
+            _decision(
+                "finding-1",
+                "P2",
+                "accepted",
+                confirmation_evidence=["probe-output.json:confirmed"],
+                gate_effect="warn",
+            )
+        ],
+    )
+    final_doc.update(
+        {
+            "adjudication_sequence": 2,
+            "supersedes_adjudication_sha256": initial_sha256,
+            "probe_result_sha256": sha256_file(result_path),
+        }
+    )
+    final_path = write_review_adjudication(report, final_doc)
+    final_receipt = materialize_review_receipt(request, report)
+
+    resolved = StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", final_receipt, Actor("gate-recorder")
+    )
+    assert final_path.name == "REVIEW_ADJUDICATION.0002.json"
+    assert initial_receipt.name == "review_receipt.0001.json"
+    assert final_receipt.name == "review_receipt.0002.json"
+    assert load_json(final_receipt)["adjudication_sha256"] == sha256_file(final_path)
+    assert sha256_file(initial_path) == initial_sha256
+    assert resolved["review_gates"]["R1_MODELING"]["status"] == "passed"
+
+
+def test_p0_accept_requires_confirmation_evidence(tmp_path: Path) -> None:
+    """接受 P0 必须绑定支持 finding 成立的确认性证据。"""
     _, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-p0-accept")
     report_doc = _finding_report(request, sha256_file(session), severity="P0")
@@ -420,17 +704,20 @@ def test_p0_accept_requires_second_review_evidence(tmp_path: Path) -> None:
     report_doc["findings"][0]["changed_route_core_fields"] = ["primary_model"]
     report = write_review_report(request, report_doc)
     adjudication = _adjudication(
-        report, [_decision("finding-1", "P0", "accepted")]
+        report,
+        [_decision("finding-1", "P0", "accepted", confirmation_evidence=[])],
     )
     adjudication["decisions"][0]["effective_change_level"] = "L5"
     adjudication["decisions"][0]["route_reapproval_required"] = True
-    with pytest.raises(ContractError, match="P0 只有"):
+    with pytest.raises(ContractError, match="confirmation_evidence"):
         write_review_adjudication(report, adjudication)
 
 
-def test_unresolved_conflict_blocks_receipt(tmp_path: Path) -> None:
-    """待二次复核冲突不能生成审核回执。"""
-    _, request = _r1_request(tmp_path)
+def test_unresolved_conflict_blocks_gate_but_not_adjudicated_receipt(
+    tmp_path: Path,
+) -> None:
+    """待二次复核冲突阻断状态门，但裁决事实仍可形成回执。"""
+    run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-unresolved")
     report = write_review_report(
         request, _finding_report(request, sha256_file(session), severity="P2")
@@ -441,8 +728,13 @@ def test_unresolved_conflict_blocks_receipt(tmp_path: Path) -> None:
         unresolved=["finding-1"],
     )
     write_review_adjudication(report, adjudication)
-    with pytest.raises(ContractError, match="待独立复核"):
-        materialize_review_receipt(request, report)
+    receipt = materialize_review_receipt(request, report)
+    state = StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", receipt, Actor("gate-recorder")
+    )
+
+    assert state["review_gates"]["R1_MODELING"]["status"] == "failed"
+    assert not (report.parent / "REPAIR_PLAN.json").exists()
 
 
 def test_repair_plan_contains_only_accepted_findings(tmp_path: Path) -> None:
@@ -465,7 +757,7 @@ def test_repair_plan_contains_only_accepted_findings(tmp_path: Path) -> None:
 
 
 def test_adjudication_tamper_invalidates_receipt(tmp_path: Path) -> None:
-    """裁决文件变化后，已有回执必须失效。"""
+    """裁决变化后，绑定该裁决的审核回执必须失效。"""
     run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-adjudication-tamper")
     report = write_review_report(request, _accept_report(request, sha256_file(session)))

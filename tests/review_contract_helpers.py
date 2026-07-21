@@ -11,6 +11,61 @@ from shumozizi.workflow.review_sessions import claim_review_request
 from shumozizi.workflow.reviews import write_review_adjudication
 
 
+def write_passing_format_audit(run_dir: Path, final_pdf: Path) -> Path:
+    """写入与当前 PDF 绑定的无硬失败格式审计测试夹具。"""
+    path = run_dir / "review" / "FORMAT_AUDIT.json"
+    atomic_json(
+        path,
+        {
+            "schema_name": "format_audit",
+            "schema_version": "2.0",
+            "run_id": run_dir.name,
+            "profile_id": "generic",
+            "final_pdf_path": final_pdf.relative_to(run_dir).as_posix(),
+            "final_pdf_sha256": sha256_file(final_pdf),
+            "page_count": 1,
+            "page_sizes": [
+                {
+                    "page": 1,
+                    "width_pt": 595.276,
+                    "height_pt": 841.89,
+                    "a4": True,
+                }
+            ],
+            "file_size_bytes": final_pdf.stat().st_size,
+            "measured_margins_cm": {
+                "required_cm": 2.5,
+                "pages": [],
+                "minimum": {
+                    "left_cm": 2.5,
+                    "right_cm": 2.5,
+                    "top_cm": 2.5,
+                    "bottom_cm": 2.5,
+                },
+            },
+            "summary_on_first_page": True,
+            "keywords_present": True,
+            "font_resources": [],
+            "fonts_embedded": True,
+            "body_font_size_distribution": {"10": 1},
+            "caption_font_size_distribution": {},
+            "figure_numbering_complete": True,
+            "table_numbering_complete": True,
+            "references_present": True,
+            "citations_linked": False,
+            "image_dpi": [],
+            "clipping_detected": False,
+            "overlap_detected": False,
+            "anonymous_check": True,
+            "checks": [],
+            "hard_failures": [],
+            "warnings": [],
+            "generated_at": "2026-07-20T00:00:00Z",
+        },
+    )
+    return path
+
+
 def complete_stage_bindings(
     run_dir: Path,
     stage: str,
@@ -220,8 +275,18 @@ def adjudicate_report(report_path: Path) -> Path:
                 "finding_id": finding["finding_id"],
                 "reviewer_severity": severity,
                 "main_decision": main_decision,
+                "effective_severity": severity,
+                "gate_effect": {
+                    "accepted": "block",
+                    "accepted_as_advisory": "warn",
+                    "rejected": "none",
+                }.get(main_decision, "block"),
                 "decision_reason": "测试生产主 AI 独立核验结论",
+                "confirmation_evidence": ["test:confirmation"]
+                if main_decision == "accepted"
+                else [],
                 "counter_evidence": ["second-review:test"] if severity == "P0" else [],
+                "resolution_evidence_type": None,
                 "effective_change_level": finding["change_level"],
                 "affected_questions": finding.get("affected_questions", []),
                 "required_retests": finding.get("required_retests", []),

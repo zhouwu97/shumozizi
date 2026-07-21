@@ -23,7 +23,7 @@ REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
             "data_profile",
             "validation_plan",
         ],
-        "optional_inputs": [],
+        "optional_inputs": ["phase_a"],
         "forbidden_inputs": ["review_report.json", "review_receipt.json"],
         "required_outputs": ["verdict", "findings"],
         "hard_blocks": ["题意错误", "变量或约束不可计算", "必做问题遗漏"],

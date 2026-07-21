@@ -54,13 +54,15 @@ R1 报告必须包含完整 17 项 coverage 矩阵（目标与约束分别检查
 
 `review_request.json` 只绑定材料清单，不包含线程身份。生产主对话写完请求后必须停止，向用户
 输出独立审核交接提示。用户只需在 Codex 桌面版中新建一个顶层对话并提交该请求；该新对话中的
-审核 AI 自动调用对应审核 Skill，读取冻结材料并生成 `review_session.json`、报告和回执。用户
+审核 AI 自动调用对应审核 Skill，读取冻结材料并生成 `review_session.json` 和报告。报告返回
+生产主对话完成裁决后，再生成绑定裁决哈希的回执。用户
 不需要逐项辅助审核、复现、测量、判分或手工填写报告。领取通过独占创建和仓库级锁串行化，
 一个 request 只能领取一次；
 `.review_registry/thread_claims/` 保证同一 thread ID 在整个仓库的 `runs/*/review` 中只能领取
 一次。subagent、fork、继承上下文和旧 revision 均被拒绝。报告绑定 `session_sha256`，回执继续绑定
-input manifest、session、request 和 report 四层哈希，`StateService.record_review_gate()` 登记前
-重新计算四层哈希、逐文件材料哈希、session 身份和仓库级 thread claim。
+input manifest、session、request、report 和 adjudication 五层哈希，
+`StateService.record_review_gate()` 登记前重新计算五层哈希、逐文件材料哈希、session 身份和
+仓库级 thread claim。
 
 `attestation_level=self_declared` 是当前平台未暴露可信父子任务元数据时的诚实声明，不是
 密码学证明。只有编排器或平台提供可核验元数据时，才能提升为 `orchestrator_verified` 或

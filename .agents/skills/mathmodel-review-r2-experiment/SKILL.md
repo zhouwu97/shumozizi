@@ -26,10 +26,38 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 ## 执行步骤
 
 1. 校验 manifest、request、session 绑定及 `R2_EXPERIMENT_<question_id>` 题号。
-2. 运行 `python scripts/runtime/verify_execution.py` 或等价的只读复验，检查退出码、输入/输出哈希、随机种子和预期产物。
-3. 复核 metric provenance、单位、基线引用、硬约束、验证检查和 sealed result seal。
-4. 在允许预算内复现一次；若环境不具备复现条件，明确区分 BLOCKED 与可复现警告。
-5. 记录图表数据是否来自 accepted result，不对生产文件做修复。
+2. **先进行独立科学分析**：在填写双轴检查或 finding 表格之前，独立分析数据生成机制、
+   划分与指标是否回答题问、替代解释、反例、失败模式和可证伪复现实验。不得把检查项顺序
+   当作推理顺序；允许发现不属于既有检查项的问题。无法确定时保留 `unknown`，不得为了
+   填满清单而写 `verified`。
+3. **再做结果映射**：完成独立分析后，把判断映射到执行可复现性、科学正确性双轴和 findings。
+   双轴检查只记录基础检查状态，不是推理步骤，也不是科学质量评分。清单外科学问题可使用
+   `check_id=null`，仍需给出证据和建议 probe、二审或人工决定。
+4. 在查看 primary 结果前，核对实验计划中预注册的 oracle；至少选择一种能证伪核心结论的 oracle。
+5. 运行 `python scripts/runtime/verify_execution.py` 或等价的只读复验，检查退出码、输入/输出哈希、随机种子和预期产物。
+6. 独立检查数据划分与重复测量边界、时间/目标泄漏、指标对目标的适用性、单位、硬约束和解的可信度。
+7. 检查参数可辨识性与多初值稳定性、结论是否超出证据，以及 robustness/ablation 的扰动是否足以区分竞争模型。
+8. 在允许预算内复现一次并执行预注册 oracle；环境不足时明确区分 `unknown` 与 `challenged`。
+9. 记录图表是否来自 accepted sealed result，不对生产文件做修复。
+
+## 双轴报告
+
+`review_report.json` v3 必须分别写入：
+
+- `execution_reproducibility`：`code_execution`、`config_reproducibility`、`hash_integrity`、
+  `random_seed_control`、`result_figure_consistency`、`accepted_result_seal`；
+- `scientific_correctness`：`split_design`、`leakage_control`、`metric_suitability`、
+  `constraint_completeness`、`solution_credibility`、`parameter_stability`、
+  `conclusion_bounds`、`robustness_discrimination`。
+
+每项状态只能是 `verified`、`challenged`、`unknown` 或 `not_applicable`，并附定位证据。
+任一 `challenged` 或 `unknown` 都必须有同 `check_id` 的 finding；`unknown` finding 必须用
+`recommended_resolution` 进入 probe、独立二审或人工决定，不能自动通过。
+
+`preregistered_oracles` 必须在查看 primary 结果前冻结，类型只能选自 `exact_solution`、
+`small_instance_exhaustive_solution`、`synthetic_recovery`、`independent_implementation`、
+`known_limiting_case`、`permutation_null`、`multiple_start_consistency`、`grid_convergence` 或
+`constraint_feasibility_oracle`。每项必须给出问题、成功条件和证据路径，禁止事后按结果改 oracle。
 
 ## 基础 Skill 与脚本
 
@@ -39,10 +67,10 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 
 ## Finding 证据格式
 
-`evidence` 至少包含 execution record、metric_spec 或 sealed result 的相对路径及字段/哈希；
-复现数值必须记录单位、容差和命令退出码。每条 finding 同时声明 `change_level`、
-`affected_questions`、`change_class`、`route_impact` 和 `changed_route_core_fields`；
-问题所在阶段不得替代路线影响判断，只有最终有效等级为 `L5` 才要求路线重新批准。
+v3 reviewer finding 的 `evidence` 至少包含 execution record、metric_spec 或 sealed result 的
+相对路径及字段/哈希；复现数值必须记录单位、容差和命令退出码。finding 只需声明问题、证据、
+为何可能错误及建议验证；`check_id` 可为空。`change_level`、`affected_questions`、
+`required_retests`、`route_impact` 和路线重新批准均由主 AI 在 adjudication 中裁决。
 
 ## 严重度
 

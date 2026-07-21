@@ -1,0 +1,99 @@
+{
+  "schema_name": "scientific_reviewer_cases",
+  "schema_version": "1.0",
+  "benchmark_id": "scientific-fault-reviewer-variants-v1",
+  "development_use": "held_out_independent_review_only",
+  "rule_tuning_prohibited": true,
+  "cases": [
+    {
+      "case_id": "RV-01-temporal-order",
+      "required_review_stages": ["R2_EXPERIMENT"],
+      "problem_fragment": "观测在作出决策之后才会落库，评估脚本按记录编号抽样。",
+      "data_or_fixture": "每条记录含 observation_time 与 decision_time；前者有时晚于后者。",
+      "model_spec": "用观测列解释同一记录的决策收益。",
+      "experiment_plan": "将所有行混合后取 80% 训练、20% 验证，固定 seed=11。",
+      "code_or_pseudocode": "idx = rng.permutation(np.arange(len(frame))); train, test = frame.iloc[idx[:n]], frame.iloc[idx[n:]]"
+    },
+    {
+      "case_id": "RV-02-label-aggregate",
+      "required_review_stages": ["R2_EXPERIMENT"],
+      "problem_fragment": "每个门店的响应均值被加入该门店所有样本的输入向量。",
+      "data_or_fixture": "门店记录先合并成一张表，再按 fold_id 分层。",
+      "model_spec": "输入含 store_response_average，输出预测单店响应。",
+      "experiment_plan": "构造编码列后才调用交叉验证；编码步骤没有 fold 参数。",
+      "code_or_pseudocode": "stats = df.groupby('store').response.agg(['mean']); z = df.join(stats, on='store'); cross_validate(pipe, z, y, cv=5)"
+    },
+    {
+      "case_id": "RV-03-energy-units",
+      "required_review_stages": ["R1_MODELING"],
+      "problem_fragment": "功率记录以 kW 保存，持续时间以秒保存，收费按每千瓦时计价。",
+      "data_or_fixture": "字段字典：p[kW]、dt[s]、c[CNY/kWh]。",
+      "model_spec": "费用函数 E = p * dt * c。",
+      "experiment_plan": "使用边界样本核对费用并与账单比较。",
+      "code_or_pseudocode": "energy_cost = p * dt * c"
+    },
+    {
+      "case_id": "RV-04-product-parameters",
+      "required_review_stages": ["R1_MODELING"],
+      "problem_fragment": "响应只由两个系数的乘积决定，数据没有额外尺度可分离它们。",
+      "data_or_fixture": "z = (theta_left * theta_right) * dose + epsilon。",
+      "model_spec": "分别报告 theta_left 和 theta_right，并给出两个边际置信区间。",
+      "experiment_plan": "使用单个起点的自定义梯度下降，记录整体 R2。",
+      "code_or_pseudocode": "loss = lambda q: np.sum((z - q[0] * q[1] * dose) ** 2); minimize(loss, [1.0, 1.0])"
+    },
+    {
+      "case_id": "RV-05-subject-hash",
+      "required_review_stages": ["R2_EXPERIMENT"],
+      "problem_fragment": "一名病人在多个日期留下多条观测，拆分按行完成。",
+      "data_or_fixture": "patient_code 重复出现，每位患者有 8 至 12 条记录。",
+      "model_spec": "普通回归器，未声明患者级隔离。",
+      "experiment_plan": "对完整表计算 row_hash 后按 hash 奇偶分成 train/test。",
+      "code_or_pseudocode": "train = df[df.row_hash % 2 == 0]; test = df[df.row_hash % 2 == 1]"
+    },
+    {
+      "case_id": "RV-06-two-faults",
+      "required_review_stages": ["R1_MODELING", "R2_EXPERIMENT"],
+      "problem_fragment": "仓储方案必须在任何时段保持存量非负，且结论仅由两个方案的明显差距支持。",
+      "data_or_fixture": "边界实例允许求解器给出负存量；主方案与备选方案相差约三成。",
+      "model_spec": "模型只写容量上限，没有存量下界；论文称所有情景均稳定。",
+      "experiment_plan": "只加入幅度为 1e-11 的舍入扰动，重复三次后声称稳健。",
+      "code_or_pseudocode": "solve(cost, constraints=[capacity <= limit]); jitter = rng.normal(0, 1e-11, size=n)"
+    },
+    {
+      "case_id": "RV-07-clean-with-notation",
+      "required_review_stages": ["R1_MODELING", "R2_EXPERIMENT"],
+      "problem_fragment": "决策变量、观测量和边界情形均在附录逐项定义。",
+      "data_or_fixture": "每名对象只进入一个集合；派生统计量在拟合折内生成。",
+      "model_spec": "闭式解并显式施加 x >= 0，参数由两个独立尺度识别。",
+      "experiment_plan": "先冻结小实例 oracle，再执行基线、主实验和覆盖不确定性的扰动。",
+      "code_or_pseudocode": "fit_transform(train); transform(test); assert np.all(x >= 0); compare_to_exact_small_case()"
+    },
+    {
+      "case_id": "RV-08-clean-fold-transform",
+      "required_review_stages": ["R2_EXPERIMENT"],
+      "problem_fragment": "类别统计只使用当前训练折的响应，验证折只调用已拟合转换器。",
+      "data_or_fixture": "每组有独立的 training_mask 与 validation_mask。",
+      "model_spec": "折内拟合的平滑编码器，参数在每次 fit 时重新计算。",
+      "experiment_plan": "Pipeline 在每个 split 中先 fit，再 transform；报告 null permutation。",
+      "code_or_pseudocode": "pipe = Pipeline([('enc', FoldMeanEncoder()), ('m', Ridge())]); cross_validate(pipe, X, y, cv=groups)"
+    },
+    {
+      "case_id": "RV-09-clean-group-split",
+      "required_review_stages": ["R2_EXPERIMENT"],
+      "problem_fragment": "同一对象的记录必须留在同一集合。",
+      "data_or_fixture": "entity_key 有重复值，分组边界已在清单中冻结。",
+      "model_spec": "模型不使用 entity_key 作为输入。",
+      "experiment_plan": "GroupKFold 按 entity_key 产生所有折，并检查集合交集为空。",
+      "code_or_pseudocode": "for train, test in GroupKFold(5).split(X, y, groups=entity_key): assert not set(entity_key[train]) & set(entity_key[test])"
+    },
+    {
+      "case_id": "RV-10-clean-negative-result",
+      "required_review_stages": ["R1_MODELING", "R2_EXPERIMENT"],
+      "problem_fragment": "主方案没有改善目标，区间跨越零；论文如实报告无改善。",
+      "data_or_fixture": "估计差异为 -0.02，区间为 [-0.10, 0.06]，失败边界已披露。",
+      "model_spec": "不预设正向结果，只要求估计量和区间与目标方向一致。",
+      "experiment_plan": "保留负面结果，执行合成恢复、极限情形和预注册 permutation null。",
+      "code_or_pseudocode": "report(effect=-0.02, interval=(-0.10, 0.06), conclusion='no improvement')"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema_name": "scientific_reviewer_oracle",
+  "schema_version": "1.0",
+  "benchmark_id": "scientific-fault-reviewer-variants-v1",
+  "case_set_sha256": "fbcab92b139a442fcfe452566096773a6b675f4fda74de1a34162b18ce7fc1d9",
+  "cases": [
+    {"case_id": "RV-01-temporal-order", "is_fault": true, "expected_findings": [{"fault_id": "temporal_leakage", "accepted_labels": ["时间泄漏", "temporal leakage"], "expected_stage": "R2_EXPERIMENT", "expected_severity_range": ["P1", "P2"]}], "allowed_alternative_judgments": ["P1", "P2"]},
+    {"case_id": "RV-02-label-aggregate", "is_fault": true, "expected_findings": [{"fault_id": "target_derived_feature_leakage", "accepted_labels": ["目标派生特征泄漏", "target-derived feature leakage"], "expected_stage": "R2_EXPERIMENT", "expected_severity_range": ["P1", "P2"]}], "allowed_alternative_judgments": ["P1", "P2"]},
+    {"case_id": "RV-03-energy-units", "is_fault": true, "expected_findings": [{"fault_id": "unit_dimension_error", "accepted_labels": ["公式量纲错误", "unit dimension error"], "expected_stage": "R1_MODELING", "expected_severity_range": ["P1", "P2"]}], "allowed_alternative_judgments": ["P1", "P2"]},
+    {"case_id": "RV-04-product-parameters", "is_fault": true, "expected_findings": [{"fault_id": "nonidentifiable_parameters", "accepted_labels": ["参数不可辨识", "non-identifiable parameters"], "expected_stage": "R1_MODELING", "expected_severity_range": ["P1", "P2"]}], "allowed_alternative_judgments": ["P1", "P2"]},
+    {"case_id": "RV-05-subject-hash", "is_fault": true, "expected_findings": [{"fault_id": "repeated_measurement_split", "accepted_labels": ["重复测量样本泄漏", "repeated-measurement split leakage"], "expected_stage": "R2_EXPERIMENT", "expected_severity_range": ["P1", "P2"]}], "allowed_alternative_judgments": ["P1", "P2"]},
+    {"case_id": "RV-06-two-faults", "is_fault": true, "expected_findings": [{"fault_id": "hidden_hard_constraint", "accepted_labels": ["遗漏隐藏硬约束", "omitted hard constraint"], "expected_stage": "R1_MODELING", "expected_severity_range": ["P0", "P1"]}, {"fault_id": "weak_robustness", "accepted_labels": ["稳健性实验无辨识力", "non-discriminating robustness"], "expected_stage": "R2_EXPERIMENT", "expected_severity_range": ["P2", "P3"]}], "allowed_alternative_judgments": ["两个独立 finding", "one integrated finding"]},
+    {"case_id": "RV-07-clean-with-notation", "is_fault": false, "expected_findings": [], "allowed_alternative_judgments": ["无科学错误"]},
+    {"case_id": "RV-08-clean-fold-transform", "is_fault": false, "expected_findings": [], "allowed_alternative_judgments": ["无科学错误"]},
+    {"case_id": "RV-09-clean-group-split", "is_fault": false, "expected_findings": [], "allowed_alternative_judgments": ["无科学错误"]},
+    {"case_id": "RV-10-clean-negative-result", "is_fault": false, "expected_findings": [], "allowed_alternative_judgments": ["无科学错误"]}
+  ]
+}

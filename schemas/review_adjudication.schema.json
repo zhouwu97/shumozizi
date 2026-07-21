@@ -23,15 +23,28 @@
         "additionalProperties": false,
         "required": [
           "finding_id", "reviewer_severity", "main_decision", "decision_reason",
-          "counter_evidence", "effective_change_level", "affected_questions",
+          "effective_severity", "gate_effect", "confirmation_evidence",
+          "counter_evidence", "resolution_evidence_type", "effective_change_level", "affected_questions",
           "required_retests", "route_reapproval_required"
         ],
         "properties": {
           "finding_id": {"type": "string", "minLength": 1},
           "reviewer_severity": {"enum": ["P0", "P1", "P2", "P3"]},
-          "main_decision": {"enum": ["accepted", "rejected", "accepted_as_advisory", "needs_second_review", "needs_human_decision"]},
+          "main_decision": {"enum": ["accepted", "rejected", "accepted_as_advisory", "needs_probe", "needs_second_review", "needs_human_decision"]},
+          "effective_severity": {"enum": ["P0", "P1", "P2", "P3"]},
+          "gate_effect": {"enum": ["block", "warn", "none"]},
           "decision_reason": {"type": "string", "minLength": 1},
+          "confirmation_evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
           "counter_evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "resolution_evidence_type": {
+            "type": ["string", "null"],
+            "enum": [
+              null,
+              "deterministic_machine_evidence", "exact_oracle", "probe_result",
+              "independent_second_review", "human_decision", "main_ai_opinion",
+              "general_reasoning", "author_claim"
+            ]
+          },
           "effective_change_level": {"enum": ["L0", "L1", "L2", "L3", "L4", "L5"]},
           "affected_questions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "required_retests": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
@@ -40,6 +53,9 @@
       }
     },
     "unresolved_conflicts": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "adjudication_sequence": {"type": "integer", "minimum": 1},
+    "supersedes_adjudication_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "probe_result_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
     "generated_by": {"const": "production_main_ai"},
     "generated_at": {"type": "string", "format": "date-time"}
   }
