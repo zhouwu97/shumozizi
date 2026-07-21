@@ -26,7 +26,7 @@ def _canonical_relative(run_dir: Path, declared_path: str, *, must_exist: bool =
     return canonical
 
 
-def _matches_forbidden(path: str, pattern: str) -> bool:
+def matches_forbidden_input(path: str, pattern: str) -> bool:
     """在路径归一化后匹配禁止目录、文件名或明确相对路径。"""
     normalized_path = path.casefold()
     normalized_pattern = pattern.replace("\\", "/").lstrip("./").casefold()
@@ -44,6 +44,7 @@ def create_review_input_manifest(
     *,
     request_id: str,
     stage: str,
+    review_mode: str,
     question_id: str | None,
     review_round_id: str,
     state_revision: int,
@@ -52,7 +53,9 @@ def create_review_input_manifest(
     output_path: Path,
 ) -> Path:
     """冻结阶段材料及其哈希，作为审核请求的唯一输入权威清单。"""
-    policy = get_review_stage_policy(stage, run_dir, question_id=question_id)
+    policy = get_review_stage_policy(
+        stage, run_dir, question_id=question_id, review_mode=review_mode
+    )
     mandatory = set(policy["mandatory_inputs"])
     materials = []
     for role in sorted(bindings):
@@ -71,6 +74,7 @@ def create_review_input_manifest(
         "request_id": request_id,
         "run_id": run_dir.name,
         "stage": stage,
+        "review_mode": review_mode,
         "question_id": question_id,
         "review_round_id": review_round_id,
         "state_revision": state_revision,
@@ -95,7 +99,10 @@ def verify_review_input_manifest(
         manifest = load_json(manifest_path)
         require_valid(manifest, "review_input_manifest")
         policy = get_review_stage_policy(
-            manifest["stage"], run_dir, question_id=manifest.get("question_id")
+            manifest["stage"],
+            run_dir,
+            question_id=manifest.get("question_id"),
+            review_mode=manifest.get("review_mode", "full_scientific"),
         )
         materials = manifest["materials"]
         roles = [item["role"] for item in materials]
@@ -115,7 +122,10 @@ def verify_review_input_manifest(
             raise ContractError("审核材料清单的禁止路径策略已被修改")
         for item in materials:
             path = _canonical_relative(run_dir, item["path"])
-            if any(_matches_forbidden(path, pattern) for pattern in policy["forbidden_inputs"]):
+            if any(
+                matches_forbidden_input(path, pattern)
+                for pattern in policy["forbidden_inputs"]
+            ):
                 raise ContractError(f"审核材料命中禁止路径: {path}")
             if sha256_file(resolve_inside(run_dir, path, must_exist=True)) != item["sha256"]:
                 raise ContractError(f"审核材料哈希已变化: {item['role']}")
@@ -126,11 +136,20 @@ def verify_review_input_manifest(
                 "request_id",
                 "run_id",
                 "stage",
+                "review_mode",
                 "question_id",
                 "review_round_id",
                 "state_revision",
             )
-            if any(manifest[key] != request[key] for key in identity):
+            if any(
+                (
+                    manifest.get(key, "full_scientific")
+                    != request.get(key, "full_scientific")
+                    if key == "review_mode"
+                    else manifest[key] != request[key]
+                )
+                for key in identity
+            ):
                 raise ContractError("审核材料清单与请求身份不一致")
             manifest_roles = {item["role"]: item for item in materials}
             if set(manifest_roles) != set(request["bindings"]):

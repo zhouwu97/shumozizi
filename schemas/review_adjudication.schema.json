@@ -14,6 +14,7 @@
     "run_id": {"type": "string", "minLength": 1},
     "request_id": {"type": "string", "minLength": 1},
     "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT", "R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"]},
+    "review_mode": {"enum": ["full_scientific", "targeted_recheck", "diff_check", "machine_check"]},
     "state_revision": {"type": "integer", "minimum": 0},
     "review_report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "decisions": {
@@ -30,8 +31,12 @@
         "properties": {
           "finding_id": {"type": "string", "minLength": 1},
           "reviewer_severity": {"enum": ["P0", "P1", "P2", "P3"]},
-          "main_decision": {"enum": ["accepted", "rejected", "accepted_as_advisory", "needs_probe", "needs_second_review", "needs_human_decision"]},
+          "main_decision": {"enum": ["accepted", "rejected", "accepted_as_advisory", "deferred_empirical", "needs_probe", "needs_second_review", "needs_human_decision"]},
           "effective_severity": {"enum": ["P0", "P1", "P2", "P3"]},
+          "domain": {"enum": ["scientific", "machine"]},
+          "verification_mode": {"enum": ["targeted_recheck", "diff_check", "machine_check", "human_decision", "none"]},
+          "scientific_semantic_change": {"type": "boolean"},
+          "reopen_justification": {"type": ["string", "null"], "minLength": 1},
           "gate_effect": {"enum": ["block", "warn", "none"]},
           "decision_reason": {"type": "string", "minLength": 1},
           "confirmation_evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},

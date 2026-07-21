@@ -38,9 +38,49 @@
           "accepted_blocking_finding_count": {"type": "integer", "minimum": 0},
           "question_id": {"type": ["string", "null"]},
           "request_stage": {"type": "string"},
+          "review_mode": {"const": "full_scientific"},
+          "open_blocking_findings": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "closures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target_finding_id", "review_mode", "receipt", "receipt_sha256", "adjudication", "adjudication_sha256", "source_receipt_sha256", "recorded_revision"],
+              "properties": {
+                "target_finding_id": {"type": "string", "minLength": 1},
+                "review_mode": {"enum": ["targeted_recheck", "diff_check", "machine_check"]},
+                "receipt": {"type": "string", "minLength": 1},
+                "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "adjudication": {"type": "string", "minLength": 1},
+                "adjudication_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "source_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "recorded_revision": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
           "reviewer_verdict": {"type": "string"},
           "verdict": {"type": "string"},
           "decision": {"enum": ["accepted", "accepted_with_warnings", "rejected", "superseded"]}
+        }
+      }
+    },
+    "deferred_obligations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding_id", "source_gate_id", "block_before", "closure_condition", "failure_action", "status", "source_receipt_sha256", "created_revision", "closed_by_receipt_sha256", "closed_revision"],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "source_gate_id": {"type": "string", "minLength": 1},
+          "block_before": {"enum": ["formal_experiment", "model_selection", "paper_claim", "final_submission"]},
+          "closure_condition": {"type": "string", "minLength": 1},
+          "failure_action": {"type": "string", "minLength": 1},
+          "status": {"enum": ["open", "closed"]},
+          "source_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "created_revision": {"type": "integer", "minimum": 0},
+          "closed_by_receipt_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "closed_revision": {"type": ["integer", "null"], "minimum": 0}
         }
       }
     },

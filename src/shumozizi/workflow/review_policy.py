@@ -9,6 +9,83 @@ from typing import Any
 from shumozizi.core.io import ContractError, load_json
 from shumozizi.profiles.lock import verify_run_config_lock
 
+REVIEW_MODES = (
+    "full_scientific",
+    "targeted_recheck",
+    "diff_check",
+    "machine_check",
+)
+FINDING_CONFIDENCE_LEVELS = ("low", "medium", "high")
+FINDING_STATUSES = ("open", "deferred_empirical")
+FINDING_DOMAINS = ("scientific", "machine")
+VERIFICATION_MODES = (
+    "targeted_recheck",
+    "diff_check",
+    "machine_check",
+    "human_decision",
+    "none",
+)
+DEFERRED_BLOCK_POINTS = (
+    "formal_experiment",
+    "model_selection",
+    "paper_claim",
+    "final_submission",
+)
+
+_SCOPED_FORBIDDEN_INPUTS = [
+    "problem/",
+    "problems/",
+    "brief/",
+    "results/",
+    "paper/",
+    "src/",
+    "scripts/",
+    "review_report.json",
+    "review_receipt.json",
+]
+
+REVIEW_MODE_POLICIES: dict[str, dict[str, Any]] = {
+    "targeted_recheck": {
+        "mandatory_inputs": [
+            "original_finding",
+            "source_adjudication",
+            "before_after_diff",
+            "repair_evidence",
+            "direct_dependencies",
+        ],
+        "optional_inputs": [],
+        "forbidden_inputs": _SCOPED_FORBIDDEN_INPUTS,
+        "required_outputs": ["verdict", "findings"],
+        "hard_blocks": ["原 finding 未关闭", "修改引入新的 P0/P1"],
+        "quality_dimensions": ["原问题关闭", "修改范围", "直接依赖"],
+    },
+    "diff_check": {
+        "mandatory_inputs": [
+            "original_finding",
+            "source_adjudication",
+            "before_after_diff",
+            "repair_evidence",
+        ],
+        "optional_inputs": ["direct_dependencies"],
+        "forbidden_inputs": _SCOPED_FORBIDDEN_INPUTS,
+        "required_outputs": ["verdict", "findings"],
+        "hard_blocks": ["修改超出声明范围", "证据未对应修改"],
+        "quality_dimensions": ["差异范围", "修复证据"],
+    },
+    "machine_check": {
+        "mandatory_inputs": [
+            "original_finding",
+            "source_adjudication",
+            "machine_evidence",
+        ],
+        "optional_inputs": ["repair_evidence"],
+        "forbidden_inputs": _SCOPED_FORBIDDEN_INPUTS,
+        "required_outputs": ["verdict", "findings"],
+        "hard_blocks": ["机器证据不可复验", "确定性检查仍失败"],
+        "quality_dimensions": ["确定性复验", "证据完整性"],
+    },
+}
+
 REVIEW_STAGE_POLICIES: dict[str, dict[str, Any]] = {
     "R1_MODELING": {
         "mandatory_inputs": [
@@ -174,8 +251,13 @@ def get_review_stage_policy(
     run_dir: Path | None = None,
     *,
     question_id: str | None = None,
+    review_mode: str = "full_scientific",
 ) -> dict[str, Any]:
-    """返回阶段策略；局部 R3 只冻结该问章节所需证据。"""
+    """返回审核模式策略；full 模式再按阶段冻结完整材料。"""
+    if review_mode not in REVIEW_MODES:
+        raise ContractError(f"未知审核模式: {review_mode}")
+    if review_mode != "full_scientific":
+        return deepcopy(REVIEW_MODE_POLICIES[review_mode])
     policy = deepcopy(REVIEW_STAGE_POLICIES[stage])
     if stage == "R3_PAPER_LOGIC" and question_id is not None:
         policy["mandatory_inputs"] = [

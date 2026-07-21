@@ -48,9 +48,31 @@
         "claim": {"type": "string", "minLength": 1},
         "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "why_it_may_be_wrong": {"type": "string", "minLength": 1},
+        "confidence": {"enum": ["low", "medium", "high"]},
+        "status": {"enum": ["open", "deferred_empirical"]},
+        "block_before": {"enum": ["formal_experiment", "model_selection", "paper_claim", "final_submission"]},
+        "closure_condition": {"type": "string", "minLength": 1},
+        "failure_action": {"type": "string", "minLength": 1},
+        "reopen_context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["relation_to_change", "previously_undiscoverable_reason", "reopen_evidence", "reopen_justification"],
+          "properties": {
+            "relation_to_change": {"type": "string", "minLength": 1},
+            "previously_undiscoverable_reason": {"type": "string", "minLength": 1},
+            "reopen_evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "reopen_justification": {"type": "string", "minLength": 1}
+          }
+        },
         "check_id": {"type": ["string", "null"], "minLength": 1},
         "recommended_resolution": {"enum": ["needs_probe", "needs_second_review", "needs_human_decision"]}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"required": ["status"], "properties": {"status": {"const": "deferred_empirical"}}},
+          "then": {"required": ["block_before", "closure_condition", "failure_action"]}
+        }
+      ]
     }
   },
   "required": ["schema_name", "schema_version", "request_id", "run_id", "stage", "review_round_id", "request_sha256", "input_manifest_sha256", "session_sha256", "verdict", "findings", "read_only_confirmed", "generated_at"],
@@ -60,6 +82,8 @@
     "request_id": {"type": "string", "minLength": 1},
     "run_id": {"type": "string", "minLength": 1},
     "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT", "R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"]},
+    "review_mode": {"enum": ["full_scientific", "targeted_recheck", "diff_check", "machine_check"]},
+    "target_finding_id": {"type": "string", "minLength": 1},
     "review_round_id": {"type": "string", "minLength": 1},
     "request_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "input_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
@@ -103,9 +127,9 @@
   "allOf": [
     {"if": {"properties": {"schema_version": {"const": "2.0"}}}, "then": {"properties": {"findings": {"items": {"$ref": "#/$defs/reviewer_finding_v2"}}}}},
     {"if": {"properties": {"schema_version": {"const": "3.0"}}}, "then": {"properties": {"findings": {"items": {"$ref": "#/$defs/reviewer_finding_v3"}}}}},
-    {"if": {"properties": {"stage": {"const": "R1_MODELING"}}}, "then": {"required": ["coverage"]}},
-    {"if": {"properties": {"stage": {"const": "R1_MODELING"}, "schema_version": {"const": "3.0"}}}, "then": {"required": ["phase_a_sha256"], "properties": {"coverage": {"$ref": "#/$defs/coverage_v3"}}}},
-    {"if": {"properties": {"stage": {"const": "R2_EXPERIMENT"}, "schema_version": {"const": "3.0"}}}, "then": {"required": ["execution_reproducibility", "scientific_correctness", "preregistered_oracles"]}},
-    {"if": {"properties": {"stage": {"const": "R5_COMPREHENSIVE"}}}, "then": {"required": ["rating", "integrity_axis", "score_type", "assessment_scope", "raw_score", "calibrated_score", "score_caps_applied", "competition_claim_allowed", "quality_axis", "joint_verdict", "repair_scope", "required_retests"]}}
+    {"if": {"allOf": [{"properties": {"stage": {"const": "R1_MODELING"}}}, {"anyOf": [{"not": {"required": ["review_mode"]}}, {"properties": {"review_mode": {"const": "full_scientific"}}}]}]}, "then": {"required": ["coverage"]}},
+    {"if": {"allOf": [{"properties": {"stage": {"const": "R1_MODELING"}, "schema_version": {"const": "3.0"}}}, {"anyOf": [{"not": {"required": ["review_mode"]}}, {"properties": {"review_mode": {"const": "full_scientific"}}}]}]}, "then": {"required": ["phase_a_sha256"], "properties": {"coverage": {"$ref": "#/$defs/coverage_v3"}}}},
+    {"if": {"allOf": [{"properties": {"stage": {"const": "R2_EXPERIMENT"}, "schema_version": {"const": "3.0"}}}, {"anyOf": [{"not": {"required": ["review_mode"]}}, {"properties": {"review_mode": {"const": "full_scientific"}}}]}]}, "then": {"required": ["execution_reproducibility", "scientific_correctness", "preregistered_oracles"]}},
+    {"if": {"allOf": [{"properties": {"stage": {"const": "R5_COMPREHENSIVE"}}}, {"anyOf": [{"not": {"required": ["review_mode"]}}, {"properties": {"review_mode": {"const": "full_scientific"}}}]}]}, "then": {"required": ["rating", "integrity_axis", "score_type", "assessment_scope", "raw_score", "calibrated_score", "score_caps_applied", "competition_claim_allowed", "quality_axis", "joint_verdict", "repair_scope", "required_retests"]}}
   ]
 }

@@ -11,6 +11,13 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 对话中的审核 AI 必须自动完成领取、校验、复现、判断和报告写入，不得要求用户辅助运行实验、
 判断结果或代填报告。禁止使用子 Agent、fork、生产聊天上下文或生产主对话直接执行本审核。
 
+## 审核模式
+
+`full_scientific` 执行完整复现、双轴和预注册 oracle。`targeted_recheck` 只读取原 finding、
+生产裁决、修改前后 diff、修复证据和直接依赖，只复核原问题及修改直接引入的 P0/P1；禁止
+新增无关 P2/P3。`diff_check` 只检查局部差异，`machine_check` 只复验确定性证据，二者都不得
+读取完整实验材料或冒充 full review。
+
 ## 输入文件
 
 - 当前问的 `REVIEW_INPUT_MANIFEST.json`、`review_request.json`、`review_session.json` 和配置锁；
@@ -42,7 +49,7 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 
 ## 双轴报告
 
-`review_report.json` v3 必须分别写入：
+`full_scientific` 的 `review_report.json` v3 必须分别写入：
 
 - `execution_reproducibility`：`code_execution`、`config_reproducibility`、`hash_integrity`、
   `random_seed_control`、`result_figure_consistency`、`accepted_result_seal`；
@@ -67,10 +74,14 @@ description: 按问独立复现实验、指标 provenance、约束和 accepted r
 
 ## Finding 证据格式
 
-v3 reviewer finding 的 `evidence` 至少包含 execution record、metric_spec 或 sealed result 的
+v3 reviewer finding 必须声明 `confidence` 和 `status`。full 模式的 `evidence` 至少包含 execution record、metric_spec 或 sealed result 的
 相对路径及字段/哈希；复现数值必须记录单位、容差和命令退出码。finding 只需声明问题、证据、
 为何可能错误及建议验证；`check_id` 可为空。`change_level`、`affected_questions`、
 `required_retests`、`route_impact` 和路线重新批准均由主 AI 在 adjudication 中裁决。
+
+targeted 模式新增 P0/P1 时必须提供完整 `reopen_context`；`deferred_empirical` 必须声明
+阻断点、关闭条件和失败动作。机器问题交给 `machine_check`，科学 P0/P1 只能由
+`targeted_recheck` 关闭。
 
 ## 严重度
 

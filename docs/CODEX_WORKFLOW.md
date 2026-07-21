@@ -52,6 +52,25 @@ R1 报告必须包含完整 17 项 coverage 矩阵（目标与约束分别检查
 删除，策略外 role 不能加入；`read_paths` 只能引用 manifest 中的材料并覆盖全部强制项。
 运行时会先解析真实路径，再拒绝 `..`、反斜杠别名、越界路径和前轮报告等禁止材料。
 
+审核请求显式冻结 `review_mode`：`full_scientific` 使用阶段完整材料；`targeted_recheck` 只能
+包含原 finding、生产裁决、修改前后 diff、修复证据和直接依赖；`diff_check` 只包含原 finding、
+生产裁决、局部差异与修复证据；`machine_check` 只包含原 finding、生产裁决和确定性机器
+证据。scoped 请求必须绑定既有 `full_scientific` 根门的 gate ID、receipt、report、adjudication
+路径及 SHA-256；运行时复验阶段、问题、目标 finding、原裁决关闭模式和当前开放状态。scoped 模式禁止
+通过额外 read path 或角色重标记读取完整题面、其他报告、结果、论文或源码。
+
+targeted recheck 只允许复核原问题、修改范围和直接依赖，不得新增无关 P2/P3。新增 P0/P1
+必须同时提供与修改的关系、此前无法合理发现的原因、重新打开证据和 production
+`reopen_justification`。机器 P1 由 `machine_check` 关闭，科学 P0/P1 由
+`targeted_recheck` 关闭，非语义 P2 由 `diff_check` 关闭，P3 可作为不阻断建议关闭。P2/P3
+修复若改变科学语义，必须重新分类为科学 P1。经验未知可标记 `deferred_empirical`，但必须冻结
+阻断点、关闭条件与失败动作，并登记到 `state.json.deferred_obligations`。开放义务分别在正式实验、
+论文完成（当前作为模型选择和 paper claim 的最迟边界）或最终提交前阻断状态推进，只能由绑定原始
+根审核的合法 scoped closure 关闭。
+`deferred_obligations.status=closed` 不是可信输入；状态推进会从当前完整根、同一 finding 和同一
+source receipt 的真实 closure 回执重建关闭状态。R1 的 `model_selection` 义务可在
+`EXPERIMENTING` 或 `RESULTS_ACCEPTED` 登记关闭证据。
+
 `review_request.json` 只绑定材料清单，不包含线程身份。生产主对话写完请求后必须停止，向用户
 输出独立审核交接提示。用户只需在 Codex 桌面版中新建一个顶层对话并提交该请求；该新对话中的
 审核 AI 自动调用对应审核 Skill，读取冻结材料并生成 `review_session.json` 和报告。报告返回
@@ -61,8 +80,12 @@ R1 报告必须包含完整 17 项 coverage 矩阵（目标与约束分别检查
 `.review_registry/thread_claims/` 保证同一 thread ID 在整个仓库的 `runs/*/review` 中只能领取
 一次。subagent、fork、继承上下文和旧 revision 均被拒绝。报告绑定 `session_sha256`，回执继续绑定
 input manifest、session、request、report 和 adjudication 五层哈希，
-`StateService.record_review_gate()` 登记前重新计算五层哈希、逐文件材料哈希、session 身份和
-仓库级 thread claim。
+`StateService.record_review_gate()` 只登记或更新 `full_scientific` 完整根门；
+`StateService.record_review_closure()` 只向既有完整根追加 scoped 关闭证明，不能替换根回执。
+`stale` 根不能再创建或登记 scoped closure；它必须由新的 `full_scientific` 根替换，旧根的
+closures 与 deferred obligations 不得继承到新根，只保留在状态历史中。
+两者登记前都重新计算五层哈希、逐文件材料哈希、session 身份和仓库级 thread claim；状态推进还会
+从根裁决重建未关闭 blocker，并复验每条 closure 的模式、裁决、通过结论和来源链。
 
 `attestation_level=self_declared` 是当前平台未暴露可信父子任务元数据时的诚实声明，不是
 密码学证明。只有编排器或平台提供可核验元数据时，才能提升为 `orchestrator_verified` 或
@@ -116,7 +139,7 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 
 完整论文和 PDF 后按依赖创建 R3/R4 请求；机械 QA 通过后由用户新开独立对话，交由该对话中的
 AI 自动执行 R5，原 J0 的自然评委视角并入 R5。竞赛模式 R5 最多三轮，仅 P0/P1 或低于 B 才
-重跑。所有回执必须登记到
+重跑；该上限只统计 `full_scientific`，必要的 scoped closure 不消耗完整审核轮次。所有回执必须登记到
 `review_gates` 并绑定当前生产事实；未登记或任一绑定变化时，不能进入 `WAITING_HUMAN_FINAL`。
 R4/R5 必须绑定机器 `FORMAT_AUDIT.json`；其硬失败不可被文字结论覆盖。R5 必须同时给出 A 轴（`A_PASS`/`A_BLOCKED`）和 B 轴（质量分数及题目覆盖、模型深度、实验验证
 分项）；联合结论由程序校验，失败时自动生成 `REPAIR_PLAN.json`，只重跑受影响审核阶段。
