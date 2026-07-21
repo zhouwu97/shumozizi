@@ -17,18 +17,21 @@
       "required": [
         "schema_name", "schema_version", "receipt_kind", "run_id", "request_id",
         "request_sha256", "session_sha256", "report_sha256",
-        "input_manifest_sha256", "state_revision", "bindings", "issued_at"
+        "input_manifest_sha256", "adjudication_path", "adjudication_sha256",
+        "state_revision", "bindings", "issued_at"
       ],
       "properties": {
         "schema_name": {"const": "review_receipt"},
         "schema_version": {"const": "3.0"},
-        "receipt_kind": {"const": "capture"},
+        "receipt_kind": {"const": "adjudicated"},
         "run_id": {"type": "string"},
         "request_id": {"type": "string"},
         "request_sha256": {"$ref": "#/$defs/sha256"},
         "session_sha256": {"$ref": "#/$defs/sha256"},
         "report_sha256": {"$ref": "#/$defs/sha256"},
         "input_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "adjudication_path": {"type": "string", "minLength": 1},
+        "adjudication_sha256": {"$ref": "#/$defs/sha256"},
         "state_revision": {"type": "integer", "minimum": 0},
         "bindings": {"$ref": "#/$defs/bindings"},
         "issued_at": {"type": "string", "format": "date-time"}

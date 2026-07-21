@@ -128,9 +128,9 @@ evidence_plan
 
 ## 输出格式
 
-按 request 的唯一 `output_path` 写 `review_report.json` v3，并绑定 `phase_a_sha256`。协调器先生成
-纯事实捕获的 `review_receipt.json`，报告返回生产主对话后再由主 AI 写入
-`REVIEW_ADJUDICATION.json`；报告 verdict 只能是 `ACCEPT`、`ACCEPT_WITH_MINOR_FIXES`、
+按 request 的唯一 `output_path` 写 `review_report.json` v3，并绑定 `phase_a_sha256`。审核对话到此
+结束，不生成生产回执。报告返回生产主对话后，由主 AI 写入 `REVIEW_ADJUDICATION.json`，再生成
+绑定裁决哈希的 `review_receipt.json`；报告 verdict 只能是 `ACCEPT`、`ACCEPT_WITH_MINOR_FIXES`、
 `SPEC_REVISION_REQUIRED`、`ROUTE_REAPPROVAL_REQUIRED` 或 `BLOCKED_MISSING_INPUT`。
 
 ## 结束前自检

@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, resolve_inside, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.receipts import verify_production_receipts
@@ -153,15 +153,6 @@ def collect_machine_blockers(
                 )
             )
     return blockers
-
-
-def _latest_adjudication_path(receipt_path: Path) -> Path:
-    """返回普通裁决或 probe 生命周期中编号最大的不可变裁决。"""
-    fixed = receipt_path.with_name("REVIEW_ADJUDICATION.json")
-    numbered = sorted(receipt_path.parent.glob("REVIEW_ADJUDICATION.[0-9][0-9][0-9][0-9].json"))
-    if numbered:
-        return numbered[-1]
-    return fixed
 
 
 TRANSITIONS: dict[tuple[str, WorkflowEvent], str] = {
@@ -341,7 +332,9 @@ class StateService:
         receipt = load_json(resolved_receipt)
         if receipt["schema_version"] != "3.0":
             raise ContractError("v2 review receipt 仅允许历史只读验证，不能登记新审核门")
-        adjudication_path = _latest_adjudication_path(resolved_receipt)
+        adjudication_path = resolve_inside(
+            run_dir, receipt["adjudication_path"], must_exist=True
+        )
         request = load_json(resolved_receipt.with_name("review_request.json"))
         report = load_json(resolved_receipt.with_name("review_report.json"))
         previous_gate = state.get("review_gates", {}).get(gate_id, {})

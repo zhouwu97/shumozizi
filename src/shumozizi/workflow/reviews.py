@@ -588,11 +588,22 @@ def verify_review_adjudication(
     return {"valid": not errors, "errors": errors, "adjudication_path": str(adjudication_path)}
 
 
+def _latest_adjudication_path(report_path: Path) -> Path:
+    """返回普通裁决或 probe 生命周期中编号最大的不可变裁决。"""
+    fixed = report_path.with_name("REVIEW_ADJUDICATION.json")
+    numbered = sorted(
+        report_path.parent.glob("REVIEW_ADJUDICATION.[0-9][0-9][0-9][0-9].json")
+    )
+    if numbered:
+        return numbered[-1]
+    return fixed
+
+
 def materialize_review_receipt(
     request_path: Path,
     report_path: Path,
 ) -> Path:
-    """捕获不可变审核事实；回执不表达生产裁决或修复含义。"""
+    """在生产裁决完成后物化绑定全部审核事实的不可变回执。"""
     request_path = request_path.resolve()
     report_path = report_path.resolve()
     request = load_json(request_path)
@@ -605,9 +616,17 @@ def materialize_review_receipt(
         raise ContractError("review_receipt 只能捕获同一轮目录中的 review_report.json")
     if resolve_inside(run_dir, request["output_path"]).resolve() != report_path:
         raise ContractError("审核报告路径与 review_request.json 声明不一致")
+    adjudication_path = _latest_adjudication_path(report_path)
+    if not adjudication_path.is_file():
+        raise ContractError("生成审核回执前必须完成生产主 AI 裁决")
+    adjudication = load_json(adjudication_path)
+    sequence = adjudication.get("adjudication_sequence")
     session_path = request_path.with_name("review_session.json")
     session_report = verify_review_session(
-        run_dir, request_path, session_path, require_current_revision=True
+        run_dir,
+        request_path,
+        session_path,
+        require_current_revision=sequence != 2,
     )
     if not session_report["valid"]:
         raise ContractError("审核 session 复验失败: " + "; ".join(session_report["errors"]))
@@ -623,6 +642,16 @@ def materialize_review_receipt(
         raise ContractError("审核报告绑定的材料清单哈希不一致")
     if report["session_sha256"] != sha256_file(session_path):
         raise ContractError("审核报告绑定的 session 哈希不一致")
+    adjudication_report = verify_review_adjudication(
+        run_dir,
+        report_path,
+        adjudication_path,
+        require_current_revision=sequence != 2,
+    )
+    if not adjudication_report["valid"]:
+        raise ContractError(
+            "审核裁决复验失败: " + "; ".join(adjudication_report["errors"])
+        )
     actual_bindings = {}
     for name, _expected in request["bindings"].items():
         path = resolve_inside(run_dir, request["binding_paths"][name])
@@ -635,21 +664,28 @@ def materialize_review_receipt(
     receipt = {
         "schema_name": "review_receipt",
         "schema_version": "3.0",
-        "receipt_kind": "capture",
+        "receipt_kind": "adjudicated",
         "run_id": request["run_id"],
         "request_id": request["request_id"],
         "request_sha256": sha256_file(request_path),
         "session_sha256": sha256_file(session_path),
         "report_sha256": sha256_file(report_path),
         "input_manifest_sha256": request["input_manifest_sha256"],
+        "adjudication_path": _relative(run_dir, adjudication_path),
+        "adjudication_sha256": sha256_file(adjudication_path),
         "state_revision": request["state_revision"],
         "bindings": request["bindings"],
         "issued_at": utc_now(),
     }
     require_valid(receipt, "review_receipt")
-    receipt_path = report_path.with_name("review_receipt.json")
+    receipt_name = (
+        f"review_receipt.{sequence:04d}.json"
+        if sequence is not None
+        else "review_receipt.json"
+    )
+    receipt_path = report_path.with_name(receipt_name)
     if receipt_path.exists():
-        raise ContractError("一份审核报告只能生成一份不可变 capture receipt")
+        raise ContractError("当前生产裁决已生成不可变审核回执")
     atomic_json(receipt_path, receipt)
     return receipt_path
 
@@ -675,7 +711,7 @@ def verify_review_receipt(
 def _verify_review_receipt_v3(
     run_dir: Path, receipt_path: Path, *, require_current_revision: bool
 ) -> dict[str, Any]:
-    """复验 v3 capture receipt 的请求、session、报告和输入事实。"""
+    """复验 v3 回执绑定的请求、session、报告、裁决和输入事实。"""
     errors: list[str] = []
     try:
         receipt = load_json(receipt_path)
@@ -683,6 +719,9 @@ def _verify_review_receipt_v3(
         request_path = receipt_path.with_name("review_request.json")
         report_path = receipt_path.with_name("review_report.json")
         session_path = receipt_path.with_name("review_session.json")
+        adjudication_path = resolve_inside(
+            run_dir, receipt["adjudication_path"], must_exist=True
+        )
         request, report = load_json(request_path), load_json(report_path)
         require_valid(request, "review_request")
         require_valid(report, "review_report")
@@ -707,6 +746,16 @@ def _verify_review_receipt_v3(
             errors.append("审核 session 哈希不一致")
         if report["session_sha256"] != receipt["session_sha256"]:
             errors.append("审核报告与回执的 session 绑定不一致")
+        adjudication_report = verify_review_adjudication(
+            run_dir,
+            report_path,
+            adjudication_path,
+            require_current_revision=require_current_revision,
+        )
+        if not adjudication_report["valid"]:
+            errors.extend(adjudication_report["errors"])
+        if receipt["adjudication_sha256"] != sha256_file(adjudication_path):
+            errors.append("审核裁决哈希不一致")
         manifest_path = resolve_inside(
             run_dir, request["input_manifest_path"], must_exist=True
         )

@@ -404,30 +404,28 @@ def test_report_and_receipt_bind_immutable_session(tmp_path: Path) -> None:
     assert verify_review_receipt(run_dir, receipt)["valid"] is False
 
 
-def test_receipt_is_capture_only_and_does_not_require_adjudication(
-    tmp_path: Path,
-) -> None:
-    """v3 回执只捕获审核事实，不承载生产裁决或修复计划。"""
+def test_receipt_requires_and_binds_production_adjudication(tmp_path: Path) -> None:
+    """v3 回执只能在生产裁决后生成，并绑定不可变裁决哈希。"""
     run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-no-adjudication")
     report = write_review_report(request, _accept_report(request, sha256_file(session)))
+    with pytest.raises(ContractError, match="必须完成生产主 AI 裁决"):
+        materialize_review_receipt(request, report)
+
+    adjudication = adjudicate_report(report)
     receipt_path = materialize_review_receipt(request, report)
     receipt = load_json(receipt_path)
 
     assert receipt["schema_version"] == "3.0"
-    assert receipt["receipt_kind"] == "capture"
+    assert receipt["receipt_kind"] == "adjudicated"
+    assert receipt["adjudication_path"] == adjudication.relative_to(run_dir).as_posix()
+    assert receipt["adjudication_sha256"] == sha256_file(adjudication)
     assert verify_review_receipt(run_dir, receipt_path)["valid"] is True
     assert {
         "decision",
-        "adjudication_path",
-        "adjudication_sha256",
         "repair_plan_path",
         "repair_plan_sha256",
     }.isdisjoint(receipt)
-    with pytest.raises(ContractError, match="审核裁决复验失败"):
-        StateService(tmp_path).record_review_gate(
-            run_dir.name, "R1_MODELING", receipt_path, Actor("gate-recorder")
-        )
 
 
 def test_historical_v2_receipt_is_read_only_compatible(tmp_path: Path) -> None:
@@ -437,24 +435,24 @@ def test_historical_v2_receipt_is_read_only_compatible(tmp_path: Path) -> None:
     report = write_review_report(request, _accept_report(request, sha256_file(session)))
     adjudication = adjudicate_report(report)
     receipt_path = materialize_review_receipt(request, report)
-    capture = load_json(receipt_path)
+    current = load_json(receipt_path)
     atomic_json(
         receipt_path,
         {
             "schema_name": "review_receipt",
             "schema_version": "2.0",
-            "run_id": capture["run_id"],
-            "request_id": capture["request_id"],
-            "report_sha256": capture["report_sha256"],
-            "request_sha256": capture["request_sha256"],
-            "session_sha256": capture["session_sha256"],
-            "input_manifest_sha256": capture["input_manifest_sha256"],
+            "run_id": current["run_id"],
+            "request_id": current["request_id"],
+            "report_sha256": current["report_sha256"],
+            "request_sha256": current["request_sha256"],
+            "session_sha256": current["session_sha256"],
+            "input_manifest_sha256": current["input_manifest_sha256"],
             "adjudication_path": adjudication.relative_to(run_dir).as_posix(),
             "adjudication_sha256": sha256_file(adjudication),
-            "state_revision": capture["state_revision"],
-            "bindings": capture["bindings"],
+            "state_revision": current["state_revision"],
+            "bindings": current["bindings"],
             "decision": "accepted",
-            "issued_at": capture["issued_at"],
+            "issued_at": current["issued_at"],
         },
     )
 
@@ -486,7 +484,6 @@ def test_p1_can_be_rejected_with_exact_oracle_and_gate_passes(tmp_path: Path) ->
     report = write_review_report(
         request, _finding_report(request, sha256_file(session), severity="P1")
     )
-    receipt = materialize_review_receipt(request, report)
     adjudication = _adjudication(
         report,
         [
@@ -500,6 +497,7 @@ def test_p1_can_be_rejected_with_exact_oracle_and_gate_passes(tmp_path: Path) ->
         ],
     )
     write_review_adjudication(report, adjudication)
+    receipt = materialize_review_receipt(request, report)
 
     state = StateService(tmp_path).record_review_gate(
         run_dir.name, "R1_MODELING", receipt, Actor("gate-recorder")
@@ -518,7 +516,6 @@ def test_accepted_p1_blocks_and_repair_is_explicit(tmp_path: Path) -> None:
     report = write_review_report(
         request, _finding_report(request, sha256_file(session), severity="P1")
     )
-    receipt = materialize_review_receipt(request, report)
     adjudication = _adjudication(
         report,
         [
@@ -532,6 +529,7 @@ def test_accepted_p1_blocks_and_repair_is_explicit(tmp_path: Path) -> None:
         ],
     )
     adjudication_path = write_review_adjudication(report, adjudication)
+    receipt = materialize_review_receipt(request, report)
 
     state = StateService(tmp_path).record_review_gate(
         run_dir.name, "R1_MODELING", receipt, Actor("gate-recorder")
@@ -588,7 +586,6 @@ def test_probe_lifecycle_preserves_initial_adjudication_and_resolves_gate(
     report = write_review_report(
         request, _finding_report(request, sha256_file(session), severity="P2")
     )
-    receipt = materialize_review_receipt(request, report)
     initial_doc = _adjudication(
         report,
         [_decision("finding-1", "P2", "needs_probe", gate_effect="block")],
@@ -603,9 +600,10 @@ def test_probe_lifecycle_preserves_initial_adjudication_and_resolves_gate(
     )
     initial_path = write_review_adjudication(report, initial_doc)
     initial_sha256 = sha256_file(initial_path)
+    initial_receipt = materialize_review_receipt(request, report)
 
     pending = StateService(tmp_path).record_review_gate(
-        run_dir.name, "R1_MODELING", receipt, Actor("gate-recorder")
+        run_dir.name, "R1_MODELING", initial_receipt, Actor("gate-recorder")
     )
     assert pending["review_gates"]["R1_MODELING"]["status"] == "failed"
     assert not (report.parent / "REPAIR_PLAN.json").exists()
@@ -681,11 +679,15 @@ def test_probe_lifecycle_preserves_initial_adjudication_and_resolves_gate(
         }
     )
     final_path = write_review_adjudication(report, final_doc)
+    final_receipt = materialize_review_receipt(request, report)
 
     resolved = StateService(tmp_path).record_review_gate(
-        run_dir.name, "R1_MODELING", receipt, Actor("gate-recorder")
+        run_dir.name, "R1_MODELING", final_receipt, Actor("gate-recorder")
     )
     assert final_path.name == "REVIEW_ADJUDICATION.0002.json"
+    assert initial_receipt.name == "review_receipt.0001.json"
+    assert final_receipt.name == "review_receipt.0002.json"
+    assert load_json(final_receipt)["adjudication_sha256"] == sha256_file(final_path)
     assert sha256_file(initial_path) == initial_sha256
     assert resolved["review_gates"]["R1_MODELING"]["status"] == "passed"
 
@@ -711,8 +713,10 @@ def test_p0_accept_requires_confirmation_evidence(tmp_path: Path) -> None:
         write_review_adjudication(report, adjudication)
 
 
-def test_unresolved_conflict_blocks_gate_but_not_capture_receipt(tmp_path: Path) -> None:
-    """待二次复核冲突阻断状态门，但不阻止事实捕获回执。"""
+def test_unresolved_conflict_blocks_gate_but_not_adjudicated_receipt(
+    tmp_path: Path,
+) -> None:
+    """待二次复核冲突阻断状态门，但裁决事实仍可形成回执。"""
     run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-unresolved")
     report = write_review_report(
@@ -752,8 +756,8 @@ def test_repair_plan_contains_only_accepted_findings(tmp_path: Path) -> None:
     assert [item["finding_id"] for item in plan["repair_scope"]] == ["finding-1"]
 
 
-def test_adjudication_is_not_part_of_capture_receipt(tmp_path: Path) -> None:
-    """裁决变化不影响此前的事实捕获回执。"""
+def test_adjudication_tamper_invalidates_receipt(tmp_path: Path) -> None:
+    """裁决变化后，绑定该裁决的审核回执必须失效。"""
     run_dir, request = _r1_request(tmp_path)
     session = claim_review_request(request, thread_id="thread-adjudication-tamper")
     report = write_review_report(request, _accept_report(request, sha256_file(session)))
@@ -762,7 +766,7 @@ def test_adjudication_is_not_part_of_capture_receipt(tmp_path: Path) -> None:
     payload = load_json(adjudication_report)
     payload["generated_at"] = "2026-07-20T02:00:00Z"
     atomic_json(adjudication_report, payload)
-    assert verify_review_receipt(run_dir, receipt)["valid"] is True
+    assert verify_review_receipt(run_dir, receipt)["valid"] is False
 
 
 @pytest.mark.parametrize("target", ["manifest", "session", "request", "report"])
