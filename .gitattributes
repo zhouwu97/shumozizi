@@ -1,3 +1,4 @@
 *.json text eol=lf
 *.csv text eol=lf
 benchmarks/cumcm-2025-b/quality-first-replay/*.md text eol=lf
+benchmarks/quality-first-pilot/*.md text eol=lf

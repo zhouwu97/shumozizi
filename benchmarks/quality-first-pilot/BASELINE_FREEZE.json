@@ -1,0 +1,53 @@
+{
+  "schema_name": "quality_first_ab_baseline_freeze",
+  "schema_version": "1.0",
+  "case_id": "CUMCM-2023-B",
+  "frozen_at": "2026-07-21T15:59:00Z",
+  "official_input_root": "E:/AI/shumo/CUMCM-2023-B-official",
+  "official_input_manifest_sha256": "044929670875d6121706282a7a57294e49c9bf725f3ad9b463f24a71fb7ce352",
+  "prompt_template": "benchmarks/quality-first-pilot/ARM_PROMPT_TEMPLATE.md",
+  "prompt_template_sha256": "14e9d7565c5b87f16dd1628722c829e6d0faf912678955acb1bb579814b25e87",
+  "blind_mapping_sha256": "2f649a28b9a83c885c0799f11b2596f62f835729458fff0a29f30c1ac472f759",
+  "launch_order": [
+    "B",
+    "A"
+  ],
+  "arms": {
+    "A": {
+      "base_commit": "ea6a97a47e884646b6e2df9d81371ee42937b7b6",
+      "ref": "origin/main",
+      "quality_first_enabled": false,
+      "workflow": "post-PR6 main workflow"
+    },
+    "B": {
+      "shared_base_commit": "ea6a97a47e884646b6e2df9d81371ee42937b7b6",
+      "quality_implementation_commit": "a7b6a5544716fcc87fde738a19aa3ef427afa21f",
+      "ref": "origin/feat/quality-first-pilot",
+      "quality_first_enabled": true,
+      "workflow": "quality-first v3 with minimum scientific contract and viability"
+    }
+  },
+  "budget": {
+    "wall_clock_hours_per_arm": 12,
+    "problem_and_route_hours": 2,
+    "minimum_models_and_experiments_hours": 5,
+    "paper_assembly_hours": 3,
+    "r3_r4_r5_and_revision_hours": 1,
+    "exception_and_convergence_hours": 1
+  },
+  "controls": {
+    "same_configured_default_model": true,
+    "same_tool_permissions": true,
+    "same_hardware_environment": true,
+    "same_initial_human_information": true,
+    "same_prompt_template": true,
+    "single_initial_prompt_per_arm": true,
+    "interactive_human_modeling_advice": false,
+    "ai_autonomous_route_selection": true,
+    "cross_arm_reads": false,
+    "human_reads_intermediate_outputs": false
+  },
+  "known_exposure": false,
+  "model_pretraining_exposure": "unknown",
+  "success_claim_boundary": "exploratory A/B only; no production-ready claim"
+}
