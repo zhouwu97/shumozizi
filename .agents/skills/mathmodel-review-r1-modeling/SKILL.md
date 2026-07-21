@@ -73,7 +73,9 @@ v3 reviewer finding 只需说明问题本身：`finding_id`、`severity_recommen
 targeted recheck 只能复核原 finding、修改范围和直接依赖；不得新增无关 P2/P3。新增 P0/P1
 必须提供 `reopen_context`，说明与修改的关系、此前无法合理发现的原因、重新打开证据和建议
 理由。`deferred_empirical` 必须同时声明 `block_before`、`closure_condition` 和
-`failure_action`。
+`failure_action`。`block_before=model_selection` 的义务可在 `EXPERIMENTING` 或
+`RESULTS_ACCEPTED` 由绑定同一完整根与 finding 的 `targeted_recheck` 关闭；关闭状态必须由真实
+closure 回执重建。
 
 `full_scientific` 报告还必须提供 `coverage`：逐项给出题意解释、问与输出映射、变量完整性、数据与附件映射、单位、方程闭合、
 参数可辨识性、目标、约束、算法、停止规则、基线、模型选择准则、不确定性、稳健性/消融、

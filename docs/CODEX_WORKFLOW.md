@@ -67,6 +67,9 @@ targeted recheck 只允许复核原问题、修改范围和直接依赖，不得
 阻断点、关闭条件与失败动作，并登记到 `state.json.deferred_obligations`。开放义务分别在正式实验、
 论文完成（当前作为模型选择和 paper claim 的最迟边界）或最终提交前阻断状态推进，只能由绑定原始
 根审核的合法 scoped closure 关闭。
+`deferred_obligations.status=closed` 不是可信输入；状态推进会从当前完整根、同一 finding 和同一
+source receipt 的真实 closure 回执重建关闭状态。R1 的 `model_selection` 义务可在
+`EXPERIMENTING` 或 `RESULTS_ACCEPTED` 登记关闭证据。
 
 `review_request.json` 只绑定材料清单，不包含线程身份。生产主对话写完请求后必须停止，向用户
 输出独立审核交接提示。用户只需在 Codex 桌面版中新建一个顶层对话并提交该请求；该新对话中的
@@ -79,6 +82,8 @@ targeted recheck 只允许复核原问题、修改范围和直接依赖，不得
 input manifest、session、request、report 和 adjudication 五层哈希，
 `StateService.record_review_gate()` 只登记或更新 `full_scientific` 完整根门；
 `StateService.record_review_closure()` 只向既有完整根追加 scoped 关闭证明，不能替换根回执。
+`stale` 根不能再创建或登记 scoped closure；它必须由新的 `full_scientific` 根替换，旧根的
+closures 与 deferred obligations 不得继承到新根，只保留在状态历史中。
 两者登记前都重新计算五层哈希、逐文件材料哈希、session 身份和仓库级 thread claim；状态推进还会
 从根裁决重建未关闭 blocker，并复验每条 closure 的模式、裁决、通过结论和来源链。
 
@@ -134,7 +139,7 @@ Skill 和产物。关闭任务或发生上下文压缩都不影响恢复。
 
 完整论文和 PDF 后按依赖创建 R3/R4 请求；机械 QA 通过后由用户新开独立对话，交由该对话中的
 AI 自动执行 R5，原 J0 的自然评委视角并入 R5。竞赛模式 R5 最多三轮，仅 P0/P1 或低于 B 才
-重跑。所有回执必须登记到
+重跑；该上限只统计 `full_scientific`，必要的 scoped closure 不消耗完整审核轮次。所有回执必须登记到
 `review_gates` 并绑定当前生产事实；未登记或任一绑定变化时，不能进入 `WAITING_HUMAN_FINAL`。
 R4/R5 必须绑定机器 `FORMAT_AUDIT.json`；其硬失败不可被文字结论覆盖。R5 必须同时给出 A 轴（`A_PASS`/`A_BLOCKED`）和 B 轴（质量分数及题目覆盖、模型深度、实验验证
 分项）；联合结论由程序校验，失败时自动生成 `REPAIR_PLAN.json`，只重跑受影响审核阶段。

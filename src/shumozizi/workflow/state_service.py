@@ -368,6 +368,12 @@ class StateService:
         if request.get("review_mode", "full_scientific") != "full_scientific":
             raise ContractError("scoped review 不能创建或替换 full_scientific 完整审核门")
         previous_gate = state.get("review_gates", {}).get(gate_id, {})
+        new_receipt_sha256 = sha256_file(resolved_receipt)
+        previous_receipt_sha256 = previous_gate.get("receipt_sha256")
+        replacing_root = bool(
+            previous_receipt_sha256
+            and previous_receipt_sha256 != new_receipt_sha256
+        )
         probe_rerecord = (
             previous_gate.get("status") == "failed"
             and previous_gate.get("reviewed_revision") == receipt["state_revision"]
@@ -418,10 +424,19 @@ class StateService:
         now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         next_revision = state["revision"] + 1
         previous_closures = previous_gate.get("closures", [])
-        if previous_closures and previous_gate.get("receipt_sha256") != sha256_file(
-            resolved_receipt
+        if replacing_root and previous_gate.get("status") == "passed":
+            raise ContractError("当前有效 full_scientific 根必须先标记 stale 才能替换")
+        if (
+            replacing_root
+            and previous_closures
+            and previous_gate.get("status") != "stale"
         ):
             raise ContractError("已有 scoped closure 时不能替换 full_scientific 根回执")
+        inherited_closures = (
+            []
+            if replacing_root and previous_gate.get("status") == "stale"
+            else previous_closures
+        )
         state.setdefault("review_gates", {})[gate_id] = {
             "status": "passed" if passed else "failed",
             "receipt": relative_receipt,
@@ -437,18 +452,20 @@ class StateService:
             "review_mode": request.get("review_mode", "full_scientific"),
             "reviewer_verdict": report.get("verdict", ""),
             "open_blocking_findings": open_blocking,
-            "closures": previous_closures,
+            "closures": inherited_closures,
         }
-        obligations = [
-            item
-            for item in state.get("deferred_obligations", [])
-            if not (
+        replacing_stale_root = replacing_root and previous_gate.get("status") == "stale"
+        obligations = []
+        for item in state.get("deferred_obligations", []):
+            bound_to_previous_root = (
                 item["source_gate_id"] == gate_id
-                and item["source_receipt_sha256"]
-                == previous_gate.get("receipt_sha256")
-                and item["status"] == "open"
+                and item["source_receipt_sha256"] == previous_receipt_sha256
             )
-        ]
+            if replacing_stale_root and bound_to_previous_root:
+                continue
+            if bound_to_previous_root and item["status"] == "open":
+                continue
+            obligations.append(item)
         for finding in report["findings"]:
             if finding.get("status") != "deferred_empirical":
                 continue
@@ -460,13 +477,14 @@ class StateService:
                     "closure_condition": finding["closure_condition"],
                     "failure_action": finding["failure_action"],
                     "status": "open",
-                    "source_receipt_sha256": sha256_file(resolved_receipt),
+                    "source_receipt_sha256": new_receipt_sha256,
                     "created_revision": next_revision,
                     "closed_by_receipt_sha256": None,
                     "closed_revision": None,
                 }
             )
         state["deferred_obligations"] = obligations
+        self._verify_deferred_obligation_chain(run_dir, state)
         state["revision"] = next_revision
         state["last_updated_by"] = actor.actor_id
         state["updated_at"] = now
@@ -517,6 +535,8 @@ class StateService:
             raise ContractError("scoped closure 要求已经存在 full_scientific 完整审核根")
         if gate.get("review_mode", "full_scientific") != "full_scientific":
             raise ContractError("scoped closure 的 source gate 不是 full_scientific 根")
+        if gate.get("status") == "stale":
+            raise ContractError("stale 完整根不能通过 scoped closure 恢复，必须重新 full_scientific")
         resolved_receipt = receipt_path.resolve()
         try:
             relative_receipt = resolved_receipt.relative_to(run_dir.resolve()).as_posix()
@@ -527,6 +547,7 @@ class StateService:
         )
         if not verification["valid"]:
             raise ContractError("scoped closure 回执复验失败: " + "; ".join(verification["errors"]))
+        new_receipt_sha256 = sha256_file(resolved_receipt)
         receipt = load_json(resolved_receipt)
         if receipt["schema_version"] != "3.0":
             raise ContractError("scoped closure 只接受 v3 adjudicated receipt")
@@ -578,7 +599,7 @@ class StateService:
         expected_stage, question_id = self._review_gate_identity(gate_id)
         if report["stage"] != expected_stage or request.get("question_id") != question_id:
             raise ContractError("scoped closure 的 stage 或 question_id 与完整门不一致")
-        self._check_review_gate_timing(run_dir, state, gate_id, question_id)
+        self._check_review_closure_timing(state, gate_id, target_finding_id)
         machine_blockers = collect_machine_blockers(run_dir, gate_id, state)
         remaining = [
             item
@@ -590,7 +611,7 @@ class StateService:
             "target_finding_id": target_finding_id,
             "review_mode": review_mode,
             "receipt": relative_receipt,
-            "receipt_sha256": sha256_file(resolved_receipt),
+            "receipt_sha256": new_receipt_sha256,
             "adjudication": adjudication_path.relative_to(run_dir).as_posix(),
             "adjudication_sha256": sha256_file(adjudication_path),
             "source_receipt_sha256": request["source_receipt_sha256"],
@@ -604,12 +625,15 @@ class StateService:
         for obligation in state.get("deferred_obligations", []):
             if (
                 obligation["source_gate_id"] == gate_id
+                and obligation["source_receipt_sha256"]
+                == request["source_receipt_sha256"]
                 and obligation["finding_id"] == target_finding_id
                 and obligation["status"] == "open"
             ):
                 obligation["status"] = "closed"
-                obligation["closed_by_receipt_sha256"] = sha256_file(resolved_receipt)
+                obligation["closed_by_receipt_sha256"] = new_receipt_sha256
                 obligation["closed_revision"] = next_revision
+        self._verify_deferred_obligation_chain(run_dir, state)
         now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         state["revision"] = next_revision
         state["last_updated_by"] = actor.actor_id
@@ -823,6 +847,66 @@ class StateService:
             )
 
     @staticmethod
+    def _check_review_closure_timing(
+        state: dict[str, Any], gate_id: str, target_finding_id: str
+    ) -> None:
+        """按 finding 关闭边界限制 scoped closure，不复用完整门首次登记时机。"""
+        gate = state.get("review_gates", {}).get(gate_id, {})
+        obligations = [
+            item
+            for item in state.get("deferred_obligations", [])
+            if item["source_gate_id"] == gate_id
+            and item["source_receipt_sha256"] == gate.get("receipt_sha256")
+            and item["finding_id"] == target_finding_id
+        ]
+        if len(obligations) > 1:
+            raise ContractError("同一 full root 存在重复 deferred obligation")
+        if obligations:
+            allowed_by_boundary = {
+                "formal_experiment": {"ROUTE_LOCKED", "MODEL_SPEC_READY"},
+                "model_selection": {
+                    "ROUTE_LOCKED",
+                    "MODEL_SPEC_READY",
+                    "EXPERIMENTING",
+                    "RESULTS_ACCEPTED",
+                },
+                "paper_claim": {
+                    "ROUTE_LOCKED",
+                    "MODEL_SPEC_READY",
+                    "EXPERIMENTING",
+                    "RESULTS_ACCEPTED",
+                },
+                "final_submission": {
+                    "ROUTE_LOCKED",
+                    "MODEL_SPEC_READY",
+                    "EXPERIMENTING",
+                    "RESULTS_ACCEPTED",
+                    "PAPER_DRAFTED",
+                    "QA_RUNNING",
+                    "BLOCKED",
+                },
+            }
+            allowed_statuses = allowed_by_boundary[obligations[0]["block_before"]]
+        elif gate_id == "R1_MODELING":
+            allowed_statuses = {"ROUTE_LOCKED", "MODEL_SPEC_READY"}
+        elif gate_id.startswith(("R2_EXPERIMENT_", "R3_PAPER_LOGIC_")):
+            allowed_statuses = {
+                "EXPERIMENTING",
+                "RESULTS_ACCEPTED",
+                "PAPER_DRAFTED",
+                "QA_RUNNING",
+            }
+        elif gate_id in {"R3_PAPER_LOGIC", "R4_FORMAT_VISUAL"}:
+            allowed_statuses = {"PAPER_DRAFTED", "QA_RUNNING"}
+        else:
+            allowed_statuses = {"QA_RUNNING"}
+        if state["status"] not in allowed_statuses:
+            raise ContractError(
+                f"{gate_id}:{target_finding_id} 当前状态不可登记 scoped closure；"
+                f"允许状态: {', '.join(sorted(allowed_statuses))}"
+            )
+
+    @staticmethod
     def _verify_artifact_refs(run_dir: Path, refs: list[ArtifactRef]) -> None:
         """复验所有事件产物都位于运行目录内且哈希匹配。"""
         for ref in refs:
@@ -840,6 +924,7 @@ class StateService:
         refs: list[ArtifactRef],
     ) -> None:
         """检查需要跨文件权威事实的事件。"""
+        self._verify_deferred_obligation_chain(run_dir, state)
         self._check_deferred_obligations(state, event)
         roles = {item.role for item in refs}
         if event is WorkflowEvent.ROUTE_APPROVED:
@@ -920,6 +1005,154 @@ class StateService:
                 raise ContractError(
                     "COMPLETE 运行完整性校验失败: " + "; ".join(integrity["errors"])
                 )
+
+    @staticmethod
+    def _verify_deferred_obligation_chain(
+        run_dir: Path, state: dict[str, Any]
+    ) -> None:
+        """从当前 full root 与 scoped receipt 重建 deferred obligation 状态。"""
+        seen: set[tuple[str, str, str]] = set()
+        gates = state.get("review_gates", {})
+        for obligation in state.get("deferred_obligations", []):
+            gate_id = obligation["source_gate_id"]
+            finding_id = obligation["finding_id"]
+            source_receipt_sha256 = obligation["source_receipt_sha256"]
+            identity = (gate_id, finding_id, source_receipt_sha256)
+            if identity in seen:
+                raise ContractError("存在重复 deferred obligation")
+            seen.add(identity)
+
+            gate = gates.get(gate_id, {})
+            if gate.get("status") == "stale":
+                raise ContractError("stale 完整根的 deferred obligation 已失效")
+            if gate.get("receipt_sha256") != source_receipt_sha256:
+                raise ContractError("deferred obligation 未绑定当前 full root")
+            root_receipt_path = resolve_inside(
+                run_dir, gate.get("receipt", ""), must_exist=True
+            )
+            if sha256_file(root_receipt_path) != source_receipt_sha256:
+                raise ContractError("deferred obligation 的 source receipt 哈希失效")
+            root_verification = verify_review_receipt(
+                run_dir, root_receipt_path, require_current_revision=False
+            )
+            if not root_verification["valid"]:
+                raise ContractError(
+                    "deferred obligation 的 full root 复验失败: "
+                    + "; ".join(root_verification["errors"])
+                )
+            root_receipt = load_json(root_receipt_path)
+            root_request = load_json(root_receipt_path.with_name("review_request.json"))
+            root_report = load_json(root_receipt_path.with_name("review_report.json"))
+            root_adjudication = load_json(
+                resolve_inside(
+                    run_dir, root_receipt["adjudication_path"], must_exist=True
+                )
+            )
+            if root_request.get("review_mode", "full_scientific") != "full_scientific":
+                raise ContractError("deferred obligation 的 source 不是 full_scientific")
+            findings = [
+                item
+                for item in root_report["findings"]
+                if item["finding_id"] == finding_id
+                and item.get("status") == "deferred_empirical"
+            ]
+            decisions = [
+                item
+                for item in root_adjudication["decisions"]
+                if item["finding_id"] == finding_id
+                and item["main_decision"] == "deferred_empirical"
+            ]
+            if len(findings) != 1 or len(decisions) != 1:
+                raise ContractError("deferred obligation 不对应当前根中的真实 deferred finding")
+            finding = findings[0]
+            if any(
+                obligation[key] != finding[key]
+                for key in ("block_before", "closure_condition", "failure_action")
+            ):
+                raise ContractError("deferred obligation 合同与 source finding 不一致")
+
+            closures = [
+                item
+                for item in gate.get("closures", [])
+                if item["target_finding_id"] == finding_id
+                and item["source_receipt_sha256"] == source_receipt_sha256
+            ]
+            if len(closures) > 1:
+                raise ContractError("deferred obligation 存在重复 closure")
+            if obligation["status"] == "open":
+                if (
+                    closures
+                    or obligation["closed_by_receipt_sha256"] is not None
+                    or obligation["closed_revision"] is not None
+                ):
+                    raise ContractError("开放 deferred obligation 的关闭状态与 closure 不一致")
+                continue
+            if len(closures) != 1:
+                raise ContractError("closed deferred obligation 缺少真实 scoped closure")
+
+            closure = closures[0]
+            if (
+                obligation["closed_by_receipt_sha256"] != closure["receipt_sha256"]
+                or obligation["closed_revision"] is None
+                or obligation["closed_revision"] < closure["recorded_revision"]
+            ):
+                raise ContractError("closed deferred obligation 未绑定真实 closure receipt")
+            closure_path = resolve_inside(
+                run_dir, closure["receipt"], must_exist=True
+            )
+            if sha256_file(closure_path) != closure["receipt_sha256"]:
+                raise ContractError("deferred closure receipt 哈希失效")
+            closure_verification = verify_review_receipt(
+                run_dir, closure_path, require_current_revision=False
+            )
+            if not closure_verification["valid"]:
+                raise ContractError(
+                    "deferred closure receipt 复验失败: "
+                    + "; ".join(closure_verification["errors"])
+                )
+            closure_receipt = load_json(closure_path)
+            closure_request = load_json(
+                closure_path.with_name("review_request.json")
+            )
+            closure_report = load_json(closure_path.with_name("review_report.json"))
+            closure_adjudication_path = resolve_inside(
+                run_dir, closure_receipt["adjudication_path"], must_exist=True
+            )
+            closure_adjudication = load_json(closure_adjudication_path)
+            if (
+                closure_request.get("review_mode") == "full_scientific"
+                or closure_request.get("review_mode") != closure["review_mode"]
+                or closure_request.get("source_gate_id") != gate_id
+                or closure_request.get("source_receipt_sha256")
+                != source_receipt_sha256
+                or closure_request.get("target_finding_id") != finding_id
+            ):
+                raise ContractError("deferred closure 身份或 source chain 不一致")
+            if (
+                closure.get("adjudication")
+                != closure_adjudication_path.relative_to(run_dir).as_posix()
+                or closure.get("adjudication_sha256")
+                != sha256_file(closure_adjudication_path)
+            ):
+                raise ContractError("deferred closure 裁决哈希失效")
+            passing_verdicts = PASSING_VERDICTS.get(
+                closure_report["stage"], {"A", "B"}
+            )
+            closure_blockers = [
+                item
+                for item in closure_adjudication["decisions"]
+                if item["main_decision"] == "accepted"
+                and item["gate_effect"] == "block"
+            ]
+            if (
+                closure_report["verdict"] not in passing_verdicts
+                or closure_blockers
+                or closure_adjudication["unresolved_conflicts"]
+            ):
+                raise ContractError("deferred closure 未证明 obligation 已关闭")
+            verify_scoped_review_source(
+                run_dir, closure_request, state, require_open=False
+            )
 
     @staticmethod
     def _check_deferred_obligations(
@@ -1009,6 +1242,7 @@ class StateService:
         run_dir: Path, state: dict[str, Any], gate_ids: tuple[str, ...]
     ) -> None:
         """要求指定审核门均通过，且回执仍绑定当前生产事实。"""
+        StateService._verify_deferred_obligation_chain(run_dir, state)
         gates = state.get("review_gates", {})
         for gate_id in gate_ids:
             gate = gates.get(gate_id, {})
@@ -1137,6 +1371,7 @@ class StateService:
 
     def _assert_complete_invariants(self, run_dir: Path, state: dict[str, Any]) -> None:
         """复验 COMPLETE 所绑定的全部当前事实。"""
+        self._verify_deferred_obligation_chain(run_dir, state)
         if state.get("paper_ready") is not True:
             raise ContractError("COMPLETE 要求 paper_ready=true")
         manifest = load_json(run_dir / "problem/PROBLEM_MANIFEST.json")

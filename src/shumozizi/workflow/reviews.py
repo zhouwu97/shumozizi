@@ -197,6 +197,8 @@ def _resolve_scoped_review_source(
         raise ContractError("scoped review 必须依附已经存在的 full_scientific 完整审核根")
     if gate.get("review_mode", "full_scientific") != "full_scientific":
         raise ContractError("source gate 不是 full_scientific 完整审核根")
+    if gate.get("status") == "stale":
+        raise ContractError("stale 完整根不能通过 scoped closure 恢复，必须重新 full_scientific")
     expected_stage, expected_question = _review_gate_identity(source_gate_id)
     if stage != expected_stage or question_id != expected_question:
         raise ContractError("scoped review 的 stage、question_id 与 source gate 不一致")
@@ -235,10 +237,23 @@ def _resolve_scoped_review_source(
         raise ContractError("source adjudication 未裁决 target_finding_id")
     if decisions[target_finding_id].get("verification_mode") != review_mode:
         raise ContractError("scoped 关闭模式与 source decision.verification_mode 不一致")
-    if require_open and target_finding_id not in _open_source_findings(
-        state, source_gate_id, gate, adjudication
-    ):
-        raise ContractError("target finding 当前不存在或已经通过 closure 关闭")
+    if require_open:
+        open_findings = _open_source_findings(
+            state, source_gate_id, gate, adjudication
+        )
+        open_deferred = any(
+            item["source_gate_id"] == source_gate_id
+            and item["source_receipt_sha256"] == gate.get("receipt_sha256")
+            and item["finding_id"] == target_finding_id
+            and item["status"] == "open"
+            for item in state.get("deferred_obligations", [])
+        )
+        if gate.get("status") != "failed" and not (
+            gate.get("status") == "passed" and open_deferred
+        ):
+            raise ContractError("scoped review 只允许 failed 根或含开放 deferred obligation 的 passed 根")
+        if target_finding_id not in open_findings:
+            raise ContractError("target finding 当前不存在或已经通过 closure 关闭")
     source_adjudication_binding = binding_paths.get("source_adjudication")
     if source_adjudication_binding != _relative(run_dir, adjudication_path):
         raise ContractError("source_adjudication 必须绑定完整审核根的权威裁决")
@@ -402,11 +417,16 @@ def create_review_request(
     if mode is not None and mode != effective_mode:
         raise ContractError("审核轮次模式必须来自当前 state.json，调用方不能临时覆盖")
     r5_max_rounds = 5 if effective_mode == "training" else 3
-    if stage == "R5_COMPREHENSIVE":
-        existing_r5 = list(
-            (run_dir / "review" / stage.lower()).glob("*/review_request.json")
-        )
-        if len(existing_r5) >= r5_max_rounds:
+    if stage == "R5_COMPREHENSIVE" and review_mode == "full_scientific":
+        existing_full_r5 = [
+            path
+            for path in (run_dir / "review" / stage.lower()).glob(
+                "*/review_request.json"
+            )
+            if load_json(path).get("review_mode", "full_scientific")
+            == "full_scientific"
+        ]
+        if len(existing_full_r5) >= r5_max_rounds:
             raise ContractError(f"R5 完整审核已达到全局上限 {r5_max_rounds} 轮")
     if state.get("run_id") != run_dir.name:
         raise ContractError("审核请求 run_id 与运行目录不一致")
@@ -573,6 +593,20 @@ def _validate_review_mode_report(
     review_mode = request.get("review_mode", "full_scientific")
     if review_mode != "full_scientific" and report["schema_version"] != "3.0":
         raise ContractError(f"{review_mode} 只接受 review_report v3")
+    competition_score_fields = {
+        "rating",
+        "integrity_axis",
+        "score_type",
+        "assessment_scope",
+        "raw_score",
+        "calibrated_score",
+        "score_caps_applied",
+        "competition_claim_allowed",
+        "quality_axis",
+        "joint_verdict",
+    }
+    if review_mode != "full_scientific" and competition_score_fields & set(report):
+        raise ContractError("scoped R5 不得生成完整竞赛评分或冒充完整盲评")
     target_finding_id = request.get("target_finding_id")
     for finding in report["findings"]:
         if report["schema_version"] == "3.0" and (

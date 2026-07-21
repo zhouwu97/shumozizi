@@ -7,8 +7,11 @@ from pathlib import Path
 import pytest
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
+from shumozizi.workflow.r1_phases import create_r1_phase_a, create_r1_phase_b_request
 from shumozizi.workflow.review_sessions import claim_review_request
 from shumozizi.workflow.reviews import (
+    R1_COVERAGE_CHECKS,
+    _validate_review_mode_report,
     create_review_request,
     materialize_review_receipt,
     write_review_adjudication,
@@ -16,15 +19,18 @@ from shumozizi.workflow.reviews import (
 )
 from shumozizi.workflow.state_service import Actor, StateService, WorkflowEvent
 from tests.review_contract_helpers import complete_stage_bindings
+from tests.test_production_closure import _review_run
+from tests.test_r1_r2_scientific_contracts import _phase_a_outputs
+from tests.test_review_contracts import (
+    _accept_report,
+    _finding_report,
+    _r1_request,
+)
 from tests.test_review_contracts import (
     _adjudication as _full_adjudication,
 )
 from tests.test_review_contracts import (
     _decision as _full_decision,
-)
-from tests.test_review_contracts import (
-    _finding_report,
-    _r1_request,
 )
 from tests.test_review_modes import (
     _adjudication as _scoped_adjudication,
@@ -151,6 +157,100 @@ def _scoped_receipt(
     return request, materialize_review_receipt(request, scoped_report)
 
 
+def _replacement_full_r1(
+    tmp_path: Path, run_dir: Path, *, round_id: str
+) -> tuple[Path, dict]:
+    """为 stale R1 创建并登记新的通过态完整根。"""
+    _, request = _r1_request(tmp_path, run_id=run_dir.name, round_id=round_id)
+    session = claim_review_request(
+        request, thread_id=f"thread-{run_dir.name}-{round_id}"
+    )
+    report = write_review_report(
+        request, _accept_report(request, sha256_file(session))
+    )
+    write_review_adjudication(report, _full_adjudication(report, []))
+    receipt = materialize_review_receipt(request, report)
+    state = StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", receipt, Actor("replacement-full")
+    )
+    return receipt, state
+
+
+def _registered_deferred_r1(
+    tmp_path: Path, run_id: str
+) -> tuple[Path, Path, Path, dict]:
+    """登记一个在 model_selection 前关闭的 R1 deferred finding。"""
+    run_dir, seed_request = _r1_request(
+        tmp_path, run_id=run_id, round_id="phase-a-seed"
+    )
+    seed = load_json(seed_request)
+    bindings = {
+        role: run_dir / relative
+        for role, relative in seed["binding_paths"].items()
+    }
+    phase_a = create_r1_phase_a(
+        run_dir,
+        "deferred-full",
+        {"problem_source": bindings["problem_source"]},
+        _phase_a_outputs(),
+    )
+    request = create_r1_phase_b_request(
+        run_dir,
+        phase_a,
+        bindings,
+        review_round_id="deferred-full",
+    )
+    session = claim_review_request(
+        request, thread_id=f"thread-{run_id}-deferred-full"
+    )
+    finding = _v3_finding("F-DEFERRED", "P1", status="deferred_empirical")
+    finding.update(
+        {
+            "block_before": "model_selection",
+            "closure_condition": "完成预注册稳健性实验并达到阈值",
+            "failure_action": "退回已确认 baseline",
+        }
+    )
+    request_doc = load_json(request)
+    report_doc = {
+        "schema_name": "review_report",
+        "schema_version": "3.0",
+        "request_id": request_doc["request_id"],
+        "run_id": run_dir.name,
+        "stage": "R1_MODELING",
+        "review_round_id": request_doc["review_round_id"],
+        "review_mode": "full_scientific",
+        "request_sha256": sha256_file(request),
+        "input_manifest_sha256": request_doc["input_manifest_sha256"],
+        "session_sha256": sha256_file(session),
+        "phase_a_sha256": sha256_file(phase_a),
+        "verdict": "SPEC_REVISION_REQUIRED",
+        "coverage": {
+            **{check_id: "verified" for check_id in R1_COVERAGE_CHECKS},
+            "unchecked_items": [],
+        },
+        "findings": [finding],
+        "read_only_confirmed": True,
+        "generated_at": "2026-07-21T00:00:00Z",
+    }
+    report = write_review_report(request, report_doc)
+    decision = _scoped_decision(
+        finding,
+        main_decision="deferred_empirical",
+        domain="scientific",
+        verification_mode="targeted_recheck",
+    )
+    adjudication = write_review_adjudication(
+        report, _scoped_adjudication(report, [decision])
+    )
+    receipt = materialize_review_receipt(request, report)
+    state = StateService(tmp_path).record_review_gate(
+        run_dir.name, "R1_MODELING", receipt, Actor("deferred-full")
+    )
+    assert state["review_gates"]["R1_MODELING"]["status"] == "passed"
+    return run_dir, report, adjudication, state
+
+
 def test_scoped_review_cannot_bootstrap_full_gate(tmp_path: Path) -> None:
     """没有 full root 时 scoped request 必须在创建阶段失败。"""
     run_dir = tmp_path / "runs/scoped-bootstrap"
@@ -231,6 +331,116 @@ def test_scoped_closure_updates_only_target_finding(tmp_path: Path) -> None:
     assert gate["status"] == "failed"
     assert gate["receipt"] == base_receipt.relative_to(run_dir).as_posix()
     assert gate["open_blocking_findings"] == ["finding-2"]
+
+
+def test_stale_gate_cannot_accept_scoped_closure(tmp_path: Path) -> None:
+    """stale 根既不能创建新 scoped request，也不能登记已冻结 closure。"""
+    run_dir, report, adjudication, _, _ = _registered_full_r1(
+        tmp_path, "stale-rejects-scoped"
+    )
+    _, scoped_receipt = _scoped_receipt(
+        tmp_path, run_dir, report, adjudication
+    )
+    state = StateService(tmp_path).record_change_impact(
+        run_dir.name, "L4", [], Actor("semantic-change")
+    )
+    assert state["review_gates"]["R1_MODELING"]["status"] == "stale"
+
+    with pytest.raises(ContractError, match="stale 完整根"):
+        StateService(tmp_path).record_review_closure(
+            run_dir.name, "R1_MODELING", scoped_receipt, Actor("scoped")
+        )
+    with pytest.raises(ContractError, match="stale 完整根"):
+        create_review_request(
+            run_dir,
+            "R1_MODELING",
+            _scoped_bindings(
+                run_dir,
+                report,
+                adjudication,
+                target_finding_id="finding-1",
+                review_mode="machine_check",
+            ),
+            review_mode="machine_check",
+            target_finding_id="finding-1",
+            source_gate_id="R1_MODELING",
+            review_round_id="stale-machine-check",
+        )
+
+
+def test_stale_gate_can_be_replaced_by_new_full_root(
+    tmp_path: Path,
+) -> None:
+    """已有 closure 的 stale 根必须允许新的完整审核解除死锁。"""
+    run_dir, report, adjudication, old_receipt, _ = _registered_full_r1(
+        tmp_path, "stale-replacement", count=2
+    )
+    _, scoped_receipt = _scoped_receipt(
+        tmp_path, run_dir, report, adjudication
+    )
+    StateService(tmp_path).record_review_closure(
+        run_dir.name, "R1_MODELING", scoped_receipt, Actor("scoped")
+    )
+    StateService(tmp_path).record_change_impact(
+        run_dir.name, "L4", [], Actor("semantic-change")
+    )
+
+    new_receipt, state = _replacement_full_r1(
+        tmp_path, run_dir, round_id="replacement-full"
+    )
+
+    assert new_receipt != old_receipt
+    assert state["review_gates"]["R1_MODELING"]["status"] == "passed"
+    assert state["review_gates"]["R1_MODELING"]["receipt_sha256"] == sha256_file(
+        new_receipt
+    )
+
+
+def test_new_root_does_not_inherit_old_closures(tmp_path: Path) -> None:
+    """新完整根只继承历史事件，不继承旧根的 closure 权限。"""
+    run_dir, report, adjudication, _, _ = _registered_full_r1(
+        tmp_path, "replacement-drops-closures", count=2
+    )
+    _, scoped_receipt = _scoped_receipt(
+        tmp_path, run_dir, report, adjudication
+    )
+    closed = StateService(tmp_path).record_review_closure(
+        run_dir.name, "R1_MODELING", scoped_receipt, Actor("scoped")
+    )
+    old_closure_hash = closed["review_gates"]["R1_MODELING"]["closures"][0][
+        "receipt_sha256"
+    ]
+    StateService(tmp_path).record_change_impact(
+        run_dir.name, "L4", [], Actor("semantic-change")
+    )
+
+    _, state = _replacement_full_r1(
+        tmp_path, run_dir, round_id="fresh-full-root"
+    )
+
+    gate = state["review_gates"]["R1_MODELING"]
+    assert gate["closures"] == []
+    assert old_closure_hash not in {
+        item.get("receipt_sha256") for item in gate["closures"]
+    }
+
+
+def test_old_deferred_obligation_does_not_follow_new_root(tmp_path: Path) -> None:
+    """替换 stale 完整根时必须丢弃仅属于旧根的 deferred obligation。"""
+    run_dir, _, _, state = _registered_deferred_r1(
+        tmp_path, "replacement-drops-deferred"
+    )
+    old_source_hash = state["deferred_obligations"][0]["source_receipt_sha256"]
+    StateService(tmp_path).record_change_impact(
+        run_dir.name, "L4", [], Actor("semantic-change")
+    )
+
+    _, replaced = _replacement_full_r1(
+        tmp_path, run_dir, round_id="fresh-root-without-deferred"
+    )
+
+    assert replaced["deferred_obligations"] == []
+    assert replaced["review_gates"]["R1_MODELING"]["receipt_sha256"] != old_source_hash
 
 
 def test_passed_gate_reconstructs_open_findings_from_full_root(tmp_path: Path) -> None:
@@ -472,3 +682,123 @@ def test_deferred_empirical_blocks_at_declared_boundary(tmp_path: Path) -> None:
         StateService(tmp_path)._check_event_invariants(
             run_dir, recorded, WorkflowEvent.PAPER_COMPLETED, []
         )
+
+
+def test_r1_deferred_model_selection_can_close_after_experiment(
+    tmp_path: Path,
+) -> None:
+    """R1 model_selection obligation 可在实验启动后由 targeted reviewer 关闭。"""
+    run_dir, report, adjudication, _ = _registered_deferred_r1(
+        tmp_path, "deferred-close-after-experiment"
+    )
+    progressed = StateService(tmp_path).transition(
+        run_dir.name, WorkflowEvent.EXPERIMENT_STARTED, Actor("experiment"), []
+    )
+    assert progressed["status"] == "EXPERIMENTING"
+    _, scoped_receipt = _scoped_receipt(
+        tmp_path,
+        run_dir,
+        report,
+        adjudication,
+        target_finding_id="F-DEFERRED",
+        review_mode="targeted_recheck",
+    )
+
+    state = StateService(tmp_path).record_review_closure(
+        run_dir.name, "R1_MODELING", scoped_receipt, Actor("targeted-review")
+    )
+
+    assert state["status"] == "EXPERIMENTING"
+    assert state["deferred_obligations"][0]["status"] == "closed"
+    assert state["deferred_obligations"][0][
+        "closed_by_receipt_sha256"
+    ] == sha256_file(scoped_receipt)
+
+
+def test_tampered_deferred_closed_status_is_rejected(tmp_path: Path) -> None:
+    """只改 state.status 不能伪造 deferred finding 已关闭。"""
+    run_dir, _, _, state = _registered_deferred_r1(
+        tmp_path, "tampered-deferred-status"
+    )
+    obligation = state["deferred_obligations"][0]
+    obligation["status"] = "closed"
+    obligation["closed_by_receipt_sha256"] = "0" * 64
+    obligation["closed_revision"] = state["revision"]
+
+    with pytest.raises(ContractError, match="缺少真实 scoped closure"):
+        StateService._require_passed_review_gates(
+            run_dir, state, ("R1_MODELING",)
+        )
+
+
+def test_deferred_close_matches_source_receipt_sha256(tmp_path: Path) -> None:
+    """closed_by 哈希必须精确指向同根同 finding 的真实 closure。"""
+    run_dir, report, adjudication, _ = _registered_deferred_r1(
+        tmp_path, "tampered-deferred-hash"
+    )
+    StateService(tmp_path).transition(
+        run_dir.name, WorkflowEvent.EXPERIMENT_STARTED, Actor("experiment"), []
+    )
+    _, scoped_receipt = _scoped_receipt(
+        tmp_path,
+        run_dir,
+        report,
+        adjudication,
+        target_finding_id="F-DEFERRED",
+        review_mode="targeted_recheck",
+    )
+    state = StateService(tmp_path).record_review_closure(
+        run_dir.name, "R1_MODELING", scoped_receipt, Actor("targeted-review")
+    )
+    state["deferred_obligations"][0]["closed_by_receipt_sha256"] = "0" * 64
+
+    with pytest.raises(ContractError, match="未绑定真实 closure receipt"):
+        StateService._require_passed_review_gates(
+            run_dir, state, ("R1_MODELING",)
+        )
+
+
+def test_scoped_r5_does_not_consume_full_quota(tmp_path: Path) -> None:
+    """scoped R5 请求不占用 competition 模式的三轮完整审核配额。"""
+    run_dir, first_full = _review_run(tmp_path, "R5_COMPREHENSIVE")
+    for index in (1, 2):
+        atomic_json(
+            run_dir
+            / "review"
+            / "r5_comprehensive"
+            / f"scoped-{index}"
+            / "review_request.json",
+            {"review_mode": "targeted_recheck"},
+        )
+    first_request = load_json(first_full)
+    bindings = {
+        role: run_dir / relative
+        for role, relative in first_request["binding_paths"].items()
+    }
+
+    second_full = create_review_request(
+        run_dir,
+        "R5_COMPREHENSIVE",
+        bindings,
+        review_round_id="full-after-scoped",
+    )
+
+    assert load_json(second_full)["review_mode"] == "full_scientific"
+
+
+def test_scoped_r5_cannot_emit_full_competition_score() -> None:
+    """scoped R5 只能关闭目标 finding，不能产出完整投稿评分。"""
+    request = {
+        "review_mode": "targeted_recheck",
+        "target_finding_id": "R5-P1",
+    }
+    report = {
+        "schema_version": "3.0",
+        "findings": [],
+        "raw_score": 90,
+        "calibrated_score": 90,
+        "competition_claim_allowed": True,
+    }
+
+    with pytest.raises(ContractError, match="不得生成完整竞赛评分"):
+        _validate_review_mode_report(request, report)
