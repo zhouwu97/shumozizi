@@ -16,9 +16,15 @@ from shumozizi.workflow.repair import (
 )
 from shumozizi.workflow.review_inputs import (
     create_review_input_manifest,
+    matches_forbidden_input,
     verify_review_input_manifest,
 )
-from shumozizi.workflow.review_policy import get_review_stage_policy
+from shumozizi.workflow.review_policy import (
+    FINDING_DOMAINS,
+    REVIEW_MODES,
+    VERIFICATION_MODES,
+    get_review_stage_policy,
+)
 from shumozizi.workflow.review_sessions import verify_review_session
 from shumozizi.workflow.source_package import SOURCE_MANIFEST_PATH, verify_source_manifest
 
@@ -131,8 +137,12 @@ def _relative(run_dir: Path, path: Path) -> str:
 
 def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> None:
     """拒绝调用方削减固定审核材料或伪造源码包角色。"""
+    review_mode = request.get("review_mode", "full_scientific")
     policy = get_review_stage_policy(
-        request["stage"], run_dir, question_id=request.get("question_id")
+        request["stage"],
+        run_dir,
+        question_id=request.get("question_id"),
+        review_mode=review_mode,
     )
     for key, expected in policy.items():
         if request.get(key) != expected:
@@ -150,7 +160,10 @@ def _require_current_request_policy(request: dict[str, Any], run_dir: Path) -> N
     manifest_report = verify_review_input_manifest(run_dir, manifest_path, request=request)
     if not manifest_report["valid"]:
         raise ContractError("审核材料清单复验失败: " + "; ".join(manifest_report["errors"]))
-    if request["stage"] in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE"}:
+    if review_mode == "full_scientific" and request["stage"] in {
+        "R4_FORMAT_VISUAL",
+        "R5_COMPREHENSIVE",
+    }:
         source_report = verify_source_manifest(run_dir)
         if not source_report["valid"]:
             raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
@@ -164,7 +177,9 @@ def _validate_format_audit_verdict(
     request: dict[str, Any], report: dict[str, Any], run_dir: Path
 ) -> None:
     """机器格式硬失败不得被 R4/R5 的文字结论覆盖。"""
-    if request["stage"] not in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE"}:
+    if request.get("review_mode", "full_scientific") != "full_scientific" or request[
+        "stage"
+    ] not in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE"}:
         return
     audit_path = resolve_inside(
         run_dir, request["binding_paths"]["format_audit"], must_exist=True
@@ -205,10 +220,18 @@ def create_review_request(
     read_paths: list[Path] | None = None,
     max_minutes: int = 60,
     mode: str | None = None,
+    review_mode: str = "full_scientific",
+    target_finding_id: str | None = None,
 ) -> Path:
     """冻结当前 revision 并创建供新桌面任务领取的只读审核请求。"""
     if stage not in REVIEW_STAGES:
         raise ContractError(f"未知审核阶段: {stage}")
+    if review_mode not in REVIEW_MODES:
+        raise ContractError(f"未知审核模式: {review_mode}")
+    if review_mode == "full_scientific" and target_finding_id is not None:
+        raise ContractError("full_scientific 不得声明 target_finding_id")
+    if review_mode != "full_scientific" and not target_finding_id:
+        raise ContractError(f"{review_mode} 必须绑定 target_finding_id")
     if stage == "J0_FINAL_BLIND_JUDGE" and any(
         (run_dir / "review" / stage.lower()).glob("*/review_request.json")
     ):
@@ -228,7 +251,12 @@ def create_review_request(
         raise ContractError("审核请求 run_id 与运行目录不一致")
     if not bindings:
         raise ContractError("审核请求必须绑定至少一个当前产物")
-    policy = get_review_stage_policy(stage, run_dir, question_id=question_id)
+    policy = get_review_stage_policy(
+        stage,
+        run_dir,
+        question_id=question_id,
+        review_mode=review_mode,
+    )
     binding_roles = set(bindings)
     mandatory_roles = set(policy["mandatory_inputs"])
     missing_roles = sorted(mandatory_roles - binding_roles)
@@ -238,7 +266,10 @@ def create_review_request(
     unknown_roles = sorted(binding_roles - allowed_roles)
     if unknown_roles:
         raise ContractError("审核请求包含策略未声明的材料角色: " + ", ".join(unknown_roles))
-    if stage in {"R4_FORMAT_VISUAL", "R5_COMPREHENSIVE"}:
+    if review_mode == "full_scientific" and stage in {
+        "R4_FORMAT_VISUAL",
+        "R5_COMPREHENSIVE",
+    }:
         source_report = verify_source_manifest(run_dir)
         if not source_report["valid"]:
             raise ContractError("源码包校验失败: " + "; ".join(source_report["errors"]))
@@ -268,10 +299,17 @@ def create_review_request(
     missing_read_paths = sorted(set(binding_paths.values()) - set(normalized_paths))
     if missing_read_paths:
         raise ContractError("审核 read_paths 未覆盖全部强制绑定: " + ", ".join(missing_read_paths))
+    if review_mode != "full_scientific" and set(normalized_paths) != set(
+        binding_paths.values()
+    ):
+        raise ContractError(f"{review_mode} 只能读取模式策略限定输入")
     forbidden_hits = [
         path
         for path in normalized_paths
-        if any(pattern.lower() in path.lower() for pattern in policy["forbidden_inputs"])
+        if any(
+            matches_forbidden_input(path, pattern)
+            for pattern in policy["forbidden_inputs"]
+        )
     ]
     if forbidden_hits:
         raise ContractError("审核请求包含禁止读取材料: " + ", ".join(forbidden_hits))
@@ -284,6 +322,7 @@ def create_review_request(
         run_dir,
         request_id=request_id,
         stage=stage,
+        review_mode=review_mode,
         question_id=question_id,
         review_round_id=round_id,
         state_revision=state["revision"],
@@ -297,6 +336,12 @@ def create_review_request(
         "request_id": request_id,
         "run_id": run_dir.name,
         "stage": stage,
+        "review_mode": review_mode,
+        **(
+            {"target_finding_id": target_finding_id}
+            if target_finding_id is not None
+            else {}
+        ),
         "question_id": question_id,
         "review_round_id": round_id,
         "state_revision": state["revision"],
@@ -321,10 +366,64 @@ def create_review_request(
     return request_path
 
 
+def _normalize_review_report_contract(
+    request: dict[str, Any], report: dict[str, Any]
+) -> dict[str, Any]:
+    """补齐新增显式字段，同时保留 PR #5 v3 报告的读取兼容。"""
+    normalized = dict(report)
+    expected_mode = request.get("review_mode", "full_scientific")
+    declared_mode = normalized.setdefault("review_mode", expected_mode)
+    if declared_mode != expected_mode:
+        raise ContractError("审核报告 review_mode 与冻结请求不一致")
+    target_finding_id = request.get("target_finding_id")
+    if target_finding_id is not None:
+        declared_target = normalized.setdefault("target_finding_id", target_finding_id)
+        if declared_target != target_finding_id:
+            raise ContractError("审核报告 target_finding_id 与冻结请求不一致")
+    elif normalized.get("target_finding_id") is not None:
+        raise ContractError("full_scientific 报告不得声明 target_finding_id")
+    if normalized.get("schema_version") == "3.0":
+        normalized["findings"] = [dict(item) for item in normalized.get("findings", [])]
+        if expected_mode == "full_scientific":
+            for finding in normalized["findings"]:
+                finding.setdefault("confidence", "medium")
+                finding.setdefault("status", "open")
+    return normalized
+
+
+def _validate_review_mode_report(
+    request: dict[str, Any], report: dict[str, Any]
+) -> None:
+    """限制 scoped review 的 finding 范围和 reopening 证据。"""
+    review_mode = request.get("review_mode", "full_scientific")
+    if review_mode != "full_scientific" and report["schema_version"] != "3.0":
+        raise ContractError(f"{review_mode} 只接受 review_report v3")
+    target_finding_id = request.get("target_finding_id")
+    for finding in report["findings"]:
+        if report["schema_version"] == "3.0" and (
+            finding.get("confidence") is None or finding.get("status") is None
+        ):
+            raise ContractError("v3 finding 必须声明 confidence 和 status")
+        if review_mode == "full_scientific":
+            continue
+        finding_id = finding["finding_id"]
+        severity = _reviewer_severity(finding)
+        if review_mode in {"diff_check", "machine_check"} and finding_id != target_finding_id:
+            raise ContractError(f"{review_mode} 只能处理 target_finding_id")
+        if review_mode != "targeted_recheck" or finding_id == target_finding_id:
+            continue
+        if severity in {"P2", "P3"}:
+            raise ContractError("targeted_recheck 不得新增无关 P2/P3")
+        reopen = finding.get("reopen_context")
+        if severity in {"P0", "P1"} and not reopen:
+            raise ContractError("targeted_recheck 新增 P0/P1 必须提供 reopen_context 重新打开证据")
+
+
 def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
     """校验并写入审核报告；报告不能写到请求声明之外。"""
     request = load_json(request_path)
     require_valid(request, "review_request")
+    report = _normalize_review_report_contract(request, report)
     run_dir = request_path.parents[3]
     session_path = request_path.with_name("review_session.json")
     session_report = verify_review_session(
@@ -343,10 +442,12 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
         raise ContractError("审核报告未绑定当前 REVIEW_INPUT_MANIFEST.json")
     if report.get("session_sha256") != sha256_file(session_path):
         raise ContractError("审核报告未绑定当前 review_session.json")
-    if request["stage"] == "R5_COMPREHENSIVE":
+    review_mode = request.get("review_mode", "full_scientific")
+    if review_mode == "full_scientific" and request["stage"] == "R5_COMPREHENSIVE":
         report = _apply_r5_score_calibration(run_dir, report)
     require_valid(report, "review_report")
-    if request["stage"] == "R1_MODELING":
+    _validate_review_mode_report(request, report)
+    if review_mode == "full_scientific" and request["stage"] == "R1_MODELING":
         if report["schema_version"] == "3.0":
             phase_a_path = request["binding_paths"].get("phase_a")
             if not phase_a_path:
@@ -356,9 +457,13 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
                 raise ContractError("R1 v3 报告未绑定冻结的 Phase A")
         _validate_r1_semantics(report)
         _validate_r1_coverage_against_model_spec(report, request, run_dir)
-    if request["stage"] == "R2_EXPERIMENT" and report["schema_version"] == "3.0":
+    if (
+        review_mode == "full_scientific"
+        and request["stage"] == "R2_EXPERIMENT"
+        and report["schema_version"] == "3.0"
+    ):
         _validate_r2_semantics(report)
-    if request["stage"] == "R5_COMPREHENSIVE":
+    if review_mode == "full_scientific" and request["stage"] == "R5_COMPREHENSIVE":
         _validate_r5_axes(report)
     _validate_format_audit_verdict(request, report, run_dir)
     output = resolve_inside(request_path.parents[3], request["output_path"])
@@ -368,6 +473,113 @@ def write_review_report(request_path: Path, report: dict[str, Any]) -> Path:
         raise ContractError("一个审核 session 只能生成一个报告")
     atomic_json(output, report)
     return output
+
+
+def _normalize_adjudication_contract(
+    report: dict[str, Any], adjudication: dict[str, Any]
+) -> dict[str, Any]:
+    """为新裁决物化显式关闭路径，并兼容 PR #5 调用方。"""
+    normalized = dict(adjudication)
+    report_mode = report.get("review_mode")
+    if report_mode is None:
+        return normalized
+    declared_mode = normalized.setdefault("review_mode", report_mode)
+    if declared_mode != report_mode:
+        raise ContractError("审核裁决 review_mode 与 review_report 不一致")
+    normalized["decisions"] = [dict(item) for item in normalized.get("decisions", [])]
+    for decision in normalized["decisions"]:
+        evidence_type = decision.get("resolution_evidence_type")
+        domain = decision.setdefault(
+            "domain",
+            "machine"
+            if evidence_type in {"deterministic_machine_evidence", "exact_oracle"}
+            else "scientific",
+        )
+        effective_severity = decision.get(
+            "effective_severity", decision.get("reviewer_severity")
+        )
+        default_verification = (
+            "human_decision"
+            if decision.get("main_decision") == "needs_human_decision"
+            else "machine_check"
+            if domain == "machine"
+            else "targeted_recheck"
+            if effective_severity in {"P0", "P1"}
+            else "diff_check"
+            if effective_severity == "P2"
+            else "none"
+        )
+        decision.setdefault("verification_mode", default_verification)
+        decision.setdefault("scientific_semantic_change", False)
+        decision.setdefault("reopen_justification", None)
+    return normalized
+
+
+def _validate_stage1_closure_path(
+    report: dict[str, Any], finding: dict[str, Any], decision: dict[str, Any]
+) -> None:
+    """验证阶段 1B 的科学、机器、P2/P3 与 reopening 分流。"""
+    if report.get("review_mode") is None:
+        return
+    domain = decision.get("domain")
+    verification_mode = decision.get("verification_mode")
+    if domain not in FINDING_DOMAINS or verification_mode not in VERIFICATION_MODES:
+        raise ContractError("审核裁决缺少合法 domain 或 verification_mode")
+    finding_id = finding["finding_id"]
+    severity = _reviewer_severity(finding)
+    effective = decision["effective_severity"]
+    main_decision = decision["main_decision"]
+    target_finding_id = report.get("target_finding_id")
+    if (
+        report["review_mode"] == "targeted_recheck"
+        and finding_id != target_finding_id
+        and severity in {"P0", "P1"}
+        and not decision.get("reopen_justification")
+    ):
+        raise ContractError("新增 P0/P1 的生产裁决必须提供 reopen_justification")
+    if finding.get("status") == "deferred_empirical":
+        if main_decision != "deferred_empirical":
+            raise ContractError("deferred_empirical finding 必须使用同名裁决状态")
+        if (
+            domain != "scientific"
+            or verification_mode != "targeted_recheck"
+            or decision["gate_effect"] != "warn"
+        ):
+            raise ContractError("deferred_empirical 必须定向关闭且当前审核门仅 warning")
+        return
+    if main_decision == "deferred_empirical":
+        raise ContractError("只有 deferred_empirical finding 可以延期到实验关闭")
+    if main_decision == "needs_human_decision":
+        if verification_mode != "human_decision":
+            raise ContractError("needs_human_decision 必须使用 human_decision 关闭路径")
+        return
+    semantic_change = decision.get("scientific_semantic_change", False)
+    if semantic_change and severity in {"P2", "P3"}:
+        if (
+            effective != "P1"
+            or domain != "scientific"
+            or verification_mode != "targeted_recheck"
+            or decision["gate_effect"] != "block"
+        ):
+            raise ContractError("P2/P3 修复改变科学语义时必须重新分类为科学 P1")
+        return
+    if effective in {"P0", "P1"}:
+        expected = "machine_check" if domain == "machine" else "targeted_recheck"
+        if verification_mode != expected:
+            raise ContractError(f"{domain} {effective} 必须通过 {expected} 关闭")
+        if (
+            domain == "scientific"
+            and main_decision in {"rejected", "accepted_as_advisory"}
+            and decision.get("resolution_evidence_type") != "independent_second_review"
+        ):
+            raise ContractError("科学 P0/P1 关闭必须绑定 targeted reviewer 的独立复核证据")
+    elif effective == "P2" and main_decision not in UNRESOLVED_ADJUDICATIONS:
+        expected = "machine_check" if domain == "machine" else "diff_check"
+        if verification_mode != expected:
+            raise ContractError(f"非语义 P2 必须通过 {expected} 关闭")
+    elif effective == "P3" and main_decision not in UNRESOLVED_ADJUDICATIONS:
+        if verification_mode not in {"none", "diff_check"}:
+            raise ContractError("P3 只能直接关闭或执行 diff_check")
 
 
 def _validate_adjudication_semantics(
@@ -398,6 +610,7 @@ def _validate_adjudication_semantics(
             raise ContractError(f"裁决严重度与审核报告不一致: {finding_id}")
         if decision["effective_severity"] not in {"P0", "P1", "P2", "P3"}:
             raise ContractError(f"裁决有效严重度非法: {finding_id}")
+        _validate_stage1_closure_path(report, finding, decision)
         if main_decision == "accepted":
             if not decision["confirmation_evidence"]:
                 raise ContractError("接受 finding 必须提供 confirmation_evidence")
@@ -419,6 +632,9 @@ def _validate_adjudication_semantics(
                 raise ContractError(f"{severity} 只有强反证类型才能驳回")
             if decision["gate_effect"] != "none":
                 raise ContractError("rejected finding 的 gate_effect 必须为 none")
+        elif main_decision == "deferred_empirical":
+            if decision["gate_effect"] != "warn":
+                raise ContractError("deferred_empirical 的 gate_effect 必须为 warn")
         elif main_decision in UNRESOLVED_ADJUDICATIONS:
             if decision["gate_effect"] != "block":
                 raise ContractError("未解决 finding 的 gate_effect 必须为 block")
@@ -443,6 +659,7 @@ def write_review_adjudication(
     report_path = report_path.resolve()
     report = load_json(report_path)
     require_valid(report, "review_report")
+    adjudication = _normalize_adjudication_contract(report, adjudication)
     request_path = report_path.with_name("review_request.json")
     request = load_json(request_path)
     require_valid(request, "review_request")

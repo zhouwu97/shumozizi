@@ -10,6 +10,8 @@
     "request_id": {"type": "string", "minLength": 1},
     "run_id": {"type": "string", "minLength": 1},
     "stage": {"enum": ["R1_MODELING", "R2_EXPERIMENT", "R3_PAPER_LOGIC", "R4_FORMAT_VISUAL", "R5_COMPREHENSIVE", "J0_FINAL_BLIND_JUDGE"]},
+    "review_mode": {"enum": ["full_scientific", "targeted_recheck", "diff_check", "machine_check"]},
+    "target_finding_id": {"type": "string", "minLength": 1},
     "question_id": {"type": ["string", "null"]},
     "review_round_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "state_revision": {"type": "integer", "minimum": 0},
@@ -29,5 +31,14 @@
     "read_only": {"const": true},
     "budget": {"type": "object", "required": ["max_minutes", "max_rounds"], "additionalProperties": false, "properties": {"max_minutes": {"type": "integer", "minimum": 1}, "max_rounds": {"type": "integer", "minimum": 1, "maximum": 5}}},
     "requested_at": {"type": "string", "format": "date-time"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["review_mode"],
+        "properties": {"review_mode": {"enum": ["targeted_recheck", "diff_check", "machine_check"]}}
+      },
+      "then": {"required": ["target_finding_id"]}
+    }
+  ]
 }

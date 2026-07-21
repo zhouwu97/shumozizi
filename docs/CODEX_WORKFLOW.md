@@ -52,6 +52,18 @@ R1 报告必须包含完整 17 项 coverage 矩阵（目标与约束分别检查
 删除，策略外 role 不能加入；`read_paths` 只能引用 manifest 中的材料并覆盖全部强制项。
 运行时会先解析真实路径，再拒绝 `..`、反斜杠别名、越界路径和前轮报告等禁止材料。
 
+审核请求显式冻结 `review_mode`：`full_scientific` 使用阶段完整材料；`targeted_recheck` 只能
+包含原 finding、生产裁决、修改前后 diff、修复证据和直接依赖；`diff_check` 只包含局部差异
+与修复证据；`machine_check` 只包含原 finding、生产裁决和确定性机器证据。scoped 模式禁止
+通过额外 read path 或角色重标记读取完整题面、其他报告、结果、论文或源码。
+
+targeted recheck 只允许复核原问题、修改范围和直接依赖，不得新增无关 P2/P3。新增 P0/P1
+必须同时提供与修改的关系、此前无法合理发现的原因、重新打开证据和 production
+`reopen_justification`。机器 P1 由 `machine_check` 关闭，科学 P0/P1 由
+`targeted_recheck` 关闭，非语义 P2 由 `diff_check` 关闭，P3 可作为不阻断建议关闭。P2/P3
+修复若改变科学语义，必须重新分类为科学 P1。经验未知可标记 `deferred_empirical`，但必须冻结
+阻断点、关闭条件与失败动作。
+
 `review_request.json` 只绑定材料清单，不包含线程身份。生产主对话写完请求后必须停止，向用户
 输出独立审核交接提示。用户只需在 Codex 桌面版中新建一个顶层对话并提交该请求；该新对话中的
 审核 AI 自动调用对应审核 Skill，读取冻结材料并生成 `review_session.json` 和报告。报告返回

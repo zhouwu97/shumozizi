@@ -38,6 +38,7 @@
           "accepted_blocking_finding_count": {"type": "integer", "minimum": 0},
           "question_id": {"type": ["string", "null"]},
           "request_stage": {"type": "string"},
+          "review_mode": {"enum": ["full_scientific", "targeted_recheck", "diff_check", "machine_check"]},
           "reviewer_verdict": {"type": "string"},
           "verdict": {"type": "string"},
           "decision": {"enum": ["accepted", "accepted_with_warnings", "rejected", "superseded"]}

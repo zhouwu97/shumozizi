@@ -396,6 +396,7 @@ class StateService:
             "accepted_blocking_finding_count": len(accepted_blocking),
             "question_id": question_id,
             "request_stage": expected_stage,
+            "review_mode": request.get("review_mode", "full_scientific"),
             "reviewer_verdict": report.get("verdict", ""),
         }
         state["revision"] = next_revision
