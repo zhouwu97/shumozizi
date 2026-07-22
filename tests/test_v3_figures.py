@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from scripts.figures.use_template import generate_from_result
-from shumozizi.simple.execution import execute_simple_experiment
 from shumozizi.simple.figures import read_figure_index, verify_current_figure_files
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.quality import assess_result_quality
 from tests.quality_protocol_helpers import (
-    evidence_backed_assessment,
-    standard_quality_document,
+    adapter_backed_assessment,
+    run_synthetic_verification_protocol,
 )
 
 
@@ -32,11 +30,8 @@ class V3FigureTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.run_dir = initialize_simple_run(self.root, "figure-test")
-        script = self.run_dir / "code" / "make_data.py"
         payloads = {
             "roc": {
-                "metrics": {"objective": 0.8},
-                "quality": standard_quality_document(0.8),
                 "figure_data": {
                     "models": [
                         {
@@ -77,31 +72,20 @@ class V3FigureTests(unittest.TestCase):
                 },
             },
         }
-        script.write_text(
-            "import json\n"
-            "from pathlib import Path\n"
-            f"payloads = {payloads!r}\n"
-            "for name, payload in payloads.items():\n"
-            "    Path(f'results/raw/{name}.json').write_text(json.dumps(payload), encoding='utf-8')\n",
-            encoding="utf-8",
-        )
-        execution = execute_simple_experiment(
+        protocol = run_synthetic_verification_protocol(
             self.run_dir,
             result_id="q1_visual",
             question_id="Q1",
-            kind="primary",
-            command=f'"{sys.executable}" code/make_data.py',
-            expected_outputs=[f"results/raw/{item}.json" for item in payloads],
-            metrics_from="results/raw/roc.json",
+            objective=0.83,
+            artifact_payloads=payloads,
         )
-        self.assertTrue(execution["success"], execution["error"])
-        assess_result_quality(
+        assessment = assess_result_quality(
             self.run_dir,
             result_id="q1_visual",
-            assessment=evidence_backed_assessment(
-                "q1_visual", "results/raw/roc.json"
-            ),
+            assessment=adapter_backed_assessment(protocol),
         )
+        self.assertTrue(assessment["paper_allowed"])
+        self.figure_inputs = protocol["paths"]["artifacts"]
 
     def tearDown(self) -> None:
         """清理临时运行目录。"""
@@ -110,10 +94,10 @@ class V3FigureTests(unittest.TestCase):
     def test_real_json_templates_generate_traceable_outputs(self) -> None:
         """四类模板应读取真实结果、输出三种格式并进入图表索引。"""
         template_inputs = {
-            "cv-roc-ci": "results/raw/roc.json",
-            "prediction-marginal-grid": "results/raw/prediction.json",
-            "paired-raincloud": "results/raw/paired.json",
-            "correlation-pairgrid": "results/raw/correlation.json",
+            "cv-roc-ci": self.figure_inputs["roc"],
+            "prediction-marginal-grid": self.figure_inputs["prediction"],
+            "paired-raincloud": self.figure_inputs["paired"],
+            "correlation-pairgrid": self.figure_inputs["correlation"],
         }
         for template_id, input_result in template_inputs.items():
             generated = generate_from_result(
@@ -138,26 +122,22 @@ class V3FigureTests(unittest.TestCase):
             self.run_dir,
             template_id="cv-roc-ci",
             result_id="q1_visual",
-            input_result="results/raw/roc.json",
+            input_result=self.figure_inputs["roc"],
             output_prefix="figures/q1_roc",
         )
-        replacement = self.run_dir / "code" / "replace.py"
-        replacement.write_text(
-            "from pathlib import Path\n"
-            "import json\n"
-            "Path('results/raw/replacement.json').write_text(json.dumps({'metrics': {'objective': 0.9}}), encoding='utf-8')\n",
-            encoding="utf-8",
-        )
-        rerun = execute_simple_experiment(
+        rerun = run_synthetic_verification_protocol(
             self.run_dir,
             result_id="q1_visual_replacement",
             question_id="Q1",
-            kind="primary",
-            command=f'"{sys.executable}" code/replace.py',
-            expected_outputs=["results/raw/replacement.json"],
-            metrics_from="results/raw/replacement.json",
+            objective=0.9,
         )
-        self.assertTrue(rerun["success"], rerun["error"])
+        self.assertTrue(rerun["success"], rerun.get("error"))
+        replacement = assess_result_quality(
+            self.run_dir,
+            result_id="q1_visual_replacement",
+            assessment=adapter_backed_assessment(rerun),
+        )
+        self.assertTrue(replacement["paper_allowed"])
         verification = verify_current_figure_files(self.run_dir)
         self.assertFalse(verification["success"])
         self.assertIn("源结果已被替代", verification["errors"][0]["message"])
@@ -168,7 +148,7 @@ class V3FigureTests(unittest.TestCase):
             self.run_dir,
             template_id="cv-roc-ci",
             result_id="q1_visual",
-            input_result="results/raw/roc.json",
+            input_result=self.figure_inputs["roc"],
             output_prefix="figures/q1_roc",
         )
         figure = generated["figure"]

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError, relative_inside, resolve_inside
-from shumozizi.simple.results import json_path_value, register_result
+from shumozizi.simple.results import json_path_value, register_result, safe_result_id
 from shumozizi.simple.state import read_simple_state, utc_now
 
 
@@ -135,6 +135,8 @@ def execute_simple_experiment(
     metrics_from: str | None = None,
     metric_paths: dict[str, str] | None = None,
     timeout_seconds: float | None = None,
+    require_fresh_outputs: bool = False,
+    provisional: bool = False,
 ) -> dict[str, Any]:
     """实际运行一次 v3 实验并将事实写入 ``results/index.json``。
 
@@ -149,6 +151,8 @@ def execute_simple_experiment(
         metrics_from: 指标 JSON 输出路径；必须属于 ``expected_outputs``。
         metric_paths: 可选的指标名到 JSON 点路径映射。
         timeout_seconds: 可选超时秒数。
+        require_fresh_outputs: 为真时拒绝命令启动前已存在的预期输出。
+        provisional: 为真时只登记诊断执行，等待上层质量协议提升。
 
     Returns:
         包含成功状态、结果条目和错误信息的执行摘要。
@@ -156,8 +160,9 @@ def execute_simple_experiment(
     Raises:
         ContractError: 运行目录、命令或路径不满足协议。
     """
+    identifier = safe_result_id(result_id)
     root = run_dir.resolve()
-    read_simple_state(root)
+    state = read_simple_state(root)
     arguments = _parse_command(command)
     if not expected_outputs:
         raise ContractError("至少提供一个 --expect 输出文件")
@@ -165,6 +170,10 @@ def execute_simple_experiment(
     if configured_metric_paths and metrics_from is None:
         raise ContractError("--metric-path 必须与 --metrics-from 一起使用")
     normalized_outputs = [resolve_inside(root, item).relative_to(root).as_posix() for item in expected_outputs]
+    if require_fresh_outputs:
+        existing = [item for item in normalized_outputs if (root / item).exists()]
+        if existing:
+            raise ContractError(f"要求新鲜输出，但预期文件已存在: {', '.join(existing)}")
     explicit_inputs = input_files or []
     source_script = _source_script(root, arguments)
     all_inputs = list(dict.fromkeys([*explicit_inputs, *([source_script] if source_script else [])]))
@@ -173,8 +182,8 @@ def execute_simple_experiment(
 
     raw_dir = root / "results" / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    stdout_path = (raw_dir / f"{result_id}.stdout.log").relative_to(root).as_posix()
-    stderr_path = (raw_dir / f"{result_id}.stderr.log").relative_to(root).as_posix()
+    stdout_path = (raw_dir / f"{identifier}.stdout.log").relative_to(root).as_posix()
+    stderr_path = (raw_dir / f"{identifier}.stderr.log").relative_to(root).as_posix()
     started_at = utc_now()
     started = time.monotonic()
     exit_code = 1
@@ -231,7 +240,7 @@ def execute_simple_experiment(
     try:
         result = register_result(
             root,
-            result_id=result_id,
+            result_id=identifier,
             question_id=question_id,
             kind=kind,
             command=command,
@@ -246,13 +255,15 @@ def execute_simple_experiment(
             started_at=started_at,
             finished_at=finished_at,
             duration_seconds=duration_seconds,
+            execution_mode=str(state["execution_mode"]),
+            provisional=provisional,
             error=error,
         )
     except ContractError as exc:
         error = error or str(exc)
         result = None
     return {
-        "success": result is not None and result["status"] == "current",
+        "success": result is not None and bool(result["execution_valid"]),
         "result": result,
         "error": error,
         "exit_code": exit_code,

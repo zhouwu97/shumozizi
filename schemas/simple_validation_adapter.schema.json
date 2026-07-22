@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_validation_adapter.schema.json",
+  "title": "Capability-First v3 Validation Adapter Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "adapter_id", "adapter_version", "selection_contract", "stages"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "adapter_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "adapter_version": {"type": "string", "minLength": 1},
+    "selection_contract": {"type": "object"},
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_generator", "exact_scorer", "search_auditor"],
+      "properties": {
+        "candidate_generator": {"$ref": "#/$defs/stage"},
+        "exact_scorer": {"$ref": "#/$defs/stage"},
+        "search_auditor": {"$ref": "#/$defs/stage"}
+      }
+    }
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation_file", "arguments", "input_files", "output_file"],
+      "properties": {
+        "implementation_file": {"type": "string", "minLength": 1},
+        "arguments": {"type": "array", "items": {"type": "string"}},
+        "input_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "output_file": {"type": "string", "minLength": 1},
+        "artifact_files": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

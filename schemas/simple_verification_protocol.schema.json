@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_verification_protocol.schema.json",
+  "title": "Capability-First v3 Verification Protocol Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "result_id", "question_id", "execution_mode", "adapter", "stages", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "question_id": {"type": "string", "minLength": 1},
+    "execution_mode": {"enum": ["production", "exploration"]},
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter_id", "adapter_version", "contract_file", "contract_sha256"],
+      "properties": {
+        "adapter_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "adapter_version": {"type": "string", "minLength": 1},
+        "contract_file": {"type": "string", "minLength": 1},
+        "contract_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_generator", "exact_scorer", "search_auditor"],
+      "properties": {
+        "candidate_generator": {"$ref": "#/$defs/receipt"},
+        "exact_scorer": {"$ref": "#/$defs/receipt"},
+        "search_auditor": {"$ref": "#/$defs/receipt"}
+      }
+    },
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result_id", "implementation_file", "implementation_sha256", "command", "command_sha256", "input_hashes", "output_file", "output_sha256", "artifact_hashes"],
+      "properties": {
+        "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "implementation_file": {"type": "string", "minLength": 1},
+        "implementation_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "command": {"type": "string", "minLength": 1},
+        "command_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "input_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+        "output_file": {"type": "string", "minLength": 1},
+        "output_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "artifact_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+      }
+    }
+  }
+}

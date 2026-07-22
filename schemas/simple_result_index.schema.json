@@ -13,7 +13,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["result_id", "question_id", "kind", "source_script", "command", "input_files", "input_hashes", "output_files", "output_hashes", "metrics", "metric_sources", "status", "execution_valid", "exit_code", "stdout_path", "stderr_path", "started_at", "finished_at", "duration_seconds", "error", "created_at"],
+          "required": ["result_id", "question_id", "kind", "source_script", "command", "input_files", "input_hashes", "output_files", "output_hashes", "metrics", "metric_sources", "status", "execution_valid", "exit_code", "stdout_path", "stderr_path", "started_at", "finished_at", "duration_seconds", "error", "created_at"],
         "properties": {
           "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
           "question_id": {"type": "string", "minLength": 1},
@@ -38,7 +38,8 @@
               }
             }
           },
-          "status": {"enum": ["current", "superseded", "failed"]},
+          "status": {"enum": ["current", "superseded", "failed", "diagnostic"]},
+          "execution_mode": {"enum": ["production", "exploration"]},
           "execution_valid": {"type": "boolean"},
           "exit_code": {"type": "integer"},
           "stdout_path": {"type": "string", "minLength": 1},

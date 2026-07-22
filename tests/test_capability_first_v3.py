@@ -20,8 +20,8 @@ from shumozizi.simple.quality import assess_result_quality
 from shumozizi.simple.results import read_result_index, verify_current_result_files
 from shumozizi.simple.state import read_simple_state, update_simple_state
 from tests.quality_protocol_helpers import (
-    evidence_backed_assessment,
-    standard_quality_document,
+    adapter_backed_assessment,
+    run_synthetic_verification_protocol,
 )
 from tools.qa.figqa import find_overlaps
 from tools.qa.make_contact_sheet import make_contact_sheet
@@ -79,8 +79,7 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             "from pathlib import Path\n"
             "import json\n"
             "Path('results/raw/q1.json').write_text(\n"
-            "    json.dumps({'metrics': {'objective': 2.0}, "
-            f"'quality': {standard_quality_document(2.0)!r}}}),\n"
+            "    json.dumps({'metrics': {'objective': 2.0}}),\n"
             "    encoding='utf-8',\n"
             ")\n",
             encoding="utf-8",
@@ -122,17 +121,22 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             },
             index["results"][1]["metric_sources"]["objective"],
         )
-        assess_result_quality(
+        protocol = run_synthetic_verification_protocol(
             run_dir,
-            result_id="q1_primary_b",
-            assessment=evidence_backed_assessment(
-                "q1_primary_b", "results/raw/q1.json"
-            ),
+            result_id="q1_accepted",
+            question_id="Q1",
+            objective=2.0,
+        )
+        accepted = assess_result_quality(
+            run_dir,
+            result_id="q1_accepted",
+            assessment=adapter_backed_assessment(protocol),
         )
         (run_dir / "paper" / "sections" / "q1.typ").write_text(
-            "// @result q1_primary_b\n// @metric q1_primary_b.objective 2.0\n",
+            "// @result q1_accepted\n// @metric q1_accepted.objective 2.0\n",
             encoding="utf-8",
         )
+        self.assertTrue(accepted["paper_allowed"])
         self.assertTrue(check_result_references(run_dir)["success"])
         self.assertTrue(check_numeric_consistency(run_dir)["success"])
         self.assertTrue(verify_current_result_files(run_dir)["success"])
@@ -147,7 +151,11 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             stale_metric["inconsistent"][0]["reason"],
         )
 
-        index["results"][1]["execution_valid"] = False
+        index = read_result_index(run_dir)
+        accepted_result = next(
+            item for item in index["results"] if item["result_id"] == "q1_accepted"
+        )
+        accepted_result["execution_valid"] = False
         atomic_json(run_dir / "results" / "index.json", index)
         invalid_current = verify_current_result_files(run_dir)
         self.assertFalse(invalid_current["success"])

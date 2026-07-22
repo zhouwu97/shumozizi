@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from scripts.qa.check_result_references import check_result_references
+from shumozizi.core.io import ContractError
 from shumozizi.simple.execution import execute_simple_experiment
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.quality import (
@@ -18,8 +19,10 @@ from shumozizi.simple.quality import (
 )
 from shumozizi.simple.results import read_result_index
 from tests.quality_protocol_helpers import (
-    evidence_backed_assessment,
-    standard_quality_document,
+    adapter_backed_assessment,
+    legacy_self_report_assessment,
+    legacy_self_report_document,
+    run_synthetic_verification_protocol,
 )
 
 
@@ -108,42 +111,70 @@ class SimpleQualityTests(unittest.TestCase):
             self.assertFalse(quality_allows_paper(run_dir, "legacy"))
 
     def test_failed_search_cannot_be_forced_to_accepted_for_paper(self) -> None:
-        """即使调用方误填 accepted，失败的搜索充分性也必须关闭论文权限。"""
+        """独立审计发现校准失败时，即使申请 accepted 也必须关闭论文权限。"""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir = initialize_simple_run(root, "quality-failed-accepted")
-            script = run_dir / "code" / "q2.py"
-            script.write_text(
-                "from pathlib import Path\n"
-                "import json\n"
-                "Path('results/raw/q2.json').write_text(\n"
-                "    json.dumps({'metrics': {'objective': 2.0}, "
-                f"'quality': {standard_quality_document(2.0, search_adequacy='failed')!r}}}),\n"
-                "    encoding='utf-8',\n"
-                ")\n",
-                encoding="utf-8",
-            )
-            execute_simple_experiment(
+            protocol = run_synthetic_verification_protocol(
                 run_dir,
                 result_id="q2_low_quality",
                 question_id="Q2",
-                kind="search",
-                command=f'\"{sys.executable}\" code/q2.py',
-                expected_outputs=["results/raw/q2.json"],
-                metrics_from="results/raw/q2.json",
+                objective=2.0,
+                calibration_status="failed",
             )
             assessment = assess_result_quality(
                 run_dir,
                 result_id="q2_low_quality",
-                assessment=evidence_backed_assessment(
-                    "q2_low_quality",
-                    "results/raw/q2.json",
-                    search_adequacy="failed",
-                ),
+                assessment=adapter_backed_assessment(protocol),
             )
 
             self.assertFalse(assessment["paper_allowed"])
             self.assertFalse(quality_allows_paper(run_dir, "q2_low_quality"))
+
+    def test_legacy_generator_self_report_stays_diagnostic_and_unverified(self) -> None:
+        """旧输出中的通过布尔值既不能自行 accepted，也不能在迁移时升级。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir = initialize_simple_run(root, "legacy-self-report")
+            output = "results/raw/q2.json"
+            script = run_dir / "code" / "q2.py"
+            script.write_text(
+                "from pathlib import Path\n"
+                "import json\n"
+                f"payload = {{'metrics': {{'objective': 2.0}}, 'quality': {legacy_self_report_document(2.0)!r}}}\n"
+                f"Path({output!r}).write_text(json.dumps(payload), encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            executed = execute_simple_experiment(
+                run_dir,
+                result_id="legacy_self_report",
+                question_id="Q2",
+                kind="search",
+                command=f'"{sys.executable}" code/q2.py',
+                expected_outputs=[output],
+                metrics_from=output,
+            )
+
+            with self.assertRaisesRegex(ContractError, "adapter|verification|独立"):
+                assess_result_quality(
+                    run_dir,
+                    result_id="legacy_self_report",
+                    assessment=legacy_self_report_assessment("legacy_self_report", output),
+                )
+            migrated = assess_result_quality(
+                run_dir,
+                result_id="legacy_self_report",
+                assessment={
+                    "result_role": "diagnostic",
+                    "reasons": ["legacy_generator_self_report"],
+                },
+            )
+
+            self.assertTrue(executed["success"], executed["error"])
+            self.assertEqual("diagnostic", migrated["result_role"])
+            self.assertFalse(migrated["paper_allowed"])
+            self.assertIn("legacy_unverified_quality_claim", migrated["reasons"])
+            self.assertFalse(quality_allows_paper(run_dir, "legacy_self_report"))
 
 
 if __name__ == "__main__":

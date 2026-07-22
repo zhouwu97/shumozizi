@@ -74,6 +74,51 @@
           }
         }
       }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "run_id", "assessments"],
+      "properties": {
+        "schema_version": {"const": "3.0"},
+        "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "assessments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["result_id", "execution_mode", "execution_valid", "feasibility_valid", "exact_recomputed", "search_adequacy", "problem_effectiveness", "result_role", "paper_allowed", "verification", "selection_contract", "reasons", "assessed_at"],
+            "properties": {
+              "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+              "execution_mode": {"enum": ["production", "exploration"]},
+              "execution_valid": {"type": "boolean"},
+              "feasibility_valid": {"type": "boolean"},
+              "exact_recomputed": {"type": "boolean"},
+              "search_adequacy": {"enum": ["passed", "failed", "not_assessed"]},
+              "problem_effectiveness": {"enum": ["progressed", "failed", "not_assessed"]},
+              "result_role": {"enum": ["diagnostic", "candidate", "accepted", "rejected"]},
+              "paper_allowed": {"type": "boolean"},
+              "verification": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["protocol_file", "protocol_sha256"],
+                    "properties": {
+                      "protocol_file": {"type": "string", "minLength": 1},
+                      "protocol_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+                    }
+                  }
+                ]
+              },
+              "selection_contract": {"type": ["object", "null"]},
+              "reasons": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "assessed_at": {"type": "string", "format": "date-time"}
+            }
+          }
+        }
+      }
     }
   ]
 }

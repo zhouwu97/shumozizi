@@ -15,11 +15,14 @@ _DIRECTIONS = {"maximize", "minimize"}
 _SEMANTICS = {"additive", "union"}
 
 
-def validate_selection_contract(contract: dict[str, Any]) -> None:
+def validate_selection_contract(
+    contract: dict[str, Any], *, require_coverage: bool = False
+) -> None:
     """校验候选可比性所需的最小问题合同。
 
     Args:
         contract: 由当前问题在搜索前冻结的选择合同。
+        require_coverage: 为真时要求 adapter 合同声明可从原生坐标重算的覆盖度量。
 
     Raises:
         ContractError: 合同缺少目标、版本或容差等必要定义。
@@ -54,6 +57,70 @@ def validate_selection_contract(contract: dict[str, Any]) -> None:
         not isinstance(item, str) or not item for item in required_evidence
     ):
         raise ContractError("selection_contract.required_evidence 必须为字符串数组")
+    dependencies = contract.get("required_prior_questions", [])
+    if not isinstance(dependencies, list) or any(
+        not isinstance(item, str) or not item for item in dependencies
+    ):
+        raise ContractError("selection_contract.required_prior_questions 必须为字符串数组")
+    adapter = contract.get("verification_adapter")
+    if adapter is not None and (
+        not isinstance(adapter, dict)
+        or not isinstance(adapter.get("adapter_id"), str)
+        or not adapter["adapter_id"]
+        or not isinstance(adapter.get("adapter_version"), str)
+        or not adapter["adapter_version"]
+    ):
+        raise ContractError("selection_contract.verification_adapter 必须包含 adapter_id 和 adapter_version")
+    if not require_coverage:
+        return
+    coverage = contract.get("coverage")
+    if not isinstance(coverage, dict):
+        raise ContractError("selection_contract 缺少 coverage")
+    variables = coverage.get("candidate_variables")
+    if not isinstance(variables, list) or not variables or any(
+        not isinstance(item, str) or not item for item in variables
+    ) or len(set(variables)) != len(variables):
+        raise ContractError("coverage.candidate_variables 必须是非空且唯一的原始坐标列表")
+    groups = coverage.get("groups")
+    if not isinstance(groups, list) or not groups:
+        raise ContractError("coverage.groups 必须为非空数组")
+    identifiers: set[str] = set()
+    covered: set[str] = set()
+    for group in groups:
+        if not isinstance(group, dict):
+            raise ContractError("coverage.groups 条目必须为对象")
+        identifier = group.get("id")
+        group_variables = group.get("variables")
+        bounds = group.get("bounds")
+        bins = group.get("bins_per_variable")
+        minimum = group.get("minimum_joint_coverage")
+        if not isinstance(identifier, str) or not identifier or identifier in identifiers:
+            raise ContractError("coverage group id 必须唯一")
+        identifiers.add(identifier)
+        if group.get("metric") != "occupied_bins":
+            raise ContractError("coverage group 必须声明 occupied_bins 原生联合覆盖")
+        if not isinstance(group_variables, list) or not group_variables or any(
+            not isinstance(item, str) or item not in variables for item in group_variables
+        ) or len(set(group_variables)) != len(group_variables):
+            raise ContractError("coverage group variables 必须引用完整原始坐标")
+        if isinstance(bins, bool) or not isinstance(bins, int) or bins < 2:
+            raise ContractError("coverage group bins_per_variable 必须是不小于 2 的整数")
+        if isinstance(minimum, bool) or not isinstance(minimum, (int, float)) or not 0 <= float(minimum) <= 1:
+            raise ContractError("coverage group minimum_joint_coverage 必须在 [0, 1]")
+        if not isinstance(bounds, dict) or set(bounds) != set(group_variables):
+            raise ContractError("coverage group bounds 必须覆盖每个原始坐标")
+        for variable in group_variables:
+            interval = bounds[variable]
+            if (
+                not isinstance(interval, list)
+                or len(interval) != 2
+                or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in interval)
+                or float(interval[0]) >= float(interval[1])
+            ):
+                raise ContractError("coverage group bounds 必须是递增有限数值区间")
+        covered.update(group_variables)
+    if covered != set(variables):
+        raise ContractError("coverage groups 必须覆盖每个 candidate_variables 原始坐标")
 
 
 def selection_group_key(question_id: str, contract: dict[str, Any]) -> dict[str, str]:
@@ -68,6 +135,8 @@ def selection_group_key(question_id: str, contract: dict[str, Any]) -> dict[str,
     """
     validate_selection_contract(contract)
     objective = contract["objective"]
+    adapter = contract.get("verification_adapter")
+    adapter_values = adapter if isinstance(adapter, dict) else {}
     return {
         "question_id": question_id,
         "metric": str(objective["metric"]),
@@ -77,6 +146,8 @@ def selection_group_key(question_id: str, contract: dict[str, Any]) -> dict[str,
         "constraint_version": str(objective["constraint_version"]),
         "semantics": str(objective["semantics"]),
         "fine_tolerance": str(float(objective["fine_tolerance"])),
+        "adapter_id": str(adapter_values.get("adapter_id", "legacy")),
+        "adapter_version": str(adapter_values.get("adapter_version", "legacy")),
     }
 
 
@@ -242,7 +313,11 @@ def register_verified_candidate(
     validate_selection_contract(selection_contract)
     index = read_result_index(run_dir)
     result = next((item for item in index["results"] if item["result_id"] == result_id), None)
-    if result is None or not result["execution_valid"]:
+    if (
+        result is None
+        or not result["execution_valid"]
+        or result.get("execution_mode", "production") != "production"
+    ):
         raise ContractError("候选必须是已登记且 execution_valid=true 的结果")
     objective = selection_contract["objective"]
     metric = str(objective["metric"])

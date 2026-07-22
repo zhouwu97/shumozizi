@@ -22,6 +22,11 @@ from shumozizi.simple.search_adequacy import (
     validate_objective_semantics,
 )
 from shumozizi.simple.selection import read_candidate_registry
+from tests.quality_protocol_helpers import (
+    adapter_backed_assessment,
+    legacy_self_report_document,
+    run_synthetic_verification_protocol,
+)
 
 
 class CapabilityQualityProtocolTests(unittest.TestCase):
@@ -34,9 +39,32 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
         result_id: str,
         question_id: str,
         objective: float,
+        contract: dict[str, object],
+        calibration_status: str = "passed",
+    ) -> None:
+        """运行带三段独立验证收据的合成结果。"""
+        protocol = run_synthetic_verification_protocol(
+            run_dir,
+            result_id=result_id,
+            question_id=question_id,
+            objective=objective,
+            selection_contract=contract,
+            calibration_status=calibration_status,
+        )
+        if not hasattr(self, "_protocols"):
+            self._protocols: dict[tuple[str, str], dict[str, object]] = {}
+        self._protocols[(str(run_dir.resolve()), result_id)] = protocol
+
+    def _run_legacy_result(
+        self,
+        run_dir: Path,
+        *,
+        result_id: str,
+        question_id: str,
+        objective: float,
         quality: dict[str, object],
     ) -> None:
-        """生成带可追溯质量证据的临时真实执行结果。"""
+        """生成只用于拒绝路径的旧生成器自报结果。"""
         script = run_dir / "code" / f"{result_id}.py"
         output = f"results/raw/{result_id}.json"
         document = {"metrics": {"objective": objective}, "quality": quality}
@@ -60,6 +88,17 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
     @staticmethod
     def _contract(*, scorer_version: str = "fine-v1", constraint_version: str = "c-v1") -> dict[str, object]:
         """构造带并集和覆盖要求的最小选择合同。"""
+        def group(identifier: str, variables: list[str]) -> dict[str, object]:
+            return {
+                "id": identifier,
+                "variables": variables,
+                "minimum_joint_coverage": 0.5,
+                "metric": "occupied_bins",
+                "bins_per_variable": 2,
+                "bounds": {variable: [0.0, 1.0] for variable in variables},
+            }
+
+        variables = ["heading", "speed", "u1.drop", "u1.fuse", "u2.drop", "u2.fuse"]
         return {
             "objective": {
                 "metric": "objective",
@@ -71,61 +110,15 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 "fine_tolerance": 0.001,
             },
             "coverage": {
+                "candidate_variables": variables,
                 "groups": [
-                    {"id": "flight", "variables": ["heading", "speed"], "minimum_joint_coverage": 0.5},
-                    {
-                        "id": "entity-1",
-                        "variables": ["u1.drop", "u1.fuse"],
-                        "minimum_joint_coverage": 0.5,
-                    },
-                    {
-                        "id": "entity-2",
-                        "variables": ["u2.drop", "u2.fuse"],
-                        "minimum_joint_coverage": 0.5,
-                    },
-                    {
-                        "id": "interaction",
-                        "variables": ["u1.drop", "u2.drop", "u1.fuse", "u2.fuse"],
-                        "minimum_joint_coverage": 0.5,
-                    },
+                    group("flight", ["heading", "speed"]),
+                    group("entity-1", ["u1.drop", "u1.fuse"]),
+                    group("entity-2", ["u2.drop", "u2.fuse"]),
+                    group("interaction", ["u1.drop", "u2.drop", "u1.fuse", "u2.fuse"]),
                 ]
             },
-            "required_evidence": ["coverage", "objective_semantics"],
-        }
-
-    @classmethod
-    def _quality_document(cls, *, contract: dict[str, object], objective: float) -> dict[str, object]:
-        """构造输出内的机器质量证据；路径和哈希由运行时复验。"""
-        coverage = {
-            "group_reports": [
-                {"id": group["id"], "variables": group["variables"], "joint_coverage": 0.75}
-                for group in contract["coverage"]["groups"]  # type: ignore[index]
-            ]
-        }
-        return {
-            "feasible": True,
-            "exact_recomputed": True,
-            "search_adequacy": "passed",
-            "problem_effectiveness": "progressed",
-            "objective_value": objective,
-            "coverage": coverage,
-            "objective_semantics": {
-                "surrogate": "union_marginal_gain",
-                "calibration": "union_marginal_gain",
-                "exact": "union_marginal_gain",
-                "selection": "union_marginal_gain",
-                "entity_marginal_gains": [objective, 0.0],
-            },
-        }
-
-    @staticmethod
-    def _reference(result_id: str, file_name: str, path: str, expected: object) -> dict[str, object]:
-        """构造必须由已登记输出解析的质量证据引用。"""
-        return {
-            "result_id": result_id,
-            "file": file_name,
-            "json_path": path,
-            "expected": expected,
+            "required_evidence": [],
         }
 
     def _assess(
@@ -134,38 +127,14 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
         *,
         result_id: str,
         contract: dict[str, object],
-        search_status: str = "passed",
     ) -> dict[str, object]:
-        """以同一执行输出的可验证字段放行结果。"""
-        output = f"results/raw/{result_id}.json"
-        evidence = {
-            "feasibility": self._reference(result_id, output, "quality.feasible", True),
-            "exact_recomputed": self._reference(
-                result_id, output, "quality.exact_recomputed", True
-            ),
-            "search_adequacy": self._reference(
-                result_id, output, "quality.search_adequacy", search_status
-            ),
-            "problem_effectiveness": self._reference(
-                result_id, output, "quality.problem_effectiveness", "progressed"
-            ),
-            "coverage": self._reference(result_id, output, "quality.coverage", None),
-            "objective_semantics": self._reference(
-                result_id, output, "quality.objective_semantics", None
-            ),
-        }
-        for key in contract.get("required_evidence", []):
-            if key not in evidence:
-                evidence[key] = self._reference(result_id, output, f"quality.{key}", None)
+        """仅使用同一结果的冻结 adapter receipt 申请放行。"""
+        del contract
+        protocol = self._protocols[(str(run_dir.resolve()), result_id)]
         return assess_result_quality(
             run_dir,
             result_id=result_id,
-            assessment={
-                "result_role": "accepted",
-                "selection_contract": contract,
-                "evidence": evidence,
-                "reasons": ["test_evidence_chain"],
-            },
+            assessment=adapter_backed_assessment(protocol),
         )
 
     def test_later_lower_exact_valid_candidate_cannot_replace_verified_best(self) -> None:
@@ -178,7 +147,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="best",
                 question_id="Q3",
                 objective=10.0,
-                quality=self._quality_document(contract=contract, objective=10.0),
+                contract=contract,
             )
             first = self._assess(run_dir, result_id="best", contract=contract)
             self._run_result(
@@ -186,7 +155,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="lower",
                 question_id="Q3",
                 objective=9.0,
-                quality=self._quality_document(contract=contract, objective=9.0),
+                contract=contract,
             )
             lower = self._assess(run_dir, result_id="lower", contract=contract)
 
@@ -209,7 +178,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="v1",
                 question_id="Q3",
                 objective=10.0,
-                quality=self._quality_document(contract=first_contract, objective=10.0),
+                contract=first_contract,
             )
             self._assess(run_dir, result_id="v1", contract=first_contract)
             self._run_result(
@@ -217,7 +186,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="v2",
                 question_id="Q3",
                 objective=9.0,
-                quality=self._quality_document(contract=second_contract, objective=9.0),
+                contract=second_contract,
             )
             second = self._assess(run_dir, result_id="v2", contract=second_contract)
 
@@ -248,12 +217,11 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="incumbent",
                 question_id="Q3",
                 objective=10.0,
-                quality=self._quality_document(contract=contract, objective=10.0),
+                contract=contract,
             )
             self._assess(run_dir, result_id="incumbent", contract=contract)
 
-            contract["required_evidence"].append("independent_challenge")  # type: ignore[index]
-            challenged_quality = self._quality_document(contract=contract, objective=11.0)
+            challenged_quality = legacy_self_report_document(11.0)
             challenged_quality["independent_challenge"] = {
                 "incumbent_exact": 10.0,
                 "challenger_exact": 11.0,
@@ -277,7 +245,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                     "candidate_fingerprints": ["2" * 64],
                 },
             }
-            self._run_result(
+            self._run_legacy_result(
                 run_dir,
                 result_id="challenger",
                 question_id="Q3",
@@ -285,8 +253,22 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 quality=challenged_quality,
             )
 
-            with self.assertRaisesRegex(ContractError, "挑战命令"):
-                self._assess(run_dir, result_id="challenger", contract=contract)
+            with self.assertRaisesRegex(ContractError, "adapter|verification|独立"):
+                assess_result_quality(
+                    run_dir,
+                    result_id="challenger",
+                    assessment={
+                        "result_role": "accepted",
+                        "evidence": {
+                            "independent_challenge": {
+                                "result_id": "challenger",
+                                "file": "results/raw/challenger.json",
+                                "json_path": "quality.independent_challenge",
+                            }
+                        },
+                        "reasons": ["unregistered_challenge_command"],
+                    },
+                )
 
             registry = read_candidate_registry(run_dir)
             self.assertEqual("incumbent", registry["groups"][0]["best_result_id"])
@@ -339,7 +321,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="incumbent",
                 question_id="Q3",
                 objective=10.0,
-                quality=self._quality_document(contract=contract, objective=10.0),
+                contract=contract,
             )
             self._assess(run_dir, result_id="incumbent", contract=contract)
             self._run_result(
@@ -347,7 +329,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="replay",
                 question_id="Q3",
                 objective=10.0,
-                quality=self._quality_document(contract=contract, objective=10.0),
+                contract=contract,
             )
             replay = self._assess(run_dir, result_id="replay", contract=contract)
 
@@ -364,10 +346,11 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="accepted",
                 question_id="Q3",
                 objective=10.0,
-                quality=self._quality_document(contract=contract, objective=10.0),
+                contract=contract,
             )
             self._assess(run_dir, result_id="accepted", contract=contract)
-            output = run_dir / "results" / "raw" / "accepted.json"
+            protocol = self._protocols[(str(run_dir.resolve()), "accepted")]
+            output = run_dir / str(protocol["paths"]["exact"])
             output.write_text(json.dumps({"metrics": {"objective": 11.0}}), encoding="utf-8")
 
             self.assertFalse(quality_allows_paper(run_dir, "accepted"))
@@ -384,25 +367,23 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 result_id="q3",
                 question_id="Q3",
                 objective=10.0,
-                quality=self._quality_document(contract=contract, objective=10.0),
+                contract=contract,
             )
             self._assess(run_dir, result_id="q3", contract=contract)
             require_prior_question_quality(run_dir, "Q4")
 
-            degraded = self._quality_document(contract=contract, objective=10.0)
-            degraded["search_adequacy"] = "failed"
             self._run_result(
                 run_dir,
                 result_id="q3-degraded",
                 question_id="Q3",
                 objective=9.0,
-                quality=degraded,
+                contract=contract,
+                calibration_status="failed",
             )
             failed = self._assess(
                 run_dir,
                 result_id="q3-degraded",
                 contract=contract,
-                search_status="failed",
             )
 
             self.assertFalse(failed["paper_allowed"])
@@ -440,7 +421,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
         """质量接口不再允许调用方凭布尔字段直接把结果写为 accepted。"""
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = initialize_simple_run(Path(temporary), "raw-boolean")
-            self._run_result(
+            self._run_legacy_result(
                 run_dir,
                 result_id="candidate",
                 question_id="Q1",
@@ -448,7 +429,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
                 quality={},
             )
 
-            with self.assertRaisesRegex(ContractError, "evidence"):
+            with self.assertRaisesRegex(ContractError, "adapter|verification|独立"):
                 assess_result_quality(
                     run_dir,
                     result_id="candidate",

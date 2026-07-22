@@ -100,7 +100,7 @@ def json_path_value(payload: Any, json_path: str) -> Any:
     return value
 
 
-def _safe_result_id(value: str) -> str:
+def safe_result_id(value: str) -> str:
     """验证结果 ID。
 
     Args:
@@ -112,7 +112,7 @@ def _safe_result_id(value: str) -> str:
     Raises:
         ContractError: ID 含有不安全字符。
     """
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", value):
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", value):
         raise ContractError(f"result_id 不合法: {value}")
     return value
 
@@ -235,6 +235,8 @@ def register_result(
     started_at: str,
     finished_at: str,
     duration_seconds: float,
+    execution_mode: str = "production",
+    provisional: bool = False,
     error: str | None = None,
 ) -> dict[str, Any]:
     """登记一次执行，不把执行成功误写成科学结论。
@@ -256,6 +258,8 @@ def register_result(
         started_at: 执行开始时间。
         finished_at: 执行结束时间。
         duration_seconds: 执行耗时。
+        execution_mode: 产物用途边界；探索结果只能登记为 diagnostic。
+        provisional: 为真时保留成功执行的诊断状态，等待上层质量协议决定是否提升。
         error: 失败原因。
 
     Returns:
@@ -264,7 +268,7 @@ def register_result(
     Raises:
         ContractError: 文件、指标来源、ID 或索引不满足协议。
     """
-    identifier = _safe_result_id(result_id)
+    identifier = safe_result_id(result_id)
     index = read_result_index(run_dir)
     if any(item["result_id"] == identifier for item in index["results"]):
         raise ContractError(f"result_id 已存在: {identifier}")
@@ -287,7 +291,17 @@ def register_result(
         if metrics or metric_sources:
             raise ContractError("失败执行不能登记指标或指标来源")
         normalized_metric_sources = {}
-    status = "current" if succeeded else "failed"
+    if execution_mode not in {"production", "exploration"}:
+        raise ContractError("execution_mode 必须为 production 或 exploration")
+    if not isinstance(provisional, bool):
+        raise ContractError("provisional 必须为布尔值")
+    status = (
+        "current"
+        if succeeded and execution_mode == "production" and not provisional
+        else "diagnostic"
+        if succeeded
+        else "failed"
+    )
     entry: dict[str, Any] = {
         "result_id": identifier,
         "question_id": question_id,
@@ -301,6 +315,7 @@ def register_result(
         "metrics": metrics,
         "metric_sources": normalized_metric_sources,
         "status": status,
+        "execution_mode": execution_mode,
         "execution_valid": succeeded,
         "exit_code": exit_code,
         "stdout_path": stdout_path,
@@ -311,7 +326,7 @@ def register_result(
         "error": error,
         "created_at": utc_now(),
     }
-    if succeeded:
+    if succeeded and execution_mode == "production" and not provisional:
         for existing in index["results"]:
             if (
                 existing["question_id"] == question_id
