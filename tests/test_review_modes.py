@@ -350,7 +350,10 @@ def test_review_mode_enums_match_schema_and_skill() -> None:
     assert set(closure["properties"]["review_mode"]["enum"]) == expected - {
         "full_scientific"
     }
-    skill = Path(".agents/skills/mathmodel-review/SKILL.md").read_text(encoding="utf-8")
+    # legacy 审核 Skill 已冻结归档；合同仍需验证其枚举未随迁移漂移。
+    skill = Path(
+        "legacy/review-v2/skills/mathmodel-review/SKILL.md"
+    ).read_text(encoding="utf-8")
     block = re.search(
         r"REVIEW_MODES_START.*?```text\n(.*?)\n```.*?REVIEW_MODES_END",
         skill,

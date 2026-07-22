@@ -1,0 +1,4 @@
+interface:
+  display_name: "Math Modeling Solve"
+  short_description: "Analyze the problem and compare model routes"
+  default_prompt: "Use $mathmodel-solve to analyze this capability-first-v3 modeling problem."

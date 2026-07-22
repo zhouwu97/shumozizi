@@ -254,7 +254,7 @@ def test_r1_coverage_exact_set_matches_schema_and_skill() -> None:
         "unchecked_items"
     }
     skill = Path(
-        ".agents/skills/mathmodel-review-r1-modeling/SKILL.md"
+        "legacy/review-v2/skills/mathmodel-review-r1-modeling/SKILL.md"
     ).read_text(encoding="utf-8")
     block = re.search(
         r"R1_REQUIRED_CHECK_IDS_START.*?```text\n(.*?)\n```.*?R1_REQUIRED_CHECK_IDS_END",

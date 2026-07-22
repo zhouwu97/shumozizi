@@ -1,75 +1,36 @@
 ---
 name: mathmodel-paper
-description: 从 result_registry.json 中已接受且允许写入论文的真实结果增量撰写数学建模论文。用于每个子问题结果确认后的章节写作，以及全部实验完成后的摘要、结论和全文组装。
+description: 使用 Capability-First v3 中真实执行且仍有效的结果撰写、编译和局部修订数学建模论文；用于完整论文、章节补丁和图表叙事。
 ---
 
-# 证据驱动的增量论文写作
+# 证据驱动的数学建模论文
 
-只使用已注册、已接受的结果写作，不得从聊天记忆或未运行的代码猜测数值。
+论文只有三项硬原则：数字来自真实执行；每问有直接答案；每个主张有证据和边界。不要用审批文件、评分表或虚构实验填充论文。
 
-## 前置检查
+## 输入与可用结果
 
-1. 完整读取 `skills/5writing/SKILL.md`，沿用比赛模板、排版和编译要求。
-2. 完整读取 `skills/mathmodel-figure-templates/SKILL.md` 和 `skills/3coding-visual/SKILL.md`，按图型选择项目原生科研绘图模板或通用数据绘图能力。
-3. 读取 `state.json`、`brief/ROUTE_LOCK.json`、数学规格、
-   `results/result_registry.json` 和 `claims/claim_evidence.json`。
-4. 过滤出 `status=accepted` 且 `paper_allowed=true` 的结果；其他记录不得进入正文、
-   摘要、图表结论或贡献声明。
-5. 写作前生成论文主张门禁：
+1. 读取 `state/run.json`、对应的建模与结果报告、`DECISIONS.md` 和 `results/index.json`。
+2. 只使用 `status=current` 且 `execution_valid=true` 的结果。追溯信息只能写在不会渲染的注释中：Typst 使用 `// @result <result_id>` 和 `// @metric <result_id>.<metric> <number>`；LaTeX 使用同格式的 `%` 注释；Markdown 使用 HTML 注释。机械检查会验证它们与真实输出一致。
+3. 采用已有 Typst 或 LaTeX 竞赛模板，源文件置于 `paper/`，章节置于 `paper/sections/`，最终编译为 `paper/final.pdf`。
 
-   ```powershell
-   python scripts/runtime/gate_paper_claims.py runs/<run_id>
-   ```
+## 每问必须说清楚
 
-   `paper/claim_gate.json` 的 `stale=true` 时，主张证据完全禁止引用；必须先重新生成
-   当前 claim evidence。不得根据路线锁中的自由文本或聊天内容绕过门禁。
-6. 在正文写作前生成并持续更新三个作者侧产物：
-   `paper/PAPER_BLUEPRINT.md`、`claims/ARGUMENT_MAP.json`、`paper/FIGURE_STORYBOARD.md`。
-   它们不增加主状态或审核门，但必须绑定当前路线、结果和证据摘要。
+每个必答问题至少包含：题目要求、模型选择理由、核心公式、求解方法、关键结果、可信性检验、直接答案，以及局限与适用边界。共享模型可跨章节复用，但不能遗漏任何一个直接回答。
 
-## 增量写作
+所有图表都先写普通 Markdown Figure Contract：回答的问题、核心结论、数据来源、每个 panel 的独立证据、选择该图的原因、黑白打印可读性，以及删除该图是否伤害论证。它是作者自检，不是 Schema、哈希门或回执。
 
-某个子问题结果一经接受，立即写或更新对应章节，至少包含问题分析、模型推导、求解方法、
-基线比较、主结果、稳健性/消融、图表解释、局限和逐问回答。每个关键数值都能依次追溯到
-`result_id`、`execution_record_id`、执行清单、当前输入哈希和当前输出哈希。
+## 近完成时的一次自审
 
-把章节写入 `paper/sections/`，并在 `state.json` 记录已完成章节。不要等所有实验结束后才
-突击写各问内容。
+只在论文接近完成时建立一次 Claim–Evidence 表：
 
-`PAPER_BLUEPRINT.md` 必须规划全文研究故事、共享符号和数学对象、各问章节职责、核心公式、
-baseline、验证、直接答案位置、摘要准备使用的真实结果，以及文献需要支持的判断。
+| Claim | Evidence | Status | Action |
+| --- | --- | --- | --- |
+| 主模型优于 baseline | 图 3 / 表 4 | supported | 保留 |
+| 极端场景稳定 | 单次运行 | partial | 弱化并说明 |
+| 未验证的机理解释 | 无 | unsupported | 删除或补实验 |
 
-`ARGUMENT_MAP.json` 的每条主张必须包含动机、baseline 局限、模型支持、result IDs、比较证据、
-验证证据、figure IDs、结论边界、结果状态和正文位置。不得只保存 claim、outcome 和 scope。
+不要建立自动 claim evaluator。发现结果替换后，只修改受影响章节、图表、摘要和结论；无需重新执行全文审查。
 
-`FIGURE_STORYBOARD.md` 的每张图必须说明对应问题、数据、待证明主张、必要性、图型、坐标轴与
-单位、正文解释位置。没有论证职责的图不得进入正式图表计划。
+## 编译与交接
 
-## 全文组装
-
-只有状态达到 `RESULTS_ACCEPTED` 后，才统一写摘要、结论、优缺点和推广。摘要必须包含真实
-核心数值。创新表述必须逐项服从 `paper/claim_gate.json`：
-
-| claim status | 允许写法 |
-| --- | --- |
-| `supported` | 可写确定性贡献、结果和讨论 |
-| `partially_supported` | 只能写有限贡献，并同时写明限制 |
-| `rejected` | 只能写结果、失败分析和限制，不得写成贡献 |
-| `inconclusive` | 只能写结果和未决讨论，不得写确定性贡献 |
-| `stale=true` | 完全禁止引用该主张证据 |
-
-按用户已锁定的比赛、语言和排版引擎组装并编译论文。
-
-## 生产回执
-
-在进入 `PAPER_DRAFTED` 前必须写入并通过机器校验：
-
-- `paper/paper_plan.json`：绑定本 Skill、`skills/5writing`、`skills/typst-author`、比赛模板、model spec、结果注册表、claim gate、章节文件和使用的图表。
-- `paper/PAPER_BUILD_RECEIPT.json`：绑定计划哈希、当前 state revision、最终 PDF 路径与 SHA-256。
-- `figures/FIGURE_PLAN.json` 及每张图的 `figures/<figure_id>.receipt.json`：绑定 accepted result ID、数据、绘图脚本、PDF/PNG 输出、单位、图例和坐标轴。
-- `questions/<question_id>/QUESTION_ACCEPTANCE.json`：逐项绑定题目要求、模型输出、一一对应关系、硬约束、baseline、accepted result、不确定性、direct answer、上游依赖和 claim status。未通过的问题不得进入 `paper/sections/`。
-
-图表选择顺序固定为：首先匹配 `skills/mathmodel-figure-templates` 的 11 类项目原生模板；没有匹配图型时使用 `skills/3coding-visual` 编写自定义数据图。Nature 风格只在用户明确要求且脚本已纳入当前运行目录时使用，不作为默认生产依赖。每张图必须在 `FIGURE_PLAN.json` 中记录 `selected_skill`、`template_id` 和选择理由，回执不是简单的 `{"status":"pass"}`，必须由 `verify_production_receipts()` 复验所有路径、哈希、选型和 accepted 结果。
-
-生成草稿后把状态设为 `PAPER_DRAFTED`，然后交给 `$mathmodel-review`。本 Skill 不执行多轮
-审稿，也不把论文直接标记为最终提交稿。
+编译前删除占位符，确认题号、图表和单位一致。生成 `paper/final.pdf` 后更新 v3 状态到 `verify`，再调用 `$mathmodel-final-check`。严禁把失败路线、无效结果或被替代结果写成贡献。

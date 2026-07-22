@@ -1,0 +1,4 @@
+interface:
+  display_name: "Math Modeling Final Check"
+  short_description: "Run mechanical QA and one final holistic review"
+  default_prompt: "Use $mathmodel-final-check to verify the current v3 paper before submission."
