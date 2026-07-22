@@ -19,6 +19,7 @@ from scripts.qa.check_numeric_consistency import check_numeric_consistency
 from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.simple.figures import verify_current_figure_files
 from shumozizi.simple.results import verify_current_result_files
 from shumozizi.simple.state import read_simple_state
 from tools.qa.make_contact_sheet import make_contact_sheet
@@ -85,6 +86,8 @@ def run_final_checks(
     checks.append(_check("numeric-consistency", numeric, "论文显式关键指标"))
     current_files = verify_current_result_files(root)
     checks.append(_check("current-result-files", current_files, "current 结果哈希与指标来源"))
+    current_figures = verify_current_figure_files(root)
+    checks.append(_check("current-figure-files", current_figures, "current 图表、源结果与输出哈希"))
     contact_sheet = root / "qa" / "contact-sheet.png"
     contact_error: str | None = None
     # 联系表用于人工定位 PDF 内的机械问题，因此只要文件可打开就应尽量生成。

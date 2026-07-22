@@ -55,12 +55,16 @@ python scripts/runtime/run_simple_experiment.py runs/<run-id> `
 - `skills/mathmodel-figure-templates/references/figure-catalog.md`：在需要多面板或专业统计表达时匹配最接近的模板；
 - `skills/mathmodel-figure-templates/references/plot-recipes.md`：仅在复制模板后需要改造布局或统计表达时读取。
 
-普通折线图、散点图、箱线图或热图已能清楚回答问题时，优先使用普通图。只有 Figure Contract 的问题、证据结构和当前结果数据同时匹配时，才调用科研模板：
+普通折线图、散点图、箱线图或热图已能清楚回答问题时，优先使用普通图。只有 Figure Contract 的问题、证据结构和当前结果数据同时匹配时，才调用科研模板。`render_template.py` 只生成演示数据，不能进入论文；v3 的真实数据入口是：
 
 ```powershell
-python skills/mathmodel-figure-templates/scripts/render_template.py `
-  <template-id> `
-  --project runs/<run-id>/figures/template-work
+python -m pip install -e ".[figures]"
+python scripts/figures/use_template.py runs/<run-id> `
+  --template cv-roc-ci `
+  --result-id q3_classifier `
+  --output-prefix figures/q3_cv_roc
 ```
 
-该命令只复制模板的画法并生成演示输出。复制后的脚本必须改为读取本次运行 `results/raw/` 或已登记的真实图表数据，保留数据来源、单位、随机种子和生成命令；最终论文图输出到 `figures/`。模板内的确定性模拟数据、默认标题和示例结论必须全部删除或替换，绝不能作为当前赛题的证据。完成后用 `figqa.py` 检查文字边界，并在 `RESULTS_REPORT.md` 说明该图回答的问题和对应结果来源。
+适配器只接受 `results/index.json` 中仍为 `current` 且 `execution_valid=true` 的 JSON 输出；会把冻结模板源和本次渲染器复制到 `code/figures/`，并登记输入、脚本、PNG/PDF/SVG 与文字 artist 边界的哈希。当前已接入真实数据接口的模板只有 `cv-roc-ci`、`prediction-marginal-grid`、`paired-raincloud`、`correlation-pairgrid`；其他七套仅是保留的演示/布局资源，不能被称为已接入。
+
+结果 JSON 把图表数据放在 `figure_data`（或直接置于根对象）。具体格式和示例见 `docs/V3_FIGURE_TEMPLATE_ADAPTER.md`。源结果被同问同类的新执行替代后，旧图会在最终检查中阻断，必须重新生成。完成后在 `RESULTS_REPORT.md` 说明该图回答的问题、数据来源和证据边界。

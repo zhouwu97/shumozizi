@@ -15,7 +15,7 @@ description: 对 Capability-First v3 论文执行一次机械 QA 和一次整体
 python scripts/qa/run_final_checks.py runs/<run-id>
 ```
 
-该命令输出 `qa/mechanical-qa.json`、`qa/contact-sheet.png` 和 `reports/VERIFY_REPORT.md`。它阻断 PDF 缺失/损坏、空白页、明显裁切或文字重叠、占位符、失效结果引用、current 结果哈希变化、指标来源变化及关键数值不一致等确定性错误。图表/表格编号只从图注和表题推断，目前作为 warning，避免正文正常引用造成误报。匿名投稿时追加 `--anonymous`，并可用 `--anonymous-term` 传入队名、学校等禁止词。必要时可单独使用 `tools/qa/figqa.py`、`pdf_qa.py` 或 `make_contact_sheet.py` 定位问题。
+该命令输出 `qa/mechanical-qa.json`、`qa/contact-sheet.png` 和 `reports/VERIFY_REPORT.md`。它阻断 PDF 缺失/损坏、空白页、明显裁切或文字重叠、占位符、失效结果引用、current 结果哈希变化、指标来源变化、科研模板图的源结果替代/输入输出哈希漂移及关键数值不一致等确定性错误。图表/表格编号只从图注和表题推断，目前作为 warning，避免正文正常引用造成误报。匿名投稿时追加 `--anonymous`，并可用 `--anonymous-term` 传入队名、学校等禁止词。必要时可单独使用 `tools/qa/figqa.py`、`pdf_qa.py` 或 `make_contact_sheet.py` 定位问题。
 
 ## 一次整体科学审查
 

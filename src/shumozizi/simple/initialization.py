@@ -155,6 +155,10 @@ def initialize_simple_run(
         run_dir / "results" / "index.json",
         {"schema_version": "1.0", "run_id": identifier, "results": []},
     )
+    atomic_json(
+        run_dir / "figures" / "index.json",
+        {"schema_version": "1.0", "run_id": identifier, "figures": []},
+    )
     (run_dir / "state" / "DECISIONS.md").write_text(
         "# 决策记录\n\n"
         "## 题意解释\n- 待补充。\n\n"

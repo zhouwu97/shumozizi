@@ -70,7 +70,7 @@ def _require_success(result: subprocess.CompletedProcess[str], label: str) -> No
 
 
 def main() -> int:
-    """渲染全部内置模板并检查三种导出格式。
+    """渲染全部内置模板并检查 v3 真实数据适配器。
 
     Returns:
         所有模板通过时返回零。
@@ -95,6 +95,16 @@ def main() -> int:
                 artifacts = list(output_dir.glob(f"*{suffix}"))
                 if not artifacts or any(item.stat().st_size == 0 for item in artifacts):
                     raise RuntimeError(f"{template_id} 未生成非空 {suffix} 文件")
+    adapted = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_v3_figures.py"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    _require_success(adapted, "v3 真实图表适配器")
     print(f"已验证 {len(template_ids)} 套科研绘图模板")
     return 0
 

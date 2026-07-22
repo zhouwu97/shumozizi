@@ -68,8 +68,11 @@ jobs:
           scripts/codex/init_run.py
           scripts/codex/init_simple_run.py
           scripts/runtime/run_simple_experiment.py
+          scripts/figures/use_template.py
           scripts/qa/run_final_checks.py
           src/shumozizi/simple/execution.py
+          src/shumozizi/simple/figures.py
+          src/shumozizi/simple/figure_templates.py
           src/shumozizi/simple/initialization.py
           src/shumozizi/simple/results.py
           src/shumozizi/simple/state.py
@@ -124,5 +127,5 @@ jobs:
       - name: Install figure-template smoke dependencies
         run: python -m pip install -e ".[test,figure-template-smoke]"
 
-      - name: Render every bundled figure template
+      - name: Render bundled templates and v3 real-data adapters
         run: python tests/figure_template_smoke.py
