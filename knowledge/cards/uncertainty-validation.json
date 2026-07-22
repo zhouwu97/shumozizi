@@ -1,0 +1,15 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "uncertainty-validation",
+  "title": "不确定性、敏感性与验证边界",
+  "source_ids": ["salib-salib", "pyomo-pyomo"],
+  "tags": ["uncertainty", "sensitivity", "validation", "identifiability", "robustness", "scenario", "calibration"],
+  "guidance": [
+    "按主张选择验证：预测检查泛化与校准，优化检查可行性、界和扰动，机理反演检查合成恢复、多初值与参数可辨识性。",
+    "区分局部扰动、全局敏感性和情景压力测试；先报告输入范围、相关性假设和输出量，再解释排名、区间或翻转，而非只给单一重要性分数。",
+    "当多个参数以近似相同方式影响观测时，报告可辨识性不足和可合并的参数组合，不用不稳定点估计制造确定性。",
+    "把关键结论与最低成本反证、替代假设或留出案例配对；验证结果可缩小结论范围，也可以支持切换候选路线。",
+    "不确定性诊断是论证与报告材料，不新增阶段门、人工 checkpoint 或对模型算法的强制选择。"
+  ]
+}

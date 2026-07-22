@@ -1,0 +1,15 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "sparse-nonsmooth-search",
+  "title": "非光滑与稀疏目标搜索",
+  "source_ids": ["anyoptimization-pymoo"],
+  "tags": ["optimization", "nonsmooth", "sparse-objective", "black-box", "surrogate", "global-search", "multi-objective"],
+  "guidance": [
+    "先定位不连续、阶跃、可行岛、随机噪声和多目标冲突的来源；据此比较覆盖式采样、进化搜索、局部扰动和结构化枚举等不同搜索族。",
+    "搜索代理应保留事件附近、边界和低分区域的区分度；若代理排序、假零或局部变化与 exact 评分冲突，缩小代理角色并重新校准。",
+    "候选池同时保留已知可行基线、覆盖样本和各搜索族的代表点，再用同一 exact 目标比较；基线是下界与回归测试，不是全域边界。",
+    "多目标时先说明支配关系、权重或业务优先级如何映射回题目答案，避免把单个聚合分数当作唯一有效偏好。",
+    "此卡提出搜索和代理设计候选；exact 评分、覆盖证据与挑战仍遵循现有质量协议。"
+  ]
+}

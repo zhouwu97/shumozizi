@@ -34,5 +34,6 @@ python scripts/knowledge/build_index.py
 - `cookbooks/`：预测、优化、评价和机理问题的最小实践菜单；
 - `model-validation.md`：按主张选择验证；
 - `paper-writing/` 与 `figure-contract.md`：论文与图表叙事。
+- `cards/structural-preflight.json`、`structured-optimization.json`、`sparse-nonsmooth-search.json` 与 `uncertainty-validation.json`：来源可追溯的原创能力卡；只描述候选和验证思路，不提供运行时控制。
 
-这些文件只提供候选与检查菜单。完整赛题当前阶段最多读取一到两个相关文件，不能全量加载，也不能代替当前题的 probe、baseline 或路线比较。
+这些文件只提供候选与检查菜单。完整赛题先做结构预检，再按论证读取最多三个能力包（主能力、交叉能力、验证/不确定性），不能全量加载，也不能代替当前题的 probe、baseline 或路线比较。

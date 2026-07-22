@@ -1,0 +1,15 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "structured-optimization-identification",
+  "title": "结构化优化识别",
+  "source_ids": ["pyomo-pyomo", "jckantor-mo-book"],
+  "tags": ["optimization", "algebraic-model", "constraint", "mixed-integer", "decomposition", "duality", "relaxation"],
+  "guidance": [
+    "区分可显式写出的决策、目标、等式/不等式约束和离散逻辑，与只能通过仿真返回分数的黑箱部分；两者可组合，但不要把黑箱误报为代数模型。",
+    "先检查线性、凸性、可分性、网络流或指派结构、整数变量和时间耦合，借此提出 LP/MIP、动态规划、分解、松弛或黑箱搜索等不同候选。",
+    "为每条路线标出保留的物理或业务约束、松弛产生的界以及恢复可行解的办法；界是比较工具，不等同于原问题答案。",
+    "当共享资源、跨期库存或全局预算造成耦合时，先说明主问题和子问题交换的量，再判断分解是否比整体求解更合适。",
+    "该卡只生成建模语言和候选算法族，不指定求解器、建模框架或唯一模型。"
+  ]
+}

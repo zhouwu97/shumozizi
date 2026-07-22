@@ -1,7 +1,7 @@
 {
   "schema_name": "knowledge_index",
   "schema_version": "2.0",
-  "source_registry_sha256": "f9f045814a849e78fa24e30eea8912927c95f815b9e352ca16df009cdf69474d",
+  "source_registry_sha256": "188d4a4240d3b26c073f1c20974b7a92cb2a7dabc680e2ca2331ec7a076838b0",
   "cards": [
     {
       "card_id": "sealed-result-paper-evidence",
@@ -61,6 +61,78 @@
         "mechanistic",
         "network",
         "clustering"
+      ]
+    },
+    {
+      "card_id": "sparse-nonsmooth-search",
+      "path": "knowledge/cards/sparse-nonsmooth-search.json",
+      "sha256": "09eb3c4cc87fe62e16f52cc589b2411ad02f2de74f56a85cb14c51ec85442652",
+      "source_ids": [
+        "anyoptimization-pymoo"
+      ],
+      "tags": [
+        "optimization",
+        "nonsmooth",
+        "sparse-objective",
+        "black-box",
+        "surrogate",
+        "global-search",
+        "multi-objective"
+      ]
+    },
+    {
+      "card_id": "structural-preflight",
+      "path": "knowledge/cards/structural-preflight.json",
+      "sha256": "2fc64c530c32fcf576ed3284532c231a86b99b29c51959bc6ad03317361d83bd",
+      "source_ids": [
+        "lupynow-math-modeling-skills",
+        "jckantor-mo-book"
+      ],
+      "tags": [
+        "structural-preflight",
+        "invariant",
+        "bound",
+        "reparameterization",
+        "decomposition",
+        "event-driven",
+        "oracle",
+        "identifiability"
+      ]
+    },
+    {
+      "card_id": "structured-optimization-identification",
+      "path": "knowledge/cards/structured-optimization.json",
+      "sha256": "74c4db0a9b5e49bbca35c590571d67d948d9f860ca9e9d58cc2ef294b782fe8c",
+      "source_ids": [
+        "pyomo-pyomo",
+        "jckantor-mo-book"
+      ],
+      "tags": [
+        "optimization",
+        "algebraic-model",
+        "constraint",
+        "mixed-integer",
+        "decomposition",
+        "duality",
+        "relaxation"
+      ]
+    },
+    {
+      "card_id": "uncertainty-validation",
+      "path": "knowledge/cards/uncertainty-validation.json",
+      "sha256": "a0ce21c01e6dcd9e852a5b6d6da6fe860f34d776e7cbf72171e42c654017f2cb",
+      "source_ids": [
+        "salib-salib",
+        "pyomo-pyomo"
+      ],
+      "tags": [
+        "uncertainty",
+        "sensitivity",
+        "validation",
+        "identifiability",
+        "robustness",
+        "scenario",
+        "calibration"
       ]
     }
   ]

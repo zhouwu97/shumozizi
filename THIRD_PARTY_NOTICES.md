@@ -65,3 +65,24 @@
 
 来源契约的机器可读版本位于 `knowledge/SOURCE_REGISTRY.json`。所有来源均已唯一定位并锁定
 提交；许可证未声明的仓库仅允许研究不受版权保护的抽象思想。
+
+### Capability-First v3 知识资产导入
+
+以下来源在 2026-07-22 通过其固定提交的许可证文件核验。本次仅写入原创、事实性的能力卡；
+没有复制代码、notebook、段落、工作流、状态机或质量协议。
+
+- `Pyomo/pyomo`：https://github.com/Pyomo/pyomo ，提交
+  `b953cf90d6ed26df46cb5924301a89e2e76716fa`，`LICENSE.md`，BSD-3-Clause；用于结构化优化
+  的变量/目标/约束和结构识别事实。
+- `jckantor/MO-book`：https://github.com/jckantor/MO-book ，提交
+  `d28bce00231c6327d47ea85d3fe4782f9092ccd9`，`LICENSE`，MIT；用于代数优化、松弛和分解的
+  建模事实。
+- `anyoptimization/pymoo`：https://github.com/anyoptimization/pymoo ，提交
+  `23110c155aa8f31b5f1b86928227fb3931ba7f00`，`LICENSE`，Apache-2.0；用于非光滑、稀疏与
+  多目标搜索的算法族事实。
+- `SALib/SALib`：https://github.com/SALib/SALib ，提交
+  `aa2c5545b3bfd0a982e9fad7625070a8ea340d38`，`LICENSE.md`，MIT；用于敏感性诊断与不确定性
+  报告事实。
+- `Lupynow/math-modeling-skills`：沿用已登记提交
+  `856816bda312ca9c02082f1d026d1416ebbaa861`；目标 `math-modeling-solver` 目录的 `LICENSE`
+  为 MIT。本次只借助其模型选择问题域，不引入其控制逻辑。

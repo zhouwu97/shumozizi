@@ -77,6 +77,46 @@
       "usage_mode": "independent-adapter",
       "allowed_assets": ["result-traceability-ideas", "paper-evidence-audit-ideas"],
       "forbidden_assets": ["second-result-registry", "heavy-quality-gate", "extra-checkpoint"]
+    },
+    {
+      "source_id": "pyomo-pyomo",
+      "repository": "https://github.com/Pyomo/pyomo",
+      "commit": "b953cf90d6ed26df46cb5924301a89e2e76716fa",
+      "license_status": "BSD-3-Clause",
+      "license_paths": ["LICENSE.md"],
+      "usage_mode": "original-factual-summary",
+      "allowed_assets": ["structured-optimization-identification-facts", "documentation-links"],
+      "forbidden_assets": ["code-copy", "solver-controller", "workflow-controller", "quality-protocol-change"]
+    },
+    {
+      "source_id": "jckantor-mo-book",
+      "repository": "https://github.com/jckantor/MO-book",
+      "commit": "d28bce00231c6327d47ea85d3fe4782f9092ccd9",
+      "license_status": "MIT",
+      "license_paths": ["LICENSE"],
+      "usage_mode": "original-factual-summary",
+      "allowed_assets": ["optimization-modeling-facts", "documentation-links"],
+      "forbidden_assets": ["code-copy", "notebook-copy", "workflow-controller", "quality-protocol-change"]
+    },
+    {
+      "source_id": "anyoptimization-pymoo",
+      "repository": "https://github.com/anyoptimization/pymoo",
+      "commit": "23110c155aa8f31b5f1b86928227fb3931ba7f00",
+      "license_status": "Apache-2.0",
+      "license_paths": ["LICENSE"],
+      "usage_mode": "original-factual-summary",
+      "allowed_assets": ["nonsmooth-search-facts", "documentation-links"],
+      "forbidden_assets": ["code-copy", "algorithm-implementation-copy", "workflow-controller", "quality-protocol-change"]
+    },
+    {
+      "source_id": "salib-salib",
+      "repository": "https://github.com/SALib/SALib",
+      "commit": "aa2c5545b3bfd0a982e9fad7625070a8ea340d38",
+      "license_status": "MIT",
+      "license_paths": ["LICENSE.md"],
+      "usage_mode": "original-factual-summary",
+      "allowed_assets": ["sensitivity-diagnostic-facts", "documentation-links"],
+      "forbidden_assets": ["code-copy", "workflow-controller", "quality-protocol-change"]
     }
   ]
 }

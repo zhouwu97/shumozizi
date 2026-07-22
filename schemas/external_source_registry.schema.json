@@ -18,9 +18,9 @@
           "source_id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
           "repository": {"type": "string", "format": "uri", "pattern": "^https://github\\.com/"},
           "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
-          "license_status": {"enum": ["MIT", "scoped-mit", "not-declared-at-repository-root"]},
+          "license_status": {"enum": ["MIT", "BSD-3-Clause", "Apache-2.0", "scoped-mit", "not-declared-at-repository-root"]},
           "license_paths": {"type": "array", "items": {"type": "string"}},
-          "usage_mode": {"enum": ["existing-baseline-only", "behavioral-research-only", "ideas-and-scoped-mit-assets", "independent-adapter", "ideas-only"]},
+          "usage_mode": {"enum": ["existing-baseline-only", "behavioral-research-only", "ideas-and-scoped-mit-assets", "independent-adapter", "ideas-only", "original-factual-summary"]},
           "allowed_assets": {"type": "array", "items": {"type": "string"}},
           "forbidden_assets": {"type": "array", "items": {"type": "string"}}
         }

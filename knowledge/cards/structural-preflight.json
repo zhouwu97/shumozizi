@@ -1,0 +1,15 @@
+{
+  "schema_name": "knowledge_card",
+  "schema_version": "2.0",
+  "card_id": "structural-preflight",
+  "title": "结构预检与低成本判别",
+  "source_ids": ["lupynow-math-modeling-skills", "jckantor-mo-book"],
+  "tags": ["structural-preflight", "invariant", "bound", "reparameterization", "decomposition", "event-driven", "oracle", "identifiability"],
+  "guidance": [
+    "先列变量的单位、守恒量、单调性、可行上下界与极端情形；任何冲突先回到题意或数据定义，不把它交给求解器掩盖。",
+    "比较消元、无量纲化或可行重参数化能否减少自由度；能分解时说明耦合变量、子问题接口和何时必须联合求解。",
+    "若状态只在阈值、到达、切换或碰撞处变化，优先写事件驱动的时间推进；连续网格只作为可对照的近似。",
+    "为小规模实例保留可枚举、精确或高精度的 oracle，用于排查公式、约束和实现；oracle 只校验当前题，不替代大规模路线。",
+    "把敏感参数与不可辨识组合显式列为风险，给出最小扰动或合成恢复实验；这些检查只帮助筛选候选路线。"
+  ]
+}
