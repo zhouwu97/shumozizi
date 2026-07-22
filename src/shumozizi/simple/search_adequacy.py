@@ -11,14 +11,30 @@ from shumozizi.core.io import ContractError
 from shumozizi.simple.selection import validate_selection_contract
 
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
-_FOLLOW_UP_STRATEGIES = {"densification", "alternate_family"}
+_DIRECTIONS = {"maximize", "minimize"}
 
 
-def exact_best_so_far(scores: Sequence[float]) -> float:
-    """返回候选集合的 exact 最优值，空集合不构成可用搜索。"""
+def exact_best_so_far(
+    scores: Sequence[float], *, objective_direction: str = "maximize"
+) -> float:
+    """按问题目标方向返回候选集合的 exact 最优值。
+
+    Args:
+        scores: 已独立精确评分的候选目标值。
+        objective_direction: 问题合同声明的目标方向。
+
+    Returns:
+        当前候选集合的精确最优值。
+
+    Raises:
+        ValueError: 候选集合为空或目标方向不合法。
+    """
     if not scores:
         raise ValueError("候选集合不能为空")
-    return max(float(value) for value in scores)
+    if objective_direction not in _DIRECTIONS:
+        raise ValueError("objective_direction 必须为 maximize 或 minimize")
+    values = [float(value) for value in scores]
+    return max(values) if objective_direction == "maximize" else min(values)
 
 
 def _require_hash(value: Any, label: str) -> str:
@@ -28,9 +44,107 @@ def _require_hash(value: Any, label: str) -> str:
     return value
 
 
+def _independence_contract(contract: dict[str, Any] | None) -> dict[str, Any] | None:
+    """规范化挑战独立性合同；缺失时保留旧记录的严格拒绝语义。"""
+    if contract is None:
+        return None
+    direction = contract.get("objective_direction")
+    warm_start = contract.get("allow_marked_warm_start")
+    candidate_count = contract.get("minimum_independent_new_candidates")
+    region_count = contract.get("minimum_independent_new_regions")
+    if direction not in _DIRECTIONS:
+        raise ContractError("挑战独立性合同必须声明 objective_direction")
+    if not isinstance(warm_start, bool):
+        raise ContractError("挑战独立性合同必须声明 allow_marked_warm_start")
+    if isinstance(candidate_count, bool) or not isinstance(candidate_count, int) or candidate_count < 1:
+        raise ContractError("挑战独立性合同必须要求至少一个独立新候选")
+    if isinstance(region_count, bool) or not isinstance(region_count, int) or region_count < 1:
+        raise ContractError("挑战独立性合同必须要求至少一个独立新区域")
+    return {
+        "objective_direction": direction,
+        "allow_marked_warm_start": warm_start,
+        "minimum_independent_new_candidates": candidate_count,
+        "minimum_independent_new_regions": region_count,
+    }
+
+
+def _challenge_pool_diagnostics(
+    incumbent_fingerprint: str,
+    challenge_receipt: dict[str, Any],
+    contract: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """审计 warm start、新候选及实际精确评估的新区域。"""
+    fingerprints = challenge_receipt["candidate_fingerprints"]
+    incumbent_in_pool = incumbent_fingerprint in fingerprints
+    if not incumbent_in_pool and contract is None:
+        return {
+            "warm_start_accepted": False,
+            "independent_new_candidate_count": len(fingerprints),
+            "independent_new_region_count": None,
+        }
+    if contract is None or not contract["allow_marked_warm_start"]:
+        raise ContractError("challenge provenance 的候选池包含 incumbent")
+    pool = challenge_receipt.get("candidate_pool")
+    if not isinstance(pool, dict):
+        raise ContractError("warm start 挑战缺少候选池与新区域审计")
+    candidates = pool.get("candidates")
+    regions = pool.get("evaluated_region_ids")
+    if not isinstance(candidates, list) or not isinstance(regions, list):
+        raise ContractError("warm start 挑战缺少独立新候选或新区域")
+    if any(not isinstance(region, str) or not region for region in regions):
+        raise ContractError("挑战的新区域标识不合法")
+    candidate_map: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            raise ContractError("挑战候选池条目必须为对象")
+        fingerprint = candidate.get("fingerprint")
+        role = candidate.get("role")
+        region = candidate.get("region_id")
+        if not isinstance(fingerprint, str) or fingerprint not in fingerprints:
+            raise ContractError("挑战候选池与 candidate_fingerprints 不一致")
+        if fingerprint in candidate_map:
+            raise ContractError("挑战候选池 fingerprint 必须唯一")
+        if role not in {"baseline", "warm_start", "independent_new"}:
+            raise ContractError("挑战候选池 role 不合法")
+        if not isinstance(region, str):
+            raise ContractError("挑战候选池缺少 region_id")
+        if not isinstance(candidate.get("exact_evaluated"), bool):
+            raise ContractError("挑战候选池必须声明 exact_evaluated")
+        candidate_map[fingerprint] = candidate
+    if set(candidate_map) != set(fingerprints):
+        raise ContractError("挑战候选池必须覆盖全部原始候选")
+    incumbent_entry = candidate_map.get(incumbent_fingerprint)
+    if incumbent_in_pool and (
+        incumbent_entry is None or incumbent_entry["role"] not in {"baseline", "warm_start"}
+    ):
+        raise ContractError("incumbent 只能作为明确标记的 baseline/warm_start")
+    independent = [
+        item
+        for fingerprint, item in candidate_map.items()
+        if fingerprint != incumbent_fingerprint
+        and item["role"] == "independent_new"
+        and item["exact_evaluated"]
+    ]
+    independent_regions = {str(item["region_id"]) for item in independent if item["region_id"]}
+    declared_regions = set(regions)
+    if not independent_regions <= declared_regions:
+        raise ContractError("挑战的新区域未被实际评估登记")
+    if len(independent) < contract["minimum_independent_new_candidates"]:
+        raise ContractError("挑战缺少合同要求的独立新候选")
+    if len(independent_regions) < contract["minimum_independent_new_regions"]:
+        raise ContractError("挑战缺少合同要求的新区域")
+    return {
+        "warm_start_accepted": incumbent_in_pool,
+        "independent_new_candidate_count": len(independent),
+        "independent_new_region_count": len(independent_regions),
+    }
+
+
 def _require_challenge_provenance(
-    incumbent_receipt: dict[str, Any], challenge_receipt: dict[str, Any]
-) -> None:
+    incumbent_receipt: dict[str, Any],
+    challenge_receipt: dict[str, Any],
+    independence_contract: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """验证独立挑战的命令、候选池和冻结 incumbent 来源。"""
     required_incumbent = (
         "result_id",
@@ -87,8 +201,12 @@ def _require_challenge_provenance(
     if not isinstance(fingerprints, list) or not fingerprints:
         raise ContractError("challenge provenance 缺少挑战候选指纹")
     normalized = [_require_hash(item, "challenge.candidate") for item in fingerprints]
-    if incumbent_receipt["candidate_fingerprint"] in normalized:
-        raise ContractError("challenge provenance 的候选池包含 incumbent")
+    if len(set(normalized)) != len(normalized):
+        raise ContractError("challenge provenance 的候选指纹不得重复")
+    contract = _independence_contract(independence_contract)
+    return _challenge_pool_diagnostics(
+        incumbent_receipt["candidate_fingerprint"], challenge_receipt, contract
+    )
 
 
 def _metric_output_hash(result: dict[str, Any], metric: str, label: str) -> str:
@@ -123,6 +241,7 @@ def validate_registered_challenge_provenance(
     result_map: dict[str, dict[str, Any]],
     metric: str,
     fine_tolerance: float,
+    independence_contract: dict[str, Any] | None = None,
 ) -> None:
     """将挑战收据绑定到已登记命令、输入、输出和独立精算执行。
 
@@ -134,6 +253,7 @@ def validate_registered_challenge_provenance(
         result_map: 所有登记结果的 ID 映射。
         metric: 合同指定的 exact 指标。
         fine_tolerance: 用于比较独立重算 exact 值的合同容差。
+        independence_contract: warm start、独立新候选与新区域的预登记合同。
 
     Raises:
         ContractError: 收据与登记执行或独立重算不一致。
@@ -181,30 +301,11 @@ def validate_registered_challenge_provenance(
         raise ContractError("challenge provenance 的 incumbent exact 指标不可比较")
     if abs(float(original_exact) - float(recomputed_exact)) > fine_tolerance:
         raise ContractError("challenge provenance 的 incumbent 独立 exact 重算数值不一致")
-
-
-def _require_bounded_follow_up_contract(contract: dict[str, Any] | None) -> dict[str, Any]:
-    """验证挑战失败后唯一允许的有界搜索补救计划。
-
-    该计划在挑战执行前随问题合同冻结。通用层只约束计划必须有界且换用明确的
-    搜索动作，不规定任何跨题型的样本数、时间或改善百分比。
-    """
-    if not isinstance(contract, dict):
-        raise ContractError("挑战未达标时必须提供有界 follow-up 合同")
-    strategy = contract.get("strategy")
-    max_attempts = contract.get("max_attempts")
-    reason = contract.get("reason")
-    if strategy not in _FOLLOW_UP_STRATEGIES:
-        raise ContractError("有界 follow-up 必须选择 densification 或 alternate_family")
-    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
-        raise ContractError("有界 follow-up 必须声明正整数 max_attempts")
-    if not isinstance(reason, str) or not reason.strip():
-        raise ContractError("有界 follow-up 必须说明触发理由")
-    return {
-        "strategy": strategy,
-        "max_attempts": max_attempts,
-        "reason": reason,
-    }
+    _require_challenge_provenance(
+        incumbent_receipt,
+        challenge_receipt,
+        independence_contract,
+    )
 
 
 def assess_independent_challenge(
@@ -215,7 +316,8 @@ def assess_independent_challenge(
     challenge_receipt: dict[str, Any],
     improvement_tolerance: float = 0.0,
     comparability_contract: dict[str, Any] | None = None,
-    follow_up_contract: dict[str, Any] | None = None,
+    independence_contract: dict[str, Any] | None = None,
+    semantic_error: bool = False,
 ) -> dict[str, Any]:
     """判断带执行收据的独立挑战是否足以支撑搜索充分性。
 
@@ -229,7 +331,8 @@ def assess_independent_challenge(
         challenge_receipt: 挑战命令、输入、输出和候选池收据。
         improvement_tolerance: 当前问题合同冻结的精细评分容差。
         comparability_contract: 可选的预登记可比性合同。
-        follow_up_contract: 挑战未达标时必须执行一次的有界加密或换族搜索合同。
+        independence_contract: warm start、独立新候选与新区域的预登记合同。
+        semantic_error: adapter 已发现的模型或 scorer 语义错误。
 
     Returns:
         搜索充分性状态、原因和可复核诊断。
@@ -237,9 +340,21 @@ def assess_independent_challenge(
     Raises:
         ContractError: 收据不具备独立性来源。
     """
-    if improvement_tolerance < 0.0:
+    if isinstance(improvement_tolerance, bool) or improvement_tolerance < 0.0:
         raise ContractError("挑战改善容差不能为负")
-    _require_challenge_provenance(incumbent_receipt, challenge_receipt)
+    if not isinstance(incumbent_exact, (int, float)) or isinstance(incumbent_exact, bool):
+        raise ContractError("incumbent exact 必须为数值")
+    if not isinstance(challenger_exact, (int, float)) or isinstance(challenger_exact, bool):
+        raise ContractError("challenger exact 必须为数值")
+    pool_diagnostics = _require_challenge_provenance(
+        incumbent_receipt,
+        challenge_receipt,
+        independence_contract,
+    )
+    normalized_contract = _independence_contract(independence_contract)
+    direction = (
+        normalized_contract["objective_direction"] if normalized_contract is not None else "maximize"
+    )
     threshold: float | None = None
     if comparability_contract is not None:
         required = ("threshold", "reason", "plan_sha256")
@@ -251,36 +366,65 @@ def assess_independent_challenge(
             raise ContractError("可比性合同必须说明阈值理由")
         _require_hash(comparability_contract["plan_sha256"], "comparability.plan")
         threshold = float(comparability_contract["threshold"])
-    improved = challenger_exact > incumbent_exact + improvement_tolerance
-    comparable = threshold is not None and challenger_exact + improvement_tolerance >= threshold
-    reasons: list[str] = []
-    if not improved and not comparable:
-        reasons.append(
-            "challenger_did_not_improve_incumbent"
-            if threshold is None
-            else "challenger_below_preregistered_comparability_threshold"
-        )
-    follow_up = _require_bounded_follow_up_contract(follow_up_contract) if reasons else None
+    incumbent = float(incumbent_exact)
+    challenger = float(challenger_exact)
+    tolerance = float(improvement_tolerance)
+    directional_improvement = (
+        challenger - incumbent if direction == "maximize" else incumbent - challenger
+    )
+    improved = directional_improvement > tolerance
+    weaker = directional_improvement < -tolerance
+    comparable = threshold is not None and (
+        challenger >= threshold - tolerance
+        if direction == "maximize"
+        else challenger <= threshold + tolerance
+    )
+
+    if semantic_error:
+        outcome = "model_or_scorer_semantic_error"
+        incumbent_outcome = "requires_reassessment"
+        search_adequacy = "failed"
+        reasons = ["model_or_scorer_semantic_error_requires_analysis"]
+    elif improved:
+        outcome = "improved"
+        incumbent_outcome = "replaced"
+        search_adequacy = "passed"
+        reasons = ["independent_challenge_improved_incumbent"]
+    elif comparable:
+        outcome = "stability_confirmed"
+        incumbent_outcome = "stabilized"
+        search_adequacy = "passed"
+        reasons = ["independent_challenge_comparable_threshold_met"]
+    elif weaker:
+        outcome = "algorithm_weaker"
+        incumbent_outcome = "preserved"
+        search_adequacy = "passed"
+        reasons = ["independent_challenge_algorithm_weaker"]
+    else:
+        outcome = "inconclusive"
+        incumbent_outcome = "preserved"
+        search_adequacy = "passed"
+        reasons = ["independent_challenge_inconclusive_without_comparability_contract"]
+
     return {
-        "search_adequacy": "failed" if reasons else "passed",
-        "reasons": reasons
-        or [
-            "independent_challenge_improved_incumbent"
-            if improved
-            else "independent_challenge_comparable_threshold_met"
-        ],
+        "search_adequacy": search_adequacy,
+        "reasons": reasons,
+        "incumbent_outcome": incumbent_outcome,
+        "challenge_outcome": outcome,
+        "challenger_replaces_incumbent": outcome == "improved",
         "diagnostics": {
-            "incumbent_exact": float(incumbent_exact),
-            "challenger_exact": float(challenger_exact),
-            "improvement": float(challenger_exact - incumbent_exact),
+            "incumbent_exact": incumbent,
+            "challenger_exact": challenger,
+            "objective_direction": direction,
+            "directional_improvement": directional_improvement,
             "incumbent_exact_recomputed": True,
             "challenger_family": challenge_receipt["search_family"]["id"],
             "incumbent_family": incumbent_receipt["search_family"]["id"],
             "comparable_threshold": threshold,
             "improved_incumbent": improved,
             "meets_comparable_threshold": comparable,
+            **pool_diagnostics,
         },
-        "follow_up": follow_up,
     }
 
 
@@ -375,14 +519,32 @@ def validate_objective_semantics(
     }
 
 
-def _top_indices(scores: Sequence[float], count: int) -> set[int]:
-    """返回稳定的前 k 索引，避免相同分数时不可复现。"""
-    return {
-        index
-        for index, _ in sorted(
-            enumerate(scores), key=lambda item: (float(item[1]), -item[0]), reverse=True
-        )[:count]
-    }
+def _top_indices(scores: Sequence[float], count: int, direction: str) -> set[int]:
+    """按目标方向返回稳定的前 k 索引，避免相同分数时不可复现。"""
+    if direction not in _DIRECTIONS:
+        raise ValueError("objective_direction 必须为 maximize 或 minimize")
+
+    def ordering(index: int) -> tuple[float, int]:
+        """将方向语义收敛为稳定的升序排序键。"""
+        value = float(scores[index])
+        return (-value, index) if direction == "maximize" else (value, index)
+
+    return set(sorted(range(len(scores)), key=ordering)[:count])
+
+
+def _improves(
+    candidate: float,
+    baseline: float,
+    *,
+    direction: str,
+    tolerance: float,
+) -> bool:
+    """按合同方向判断候选是否相对基线有实质改善。"""
+    return (
+        candidate > baseline + tolerance
+        if direction == "maximize"
+        else candidate < baseline - tolerance
+    )
 
 
 def assess_search_adequacy(
@@ -393,18 +555,45 @@ def assess_search_adequacy(
     local_surrogate_scores: Sequence[float],
     baseline_index: int,
     top_k: int,
-    adequacy_contract: dict[str, float],
+    adequacy_contract: dict[str, Any],
     positive_epsilon: float = 1e-9,
     joint_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """量化由问题合同定义阈值的搜索校准充分性。"""
+    """量化由问题合同定义阈值的搜索校准充分性。
+
+    假零仅在它确实改变候选筛选时视为灾难性误差。其余误差保留为诊断，避免
+    将一个不影响决策的代理偏差机械升级为搜索失败。
+
+    Args:
+        exact_scores: 独立 exact scorer 输出的目标值。
+        approximate_scores: 低成本近似评价输出。
+        surrogate_scores: 用于候选筛选的代理输出。
+        local_surrogate_scores: 局部扰动或边界邻域的代理输出。
+        baseline_index: 合同中的基线候选索引。
+        top_k: 合同声明的候选筛选规模。
+        adequacy_contract: 目标方向、阈值和假零策略。
+        positive_epsilon: 判断数值零的合同容差。
+        joint_coverage: 从原始候选坐标重算的联合覆盖结果。
+
+    Returns:
+        通过状态、阻断原因和不阻断的校准诊断。
+
+    Raises:
+        ValueError: 输入长度、合同字段或目标方向不合法。
+    """
     required_thresholds = (
         "minimum_top_k_recall",
         "minimum_improvement_sign_agreement",
         "minimum_local_variation",
     )
-    if any(key not in adequacy_contract for key in required_thresholds):
+    if any(key not in adequacy_contract for key in (*required_thresholds, "objective_direction")):
         raise ValueError("adequacy_contract 缺少接受阈值")
+    direction = adequacy_contract["objective_direction"]
+    if direction not in _DIRECTIONS:
+        raise ValueError("adequacy_contract 的 objective_direction 不合法")
+    false_zero_policy = adequacy_contract.get("approximate_false_zero_policy", "catastrophic_only")
+    if false_zero_policy != "catastrophic_only":
+        raise ValueError("approximate_false_zero_policy 只能为 catastrophic_only")
     thresholds = {key: float(adequacy_contract[key]) for key in required_thresholds}
     if any(value < 0.0 for value in thresholds.values()):
         raise ValueError("adequacy_contract 阈值不能为负")
@@ -420,22 +609,41 @@ def assess_search_adequacy(
     exact = [float(value) for value in exact_scores]
     approximate = [float(value) for value in approximate_scores]
     surrogate = [float(value) for value in surrogate_scores]
-    positives = [index for index, value in enumerate(exact) if value > positive_epsilon]
+    positives = [index for index, value in enumerate(exact) if abs(value) > positive_epsilon]
     approximate_false_zeros = [
-        index for index in positives if approximate[index] <= positive_epsilon
+        index
+        for index in positives
+        if abs(approximate[index]) <= positive_epsilon
+        and abs(approximate[index] - exact[index]) > positive_epsilon
     ]
-    surrogate_false_zeros = [index for index in positives if surrogate[index] <= positive_epsilon]
+    surrogate_false_zeros = [
+        index
+        for index in positives
+        if abs(surrogate[index]) <= positive_epsilon
+        and abs(surrogate[index] - exact[index]) > positive_epsilon
+    ]
     effective_k = min(top_k, count)
-    exact_top = _top_indices(exact, effective_k)
-    surrogate_top = _top_indices(surrogate, effective_k)
+    exact_top = _top_indices(exact, effective_k, str(direction))
+    approximate_top = _top_indices(approximate, effective_k, str(direction))
+    surrogate_top = _top_indices(surrogate, effective_k, str(direction))
     top_k_recall = len(exact_top & surrogate_top) / effective_k
     baseline_exact = exact[baseline_index]
     baseline_surrogate = surrogate[baseline_index]
     comparable = [index for index in range(count) if index != baseline_index]
     improvement_pairs = [
         (
-            exact[index] > baseline_exact + positive_epsilon,
-            surrogate[index] > baseline_surrogate + positive_epsilon,
+            _improves(
+                exact[index],
+                baseline_exact,
+                direction=str(direction),
+                tolerance=positive_epsilon,
+            ),
+            _improves(
+                surrogate[index],
+                baseline_surrogate,
+                direction=str(direction),
+                tolerance=positive_epsilon,
+            ),
         )
         for index in comparable
     ]
@@ -451,35 +659,60 @@ def assess_search_adequacy(
         if local_surrogate_scores
         else 0.0
     )
-    reasons: list[str] = []
-    if approximate_false_zeros:
-        reasons.extend(
-            ["approximate_false_zero_detected", "approximate_false_zero_requires_dense_recalibration"]
+    approximate_selection_affected = any(
+        (
+            index in exact_top and index not in approximate_top
+            if direction == "maximize"
+            else index not in exact_top and index in approximate_top
         )
+        for index in approximate_false_zeros
+    )
+    surrogate_selection_affected = any(
+        (
+            index in exact_top and index not in surrogate_top
+            if direction == "maximize"
+            else index not in exact_top and index in surrogate_top
+        )
+        for index in surrogate_false_zeros
+    )
+    catastrophic_selection_error = approximate_selection_affected or surrogate_selection_affected
+    blocking_reasons: list[str] = []
+    diagnostic_reasons: list[str] = []
+    if approximate_false_zeros:
+        diagnostic_reasons.extend(["approximate_false_zero_detected", "approximate_false_zero_diagnostic"])
     if surrogate_false_zeros:
-        reasons.append("surrogate_false_zero_detected")
+        diagnostic_reasons.extend(["surrogate_false_zero_detected", "surrogate_false_zero_diagnostic"])
+    if catastrophic_selection_error:
+        blocking_reasons.append("calibration_catastrophic_selection_error")
     if top_k_recall < thresholds["minimum_top_k_recall"]:
-        reasons.append("surrogate_top_k_recall_insufficient")
+        blocking_reasons.append("surrogate_top_k_recall_insufficient")
     if improvement_agreement < thresholds["minimum_improvement_sign_agreement"]:
-        reasons.append("surrogate_improvement_sign_disagrees")
+        blocking_reasons.append("surrogate_improvement_sign_disagrees")
     if local_variation < thresholds["minimum_local_variation"]:
-        reasons.append("surrogate_local_flat")
+        blocking_reasons.append("surrogate_local_flat")
     if joint_coverage is not None and not bool(joint_coverage.get("passed")):
-        reasons.append("joint_domain_coverage_incomplete")
+        blocking_reasons.append("joint_domain_coverage_incomplete")
     return {
-        "search_adequacy": "failed" if reasons else "passed",
-        "reasons": reasons or ["calibration_passed"],
+        "search_adequacy": "failed" if blocking_reasons else "passed",
+        "reasons": [*blocking_reasons, *diagnostic_reasons] or ["calibration_passed"],
         "diagnostics": {
             "sample_count": count,
             "positive_exact_count": len(positives),
             "approximate_false_zero_count": len(approximate_false_zeros),
             "surrogate_false_zero_count": len(surrogate_false_zeros),
-            "calibration_restart_required": bool(approximate_false_zeros),
+            "calibration_restart_required": catastrophic_selection_error,
+            "objective_direction": direction,
+            "approximate_false_zero_selection_affected": approximate_selection_affected,
+            "surrogate_false_zero_selection_affected": surrogate_selection_affected,
             "top_k": effective_k,
             "top_k_recall": top_k_recall,
             "improvement_sign_agreement": improvement_agreement,
             "local_variation": local_variation,
-            "contract": thresholds,
+            "contract": {
+                **thresholds,
+                "objective_direction": direction,
+                "approximate_false_zero_policy": false_zero_policy,
+            },
             "joint_coverage": joint_coverage,
         },
     }

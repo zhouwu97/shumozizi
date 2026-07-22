@@ -136,6 +136,7 @@ def initialize_simple_run(
         "run_id": identifier,
         "workflow": "capability-first-v3",
         "phase": "analysis",
+        "execution_mode": "production",
         "revision": 0,
         "competition": competition,
         "problem_id": problem_id,
@@ -157,7 +158,7 @@ def initialize_simple_run(
     )
     atomic_json(
         run_dir / "results" / "quality.json",
-        {"schema_version": "2.0", "run_id": identifier, "assessments": []},
+        {"schema_version": "3.0", "run_id": identifier, "assessments": []},
     )
     atomic_json(
         run_dir / "figures" / "index.json",

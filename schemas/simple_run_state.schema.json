@@ -10,6 +10,7 @@
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "workflow": {"const": "capability-first-v3"},
     "phase": {"enum": ["analysis", "experiment", "paper", "verify", "complete", "blocked"]},
+    "execution_mode": {"enum": ["production", "exploration"]},
     "revision": {"type": "integer", "minimum": 0},
     "competition": {"type": "string"},
     "problem_id": {"type": "string"},

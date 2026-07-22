@@ -12,6 +12,7 @@ from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
 
 PHASES = ("analysis", "experiment", "paper", "verify", "complete", "blocked")
+EXECUTION_MODES = ("production", "exploration")
 ALLOWED_PHASE_TRANSITIONS = {
     "analysis": {"analysis", "experiment", "blocked"},
     "experiment": {"experiment", "paper", "blocked"},
@@ -85,6 +86,8 @@ def read_simple_state(run_dir: Path) -> dict[str, Any]:
         ContractError: 状态文件不符合 v3 协议。
     """
     payload = load_json(run_dir / STATE_PATH)
+    # 旧 v3 运行尚未记录用途边界；只在内存中按保守生产语义解释，避免静默改写历史运行。
+    payload.setdefault("execution_mode", "production")
     require_simple_state(payload)
     return payload
 
@@ -118,6 +121,7 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
     """
     allowed = {
         "phase",
+        "execution_mode",
         "competition",
         "problem_id",
         "required_questions",
@@ -139,6 +143,8 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             raise ContractError(f"未知 v3 阶段: {next_phase}")
         if next_phase not in ALLOWED_PHASE_TRANSITIONS[state["phase"]]:
             raise ContractError(f"v3 状态不允许从 {state['phase']} 直接进入 {next_phase}")
+    if "execution_mode" in changes and changes["execution_mode"] not in EXECUTION_MODES:
+        raise ContractError("execution_mode 必须为 production 或 exploration")
     state.update(changes)
     state["revision"] += 1
     state["updated_at"] = utc_now()
