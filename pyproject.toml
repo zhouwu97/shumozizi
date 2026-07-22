@@ -21,6 +21,10 @@ test = [
   "pytest>=8,<9",
   "ruff>=0.8,<1",
 ]
+figure-template-smoke = [
+  "matplotlib>=3.9,<4",
+  "numpy>=2,<3",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

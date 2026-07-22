@@ -46,3 +46,21 @@ python scripts/runtime/run_simple_experiment.py runs/<run-id> `
 在 `DECISIONS.md` 追加：当前结果、正控制、相对 baseline、是否直接回答题目、最可能失败原因、最低成本下一实验，以及“继续 / 修复 / 切换 fallback / 停止”的决定。然后更新 `reports/RESULTS_REPORT.md`。
 
 实现错误直接修；参数或求解器问题路线内调整；fallback 更优则切换并记录。若结果无法回答题目，明确失败边界，不得用图表或论文措辞包装为成功。
+
+## 按需科研绘图能力
+
+`mathmodel-experiment` 同时是代码与科研可视化能力入口。生成图表前，先为每张主要图填写 Figure Contract，并按需读取：
+
+- `skills/3coding-visual/SKILL.md`：把模型实现、真实运行、结果表和数据驱动图表组成可复现实验；
+- `skills/mathmodel-figure-templates/references/figure-catalog.md`：在需要多面板或专业统计表达时匹配最接近的模板；
+- `skills/mathmodel-figure-templates/references/plot-recipes.md`：仅在复制模板后需要改造布局或统计表达时读取。
+
+普通折线图、散点图、箱线图或热图已能清楚回答问题时，优先使用普通图。只有 Figure Contract 的问题、证据结构和当前结果数据同时匹配时，才调用科研模板：
+
+```powershell
+python skills/mathmodel-figure-templates/scripts/render_template.py `
+  <template-id> `
+  --project runs/<run-id>/figures/template-work
+```
+
+该命令只复制模板的画法并生成演示输出。复制后的脚本必须改为读取本次运行 `results/raw/` 或已登记的真实图表数据，保留数据来源、单位、随机种子和生成命令；最终论文图输出到 `figures/`。模板内的确定性模拟数据、默认标题和示例结论必须全部删除或替换，绝不能作为当前赛题的证据。完成后用 `figqa.py` 检查文字边界，并在 `RESULTS_REPORT.md` 说明该图回答的问题和对应结果来源。

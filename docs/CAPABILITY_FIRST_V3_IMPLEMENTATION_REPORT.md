@@ -73,7 +73,9 @@ mathmodel-learn-paper
 
 ### 4. 知识、模板与来源边界
 
-新增可按需读取的知识文件：问题拆解、模型选择矩阵、预测/优化/评价/机理 Cookbook、模型检验菜单、论文写作说明和 Figure Contract。每个文件明确“仅生成候选，不能自动决定路线”，并在 `knowledge/README.md` 规定当前阶段最多读取一到两个相关文件。
+新增可按需读取的知识文件：问题拆解、模型选择矩阵、预测/优化/评价/机理/统计学习/网络系统 Cookbook、模型检验菜单、论文写作说明和 Figure Contract。每个文件明确“仅生成候选，不能自动决定路线”，并在 `knowledge/README.md` 规定当前阶段最多读取一到两个相关文件。
+
+六个顶层主动 Skill 保持不变，但已经显式接入仓内能力资产：`mathmodel-solve` 按题型调用已保留的分析建模能力、一个 Cookbook 和适配的算法模板；`mathmodel-experiment` 在 Figure Contract 匹配时调用 `coding-visual` 与 11 套科研绘图模板，复制后必须替换为本次真实结果数据；`mathmodel-paper` 按比赛类型参考对应论文模板。科研模板的全量渲染检查仅在定时或手动 CI 中运行，不增加普通 PR 的成本。
 
 `THIRD_PARTY_NOTICES.md` 已更新：v3 QA 是对参考项目思路的独立 Windows 实现，不复制其工作流、状态机或审核机制。现有 MathModelAgent 模板作为能力基线继续保留。
 

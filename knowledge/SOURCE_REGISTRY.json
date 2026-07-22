@@ -8,7 +8,13 @@
       "commit": "be9c59c1aaa13c3dcb74452ea5cae11dada27589",
       "license_status": "not-declared-at-repository-root",
       "usage_mode": "existing-baseline-only",
-      "allowed_assets": ["existing-skills-baseline", "paper-template-baseline"],
+      "allowed_assets": [
+        "existing-skills-baseline",
+        "paper-template-baseline",
+        "analysis-modeling-capability",
+        "coding-visual-capability",
+        "figure-template-baseline"
+      ],
       "forbidden_assets": ["new-code-copy-without-license-review"]
     },
     {

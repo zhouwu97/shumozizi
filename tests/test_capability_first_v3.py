@@ -302,6 +302,29 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             skills,
         )
 
+    def test_active_capabilities_route_to_modeling_and_figure_assets(self) -> None:
+        """v3 主动 Skill 必须按需接入仓内建模和科研绘图能力。"""
+        solve = (REPO_ROOT / ".agents" / "skills" / "mathmodel-solve" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        experiment = (
+            REPO_ROOT / ".agents" / "skills" / "mathmodel-experiment" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("skills/2analysis-modeling/SKILL.md", solve)
+        self.assertIn("templates/algorithms/", solve)
+        self.assertIn("skills/3coding-visual/SKILL.md", experiment)
+        self.assertIn("skills/mathmodel-figure-templates", experiment)
+        self.assertTrue(
+            (
+                REPO_ROOT
+                / "skills"
+                / "mathmodel-figure-templates"
+                / "scripts"
+                / "render_template.py"
+            ).is_file()
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

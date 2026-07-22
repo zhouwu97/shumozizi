@@ -67,7 +67,7 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
 
 - `mathmodel-workflow`：完整赛题的连续执行与断点恢复；
 - `mathmodel-solve`：题意、数据、候选路线、probe、主路线与 fallback；
-- `mathmodel-experiment`：代码、真实运行、按题型验证、图表和路线切换；
+- `mathmodel-experiment`：代码、真实运行、按题型验证、图表和路线切换；Figure Contract 匹配时按需调用仓内 11 套科研绘图模板，并将模板演示数据替换为本题真实结果；
 - `mathmodel-paper`：真实结果到论文、Figure Contract 与一次 Claim–Evidence 自审；
 - `mathmodel-final-check`：机械 QA 和一次整体科学审查；
 - `mathmodel-learn-paper`：离线论文学习。
@@ -92,7 +92,7 @@ python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 
 ## 按需知识库
 
-`knowledge/` 中保存问题拆解、模型选择、Cookbook、验证、论文写作和 Figure Contract。它们都带来源说明，只作为候选与检查菜单；每阶段最多读取一到两个相关文件，不能替代当前题的路线比较或 probe。
+`knowledge/` 中保存问题拆解、模型选择、Cookbook、验证、论文写作和 Figure Contract。它们都带来源说明，只作为候选与检查菜单；每阶段最多读取一到两个相关文件，不能替代当前题的路线比较或 probe。`skills/mathmodel-figure-templates/` 保留 11 套可运行科研绘图脚本；它不是第七个主动流程 Skill，而是由 `mathmodel-experiment` 在 Figure Contract 匹配时按需复制和改造成真实数据图表的能力资产。
 
 ## legacy-v2
 
