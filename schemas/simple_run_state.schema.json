@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_run_state.schema.json",
+  "title": "Capability-First v3 Simple Run State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "workflow", "phase", "revision", "competition", "problem_id", "required_questions", "current_question", "completed_questions", "selected_route", "fallback_route", "artifacts", "time_budget", "token_budget", "updated_at"],
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "workflow": {"const": "capability-first-v3"},
+    "phase": {"enum": ["analysis", "solve", "experiment", "paper", "verify", "complete", "blocked"]},
+    "revision": {"type": "integer", "minimum": 0},
+    "competition": {"type": "string"},
+    "problem_id": {"type": "string"},
+    "required_questions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "current_question": {"type": ["string", "null"]},
+    "completed_questions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "selected_route": {"type": ["string", "null"]},
+    "fallback_route": {"type": ["string", "null"]},
+    "artifacts": {"type": "object", "additionalProperties": {"type": "string"}},
+    "time_budget": {"type": "object", "additionalProperties": false, "required": ["total_hours", "remaining_hours"], "properties": {"total_hours": {"type": ["number", "null"], "minimum": 0}, "remaining_hours": {"type": ["number", "null"], "minimum": 0}}},
+    "token_budget": {"type": "object", "additionalProperties": false, "required": ["soft_cap", "used_estimate"], "properties": {"soft_cap": {"type": ["integer", "null"], "minimum": 0}, "used_estimate": {"type": ["integer", "null"], "minimum": 0}}},
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

@@ -1,4 +1,4 @@
-"""验证独立审核 Skill 的可发现性与竞赛模式收敛规则。"""
+"""验证冻结审核 Skill 的归档完整性与历史收敛规则。"""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from shumozizi.workflow.reviews import evaluate_r5_convergence
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_review_skills_are_top_level_and_executable() -> None:
-    """R1-R5 顶层目录必须同时包含规范和 OpenAI 发现配置。"""
+def test_review_skills_are_archived_and_not_auto_discoverable() -> None:
+    """冻结的 R1-R5 Skill 应保留，但不能再位于主动发现目录。"""
     for skill in (
         "mathmodel-review-r1-modeling",
         "mathmodel-review-r2-experiment",
@@ -19,12 +19,13 @@ def test_review_skills_are_top_level_and_executable() -> None:
         "mathmodel-review-r4-format-visual",
         "mathmodel-review-r5-comprehensive",
     ):
-        directory = REPO_ROOT / ".agents" / "skills" / skill
+        directory = REPO_ROOT / "legacy" / "review-v2" / "skills" / skill
         assert (directory / "SKILL.md").is_file()
         assert (directory / "agents/openai.yaml").is_file()
         content = (directory / "SKILL.md").read_text(encoding="utf-8")
         for required in ("输入文件", "禁止读取", "执行步骤", "Finding 证据格式", "通过条件", "结束前自检"):
             assert required in content, (skill, required)
+        assert not (REPO_ROOT / ".agents" / "skills" / skill).exists()
 
 
 def test_competition_r5_passes_after_one_clean_b_round(tmp_path: Path) -> None:

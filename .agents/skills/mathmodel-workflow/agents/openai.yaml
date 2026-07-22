@@ -1,7 +1,7 @@
 interface:
-  display_name: "Math Modeling Workflow"
-  short_description: "Run a complete modeling workflow with two human checkpoints"
-  default_prompt: "Use $mathmodel-workflow to continue the current modeling run to the next human checkpoint."
+  display_name: "Capability-First 建模工作流"
+  short_description: "完成整题的分析、实验、论文和一次终检"
+  default_prompt: "Use $mathmodel-workflow to continue the current capability-first-v3 modeling run."
 
 policy:
   allow_implicit_invocation: false

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_result_index.schema.json",
+  "title": "Capability-First v3 Result Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "results"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["result_id", "question_id", "kind", "source_script", "command", "input_files", "input_hashes", "output_files", "output_hashes", "metrics", "status", "paper_allowed", "exit_code", "stdout_path", "stderr_path", "started_at", "finished_at", "duration_seconds", "error", "created_at"],
+        "properties": {
+          "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "question_id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "source_script": {"type": ["string", "null"]},
+          "command": {"type": "string", "minLength": 1},
+          "input_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "input_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+          "output_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "output_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+          "metrics": {"type": "object"},
+          "status": {"enum": ["current", "superseded", "failed"]},
+          "paper_allowed": {"type": "boolean"},
+          "exit_code": {"type": "integer"},
+          "stdout_path": {"type": "string", "minLength": 1},
+          "stderr_path": {"type": "string", "minLength": 1},
+          "started_at": {"type": "string", "format": "date-time"},
+          "finished_at": {"type": "string", "format": "date-time"},
+          "duration_seconds": {"type": "number", "minimum": 0},
+          "error": {"type": ["string", "null"]},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  }
+}
