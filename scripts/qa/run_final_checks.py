@@ -19,6 +19,9 @@ from scripts.qa.check_numeric_consistency import check_numeric_consistency
 from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.paper.contributions import verify_contribution_ledger
+from shumozizi.paper.references import verify_paper_references
+from shumozizi.paper.sufficiency import run_paper_sufficiency_check
 from shumozizi.simple.figures import verify_current_figure_files
 from shumozizi.simple.results import verify_current_result_files
 from shumozizi.simple.state import read_simple_state
@@ -47,6 +50,34 @@ def _check(check_id: str, payload: dict[str, Any], details: str) -> dict[str, An
         统一的检查条目。
     """
     return {"id": check_id, "passed": bool(payload.get("success")), "details": details, "payload": payload}
+
+
+def _optional_paper_protocol_check(
+    run_dir: Path,
+    relative_path: Path,
+    verifier: Any,
+) -> dict[str, Any]:
+    """复验已登记的论文协议文件，未使用接口时保持兼容。
+
+    Args:
+        run_dir: 当前 Capability-First v3 运行目录。
+        relative_path: 运行目录内的可选协议文件。
+        verifier: 返回 ``valid`` 与 ``errors`` 的复验函数。
+
+    Returns:
+        可直接传给机械 QA 的 ``success`` 结果。
+    """
+    if not (run_dir / relative_path).is_file():
+        return {"success": True, "skipped": True, "errors": []}
+    try:
+        verification = verifier(run_dir)
+    except (ContractError, OSError, TypeError, ValueError) as exc:
+        return {"success": False, "errors": [str(exc)]}
+    return {
+        "success": verification.get("valid") is True,
+        "errors": list(verification.get("errors", [])),
+        "verification": verification,
+    }
 
 
 def run_final_checks(
@@ -86,6 +117,46 @@ def run_final_checks(
         anonymous_terms=anonymous_terms,
     )
     checks.append(_check("pdf", pdf_report, "PDF、空白页、裁切、文字重叠和重复编号"))
+    try:
+        content_report = run_paper_sufficiency_check(root)
+        content_payload = {
+            "success": content_report["status"] == "pass",
+            "report": content_report,
+        }
+    except (ContractError, OSError) as exc:
+        content_report = {"status": "blocked", "hard_failures": [str(exc)], "warnings": []}
+        content_payload = {"success": False, "report": content_report}
+    checks.append(
+        _check(
+            "paper-content-sufficiency",
+            content_payload,
+            "内容蓝图、逐问直接回答与 PDF 内容覆盖",
+        )
+    )
+    paper_references = _optional_paper_protocol_check(
+        root,
+        Path("paper/paper_references.json"),
+        verify_paper_references,
+    )
+    checks.append(
+        _check(
+            "paper-references",
+            paper_references,
+            "已登记离线论文卡的冻结、来源与哈希边界",
+        )
+    )
+    contribution_ledger = _optional_paper_protocol_check(
+        root,
+        Path("paper/contribution_ledger.json"),
+        verify_contribution_ledger,
+    )
+    checks.append(
+        _check(
+            "paper-contribution-ledger",
+            contribution_ledger,
+            "题目特定贡献、创新证据链与当前生产结果",
+        )
+    )
     placeholders = check_placeholders(root / "paper")
     checks.append(_check("placeholders", placeholders, "论文源文件占位符"))
     references = check_result_references(root)
@@ -120,7 +191,7 @@ def run_final_checks(
         "final_pdf_sha256": sha256_file(pdf) if pdf.is_file() else None,
         "checks": checks,
         "hard_failures": failed,
-        "warnings": pdf_report.get("warnings", []),
+        "warnings": [*pdf_report.get("warnings", []), *content_report.get("warnings", [])],
         "generated_at": _utc_now(),
     }
     atomic_json(root / "qa" / "mechanical-qa.json", report)

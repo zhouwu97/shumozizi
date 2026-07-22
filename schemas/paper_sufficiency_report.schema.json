@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_sufficiency_report.schema.json",
+  "title": "Paper Content Sufficiency Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "status",
+    "page_count",
+    "densities",
+    "section_coverage",
+    "question_coverage",
+    "hard_failures",
+    "warnings",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_sufficiency_report"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["pass", "blocked"]},
+    "page_count": {"type": "integer", "minimum": 0},
+    "densities": {"$ref": "#/$defs/densities"},
+    "section_coverage": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/section_coverage"}
+    },
+    "question_coverage": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/question_coverage"}
+    },
+    "hard_failures": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "warnings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "densities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text_characters",
+        "formulas",
+        "figures",
+        "tables",
+        "citations",
+        "formulas_per_page",
+        "figures_per_page",
+        "tables_per_page",
+        "citations_per_page"
+      ],
+      "properties": {
+        "text_characters": {"type": "integer", "minimum": 0},
+        "formulas": {"type": "integer", "minimum": 0},
+        "figures": {"type": "integer", "minimum": 0},
+        "tables": {"type": "integer", "minimum": 0},
+        "citations": {"type": "integer", "minimum": 0},
+        "formulas_per_page": {"type": "number", "minimum": 0},
+        "figures_per_page": {"type": "number", "minimum": 0},
+        "tables_per_page": {"type": "number", "minimum": 0},
+        "citations_per_page": {"type": "number", "minimum": 0}
+      }
+    },
+    "section_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section_id", "required", "draft_allowed", "detected", "missing_elements"],
+      "properties": {
+        "section_id": {"type": "string", "minLength": 1},
+        "required": {"type": "boolean"},
+        "draft_allowed": {"type": "boolean"},
+        "detected": {"type": "boolean"},
+        "missing_elements": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "question_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "heading_detected", "elements", "complete"],
+      "properties": {
+        "question_id": {"type": "string", "minLength": 1},
+        "heading_detected": {"type": "boolean"},
+        "elements": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"}
+        },
+        "complete": {"type": "boolean"}
+      }
+    }
+  }
+}

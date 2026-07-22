@@ -143,6 +143,24 @@ No whitespace errors
 
 冻结 v2 的审核合同测试保留并通过；其中的路径断言已改为验证 `legacy/review-v2/skills/` 的归档完整性，而不是要求旧 Skill 继续自动发现。
 
+### 7. Capability-First v3 解题能力与质量协议重构
+
+本轮发现的根因不是缺少更多质量字段，而是质量层允许 generator 的同一份 JSON 同时声明候选、可行性、exact 重算、搜索充分性和题目进展。文件哈希只能证明这份 JSON 未变，不能证明题目数学被独立重算；同样，申报的 coverage 数字不能证明原始高维候选真的覆盖了合同所述的联合区域。旧的挑战语义还把“未改善”机械视为失败，反而可能让较弱挑战影响已验证 incumbent。
+
+v3 因而将搜索型生产结果拆为三段题目特定 adapter：candidate generator 只产出原始 candidate pool、参数、代理值和完整 trace；exact scorer 独立重算硬约束、可行性与 exact objective；search auditor 从原始 pool/trace、合同和 scorer 产物重算覆盖、校准、挑战独立性与选择影响。题目合同声明三个 adapter 的 id/version、受控相对源路径、允许命令、输入输出、hash、目标方向、约束、变量组、覆盖度量和挑战可比标准。generic runtime 只验证 provenance、路径与漂移，拒绝未受控命令、路径越界、输入变化、输出漂移和版本不一致；题目数学仍是 adapter 作者的职责，而非 generic runtime 的能力声明。
+
+覆盖审计直接使用原生 pool/trace 坐标。共同变量组、实体变量组和交互变量组必须按合同各自重算明确度量；平均、首元素、低维投影或 generator 自报的 `joint_coverage` 都不能作为 accepted 证据。代理校准改为关注决策相关指标，例如 top-k recall、局部改善方向、边界/高价值区域误差与筛选影响，只有可能反转选择结论的灾难性错误阻断。
+
+挑战允许显式标记的 baseline/warm start，但必须另外证明独立新候选、独立覆盖和实际新区域。独立、充分且达到预登记可比标准但不改善的挑战支持 incumbent 稳定性；充分但较差的挑战只是无信息或较弱搜索族；只有 scorer 或模型语义错误可以推翻 incumbent。verified candidate registry 保持单调：同一目标语义下，弱、较差、legacy 或不可审计候选不能覆盖 current verified incumbent。
+
+运行与质量语义新增 `exploration` / `production` 用途边界，但不增加 phase、总控 Skill、审批或固定算法。探索可使用未 accepted 的上游诊断候选研究后续问题、共享结构或反向诊断，产物永久保持 diagnostic，不能进入 registry accepted/current、论文、图表或提交；生产正式下游仍要求合同指定的前序 accepted/current。旧质量记录和旧自报布尔字段统一降为 `diagnostic/unverified`，除非在当前合同下补齐三段独立证据及 provenance。
+
+生产结果冻结后，论文阶段还可按需读取 1-2 张已登记的离线论文卡，用于章节组织、模型解释表达、验证叙事或 Figure Contract。该轻量 reference interface 不调用或合并 `mathmodel-learn-paper`；卡和原论文中的数值、结论、代码、原公式段、实验结果均不得迁移，也不得成为 citation、evidence 或 Claim-Evidence 材料。
+
+论文交付同时采用贡献账本和五问内容蓝图。账本只接受与当前运行证据和限制相连的题目特定结构、模型、算法、实证或表达贡献；通用 Skill、质量协议、adapter、已有算法的直接调用和普通图表不被称为数学创新。若证据仅支持工程实现或方法组合，论文必须如实说明。若声明题目数学创新，账本还绑定机制差异、可检验预测、明确指标/方向的对照改善和单组件消融；对照/消融可使用角色独立的结果，或在同组 registry 只有一个 incumbent 时使用同一 primary exact scorer 的两个受控 sidecar，且绝不能由单一结果或 sidecar 自证。该账本不自动评分、不要求创新数，也不替代 adapter 的数学判断。Q1-Q5 各自需要可定位的直接答案，以及题目解释、模型/公式、实际求解、当前结果、验证和限制等内容块。终检在 `qa/FINAL_REVIEW.md` 报告 PDF 内容异常，包括五问直接答案覆盖与页数、公式、图、表、引用的可疑密度；页数或任一密度单独异常只作 warning，不单独阻断。已登记的离线论文卡收据和贡献账本会在机械 QA 中重放，任何冻结结果、受控索引/卡哈希或当前证据漂移均阻断终检。
+
+这项重构强化的是证据分层、可复验性和搜索结论的解释，不是对模型实际解题能力的实证。它不能证明模型正确理解题意、选择了正确路线、adapter 的数学实现无误、假设有效，或论文具备竞赛竞争力。那些主张仍需要结构预检、低成本 oracle、真实实验、适当验证、完整论文审查，以及冻结条件下的陌生完整赛题 A/B。
+
 ## A/B 与默认切换的剩余执行条件
 
 以下不是未实现的代码功能，而是必须由真实赛题运行产生的外部证据：

@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/contribution_ledger.schema.json",
+  "title": "Problem-Specific Contribution Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "state_revision",
+    "execution_mode",
+    "contributions",
+    "innovation_disclosure",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "contribution_ledger"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "state_revision": {"type": "integer", "minimum": 0},
+    "execution_mode": {"const": "production"},
+    "contributions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/contribution"}
+    },
+    "innovation_disclosure": {"$ref": "#/$defs/disclosure"},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "contribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contribution_id",
+        "category",
+        "statement",
+        "source_scope",
+        "evidence_result_ids",
+        "evidence_valid",
+        "limitations",
+        "requested_math_innovation",
+        "status",
+        "math_innovation_allowed"
+      ],
+      "properties": {
+        "contribution_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "category": {
+          "enum": [
+            "structural_discovery",
+            "modeling_transformation",
+            "algorithm_design",
+            "empirical_finding",
+            "expression_organization"
+          ]
+        },
+        "statement": {"type": "string", "minLength": 2},
+        "source_scope": {
+          "enum": [
+            "problem_specific",
+            "generic_skill",
+            "quality_protocol",
+            "off_the_shelf_algorithm",
+            "standard_figure",
+            "method_combination",
+            "engineering_implementation"
+          ]
+        },
+        "evidence_result_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
+        },
+        "evidence_valid": {"type": "boolean"},
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 2}
+        },
+        "requested_math_innovation": {"type": "boolean"},
+        "innovation_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mechanism_difference",
+            "testable_prediction",
+            "comparison_metric",
+            "comparison_direction",
+            "comparison_improvement",
+            "single_component_ablation",
+            "evidence_mode",
+            "primary_result_id",
+            "evidence_valid"
+          ],
+          "properties": {
+            "mechanism_difference": {"type": "string", "minLength": 2},
+            "testable_prediction": {"type": "string", "minLength": 2},
+            "comparison_metric": {"type": "string", "minLength": 1},
+            "comparison_direction": {"enum": ["higher_is_better", "lower_is_better"]},
+            "comparison_improvement": {"type": "string", "minLength": 2},
+            "single_component_ablation": {"type": "string", "minLength": 2},
+            "evidence_mode": {"enum": ["distinct_results", "exact_artifacts"]},
+            "comparison_result_ids": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
+            },
+            "ablation_result_ids": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
+            },
+            "comparison_artifact_files": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^results/raw/.+\\.json$"}
+            },
+            "ablation_artifact_files": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^results/raw/.+\\.json$"}
+            },
+            "primary_result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+            "evidence_valid": {"type": "boolean"}
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {"evidence_mode": {"const": "distinct_results"}},
+                "required": ["evidence_mode"]
+              },
+              "then": {"required": ["comparison_result_ids", "ablation_result_ids"]}
+            },
+            {
+              "if": {
+                "properties": {"evidence_mode": {"const": "exact_artifacts"}},
+                "required": ["evidence_mode"]
+              },
+              "then": {"required": ["comparison_artifact_files", "ablation_artifact_files"]}
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "accepted_problem_specific",
+            "recorded_not_math_claim",
+            "expression_only",
+            "downgraded_to_method_combination",
+            "downgraded_missing_innovation_evidence",
+            "rejected_unverified"
+          ]
+        },
+        "math_innovation_allowed": {"type": "boolean"},
+        "downgrade_reason": {"type": "string", "minLength": 2}
+      }
+    },
+    "disclosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "required_statement"],
+      "properties": {
+        "mode": {
+          "enum": [
+            "problem_specific_math_contribution",
+            "method_combination_engineering"
+          ]
+        },
+        "required_statement": {"type": "string", "minLength": 2}
+      }
+    }
+  }
+}
