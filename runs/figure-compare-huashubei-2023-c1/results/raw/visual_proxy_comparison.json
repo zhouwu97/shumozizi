@@ -1,0 +1,27 @@
+{
+  "metrics": {
+    "proxy_point_count": 390,
+    "proxy_category_total": 383
+  },
+  "source_type": "visual_proxy_not_empirical_result",
+  "source_limit": "原始 390 条记录缺失；趋势与类别数量只依据旧 PDF 的可见结构生成。",
+  "outputs": {
+    "new_plot": "figures/v3_visual_proxy_replot.png",
+    "side_by_side": "figures/old-vs-v3-visual-proxy.png"
+  },
+  "proxy_summary": {
+    "epds_range": [
+      0.38197423007398185,
+      32.0
+    ],
+    "sleep_hours_range": [
+      5.227259381499694,
+      12.2
+    ],
+    "approximate_category_counts": [
+      220,
+      118,
+      45
+    ]
+  }
+}

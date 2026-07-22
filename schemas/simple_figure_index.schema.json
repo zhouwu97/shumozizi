@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_figure_index.schema.json",
+  "title": "Capability-First v3 Figure Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "figures"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "figures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["figure_id", "template_id", "result_id", "input_result", "reference_template", "renderer_script", "outputs", "text_boxes", "status", "paper_allowed", "demo", "created_at"],
+        "properties": {
+          "figure_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "template_id": {"enum": ["cv-roc-ci", "prediction-marginal-grid", "paired-raincloud", "correlation-pairgrid"]},
+          "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "input_result": {"$ref": "#/$defs/file"},
+          "reference_template": {"$ref": "#/$defs/file"},
+          "renderer_script": {"$ref": "#/$defs/file"},
+          "outputs": {
+            "type": "array",
+            "minItems": 3,
+            "items": {"$ref": "#/$defs/file"}
+          },
+          "text_boxes": {"$ref": "#/$defs/file"},
+          "status": {"enum": ["current", "superseded", "failed"]},
+          "paper_allowed": {"type": "boolean"},
+          "demo": {"const": false},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

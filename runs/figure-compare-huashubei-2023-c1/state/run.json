@@ -1,0 +1,26 @@
+{
+  "schema_version": "3.0",
+  "run_id": "figure-compare-huashubei-2023-c1",
+  "workflow": "capability-first-v3",
+  "phase": "analysis",
+  "revision": 0,
+  "competition": "huashubei",
+  "problem_id": "2023-c1",
+  "required_questions": [
+    "Q1"
+  ],
+  "current_question": null,
+  "completed_questions": [],
+  "selected_route": null,
+  "fallback_route": null,
+  "artifacts": {},
+  "time_budget": {
+    "total_hours": null,
+    "remaining_hours": null
+  },
+  "token_budget": {
+    "soft_cap": 12000,
+    "used_estimate": null
+  },
+  "updated_at": "2026-07-22T04:23:52.326038Z"
+}

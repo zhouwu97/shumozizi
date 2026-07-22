@@ -1,7 +1,7 @@
 {
   "schema_name": "knowledge_index",
   "schema_version": "2.0",
-  "source_registry_sha256": "0b8ac7d63287d712d9bbd92c7c76d456d031f1accbffb328923b690842be9da5",
+  "source_registry_sha256": "f9f045814a849e78fa24e30eea8912927c95f815b9e352ca16df009cdf69474d",
   "cards": [
     {
       "card_id": "sealed-result-paper-evidence",

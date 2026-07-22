@@ -4,13 +4,28 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # 冻结 legacy 合同仍需持续验证，但不应阻塞每个 v3 小改的 PR 反馈。
+    - cron: "17 3 * * 1"
   workflow_dispatch:
+    inputs:
+      full_legacy:
+        description: "运行完整 legacy 回归套件"
+        required: false
+        default: true
+        type: boolean
+      figure_template_smoke:
+        description: "渲染全部科研绘图模板（非阻断）"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
-  runtime-contracts:
+  v3-pr-contracts:
+    name: v3 contracts and legacy smoke
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -31,27 +46,86 @@ jobs:
         with:
           typst-version: "0.15.0"
 
-      - name: Run behavior tests
-        run: python -m pytest -v
+      - name: Run v3 runtime, Skill and QA contracts
+        run: >-
+          python -m pytest -q
+          tests/test_capability_first_v3.py
+          tests/test_init_run.py
+
+      - name: Run core legacy compatibility smoke
+        run: >-
+          python -m pytest -q
+          tests/test_review_skills.py
+          tests/test_review_change_levels.py
+          tests/test_runtime_execution.py
 
       - name: Run Ruff
-        run: python -m ruff check src scripts tests
+        run: python -m ruff check src scripts tools tests
 
-      - name: Compile Python entry points
+      - name: Compile v3 entry points
         run: >-
           python -m py_compile
           scripts/codex/init_run.py
-          scripts/codex/validate_state.py
-          scripts/runtime/execute_experiment.py
-          scripts/runtime/verify_execution.py
-          scripts/runtime/accept_result.py
-          src/shumozizi/questions/manifest.py
-          src/shumozizi/questions/acceptance.py
-          src/shumozizi/workflow/approval.py
-          src/shumozizi/workflow/integrity.py
-          src/shumozizi/workflow/repair.py
-          src/shumozizi/workflow/review_policy.py
-          src/shumozizi/workflow/reviews.py
-          tests/test_init_run.py
-          tests/test_validate_state.py
-          tests/test_runtime_execution.py
+          scripts/codex/init_simple_run.py
+          scripts/runtime/run_simple_experiment.py
+          scripts/figures/use_template.py
+          scripts/qa/run_final_checks.py
+          src/shumozizi/simple/execution.py
+          src/shumozizi/simple/figures.py
+          src/shumozizi/simple/figure_templates.py
+          src/shumozizi/simple/initialization.py
+          src/shumozizi/simple/results.py
+          src/shumozizi/simple/state.py
+          tests/test_capability_first_v3.py
+
+  legacy-full:
+    name: scheduled legacy regression
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.full_legacy)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[test]"
+
+      - name: Setup Typst
+        uses: typst-community/setup-typst@v4
+        with:
+          typst-version: "0.15.0"
+
+      - name: Run complete frozen regression suite
+        run: python -m pytest -q
+
+  figure-template-smoke:
+    name: scheduled figure-template smoke
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.figure_template_smoke)
+    continue-on-error: true
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install figure-template smoke dependencies
+        run: python -m pip install -e ".[test,figure-template-smoke]"
+
+      - name: Render bundled templates and v3 real-data adapters
+        run: python tests/figure_template_smoke.py
