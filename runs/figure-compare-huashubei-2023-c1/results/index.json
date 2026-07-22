@@ -1,0 +1,226 @@
+{
+  "schema_version": "1.0",
+  "run_id": "figure-compare-huashubei-2023-c1",
+  "results": [
+    {
+      "result_id": "q1_visual_proxy_not_for_paper",
+      "question_id": "Q1",
+      "kind": "visual-proxy",
+      "source_script": "code/figures/render_visual_proxy_comparison.py",
+      "command": "python code/figures/render_visual_proxy_comparison.py",
+      "input_files": [
+        "qa/old-paper-contact-sheet.png",
+        "code/figures/render_visual_proxy_comparison.py"
+      ],
+      "input_hashes": {
+        "qa/old-paper-contact-sheet.png": "a44f54a07c5afcc9c5eff47b9e0554c2d601b9fcc9c4204993af1acdad96e394",
+        "code/figures/render_visual_proxy_comparison.py": "bcbaa997be0a754df77d9c8240d9c6bb7dd8531198512c2f427237028df25a15"
+      },
+      "output_files": [
+        "results/raw/visual_proxy_comparison.json",
+        "figures/v3_visual_proxy_replot.png",
+        "figures/v3_visual_proxy_replot.pdf",
+        "figures/v3_visual_proxy_replot.svg",
+        "figures/old-vs-v3-visual-proxy.png"
+      ],
+      "output_hashes": {
+        "results/raw/visual_proxy_comparison.json": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2",
+        "figures/v3_visual_proxy_replot.png": "fdfc0494643f7432b85a51eb5c62fe4b2df8992734459697a7b295641a28f0e1",
+        "figures/v3_visual_proxy_replot.pdf": "42c3a89eb8a383dd56cf0f51f3dc5a6c9670efdef8fb6f6e82eea4ba15b968a3",
+        "figures/v3_visual_proxy_replot.svg": "355ef5014ec6bbdbc284f96413e0c58530f1cdd7dc39136cfb9d16df762d36e3",
+        "figures/old-vs-v3-visual-proxy.png": "aefadf46605a5737e647b145f5f90046fbe3e436c583e926f2be2e82d9daad9f"
+      },
+      "metrics": {
+        "proxy_point_count": 390,
+        "proxy_category_total": 383
+      },
+      "metric_sources": {
+        "proxy_point_count": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_point_count",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        },
+        "proxy_category_total": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_category_total",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        }
+      },
+      "status": "superseded",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_visual_proxy_not_for_paper.stdout.log",
+      "stderr_path": "results/raw/q1_visual_proxy_not_for_paper.stderr.log",
+      "started_at": "2026-07-22T04:26:02.949288Z",
+      "finished_at": "2026-07-22T04:26:11.180891Z",
+      "duration_seconds": 8.235,
+      "error": null,
+      "created_at": "2026-07-22T04:26:11.646656Z"
+    },
+    {
+      "result_id": "q1_visual_proxy_not_for_paper_v2",
+      "question_id": "Q1",
+      "kind": "visual-proxy",
+      "source_script": "code/figures/render_visual_proxy_comparison.py",
+      "command": "python code/figures/render_visual_proxy_comparison.py",
+      "input_files": [
+        "qa/old-paper-contact-sheet.png",
+        "code/figures/render_visual_proxy_comparison.py"
+      ],
+      "input_hashes": {
+        "qa/old-paper-contact-sheet.png": "a44f54a07c5afcc9c5eff47b9e0554c2d601b9fcc9c4204993af1acdad96e394",
+        "code/figures/render_visual_proxy_comparison.py": "28c1372dfbeb05141e7361f7abed7f34ee6ef5b5e69d9084929907acc3d98acd"
+      },
+      "output_files": [
+        "results/raw/visual_proxy_comparison.json",
+        "figures/v3_visual_proxy_replot.png",
+        "figures/v3_visual_proxy_replot.pdf",
+        "figures/v3_visual_proxy_replot.svg",
+        "figures/old-vs-v3-visual-proxy.png"
+      ],
+      "output_hashes": {
+        "results/raw/visual_proxy_comparison.json": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2",
+        "figures/v3_visual_proxy_replot.png": "fdfc0494643f7432b85a51eb5c62fe4b2df8992734459697a7b295641a28f0e1",
+        "figures/v3_visual_proxy_replot.pdf": "c6deac2cc5f8a0f1fd9c00b3c225c26c30b3a1046849777613415962a04defdd",
+        "figures/v3_visual_proxy_replot.svg": "9d0211904e42807b82917590c2ff2a2b7e85aaac003cb5706b3b914af761afb2",
+        "figures/old-vs-v3-visual-proxy.png": "fae2678e3b03431f1dc872a3ae69344922854babf98ca8917028e79d5cc9316b"
+      },
+      "metrics": {
+        "proxy_point_count": 390,
+        "proxy_category_total": 383
+      },
+      "metric_sources": {
+        "proxy_point_count": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_point_count",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        },
+        "proxy_category_total": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_category_total",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        }
+      },
+      "status": "superseded",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_visual_proxy_not_for_paper_v2.stdout.log",
+      "stderr_path": "results/raw/q1_visual_proxy_not_for_paper_v2.stderr.log",
+      "started_at": "2026-07-22T04:27:11.746964Z",
+      "finished_at": "2026-07-22T04:27:25.310936Z",
+      "duration_seconds": 13.563,
+      "error": null,
+      "created_at": "2026-07-22T04:27:26.546928Z"
+    },
+    {
+      "result_id": "q1_visual_proxy_not_for_paper_v3",
+      "question_id": "Q1",
+      "kind": "visual-proxy",
+      "source_script": "code/figures/render_visual_proxy_comparison.py",
+      "command": "python code/figures/render_visual_proxy_comparison.py",
+      "input_files": [
+        "qa/old-paper-contact-sheet.png",
+        "code/figures/render_visual_proxy_comparison.py"
+      ],
+      "input_hashes": {
+        "qa/old-paper-contact-sheet.png": "a44f54a07c5afcc9c5eff47b9e0554c2d601b9fcc9c4204993af1acdad96e394",
+        "code/figures/render_visual_proxy_comparison.py": "c7362618ef031b985c0a497ed29fe60c12ccafc1f6d4ead6862be5ccf433dfe1"
+      },
+      "output_files": [
+        "results/raw/visual_proxy_comparison.json",
+        "figures/v3_visual_proxy_replot.png",
+        "figures/v3_visual_proxy_replot.pdf",
+        "figures/v3_visual_proxy_replot.svg",
+        "figures/old-vs-v3-visual-proxy.png"
+      ],
+      "output_hashes": {
+        "results/raw/visual_proxy_comparison.json": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2",
+        "figures/v3_visual_proxy_replot.png": "fdfc0494643f7432b85a51eb5c62fe4b2df8992734459697a7b295641a28f0e1",
+        "figures/v3_visual_proxy_replot.pdf": "57e2f0e7f04de5385ae6b8429df9b784743d3b5e08060ae5f5a093fc7ba890ad",
+        "figures/v3_visual_proxy_replot.svg": "c534bbac088eeccc71de960054ddc27448d99220a63111d2e4c704185c8671a8",
+        "figures/old-vs-v3-visual-proxy.png": "fae2678e3b03431f1dc872a3ae69344922854babf98ca8917028e79d5cc9316b"
+      },
+      "metrics": {
+        "proxy_point_count": 390,
+        "proxy_category_total": 383
+      },
+      "metric_sources": {
+        "proxy_point_count": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_point_count",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        },
+        "proxy_category_total": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_category_total",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        }
+      },
+      "status": "superseded",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_visual_proxy_not_for_paper_v3.stdout.log",
+      "stderr_path": "results/raw/q1_visual_proxy_not_for_paper_v3.stderr.log",
+      "started_at": "2026-07-22T04:28:13.222952Z",
+      "finished_at": "2026-07-22T04:28:23.217322Z",
+      "duration_seconds": 10.0,
+      "error": null,
+      "created_at": "2026-07-22T04:28:24.361555Z"
+    },
+    {
+      "result_id": "q1_visual_proxy_not_for_paper_v4",
+      "question_id": "Q1",
+      "kind": "visual-proxy",
+      "source_script": "code/figures/render_visual_proxy_comparison.py",
+      "command": "python code/figures/render_visual_proxy_comparison.py",
+      "input_files": [
+        "qa/old-paper-contact-sheet.png",
+        "code/figures/render_visual_proxy_comparison.py"
+      ],
+      "input_hashes": {
+        "qa/old-paper-contact-sheet.png": "a44f54a07c5afcc9c5eff47b9e0554c2d601b9fcc9c4204993af1acdad96e394",
+        "code/figures/render_visual_proxy_comparison.py": "b73ac857ec63d614002650f2a1380af73882e6c57ad149d61bf9ef408e1a2470"
+      },
+      "output_files": [
+        "results/raw/visual_proxy_comparison.json",
+        "figures/v3_visual_proxy_replot.png",
+        "figures/v3_visual_proxy_replot.pdf",
+        "figures/v3_visual_proxy_replot.svg",
+        "figures/old-vs-v3-visual-proxy.png"
+      ],
+      "output_hashes": {
+        "results/raw/visual_proxy_comparison.json": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2",
+        "figures/v3_visual_proxy_replot.png": "fdfc0494643f7432b85a51eb5c62fe4b2df8992734459697a7b295641a28f0e1",
+        "figures/v3_visual_proxy_replot.pdf": "ff4bf3ee32d642595a0737f6413767642c105532853e9302f0c3969d1e735cde",
+        "figures/v3_visual_proxy_replot.svg": "2978cfe4a7ed3cf9cc85b2a0bc8b5fb5aa85e16a06faab027c6e3390ad36d605",
+        "figures/old-vs-v3-visual-proxy.png": "fae2678e3b03431f1dc872a3ae69344922854babf98ca8917028e79d5cc9316b"
+      },
+      "metrics": {
+        "proxy_point_count": 390,
+        "proxy_category_total": 383
+      },
+      "metric_sources": {
+        "proxy_point_count": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_point_count",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        },
+        "proxy_category_total": {
+          "file": "results/raw/visual_proxy_comparison.json",
+          "json_path": "metrics.proxy_category_total",
+          "file_sha256": "513adccfce1a103b59eb6d2f1eb5270e3a9f8fa165f68bcd48a11d8ec791ddb2"
+        }
+      },
+      "status": "current",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_visual_proxy_not_for_paper_v4.stdout.log",
+      "stderr_path": "results/raw/q1_visual_proxy_not_for_paper_v4.stderr.log",
+      "started_at": "2026-07-22T04:29:08.285543Z",
+      "finished_at": "2026-07-22T04:29:14.346211Z",
+      "duration_seconds": 6.063,
+      "error": null,
+      "created_at": "2026-07-22T04:29:14.864384Z"
+    }
+  ]
+}
