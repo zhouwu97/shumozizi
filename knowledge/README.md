@@ -1,4 +1,4 @@
-# 仓内优秀论文知识
+# 仓内数学建模知识
 
 本目录保存由 `shumozizi` 自己生成和维护的结构化优秀论文知识，不依赖其他仓库生成知识包。
 
@@ -26,3 +26,13 @@ python scripts/knowledge/build_index.py
 
 论文卡必须同时记录可迁移模式、不可迁移内容、论文不足、缺失验证、复现风险和来源页码。
 论文中的数字、结论和代码不得直接迁移到新题。
+
+## Capability-First v3 按需参考
+
+- `problem-decomposition.md`：拆解问题、共享对象与关键歧义；
+- `model-selection-matrix.md`：按数学本质生成候选路线；
+- `cookbooks/`：预测、优化、评价和机理问题的最小实践菜单；
+- `model-validation.md`：按主张选择验证；
+- `paper-writing/` 与 `figure-contract.md`：论文与图表叙事。
+
+这些文件只提供候选与检查菜单。完整赛题当前阶段最多读取一到两个相关文件，不能全量加载，也不能代替当前题的 probe、baseline 或路线比较。
