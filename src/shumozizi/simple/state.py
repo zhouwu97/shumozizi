@@ -12,6 +12,15 @@ from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
 
 PHASES = ("analysis", "experiment", "paper", "verify", "complete", "blocked")
+ALLOWED_PHASE_TRANSITIONS = {
+    "analysis": {"analysis", "experiment", "blocked"},
+    "experiment": {"experiment", "paper", "blocked"},
+    "paper": {"paper", "verify", "blocked"},
+    "verify": {"verify", "complete", "blocked"},
+    "complete": {"complete"},
+    # 阻断只允许回到实际生产阶段，避免绕过失败修复直接交付。
+    "blocked": {"blocked", "analysis", "experiment"},
+}
 STATE_PATH = Path("state/run.json")
 
 
@@ -123,10 +132,13 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
     unknown = sorted(set(changes) - allowed)
     if unknown:
         raise ContractError(f"v3 状态不允许更新字段: {', '.join(unknown)}")
-    if "phase" in changes and changes["phase"] not in PHASES:
-        raise ContractError(f"未知 v3 阶段: {changes['phase']}")
-
     state = read_simple_state(run_dir)
+    if "phase" in changes:
+        next_phase = changes["phase"]
+        if next_phase not in PHASES:
+            raise ContractError(f"未知 v3 阶段: {next_phase}")
+        if next_phase not in ALLOWED_PHASE_TRANSITIONS[state["phase"]]:
+            raise ContractError(f"v3 状态不允许从 {state['phase']} 直接进入 {next_phase}")
     state.update(changes)
     state["revision"] += 1
     state["updated_at"] = utc_now()

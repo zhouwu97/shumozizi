@@ -13,6 +13,11 @@ from scripts.figures.use_template import generate_from_result
 from shumozizi.simple.execution import execute_simple_experiment
 from shumozizi.simple.figures import read_figure_index, verify_current_figure_files
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.quality import assess_result_quality
+from tests.quality_protocol_helpers import (
+    evidence_backed_assessment,
+    standard_quality_document,
+)
 
 
 @unittest.skipUnless(
@@ -31,6 +36,7 @@ class V3FigureTests(unittest.TestCase):
         payloads = {
             "roc": {
                 "metrics": {"objective": 0.8},
+                "quality": standard_quality_document(0.8),
                 "figure_data": {
                     "models": [
                         {
@@ -89,6 +95,13 @@ class V3FigureTests(unittest.TestCase):
             metrics_from="results/raw/roc.json",
         )
         self.assertTrue(execution["success"], execution["error"])
+        assess_result_quality(
+            self.run_dir,
+            result_id="q1_visual",
+            assessment=evidence_backed_assessment(
+                "q1_visual", "results/raw/roc.json"
+            ),
+        )
 
     def tearDown(self) -> None:
         """清理临时运行目录。"""

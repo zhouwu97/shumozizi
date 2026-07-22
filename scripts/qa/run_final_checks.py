@@ -72,6 +72,14 @@ def run_final_checks(
     state = read_simple_state(root)
     pdf = root / "paper" / "final.pdf"
     checks: list[dict[str, Any]] = []
+    checks.append(
+        {
+            "id": "state-phase",
+            "passed": state["phase"] != "blocked",
+            "details": f"当前运行阶段：{state['phase']}",
+            "payload": {"phase": state["phase"]},
+        }
+    )
     pdf_report = audit_pdf(
         pdf,
         anonymous_required=anonymous_required,

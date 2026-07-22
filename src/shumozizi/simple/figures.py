@@ -17,6 +17,7 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.repo_root import resolve_repo_root
+from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import utc_now
 
@@ -102,8 +103,13 @@ def register_figure(
     index = read_figure_index(run_dir)
     results = read_result_index(run_dir)
     source_result = next((item for item in results["results"] if item["result_id"] == result_id), None)
-    if source_result is None or source_result["status"] != "current" or not source_result["execution_valid"]:
-        raise ContractError("图表只能绑定 current 且 execution_valid=true 的真实结果")
+    if (
+        source_result is None
+        or source_result["status"] != "current"
+        or not source_result["execution_valid"]
+        or not quality_allows_paper(run_dir, result_id)
+    ):
+        raise ContractError("图表只能绑定 current、execution_valid=true 且通过质量层的真实结果")
     input_record = _file_record(run_dir, input_result)
     if input_record["path"] not in source_result["output_hashes"]:
         raise ContractError("图表输入必须是所绑定结果的已登记输出")
@@ -172,7 +178,12 @@ def verify_current_figure_files(run_dir: Path) -> dict[str, Any]:
         if figure["demo"] or not figure["paper_allowed"]:
             errors.append({"figure_id": figure_id, "message": "demo 图或未允许图不能进入论文"})
         result = result_map.get(figure["result_id"])
-        if result is None or result["status"] != "current" or not result["execution_valid"]:
+        if (
+            result is None
+            or result["status"] != "current"
+            or not result["execution_valid"]
+            or not quality_allows_paper(run_dir, figure["result_id"])
+        ):
             errors.append({"figure_id": figure_id, "message": "源结果已被替代或不再可用于论文"})
         else:
             input_path = figure["input_result"]["path"]

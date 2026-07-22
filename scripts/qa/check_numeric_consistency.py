@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.qa.provenance_markers import METRIC_REFERENCE, paper_sources
+from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 
 
@@ -31,6 +32,7 @@ def check_numeric_consistency(run_dir: Path) -> dict[str, Any]:
                 result is None
                 or result["status"] != "current"
                 or not result["execution_valid"]
+                or not quality_allows_paper(run_dir, result_id)
             ):
                 inconsistent.append(
                     {

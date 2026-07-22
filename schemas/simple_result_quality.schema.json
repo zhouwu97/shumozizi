@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_result_quality.schema.json",
+  "title": "Capability-First v3 Result Quality",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "run_id", "assessments"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "assessments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["result_id", "execution_valid", "feasibility_valid", "baseline_preserved", "search_adequacy", "result_role", "paper_allowed", "reasons", "assessed_at"],
+            "properties": {
+              "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+              "execution_valid": {"type": "boolean"},
+              "feasibility_valid": {"type": "boolean"},
+              "baseline_preserved": {"type": "boolean"},
+              "search_adequacy": {"enum": ["passed", "failed", "not_assessed"]},
+              "result_role": {"enum": ["diagnostic", "candidate", "accepted", "rejected"]},
+              "paper_allowed": {"type": "boolean"},
+              "reasons": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "assessed_at": {"type": "string", "format": "date-time"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "run_id", "assessments"],
+      "properties": {
+        "schema_version": {"const": "2.0"},
+        "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "assessments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["result_id", "execution_valid", "feasibility_valid", "exact_recomputed", "search_adequacy", "problem_effectiveness", "result_role", "paper_allowed", "evidence", "selection_contract", "reasons", "assessed_at"],
+            "properties": {
+              "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+              "execution_valid": {"type": "boolean"},
+              "feasibility_valid": {"type": "boolean"},
+              "exact_recomputed": {"type": "boolean"},
+              "search_adequacy": {"enum": ["passed", "failed", "not_assessed"]},
+              "problem_effectiveness": {"enum": ["progressed", "failed", "not_assessed"]},
+              "result_role": {"enum": ["diagnostic", "candidate", "accepted", "rejected"]},
+              "paper_allowed": {"type": "boolean"},
+              "evidence": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["result_id", "file", "json_path", "file_sha256"],
+                  "properties": {
+                    "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+                    "file": {"type": "string", "minLength": 1},
+                    "json_path": {"type": "string", "minLength": 1},
+                    "file_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+                  }
+                }
+              },
+              "selection_contract": {"type": ["object", "null"]},
+              "reasons": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "assessed_at": {"type": "string", "format": "date-time"}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

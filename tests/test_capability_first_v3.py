@@ -16,8 +16,13 @@ from scripts.qa.run_final_checks import run_final_checks
 from shumozizi.core.io import atomic_json
 from shumozizi.simple.execution import execute_simple_experiment
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.quality import assess_result_quality
 from shumozizi.simple.results import read_result_index, verify_current_result_files
 from shumozizi.simple.state import read_simple_state, update_simple_state
+from tests.quality_protocol_helpers import (
+    evidence_backed_assessment,
+    standard_quality_document,
+)
 from tools.qa.figqa import find_overlaps
 from tools.qa.make_contact_sheet import make_contact_sheet
 from tools.qa.pdf_qa import FIGURE_CAPTION_PATTERN, audit_pdf
@@ -73,7 +78,11 @@ class CapabilityFirstV3Tests(unittest.TestCase):
         script.write_text(
             "from pathlib import Path\n"
             "import json\n"
-            "Path('results/raw/q1.json').write_text(json.dumps({'metrics': {'objective': 2.0}}), encoding='utf-8')\n",
+            "Path('results/raw/q1.json').write_text(\n"
+            "    json.dumps({'metrics': {'objective': 2.0}, "
+            f"'quality': {standard_quality_document(2.0)!r}}}),\n"
+            "    encoding='utf-8',\n"
+            ")\n",
             encoding="utf-8",
         )
         command = f'"{sys.executable}" code/q1.py'
@@ -113,6 +122,13 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             },
             index["results"][1]["metric_sources"]["objective"],
         )
+        assess_result_quality(
+            run_dir,
+            result_id="q1_primary_b",
+            assessment=evidence_backed_assessment(
+                "q1_primary_b", "results/raw/q1.json"
+            ),
+        )
         (run_dir / "paper" / "sections" / "q1.typ").write_text(
             "// @result q1_primary_b\n// @metric q1_primary_b.objective 2.0\n",
             encoding="utf-8",
@@ -139,6 +155,44 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             "current 结果未标记为 execution_valid",
             invalid_current["errors"][0]["message"],
         )
+
+    def test_diagnostic_result_is_rejected_as_paper_evidence(self) -> None:
+        """执行成功的诊断结果不能越过论文证据边界。"""
+        run_dir = initialize_simple_run(self.root, "v3-diagnostic-result")
+        script = run_dir / "code" / "q1.py"
+        script.write_text(
+            "from pathlib import Path\n"
+            "import json\n"
+            "Path('results/raw/q1.json').write_text(json.dumps({'metrics': {'objective': 2.0}}), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        recorded = execute_simple_experiment(
+            run_dir,
+            result_id="q1_diagnostic",
+            question_id="Q1",
+            kind="diagnostic",
+            command=f'"{sys.executable}" code/q1.py',
+            expected_outputs=["results/raw/q1.json"],
+            metrics_from="results/raw/q1.json",
+        )
+        assess_result_quality(
+            run_dir,
+            result_id="q1_diagnostic",
+            feasibility_valid=True,
+            baseline_preserved=True,
+            search_adequacy="failed",
+            result_role="diagnostic",
+            reasons=["test_diagnostic"],
+        )
+        (run_dir / "paper" / "sections" / "q1.typ").write_text(
+            "// @result q1_diagnostic\n", encoding="utf-8"
+        )
+
+        report = check_result_references(run_dir)
+
+        self.assertTrue(recorded["success"], recorded["error"])
+        self.assertFalse(report["success"])
+        self.assertEqual("结果未通过质量层放行", report["invalid"][0]["reason"])
 
     def test_failed_rerun_that_overwrites_output_invalidates_current_result(self) -> None:
         """失败运行覆盖 current 输出后，终检必须发现旧哈希不再可信。"""
@@ -240,6 +294,17 @@ class CapabilityFirstV3Tests(unittest.TestCase):
         self.assertTrue((run_dir / "qa" / "mechanical-qa.json").is_file())
         self.assertTrue((run_dir / "reports" / "VERIFY_REPORT.md").is_file())
 
+    def test_final_checks_reject_a_blocked_run(self) -> None:
+        """即使手动调用终检，blocked 运行也不能被当作可提交。"""
+        run_dir = initialize_simple_run(self.root, "v3-blocked-qa")
+        update_simple_state(run_dir, phase="blocked")
+
+        report = run_final_checks(run_dir)
+
+        state_check = next(item for item in report["checks"] if item["id"] == "state-phase")
+        self.assertEqual("blocked", report["status"])
+        self.assertFalse(state_check["passed"])
+
     def test_figqa_detects_exported_text_box_overlap(self) -> None:
         """导出的文字边界相交时应报告确定性重叠。"""
         overlaps = find_overlaps(
@@ -324,6 +389,25 @@ class CapabilityFirstV3Tests(unittest.TestCase):
                 / "render_template.py"
             ).is_file()
         )
+
+    def test_production_skills_require_recovery_and_quality_evidence(self) -> None:
+        """生产主动 Skill 必须反映恢复性、逐问阻断和证据可用性实现。"""
+        skills_root = REPO_ROOT / ".agents" / "skills"
+        workflow = (skills_root / "mathmodel-workflow" / "SKILL.md").read_text(encoding="utf-8")
+        solve = (skills_root / "mathmodel-solve" / "SKILL.md").read_text(encoding="utf-8")
+        experiment = (skills_root / "mathmodel-experiment" / "SKILL.md").read_text(encoding="utf-8")
+        paper = (skills_root / "mathmodel-paper" / "SKILL.md").read_text(encoding="utf-8")
+        final_check = (skills_root / "mathmodel-final-check" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("判定器", workflow)
+        self.assertIn("blocked", workflow)
+        self.assertIn("恢复性检查", solve)
+        self.assertIn("库函数", solve)
+        self.assertIn("fail-fast", experiment)
+        self.assertIn("独立登记", experiment)
+        self.assertIn("search_adequacy", paper)
+        self.assertIn("search_adequacy", final_check)
+        self.assertTrue((skills_root / "mathmodel-solve" / "references" / "optimization-recovery.md").is_file())
 
 
 if __name__ == "__main__":

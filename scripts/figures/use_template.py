@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from shumozizi.core.io import ContractError, relative_inside, resolve_inside
 from shumozizi.simple.figure_templates import SUPPORTED_TEMPLATES, load_data, render
 from shumozizi.simple.figures import register_figure
+from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state
 
@@ -43,8 +44,13 @@ def _find_input(run_dir: Path, result_id: str, requested: str | None) -> str:
     """
     index = read_result_index(run_dir)
     result = next((item for item in index["results"] if item["result_id"] == result_id), None)
-    if result is None or result["status"] != "current" or not result["execution_valid"]:
-        raise ContractError("--result-id 必须指向 current 且 execution_valid=true 的结果")
+    if (
+        result is None
+        or result["status"] != "current"
+        or not result["execution_valid"]
+        or not quality_allows_paper(run_dir, result_id)
+    ):
+        raise ContractError("--result-id 必须指向 current、execution_valid=true 且通过质量层的结果")
     if requested:
         normalized = relative_inside(
             run_dir, resolve_inside(run_dir, requested, must_exist=True)

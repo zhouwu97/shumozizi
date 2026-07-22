@@ -156,6 +156,10 @@ def initialize_simple_run(
         {"schema_version": "1.0", "run_id": identifier, "results": []},
     )
     atomic_json(
+        run_dir / "results" / "quality.json",
+        {"schema_version": "2.0", "run_id": identifier, "assessments": []},
+    )
+    atomic_json(
         run_dir / "figures" / "index.json",
         {"schema_version": "1.0", "run_id": identifier, "figures": []},
     )
