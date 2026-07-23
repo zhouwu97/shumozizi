@@ -12,6 +12,7 @@ from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.adapters import verify_verification_protocol
 from shumozizi.simple.results import read_result_index, require_result_index
+from shumozizi.simple.review import scientific_review_status
 from shumozizi.simple.selection import (
     read_candidate_registry,
     register_verified_candidate,
@@ -27,7 +28,9 @@ RESULT_ROLES = {"diagnostic", "candidate", "accepted", "rejected"}
 
 def _schema() -> dict[str, Any]:
     """读取结果质量层的版本化 Schema。"""
-    return load_json(resolve_repo_root(Path(__file__)) / "schemas/simple_result_quality.schema.json")
+    return load_json(
+        resolve_repo_root(Path(__file__)) / "schemas/simple_result_quality.schema.json"
+    )
 
 
 def _schema_errors(payload: dict[str, Any]) -> list[str]:
@@ -186,8 +189,10 @@ def _accepted_record(
     reasons = assessment.get("reasons")
     verification = assessment.get("verification")
     provided_contract = assessment.get("selection_contract")
-    if not isinstance(reasons, list) or not reasons or any(
-        not isinstance(item, str) or not item.strip() for item in reasons
+    if (
+        not isinstance(reasons, list)
+        or not reasons
+        or any(not isinstance(item, str) or not item.strip() for item in reasons)
     ):
         raise ContractError("quality assessment 必须包含非空机器原因")
     if not isinstance(verification, dict):
@@ -202,7 +207,9 @@ def _accepted_record(
             raise ContractError("selection_contract 必须是对象")
         validate_selection_contract(provided_contract, require_coverage=True)
         if not _same_contract(provided_contract, contract):
-            raise ContractError("quality assessment 的 selection_contract 与冻结 adapter 合同不一致")
+            raise ContractError(
+                "quality assessment 的 selection_contract 与冻结 adapter 合同不一致"
+            )
     results = _result_map(run_dir)
     result = results.get(result_id)
     if result is None:
@@ -337,21 +344,17 @@ def assess_result_quality(
 def result_quality(run_dir: Path, result_id: str) -> dict[str, Any] | None:
     """返回一个结果最新的质量记录。"""
     return next(
-        (item for item in read_result_quality(run_dir)["assessments"] if item["result_id"] == result_id),
+        (
+            item
+            for item in read_result_quality(run_dir)["assessments"]
+            if item["result_id"] == result_id
+        ),
         None,
     )
 
 
-def quality_allows_paper(run_dir: Path, result_id: str) -> bool:
-    """仅在 production/current/accepted 三段证据链仍可重放时放行事实消费。
-
-    Args:
-        run_dir: v3 运行目录。
-        result_id: 准备被论文、图表或正式下游问题消费的结果 ID。
-
-    Returns:
-        当且仅当结果仍是完整独立证据链的 registry incumbent 时为真。
-    """
+def _quality_allows_local_facts(run_dir: Path, result_id: str) -> bool:
+    """验证结果自身的三段证据链，不把内部一致性误写成科学正确性。"""
     try:
         quality = read_result_quality(run_dir)
         if quality["schema_version"] != "3.0":
@@ -401,6 +404,21 @@ def quality_allows_paper(run_dir: Path, result_id: str) -> bool:
         return False
 
 
+def quality_allows_paper(run_dir: Path, result_id: str) -> bool:
+    """在结果链与独立科学红队同时通过时放行论文事实消费。
+
+    Args:
+        run_dir: v3 运行目录。
+        result_id: 准备被论文、图表或正式下游问题消费的结果 ID。
+
+    Returns:
+        当且仅当结果仍是完整独立证据链的 registry incumbent 时为真。
+    """
+    if not _quality_allows_local_facts(run_dir, result_id):
+        return False
+    return bool(scientific_review_status(run_dir).get("allowed"))
+
+
 def require_prior_question_quality(
     run_dir: Path,
     downstream_question: str,
@@ -438,10 +456,9 @@ def require_prior_question_quality(
         candidates = [
             item["result_id"]
             for item in index["results"]
-            if item["question_id"] == predecessor
-            and _result_mode(item) == "production"
+            if item["question_id"] == predecessor and _result_mode(item) == "production"
         ]
-        if not any(quality_allows_paper(run_dir, result_id) for result_id in candidates):
+        if not any(_quality_allows_local_facts(run_dir, result_id) for result_id in candidates):
             raise ContractError(
                 f"{downstream_question} 不能放行：{predecessor} 缺少有效且未降级的质量记录"
             )

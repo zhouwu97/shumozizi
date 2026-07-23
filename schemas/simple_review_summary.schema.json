@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_review_summary.schema.json",
+  "title": "Capability-First v3 Independent Review Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "scientific_review", "paper_blind_review", "updated_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "scientific_review": {"$ref": "#/$defs/scientificReview"},
+    "paper_blind_review": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/paperBlindReview"}
+      ]
+    },
+    "updated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "findingLevel": {"enum": ["none", "P0", "P1", "P2", "P3"]},
+    "verdict": {"enum": ["pass", "fail", "needs_rework", "revoked"]},
+    "packet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest_file", "manifest_sha256"],
+      "properties": {
+        "manifest_file": {"type": "string", "minLength": 1},
+        "manifest_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "scientificIsolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thread_id", "fresh_context", "solver_context_visible", "previous_review_visible", "quality_verdicts_visible", "decision_log_visible_initially"],
+      "properties": {
+        "thread_id": {"type": "string", "minLength": 1},
+        "fresh_context": {"const": true},
+        "solver_context_visible": {"const": false},
+        "previous_review_visible": {"const": false},
+        "quality_verdicts_visible": {"const": false},
+        "decision_log_visible_initially": {"const": false}
+      }
+    },
+    "paperIsolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thread_id", "fresh_context", "solver_context_visible", "scientific_review_visible", "quality_verdicts_visible", "code_visible_initially"],
+      "properties": {
+        "thread_id": {"type": "string", "minLength": 1},
+        "fresh_context": {"const": true},
+        "solver_context_visible": {"const": false},
+        "scientific_review_visible": {"const": false},
+        "quality_verdicts_visible": {"const": false},
+        "code_visible_initially": {"const": false}
+      }
+    },
+    "scientificReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "highest_severity", "competition_strength", "full_rerun_required", "affected_questions", "packet", "report", "reviewer", "reviewed_at"],
+      "properties": {
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "highest_severity": {"$ref": "#/$defs/findingLevel"},
+        "competition_strength": {"enum": ["weak", "qualified", "strong", "unknown"]},
+        "full_rerun_required": {"type": "boolean"},
+        "affected_questions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "packet": {"$ref": "#/$defs/packet"},
+        "report": {"$ref": "#/$defs/report"},
+        "reviewer": {"$ref": "#/$defs/scientificIsolation"},
+        "reviewed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "paperBlindReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "highest_severity", "packet", "report", "reviewer", "reviewed_at"],
+      "properties": {
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "highest_severity": {"$ref": "#/$defs/findingLevel"},
+        "packet": {"$ref": "#/$defs/packet"},
+        "report": {"$ref": "#/$defs/report"},
+        "reviewer": {"$ref": "#/$defs/paperIsolation"},
+        "reviewed_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

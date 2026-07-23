@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_capability_route.schema.json",
+  "title": "Capability-First v3 Capability Route",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "status", "problem_families", "primary_capability", "cross_capabilities", "verification_capability", "toolchain", "tooling_sha256", "knowledge_assets", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "status": {"const": "ready"},
+    "problem_families": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["geometry_kinematics", "optimization", "mechanism_dynamics", "network_system", "prediction_statistical", "evaluation_ranking", "other"]}
+    },
+    "primary_capability": {"$ref": "#/$defs/capability"},
+    "cross_capabilities": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/capability"}},
+    "verification_capability": {"anyOf": [{"$ref": "#/$defs/capability"}, {"type": "null"}]},
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production_engine", "independent_engine", "independence_strategy", "reason"],
+      "properties": {
+        "production_engine": {"enum": ["python", "matlab", "octave"]},
+        "independent_engine": {"anyOf": [{"enum": ["python", "matlab", "octave"]}, {"type": "null"}]},
+        "independence_strategy": {"enum": ["not_required", "alternative_formulation", "alternative_runtime", "alternative_language"]},
+        "reason": {"type": "string", "minLength": 12}
+      }
+    },
+    "tooling_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "knowledge_assets": {"type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/asset"}},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+        "reason": {"type": "string", "minLength": 12}
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "purpose", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "purpose": {"type": "string", "minLength": 12},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

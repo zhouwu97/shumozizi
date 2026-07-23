@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "adapter_id", "adapter_version", "selection_contract", "stages"],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "1.1"},
     "adapter_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "adapter_version": {"type": "string", "minLength": 1},
     "selection_contract": {"type": "object"},
@@ -25,9 +25,15 @@
     "stage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["implementation_file", "arguments", "input_files", "output_file"],
+      "required": ["implementation_file", "source_files", "arguments", "input_files", "output_file"],
       "properties": {
         "implementation_file": {"type": "string", "minLength": 1},
+        "source_files": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
         "arguments": {"type": "array", "items": {"type": "string"}},
         "input_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "output_file": {"type": "string", "minLength": 1},

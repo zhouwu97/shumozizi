@@ -22,14 +22,20 @@ PAPER_SUFFICIENCY_REPORT_PATH = Path("qa/paper-sufficiency.json")
 
 ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
     "abstract": re.compile(r"摘要|\babstract\b", re.IGNORECASE),
-    "problem_restatement": re.compile(r"问题重述|问题描述|题目重述|\bproblem\s+restatement\b", re.IGNORECASE),
+    "problem_restatement": re.compile(
+        r"问题重述|问题描述|题目重述|\bproblem\s+restatement\b", re.IGNORECASE
+    ),
     "assumptions": re.compile(r"假设|\bassumptions?\b", re.IGNORECASE),
-    "notation_data_processing": re.compile(r"符号|数据处理|\bnotation\b|\bdata\s+processing\b", re.IGNORECASE),
+    "notation_data_processing": re.compile(
+        r"符号|数据处理|\bnotation\b|\bdata\s+processing\b", re.IGNORECASE
+    ),
     "shared_model": re.compile(r"共享模型|模型建立|模型与算法|\bshared\s+model\b", re.IGNORECASE),
     "direct_answer": re.compile(r"直接答案|问题答案|\bdirect\s+answer\b", re.IGNORECASE),
     "model_algorithm": re.compile(r"模型|算法|求解|\bmodel\b|\balgorithm\b", re.IGNORECASE),
     "key_results": re.compile(r"关键结果|结果|\bkey\s+results?\b", re.IGNORECASE),
-    "verification_boundary": re.compile(r"验证|检验|边界|局限|\bvalidation\b|\blimitations?\b", re.IGNORECASE),
+    "verification_boundary": re.compile(
+        r"验证|检验|边界|局限|\bvalidation\b|\blimitations?\b", re.IGNORECASE
+    ),
     "robustness_or_missing_reason": re.compile(
         r"敏感性|稳健性|鲁棒性|未进行.{0,12}(?:验证|稳健)|缺少.{0,12}(?:验证|稳健)|\brobustness\b|\bsensitivity\b",
         re.IGNORECASE,
@@ -39,7 +45,9 @@ ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 FIGURE_PATTERN = re.compile(r"(?:图|figure)\s*\d+", re.IGNORECASE)
 TABLE_PATTERN = re.compile(r"(?:表|table)\s*\d+", re.IGNORECASE)
-CITATION_PATTERN = re.compile(r"\[[0-9][0-9,;\- ]*\]|[（(][^（）()]{0,40}(?:19|20)\d{2}[^（）()]{0,40}[）)]")
+CITATION_PATTERN = re.compile(
+    r"\[[0-9][0-9,;\- ]*\]|[（(][^（）()]{0,40}(?:19|20)\d{2}[^（）()]{0,40}[）)]"
+)
 FORMULA_PATTERN = re.compile(r"(?:\$\$|\\\[|\\\(|(?<![<>=])=(?![=>]))")
 
 
@@ -119,8 +127,7 @@ def build_content_blueprint(
     if unexpected:
         raise ContractError("内容蓝图包含非必答问题: " + ", ".join(unexpected))
     result_questions = {
-        result["result_id"]: result["question_id"]
-        for result in read_result_index(root)["results"]
+        result["result_id"]: result["question_id"] for result in read_result_index(root)["results"]
     }
     question_sections: list[dict[str, Any]] = []
     all_questions_ready = True
@@ -131,13 +138,9 @@ def build_content_blueprint(
             not isinstance(result_id, str) or not result_id for result_id in supplied
         ):
             raise ContractError(f"{question_id} 的论文证据必须是字符串数组")
-        valid_ids = [
-            result_id for result_id in supplied if quality_allows_paper(root, result_id)
-        ]
+        valid_ids = [result_id for result_id in supplied if quality_allows_paper(root, result_id)]
         own_valid_ids = [
-            result_id
-            for result_id in valid_ids
-            if result_questions.get(result_id) == question_id
+            result_id for result_id in valid_ids if result_questions.get(result_id) == question_id
         ]
         ready = bool(own_valid_ids)
         all_questions_ready = all_questions_ready and ready
@@ -149,10 +152,7 @@ def build_content_blueprint(
                 draft_allowed=ready,
                 blocked_reason=None
                 if ready
-                else (
-                    f"{question_id} 缺少本问 current production/accepted 结果，"
-                    "不能写入题目事实"
-                ),
+                else (f"{question_id} 缺少本问 current production/accepted 结果，不能写入题目事实"),
             )
         )
     global_result_ids = list(dict.fromkeys(all_valid_result_ids))
@@ -239,7 +239,9 @@ def build_content_blueprint(
         "generated_at": utc_now(),
     }
     require_valid(blueprint, PAPER_CONTENT_BLUEPRINT_SCHEMA)
-    atomic_json(_run_output_path(root, output_path, PAPER_CONTENT_BLUEPRINT_PATH, "内容蓝图"), blueprint)
+    atomic_json(
+        _run_output_path(root, output_path, PAPER_CONTENT_BLUEPRINT_PATH, "内容蓝图"), blueprint
+    )
     return blueprint
 
 
@@ -254,19 +256,43 @@ def _question_pattern(question_id: str) -> re.Pattern[str]:
     return re.compile("|".join(alternatives), re.IGNORECASE)
 
 
-def _question_segment(text: str, question_id: str, all_question_ids: list[str]) -> tuple[bool, str]:
-    """截取一个问题标题后的文本，避免全局关键词伪造逐问覆盖。"""
-    match = _question_pattern(question_id).search(text)
-    if match is None:
+def _question_segments(text: str, question_id: str, all_question_ids: list[str]) -> list[str]:
+    """返回一个题目编号的全部候选文本段。
+
+    PDF 展平文本常在目录、摘要或结论中重复题目编号。保留每个候选段，供调用方
+    根据本题所需元素选择正文段，避免将目录条目误判为正文。
+    """
+    segments: list[str] = []
+    for match in _question_pattern(question_id).finditer(text):
+        end = len(text)
+        for other_id in all_question_ids:
+            if other_id == question_id:
+                continue
+            later = _question_pattern(other_id).search(text, match.end())
+            if later is not None:
+                end = min(end, later.start())
+        segments.append(text[match.end() : end])
+    return segments
+
+
+def _question_segment(
+    text: str,
+    question_id: str,
+    all_question_ids: list[str],
+    *,
+    required_elements: list[str],
+) -> tuple[bool, str]:
+    """选择最早覆盖本题所需元素的候选文本段。
+
+    若没有完整候选段，回退到最早出现位置，使真实缺项仍会在报告中暴露。
+    """
+    segments = _question_segments(text, question_id, all_question_ids)
+    if not segments:
         return False, ""
-    end = len(text)
-    for other_id in all_question_ids:
-        if other_id == question_id:
-            continue
-        later = _question_pattern(other_id).search(text, match.end())
-        if later is not None:
-            end = min(end, later.start())
-    return True, text[match.end() : end]
+    for segment in segments:
+        if all(_element_detected(element, segment) for element in required_elements):
+            return True, segment
+    return True, segments[0]
 
 
 def _element_detected(element: str, text: str) -> bool:
@@ -372,9 +398,7 @@ def assess_paper_sufficiency(
                 f"section:{section['section_id']}: {section.get('blocked_reason', '当前证据不允许成文')}"
             )
         elif section["required"] and missing:
-            hard_failures.append(
-                f"section:{section['section_id']}: 缺少 {', '.join(missing)}"
-            )
+            hard_failures.append(f"section:{section['section_id']}: 缺少 {', '.join(missing)}")
     for question_id in document["required_questions"]:
         section = by_question.get(question_id)
         if section is None:
@@ -388,7 +412,12 @@ def assess_paper_sufficiency(
                 }
             )
             continue
-        heading_detected, segment = _question_segment(text, question_id, document["required_questions"])
+        heading_detected, segment = _question_segment(
+            text,
+            question_id,
+            document["required_questions"],
+            required_elements=section["required_elements"],
+        )
         elements = {
             element: heading_detected and _element_detected(element, segment)
             for element in section["required_elements"]
@@ -516,10 +545,14 @@ def run_paper_sufficiency_check(
     checked = verify_content_blueprint(root, blueprint_path=blueprint_path)
     if not checked["valid"]:
         raise ContractError("内容蓝图不可用: " + "; ".join(checked["errors"]))
-    blueprint = load_json(_run_output_path(root, blueprint_path, PAPER_CONTENT_BLUEPRINT_PATH, "内容蓝图"))
+    blueprint = load_json(
+        _run_output_path(root, blueprint_path, PAPER_CONTENT_BLUEPRINT_PATH, "内容蓝图")
+    )
     report = assess_paper_sufficiency(
         blueprint,
         pdf_path=(root / "paper" / "final.pdf") if pdf_path is None else pdf_path,
     )
-    atomic_json(_run_output_path(root, output_path, PAPER_SUFFICIENCY_REPORT_PATH, "内容充分性报告"), report)
+    atomic_json(
+        _run_output_path(root, output_path, PAPER_SUFFICIENCY_REPORT_PATH, "内容充分性报告"), report
+    )
     return report

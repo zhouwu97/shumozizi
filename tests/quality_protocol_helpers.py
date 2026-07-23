@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.simple.adapters import run_verification_protocol
+from shumozizi.simple.review import build_review_packet, import_scientific_review
+from shumozizi.simple.state import read_simple_state, update_simple_state
 
 
 def standard_selection_contract() -> dict[str, Any]:
@@ -228,19 +230,21 @@ def _write_synthetic_adapter(
         encoding="utf-8",
     )
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "adapter_id": "synthetic-quality-test",
         "adapter_version": "1.0",
         "selection_contract": selection_contract,
         "stages": {
             "candidate_generator": {
                 "implementation_file": generator_path,
+                "source_files": [generator_path],
                 "arguments": [candidate_output],
                 "input_files": [generator_path],
                 "output_file": candidate_output,
             },
             "exact_scorer": {
                 "implementation_file": scorer_path,
+                "source_files": [scorer_path],
                 "arguments": [candidate_output, exact_output, *artifact_paths.values()],
                 "input_files": [scorer_path, candidate_output],
                 "output_file": exact_output,
@@ -248,6 +252,7 @@ def _write_synthetic_adapter(
             },
             "search_auditor": {
                 "implementation_file": auditor_path,
+                "source_files": [auditor_path],
                 "arguments": [candidate_output, exact_output, audit_output],
                 "input_files": [auditor_path, candidate_output, exact_output],
                 "output_file": audit_output,
@@ -327,6 +332,39 @@ def adapter_backed_assessment(
         "verification": protocol["verification"],
         "reasons": reasons or ["synthetic_adapter_evidence"],
     }
+
+
+def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
+    """为运行时协议测试绑定隔离且未漂移的科学红队报告。
+
+    该夹具只模拟已经在新对话完成的报告导入；生产运行仍必须由独立对话实际做清洁室
+    复现和反例攻击。
+    """
+    state = read_simple_state(run_dir)
+    if state["phase"] == "analysis":
+        from tests.capability_flow_helpers import prepare_minimal_capability_route
+
+        prepare_minimal_capability_route(run_dir)
+    if read_simple_state(run_dir)["phase"] == "experiment":
+        update_simple_state(run_dir, phase="scientific_review")
+    if read_simple_state(run_dir)["phase"] != "scientific_review":
+        raise ValueError("测试科学审查只能从 analysis 或 experiment 开始")
+    packet = build_review_packet(run_dir, kind="scientific")
+    report = run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
+    report.write_text(
+        "# 合成科学红队报告\n\n已绑定独立公式、反例和污染范围。\n",
+        encoding="utf-8",
+    )
+    return import_scientific_review(
+        run_dir,
+        manifest_file=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+        verdict="pass",
+        highest_severity="none",
+        competition_strength="qualified",
+        full_rerun_required=False,
+        affected_questions=[],
+        reviewer_thread_id="synthetic-fresh-review-thread",
+    )
 
 
 def legacy_self_report_document(

@@ -1,0 +1,4 @@
+interface:
+  display_name: "MATLAB 独立验证"
+  short_description: "使用 MATLAB 或 Octave 做独立数值实现和三维图。"
+  default_prompt: "Use $mathmodel-matlab to build an independent MATLAB or Octave verification for this modeling run."

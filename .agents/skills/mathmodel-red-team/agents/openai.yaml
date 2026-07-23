@@ -1,0 +1,4 @@
+interface:
+  display_name: "Math Modeling Red Team"
+  short_description: "Independently attack modeling results before paper submission"
+  default_prompt: "Use $mathmodel-red-team to run an independent scientific or blind-paper review."

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -26,6 +27,24 @@ TEMPLATE_SCRIPTS = {
     "paired-raincloud": "make_paired_raincloud.py",
     "correlation-pairgrid": "make_correlation_pairgrid.py",
 }
+
+
+def _freeze_runtime_source(source: Path, target_dir: Path, *, prefix: str) -> Path:
+    """按内容哈希冻结运行期源文件，避免后续重渲染覆盖既有证据。
+
+    Args:
+        source: 当前仓库中的源文件。
+        target_dir: 当前运行内的冻结代码目录。
+        prefix: 冻结文件名的稳定前缀。
+
+    Returns:
+        运行目录内内容寻址后的冻结副本路径。
+    """
+    content_hash = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+    target = target_dir / f"{prefix}.{content_hash}{source.suffix}"
+    if not target.is_file():
+        shutil.copy2(source, target)
+    return target
 
 
 def _find_input(run_dir: Path, result_id: str, requested: str | None) -> str:
@@ -67,7 +86,7 @@ def _find_input(run_dir: Path, result_id: str, requested: str | None) -> str:
 
 
 def _copy_runtime_sources(run_dir: Path, template_id: str) -> tuple[str, str]:
-    """复制冻结模板源和 v3 渲染器到本次运行代码目录。
+    """复制内容寻址的模板源和 v3 渲染器到本次运行代码目录。
 
     Args:
         run_dir: v3 运行目录。
@@ -88,10 +107,16 @@ def _copy_runtime_sources(run_dir: Path, template_id: str) -> tuple[str, str]:
     )
     if not source_template.is_file():
         raise ContractError(f"保留模板源不存在: {source_template}")
-    reference_target = target_dir / f"reference_{source_template.name}"
-    shutil.copy2(source_template, reference_target)
-    renderer_target = target_dir / "v3_figure_templates.py"
-    shutil.copy2(REPO_ROOT / "src" / "shumozizi" / "simple" / "figure_templates.py", renderer_target)
+    reference_target = _freeze_runtime_source(
+        source_template,
+        target_dir,
+        prefix=f"reference_{source_template.stem}",
+    )
+    renderer_target = _freeze_runtime_source(
+        REPO_ROOT / "src" / "shumozizi" / "simple" / "figure_templates.py",
+        target_dir,
+        prefix="v3_figure_templates",
+    )
     return (
         reference_target.relative_to(run_dir).as_posix(),
         renderer_target.relative_to(run_dir).as_posix(),

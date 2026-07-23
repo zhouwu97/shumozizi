@@ -1,0 +1,4 @@
+interface:
+  display_name: "建模能力路由"
+  short_description: "Freeze modeling, validation, tools, and local knowledge routing."
+  default_prompt: "Use $mathmodel-capability-router to create a modeling capability route."

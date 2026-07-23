@@ -25,6 +25,7 @@ from shumozizi.simple.selection import read_candidate_registry
 from tests.quality_protocol_helpers import (
     adapter_backed_assessment,
     legacy_self_report_document,
+    record_passing_scientific_review,
     run_synthetic_verification_protocol,
 )
 
@@ -164,6 +165,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
             self.assertFalse(lower["paper_allowed"])
             self.assertEqual("best", registry["groups"][0]["best_result_id"])
             self.assertIn("below_best_verified_lower_bound", lower["reasons"])
+            record_passing_scientific_review(run_dir)
             self.assertTrue(quality_allows_paper(run_dir, "best"))
             self.assertFalse(quality_allows_paper(run_dir, "lower"))
 
@@ -272,6 +274,7 @@ class CapabilityQualityProtocolTests(unittest.TestCase):
 
             registry = read_candidate_registry(run_dir)
             self.assertEqual("incumbent", registry["groups"][0]["best_result_id"])
+            record_passing_scientific_review(run_dir)
             self.assertTrue(quality_allows_paper(run_dir, "incumbent"))
 
     def test_eight_dimensional_projection_to_four_dimensions_is_rejected(self) -> None:

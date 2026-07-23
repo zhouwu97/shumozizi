@@ -158,6 +158,39 @@ def test_complete_short_paper_is_not_blocked_by_page_count_alone() -> None:
     assert not report["hard_failures"]
 
 
+def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None:
+    """目录重复题号时，应继续定位包含全部元素的正文段。"""
+    question_ids = ["Q1", "Q2", "Q3", "Q4", "Q5"]
+    contents = "\n".join(
+        f"{question_id}\n直接答案\n模型与算法\n验证与边界" for question_id in question_ids
+    )
+    body = "\n".join(
+        (
+            f"{question_id}\n直接答案：已回答。模型与算法：已说明。"
+            "关键结果：已复算。验证与边界：已说明。"
+        )
+        for question_id in question_ids
+    )
+    report = assess_paper_sufficiency(
+        _blueprint(question_ids),
+        pdf_text=f"""
+        摘要
+        问题重述与假设
+        共享模型
+        目录
+        {contents}
+        {body}
+        全局稳健性：已说明。
+        结论
+        参考文献
+        """,
+        page_count=2,
+    )
+
+    assert report["status"] == "pass"
+    assert all(item["complete"] for item in report["question_coverage"])
+
+
 def test_question_section_needs_its_own_current_production_result(
     tmp_path: Path,
     monkeypatch,
@@ -183,7 +216,9 @@ def test_question_section_needs_its_own_current_production_result(
         run_dir,
         evidence_by_question={"Q1": ["Q2-R1"], "Q2": ["Q2-R1"]},
     )
-    q1 = next(section for section in blueprint["sections"] if section["section_id"] == "question_Q1")
+    q1 = next(
+        section for section in blueprint["sections"] if section["section_id"] == "question_Q1"
+    )
 
     assert not q1["draft_allowed"]
     assert "本问" in q1["blocked_reason"]

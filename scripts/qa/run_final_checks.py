@@ -22,9 +22,12 @@ from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.paper.contributions import verify_contribution_ledger
 from shumozizi.paper.references import verify_paper_references
 from shumozizi.paper.sufficiency import run_paper_sufficiency_check
+from shumozizi.paper.templates import require_materialized_template
 from shumozizi.simple.figures import verify_current_figure_files
 from shumozizi.simple.results import verify_current_result_files
+from shumozizi.simple.review import paper_blind_review_status, scientific_review_status
 from shumozizi.simple.state import read_simple_state
+from shumozizi.simple.visualization import require_visualization_complete
 from tools.qa.make_contact_sheet import make_contact_sheet
 from tools.qa.pdf_qa import audit_pdf
 
@@ -38,6 +41,18 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _print_cli_payload(payload: dict[str, Any]) -> None:
+    """以 UTF-8 输出终检摘要，避免 Windows 默认代码页截断检查结果。"""
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, ValueError):
+            # 管道或测试替身可能不支持重配；此时仍交由其原始写入语义处理。
+            pass
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
 def _check(check_id: str, payload: dict[str, Any], details: str) -> dict[str, Any]:
     """将子检查标准化为报告条目。
 
@@ -49,7 +64,12 @@ def _check(check_id: str, payload: dict[str, Any], details: str) -> dict[str, An
     Returns:
         统一的检查条目。
     """
-    return {"id": check_id, "passed": bool(payload.get("success")), "details": details, "payload": payload}
+    return {
+        "id": check_id,
+        "passed": bool(payload.get("success")),
+        "details": details,
+        "payload": payload,
+    }
 
 
 def _optional_paper_protocol_check(
@@ -111,6 +131,53 @@ def run_final_checks(
             "payload": {"phase": state["phase"]},
         }
     )
+    scientific_review = scientific_review_status(root)
+    checks.append(
+        _check(
+            "scientific-review-release",
+            {"success": scientific_review["allowed"], "reason": scientific_review["reason"]},
+            "独立科学红队的冻结输入、报告和隔离声明仍有效",
+        )
+    )
+    try:
+        visualization = require_visualization_complete(root)
+        visualization_payload = {
+            "success": True,
+            "contract_count": len(visualization["contracts"]),
+        }
+    except (ContractError, OSError, TypeError, ValueError) as exc:
+        visualization_payload = {"success": False, "errors": [str(exc)]}
+    checks.append(
+        _check(
+            "visualization-contract",
+            visualization_payload,
+            "能力路由要求的模型与求解视觉证据已完成且输出未漂移",
+        )
+    )
+    try:
+        template = require_materialized_template(root)
+        template_payload = {
+            "success": True,
+            "template_id": template["template_id"],
+            "engine": template["engine"],
+        }
+    except (ContractError, OSError, TypeError, ValueError) as exc:
+        template_payload = {"success": False, "errors": [str(exc)]}
+    checks.append(
+        _check(
+            "paper-template-manifest",
+            template_payload,
+            "完整写作模板与比赛、语言和排版引擎仍匹配",
+        )
+    )
+    paper_blind_review = paper_blind_review_status(root)
+    checks.append(
+        _check(
+            "paper-blind-review-release",
+            {"success": paper_blind_review["allowed"], "reason": paper_blind_review["reason"]},
+            "独立 PDF 盲审的冻结输入、报告和隔离声明仍有效",
+        )
+    )
     pdf_report = audit_pdf(
         pdf,
         anonymous_required=anonymous_required,
@@ -170,9 +237,7 @@ def run_final_checks(
     contact_sheet = root / "qa" / "contact-sheet.png"
     contact_error: str | None = None
     # 联系表用于人工定位 PDF 内的机械问题，因此只要文件可打开就应尽量生成。
-    pdf_open = any(
-        item["id"] == "pdf-open" and item["passed"] for item in pdf_report["checks"]
-    )
+    pdf_open = any(item["id"] == "pdf-open" and item["passed"] for item in pdf_report["checks"])
     if pdf_open:
         try:
             make_contact_sheet(pdf, contact_sheet)
@@ -180,7 +245,13 @@ def run_final_checks(
             contact_error = str(exc)
     else:
         contact_error = "PDF 未通过基础读取检查，未生成联系表"
-    checks.append({"id": "contact-sheet", "passed": contact_error is None, "details": contact_error or str(contact_sheet.relative_to(root))})
+    checks.append(
+        {
+            "id": "contact-sheet",
+            "passed": contact_error is None,
+            "details": contact_error or str(contact_sheet.relative_to(root)),
+        }
+    )
     failed = [item["id"] for item in checks if not item["passed"]]
     report = {
         "schema_version": "1.0",
@@ -195,10 +266,20 @@ def run_final_checks(
         "generated_at": _utc_now(),
     }
     atomic_json(root / "qa" / "mechanical-qa.json", report)
-    lines = ["# 机械验证报告", "", f"- 状态：{report['status']}", f"- 运行：{state['run_id']}", "", "## 检查结果", ""]
+    lines = [
+        "# 机械验证报告",
+        "",
+        f"- 状态：{report['status']}",
+        f"- 运行：{state['run_id']}",
+        "",
+        "## 检查结果",
+        "",
+    ]
     for item in checks:
         lines.append(f"- {'通过' if item['passed'] else '失败'}｜{item['id']}：{item['details']}")
-    (root / "reports" / "VERIFY_REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    (root / "reports" / "VERIFY_REPORT.md").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8", newline="\n"
+    )
     return report
 
 
@@ -221,7 +302,7 @@ def main() -> int:
         )
     except (ContractError, OSError) as exc:
         payload = {"status": "blocked", "hard_failures": [str(exc)]}
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    _print_cli_payload(payload)
     return 0 if payload["status"] == "pass" else 1
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import math
@@ -27,6 +28,7 @@ from shumozizi.simple.state import read_simple_state, utc_now
 
 VERIFICATION_DIRECTORY = Path("results/verification")
 STAGE_NAMES = ("candidate_generator", "exact_scorer", "search_auditor")
+ADAPTER_SCHEMA_VERSION = "1.1"
 _FORBIDDEN_GENERATOR_FIELDS = {
     "feasible",
     "exact_recomputed",
@@ -108,6 +110,7 @@ def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]
     stages = contract["stages"]
     stage = stages[stage_name]
     implementation = stage["implementation_file"]
+    source_files = stage["source_files"]
     output_file = stage["output_file"]
     arguments = stage["arguments"]
     input_files = stage["input_files"]
@@ -126,6 +129,10 @@ def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]
         raise ContractError(f"{stage_name} arguments 必须是字符串数组")
     if not isinstance(input_files, list) or not all(isinstance(item, str) for item in input_files):
         raise ContractError(f"{stage_name} input_files 必须是字符串数组")
+    if not isinstance(source_files, list) or not all(
+        isinstance(item, str) for item in source_files
+    ):
+        raise ContractError(f"{stage_name} source_files 必须是字符串数组")
     if not isinstance(artifact_files, list) or not all(
         isinstance(item, str) for item in artifact_files
     ):
@@ -141,10 +148,21 @@ def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]
         if artifact == output_file:
             raise ContractError("exact_scorer 附属产物不能与精确评分输出重复")
     normalized_inputs = [_safe_argument(item) for item in input_files]
+    normalized_sources = [_safe_argument(item) for item in source_files]
+    if len(set(normalized_sources)) != len(normalized_sources):
+        raise ContractError(f"{stage_name} source_files 不能重复")
+    for source_file in normalized_sources:
+        if not source_file.startswith("code/") or Path(source_file).suffix.lower() != ".py":
+            raise ContractError(f"{stage_name} source_files 只能登记 code/ 下的 Python 源码")
     if implementation not in normalized_inputs:
         raise ContractError(f"{stage_name} 必须把实现源码登记为输入")
+    if implementation not in normalized_sources:
+        raise ContractError(f"{stage_name} 必须把实现源码登记为 source_files")
+    if not set(normalized_sources).issubset(normalized_inputs):
+        raise ContractError(f"{stage_name} source_files 必须同时登记为输入")
     return {
         "implementation_file": implementation,
+        "source_files": normalized_sources,
         "arguments": [_safe_argument(item) for item in arguments],
         "input_files": list(dict.fromkeys(normalized_inputs)),
         "output_file": output_file,
@@ -187,6 +205,14 @@ def validate_adapter_contract(contract: dict[str, Any]) -> dict[str, Any]:
     implementations = [stages[name]["implementation_file"] for name in STAGE_NAMES]
     if len(set(implementations)) != len(implementations):
         raise ContractError("三段 adapter 必须使用彼此独立的实现文件")
+    for index, first_stage in enumerate(STAGE_NAMES):
+        first_sources = set(stages[first_stage]["source_files"])
+        for second_stage in STAGE_NAMES[index + 1 :]:
+            shared_sources = sorted(first_sources & set(stages[second_stage]["source_files"]))
+            if shared_sources:
+                raise ContractError(
+                    "三段 adapter 不得共享本地 source_files: " + ", ".join(shared_sources)
+                )
     normalized_selection = json.loads(json.dumps(selection_contract))
     normalized_selection["verification_adapter"] = {
         "adapter_id": str(contract["adapter_id"]),
@@ -194,7 +220,7 @@ def validate_adapter_contract(contract: dict[str, Any]) -> dict[str, Any]:
     }
     validate_selection_contract(normalized_selection, require_coverage=True)
     return {
-        "schema_version": "1.0",
+        "schema_version": ADAPTER_SCHEMA_VERSION,
         "adapter_id": str(contract["adapter_id"]),
         "adapter_version": str(contract["adapter_version"]),
         "selection_contract": normalized_selection,
@@ -637,6 +663,107 @@ def _controlled_command(implementation_file: str, arguments: list[str]) -> str:
     return subprocess.list2cmdline([sys.executable, implementation_file, *arguments])
 
 
+def _existing_local_module_files(base: Path, parts: tuple[str, ...], code_root: Path) -> set[Path]:
+    """解析一个 import 目标在运行目录 ``code/`` 下实际加载的源码。"""
+    if not parts:
+        return set()
+    target = base.joinpath(*parts)
+    candidates = [target.with_suffix(".py"), target / "__init__.py"]
+    for index in range(1, len(parts)):
+        candidates.append(base.joinpath(*parts[:index], "__init__.py"))
+    resolved: set[Path] = set()
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        path = candidate.resolve()
+        if path.is_relative_to(code_root):
+            resolved.add(path)
+    return resolved
+
+
+def _local_import_files(source: Path, code_root: Path) -> set[Path]:
+    """提取静态 import 中能够解析到当前 run 本地 ``code/`` 的文件。"""
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    except SyntaxError as exc:
+        raise ContractError(f"adapter 源码无法解析: {source.name}: {exc.msg}") from exc
+    imports: set[Path] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.update(
+                    _existing_local_module_files(
+                        code_root,
+                        tuple(alias.name.split(".")),
+                        code_root,
+                    )
+                )
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        base = code_root
+        if node.level:
+            base = source.parent
+            for _ in range(node.level - 1):
+                base = base.parent
+        module_parts = tuple(node.module.split(".")) if node.module else ()
+        if module_parts:
+            imports.update(_existing_local_module_files(base, module_parts, code_root))
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            imports.update(
+                _existing_local_module_files(
+                    base,
+                    (*module_parts, alias.name),
+                    code_root,
+                )
+            )
+    return imports
+
+
+def _local_source_closure(run_dir: Path, implementation_file: str) -> set[str]:
+    """递归计算入口源码经静态 import 可达的 run 内本地源码闭包。"""
+    root = run_dir.resolve()
+    code_root = (root / "code").resolve()
+    entry = resolve_inside(root, implementation_file, must_exist=True)
+    if not entry.is_relative_to(code_root):
+        raise ContractError("adapter 实现源码必须位于当前 run 的 code/ 目录")
+    pending = [entry]
+    visited: set[Path] = set()
+    while pending:
+        source = pending.pop()
+        if source in visited:
+            continue
+        visited.add(source)
+        pending.extend(_local_import_files(source, code_root) - visited)
+    return {path.relative_to(root).as_posix() for path in visited}
+
+
+def _verify_declared_source_files(
+    run_dir: Path,
+    *,
+    stage_name: str,
+    stage: dict[str, Any],
+) -> set[str]:
+    """拒绝未登记或多登记的本地 adapter 源码依赖。"""
+    declared = set(stage["source_files"])
+    for relative in declared:
+        resolve_inside(run_dir, relative, must_exist=True)
+    discovered = _local_source_closure(run_dir, stage["implementation_file"])
+    missing = sorted(discovered - declared)
+    unexpected = sorted(declared - discovered)
+    if missing:
+        raise ContractError(
+            f"{stage_name} 存在未登记的本地依赖 source_files: " + ", ".join(missing)
+        )
+    if unexpected:
+        raise ContractError(
+            f"{stage_name} source_files 包含未使用的本地源码: " + ", ".join(unexpected)
+        )
+    return discovered
+
+
 def _run_stage(
     run_dir: Path,
     *,
@@ -649,6 +776,7 @@ def _run_stage(
     implementation = resolve_inside(run_dir, stage["implementation_file"], must_exist=True)
     if implementation.suffix.lower() != ".py":
         raise ContractError("adapter 实现必须是 Python 文件")
+    _verify_declared_source_files(run_dir, stage_name=stage_name, stage=stage)
     for relative in stage["input_files"]:
         resolve_inside(run_dir, relative, must_exist=True)
     command = _controlled_command(stage["implementation_file"], stage["arguments"])
@@ -677,6 +805,12 @@ def _receipt_from_result(result: dict[str, Any], stage: dict[str, Any]) -> dict[
     output_hash = result.get("output_hashes", {}).get(output_file)
     if not isinstance(implementation_hash, str) or not isinstance(output_hash, str):
         raise ContractError("adapter 阶段缺少源码或输出哈希")
+    source_hashes: dict[str, str] = {}
+    for source_file in stage["source_files"]:
+        source_hash = result.get("input_hashes", {}).get(source_file)
+        if not isinstance(source_hash, str):
+            raise ContractError("adapter 阶段缺少登记源码哈希")
+        source_hashes[source_file] = source_hash
     artifact_hashes: dict[str, str] = {}
     for artifact in stage["artifact_files"]:
         artifact_hash = result.get("output_hashes", {}).get(artifact)
@@ -688,6 +822,8 @@ def _receipt_from_result(result: dict[str, Any], stage: dict[str, Any]) -> dict[
         "result_id": result["result_id"],
         "implementation_file": implementation,
         "implementation_sha256": implementation_hash,
+        "source_files": list(stage["source_files"]),
+        "source_hashes": source_hashes,
         "command": command,
         "command_sha256": hashlib.sha256(command.encode("utf-8")).hexdigest(),
         "input_hashes": result["input_hashes"],
@@ -790,11 +926,11 @@ def run_verification_protocol(
         stage_name: _receipt_from_result(stage_results[stage_name], normalized["stages"][stage_name])
         for stage_name in STAGE_NAMES
     }
-    source_hashes = {receipt["implementation_sha256"] for receipt in receipts.values()}
-    if len(source_hashes) != len(STAGE_NAMES):
+    implementation_hashes = {receipt["implementation_sha256"] for receipt in receipts.values()}
+    if len(implementation_hashes) != len(STAGE_NAMES):
         raise ContractError("三段 adapter 实现源码哈希必须独立")
     receipt = {
-        "schema_version": "1.0",
+        "schema_version": ADAPTER_SCHEMA_VERSION,
         "run_id": root.name,
         "result_id": identifier,
         "question_id": question_id,
@@ -852,6 +988,14 @@ def _verify_stage_receipt(
         raise ContractError(f"{stage_name} 缺少 execution_valid 的登记执行")
     if stage_receipt["implementation_file"] != stage_contract["implementation_file"]:
         raise ContractError(f"{stage_name} adapter 实现路径漂移")
+    if stage_receipt["source_files"] != stage_contract["source_files"]:
+        raise ContractError(f"{stage_name} adapter source_files 路径漂移")
+    source_hashes = stage_receipt["source_hashes"]
+    if not isinstance(source_hashes, dict) or set(source_hashes) != set(
+        stage_contract["source_files"]
+    ):
+        raise ContractError(f"{stage_name} adapter source_files 哈希登记不一致")
+    _verify_declared_source_files(run_dir, stage_name=stage_name, stage=stage_contract)
     if stage_receipt["output_file"] != stage_contract["output_file"]:
         raise ContractError(f"{stage_name} adapter 输出路径漂移")
     command = stage_receipt["command"]
@@ -872,6 +1016,9 @@ def _verify_stage_receipt(
     implementation = stage_contract["implementation_file"]
     if stage_receipt["implementation_sha256"] != stage_receipt["input_hashes"].get(implementation):
         raise ContractError(f"{stage_name} adapter 源码哈希不一致")
+    for source_file, source_hash in source_hashes.items():
+        if source_hash != stage_receipt["input_hashes"].get(source_file):
+            raise ContractError(f"{stage_name} adapter 源码收据哈希不一致")
     output = stage_contract["output_file"]
     output_hash = stage_receipt["output_sha256"]
     if result.get("output_hashes", {}).get(output) != output_hash:

@@ -32,7 +32,7 @@ PROHIBITED_REFERENCE_USES = (
     "result_reference",
     "fact_source",
 )
-FROZEN_PAPER_PHASES = {"paper", "verify", "complete"}
+FROZEN_PAPER_PHASES = {"paper", "paper_review", "verify", "complete"}
 
 
 def _default_index_path() -> Path:

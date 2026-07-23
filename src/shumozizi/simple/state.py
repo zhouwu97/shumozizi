@@ -11,16 +11,31 @@ from jsonschema import Draft202012Validator, FormatChecker
 from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
 
-PHASES = ("analysis", "experiment", "paper", "verify", "complete", "blocked")
+PHASES = (
+    "analysis",
+    "capability_route",
+    "experiment",
+    "scientific_review",
+    "visualization",
+    "paper",
+    "paper_review",
+    "verify",
+    "complete",
+    "blocked",
+)
 EXECUTION_MODES = ("production", "exploration")
 ALLOWED_PHASE_TRANSITIONS = {
-    "analysis": {"analysis", "experiment", "blocked"},
-    "experiment": {"experiment", "paper", "blocked"},
-    "paper": {"paper", "verify", "blocked"},
+    "analysis": {"analysis", "capability_route", "blocked"},
+    "capability_route": {"capability_route", "analysis", "experiment", "blocked"},
+    "experiment": {"experiment", "scientific_review", "blocked"},
+    "scientific_review": {"scientific_review", "analysis", "experiment", "visualization", "blocked"},
+    "visualization": {"visualization", "paper", "blocked"},
+    "paper": {"paper", "paper_review", "blocked"},
+    "paper_review": {"paper_review", "paper", "verify", "blocked"},
     "verify": {"verify", "complete", "blocked"},
     "complete": {"complete"},
     # 阻断只允许回到实际生产阶段，避免绕过失败修复直接交付。
-    "blocked": {"blocked", "analysis", "experiment"},
+    "blocked": {"blocked", "analysis", "capability_route", "experiment"},
 }
 STATE_PATH = Path("state/run.json")
 
@@ -143,6 +158,37 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             raise ContractError(f"未知 v3 阶段: {next_phase}")
         if next_phase not in ALLOWED_PHASE_TRANSITIONS[state["phase"]]:
             raise ContractError(f"v3 状态不允许从 {state['phase']} 直接进入 {next_phase}")
+        if next_phase == "experiment":
+            from shumozizi.simple.capabilities import require_capability_route
+
+            require_capability_route(run_dir)
+        if next_phase == "scientific_review":
+            from shumozizi.simple.capabilities import require_independent_oracle_execution
+
+            require_independent_oracle_execution(run_dir)
+        # 科学审查结论不写入运行状态，但状态机必须在交付边界消费其可重放摘要。
+        if next_phase == "visualization":
+            from shumozizi.simple.review import require_paper_generation_allowed
+
+            require_paper_generation_allowed(run_dir)
+        if next_phase == "paper":
+            from shumozizi.paper.templates import require_materialized_template
+            from shumozizi.simple.visualization import require_visualization_complete
+
+            require_visualization_complete(run_dir)
+            require_materialized_template(run_dir)
+        if next_phase == "paper_review":
+            from shumozizi.paper.templates import require_materialized_template
+
+            require_materialized_template(run_dir)
+        if next_phase == "verify":
+            from shumozizi.simple.review import require_paper_blind_review_allowed
+
+            require_paper_blind_review_allowed(run_dir)
+        if next_phase == "complete":
+            from shumozizi.simple.review import require_completion_allowed
+
+            require_completion_allowed(run_dir)
     if "execution_mode" in changes and changes["execution_mode"] not in EXECUTION_MODES:
         raise ContractError("execution_mode 必须为 production 或 exploration")
     state.update(changes)

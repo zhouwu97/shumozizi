@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_template_manifest.schema.json",
+  "title": "Capability-First v3 Paper Template Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "competition", "language", "engine", "template_id", "source_path", "source_sha256", "fallback_used", "selection_reason", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "competition": {"type": "string", "minLength": 1},
+    "language": {"enum": ["zh", "en"]},
+    "engine": {"enum": ["typst", "latex"]},
+    "template_id": {"type": "string", "minLength": 3},
+    "source_path": {"type": "string", "minLength": 1},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "fallback_used": {"const": false},
+    "selection_reason": {"type": "string", "minLength": 16},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

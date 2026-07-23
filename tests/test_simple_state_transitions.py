@@ -9,6 +9,7 @@ from pathlib import Path
 from shumozizi.core.io import ContractError
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.state import update_simple_state
+from tests.capability_flow_helpers import prepare_minimal_capability_route
 
 
 class SimpleStateTransitionTests(unittest.TestCase):
@@ -23,7 +24,8 @@ class SimpleStateTransitionTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, "blocked.*paper"):
                 update_simple_state(run_dir, phase="paper")
 
-            recovered = update_simple_state(run_dir, phase="experiment", current_question="Q2")
+            prepare_minimal_capability_route(run_dir)
+            recovered = update_simple_state(run_dir, current_question="Q2")
 
         self.assertEqual("experiment", recovered["phase"])
         self.assertEqual("Q2", recovered["current_question"])

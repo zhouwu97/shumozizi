@@ -19,8 +19,10 @@ from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.quality import assess_result_quality
 from shumozizi.simple.results import read_result_index, verify_current_result_files
 from shumozizi.simple.state import read_simple_state, update_simple_state
+from tests.capability_flow_helpers import prepare_minimal_capability_route
 from tests.quality_protocol_helpers import (
     adapter_backed_assessment,
+    record_passing_scientific_review,
     run_synthetic_verification_protocol,
 )
 from tools.qa.figqa import find_overlaps
@@ -67,8 +69,9 @@ class CapabilityFirstV3Tests(unittest.TestCase):
         self.assertTrue((run_dir / "problem" / "attachments" / "data.csv").is_file())
         self.assertTrue((run_dir / "state" / "DECISIONS.md").is_file())
         self.assertFalse((run_dir / "state.json").exists())
-        updated = update_simple_state(run_dir, phase="experiment", selected_route="route-a")
-        self.assertEqual(1, updated["revision"])
+        prepare_minimal_capability_route(run_dir)
+        updated = update_simple_state(run_dir, selected_route="route-a")
+        self.assertGreaterEqual(updated["revision"], 3)
         self.assertEqual("route-a", updated["selected_route"])
 
     def test_experiment_records_hashes_and_supersedes_prior_current_result(self) -> None:
@@ -132,6 +135,7 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             result_id="q1_accepted",
             assessment=adapter_backed_assessment(protocol),
         )
+        record_passing_scientific_review(run_dir)
         (run_dir / "paper" / "sections" / "q1.typ").write_text(
             "// @result q1_accepted\n// @metric q1_accepted.objective 2.0\n",
             encoding="utf-8",
@@ -359,8 +363,8 @@ class CapabilityFirstV3Tests(unittest.TestCase):
 
         self.assertEqual(["1"], FIGURE_CAPTION_PATTERN.findall(text))
 
-    def test_active_skills_are_exactly_the_six_v3_capabilities(self) -> None:
-        """自动发现目录不得残留 legacy 审核与路线 Skill。"""
+    def test_active_skills_keep_production_capabilities_and_review_boundaries(self) -> None:
+        """自动发现目录应包含路由、可视化和独立审查等生产能力。"""
         skills = {path.name for path in (REPO_ROOT / ".agents" / "skills").iterdir() if path.is_dir()}
 
         self.assertEqual(
@@ -368,7 +372,11 @@ class CapabilityFirstV3Tests(unittest.TestCase):
                 "mathmodel-workflow",
                 "mathmodel-solve",
                 "mathmodel-experiment",
+                "mathmodel-capability-router",
+                "mathmodel-visual",
+                "mathmodel-matlab",
                 "mathmodel-paper",
+                "mathmodel-red-team",
                 "mathmodel-final-check",
                 "mathmodel-learn-paper",
             },
@@ -413,8 +421,11 @@ class CapabilityFirstV3Tests(unittest.TestCase):
         self.assertIn("库函数", solve)
         self.assertIn("fail-fast", experiment)
         self.assertIn("独立登记", experiment)
+        self.assertIn("source_files", experiment)
         self.assertIn("search_adequacy", paper)
+        self.assertIn("每个内容蓝图允许写入生产事实的必答问题", paper)
         self.assertIn("search_adequacy", final_check)
+        self.assertIn("缺少逐问 `@result`", final_check)
         self.assertTrue((skills_root / "mathmodel-solve" / "references" / "optimization-recovery.md").is_file())
 
 

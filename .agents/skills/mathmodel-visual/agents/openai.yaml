@@ -1,0 +1,4 @@
+interface:
+  display_name: "建模可视化叙事"
+  short_description: "Create evidence-bearing modeling and search diagnostic figures."
+  default_prompt: "Use $mathmodel-visual to generate evidence-bearing modeling figures."

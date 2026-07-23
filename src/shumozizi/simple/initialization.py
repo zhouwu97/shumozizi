@@ -18,6 +18,8 @@ SIMPLE_DIRECTORIES = (
     "results/raw",
     "figures",
     "paper/sections",
+    "review/packet/scientific",
+    "review/packet/paper-blind",
     "qa",
 )
 

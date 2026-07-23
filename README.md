@@ -7,12 +7,14 @@ shumozizi 帮助 Codex 在有限比赛时间内完成完整数学建模赛题：
 ```text
 能力层：理解题目、建模、实验、写作、改进
              ↓
-证据层：命令、日志、输出、哈希、随机种子
+局部证据层：命令、日志、输出、哈希、随机种子、三段 adapter
              ↓
-验收层：编译、路径、占位符、匿名、PDF QA、一次整体审查
+独立审查层：新对话科学红队 → 新对话 PDF 盲审
+             ↓
+机械交付层：编译、路径、占位符、匿名、PDF QA
 ```
 
-证据层只证明程序运行过；机械 QA 只发现确定性错误；科学质量由完整结果和一次整体审查判断。
+局部证据层只证明程序运行过且受控实现彼此一致；它不能排除共享的错误数学语义。实验结束后必须由新的 Codex 对话基于冻结审查包重建问题、做反例和独立挑战，科学红队通过才可写论文。PDF 生成后必须再由另一新对话盲审，机械 QA 只复验提交与追溯。
 
 ## 快速开始
 
@@ -43,6 +45,7 @@ runs/<run-id>/
 ├── results/index.json       # 执行事实与 current/superseded 结果
 ├── figures/
 ├── paper/                   # 源文件、章节与 final.pdf
+├── review/                  # 冻结审查包、独立报告与摘要
 └── qa/                      # 机械 QA、联系表和最终审查
 ```
 
@@ -67,12 +70,35 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
 
 - `mathmodel-workflow`：完整赛题的连续执行与断点恢复；
 - `mathmodel-solve`：题意、数据、候选路线、probe、主路线与 fallback；
-- `mathmodel-experiment`：代码、真实运行、按题型验证、图表和路线切换；Figure Contract 匹配时可通过 v3 适配器从已登记真实结果生成 ROC、预测–真实、配对分布和相关矩阵四类科研图；其余 7 套保留模板仅供演示和布局参考；
+- `mathmodel-capability-router`：在实验前冻结能力、工具、独立 oracle 与本地知识资产；
+- `mathmodel-experiment`：代码、真实运行、按题型验证、保存搜索轨迹、几何事件和真实绘图数据；
+- `mathmodel-matlab`：检测 MATLAB/Octave，提供独立公式实现、优化挑战和三维证据图；
+- `mathmodel-visual`：在科学红队通过后，按题型生成模型图、搜索诊断图和结果图；
 - `mathmodel-paper`：真实结果到论文、Figure Contract 与一次 Claim–Evidence 自审；
-- `mathmodel-final-check`：机械 QA 和一次整体科学审查；
+- `mathmodel-red-team`：必须在全新 Codex 对话中执行的科学红队和 PDF 盲审；
+- `mathmodel-final-check`：独立盲审后的机械 QA 与追溯复验；
 - `mathmodel-learn-paper`：离线论文学习。
 
-默认生产任务不为每问创建审核，不要求固定实验族，也不把知识库、决策记录或图表合同变成阻断门。
+默认生产任务不为每问创建审核，也不要求固定实验族。能力路由、题型必需的 Figure Contract 和竞赛模板清单是生产主链的交付前置条件，不是对答案的评分或限制思考；它们只确保所需能力资产、真实图表证据和写作模板实际被使用。
+
+完整主链为：
+
+```text
+analysis -> capability_route -> experiment -> scientific_review
+-> visualization -> paper -> paper_review -> verify -> complete
+```
+
+几何/运动或机理题的能力路由必须指定独立 oracle；若本机存在 MATLAB 或 Octave，可将其作为 Python 生产求解器之外的公式实现、优化挑战或三维图工具。工具探测、路由和图表合同分别由 `scripts/capabilities/detect_tools.py`、`scripts/capabilities/record_route.py`、`scripts/figures/record_visualization.py` 记录。进入论文前使用 `scripts/paper/select_template.py --materialize` 从完整 `skills/5writing` 模板库选择并实例化与比赛、语言、引擎匹配的模板；未识别比赛不会静默回退。
+
+## 独立审查边界
+
+实验完成后将状态推进到 `scientific_review`，由协调任务创建科学包并新建 Codex 对话：
+
+```powershell
+python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
+```
+
+新对话初始只读该包，不能访问求解上下文、质量日志、历史 run、网络或公开同题答案；它独立重建题意、攻击高风险数学原语并挑战搜索区域。导入合格报告后才能进入 `paper`。PDF 生成后依次进入 `paper_review`，重新建立 `--kind paper-blind` 包，再由另一个只看题面、附件和 PDF 的新对话盲审。PDF 盲审通过后才进入 `verify`；当前 PDF 的机械 QA 也通过后才能 `complete`。任一冻结输入、代码、结果或 PDF 漂移都会撤销相应审查。
 
 ## 机械终检
 
@@ -88,7 +114,7 @@ python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 - `qa/contact-sheet.png`：便于人工快速查看的 PDF 联系表；
 - `reports/VERIFY_REPORT.md`：简短可定位的验证摘要。
 
-一次整体审查写入 `qa/FINAL_REVIEW.md`，只判断题目覆盖、逐问回答、模型目标一致性、结果信息量、baseline/正控制、公平性、可辨识性和结论边界。P0/P1 可触发一次定向修复；P2/P3 和排版小改不重新开启完整审查。图表和表格编号检查仅对 caption 运行且暂为 warning，以避免正文引用误报。
+独立科学红队报告写入 `review/SCIENTIFIC_RED_TEAM.md`：它在论文前通过题面重建、清洁室复现、反例和不同搜索族挑战发现共模错误。PDF 盲审报告写入 `review/PAPER_BLIND_REVIEW.md`：它只看题面、附件、PDF 与提交材料。两者必须是不同的新 Codex 对话，不得读取公开同题答案、历史 run、质量日志或同一求解上下文。图表和表格编号检查仅对 caption 运行且暂为 warning，以避免正文引用误报。
 
 ## 按需知识库
 

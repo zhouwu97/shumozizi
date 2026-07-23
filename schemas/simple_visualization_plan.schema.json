@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_visualization_plan.schema.json",
+  "title": "Capability-First v3 Visualization Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "state_revision", "contracts", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "state_revision": {"type": "integer", "minimum": 0},
+    "contracts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/contract"}},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["figure_id", "role", "question_id", "purpose", "evidence_scope", "source_paths", "rendering_mode", "status", "outputs", "generator", "rationale"],
+      "properties": {
+        "figure_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "role": {"enum": ["method_roadmap", "spatial_scene", "geometric_boundary", "optimization_convergence", "optimization_diagnostic", "spatiotemporal_coordination", "assignment_structure", "state_or_field", "network_topology_or_flow", "fit_residual_or_uncertainty", "sensitivity_or_rank_stability", "data_result"]},
+        "question_id": {"type": "string", "minLength": 1},
+        "purpose": {"type": "string", "minLength": 16},
+        "evidence_scope": {"enum": ["model", "production_result", "search_diagnostic", "method_structure"]},
+        "source_paths": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "result_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "rendering_mode": {"enum": ["2d", "3d", "orthographic", "diagram"]},
+        "status": {"enum": ["planned", "complete", "waived"]},
+        "waiver_reason": {"type": "string", "minLength": 16},
+        "outputs": {"type": "array", "items": {"anyOf": [{"$ref": "#/$defs/file"}, {"type": "string", "minLength": 1}]}},
+        "source_receipts": {"type": "array", "items": {"$ref": "#/$defs/file"}},
+        "generator": {"$ref": "#/$defs/generator"},
+        "generator_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "rationale": {"type": "string", "minLength": 16}
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "script_path"],
+      "properties": {
+        "engine": {"enum": ["python", "matlab", "octave", "drawio", "graphviz", "other"]},
+        "script_path": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

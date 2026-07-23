@@ -16,6 +16,7 @@ from shumozizi.simple.quality import assess_result_quality, quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from tests.quality_protocol_helpers import (
     adapter_backed_assessment,
+    record_passing_scientific_review,
     run_synthetic_verification_protocol,
 )
 
@@ -81,6 +82,44 @@ class VerificationProtocolTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, "输出.*重复|重复.*输出"):
                 validate_adapter_contract(contract)
 
+    def test_adapter_contract_rejects_implicit_shared_local_dependency(self) -> None:
+        """三段入口不能通过未登记的 common.py 复用同一领域逻辑。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "implicit-shared-source")
+            self._write_adapter_scripts(run_dir, variables=["x", "z"])
+            shared = run_dir / "code" / "common.py"
+            shared.write_text("def score(value):\n    return value\n", encoding="utf-8")
+            for file_name in ("generate.py", "score.py", "audit.py"):
+                path = run_dir / "code" / file_name
+                path.write_text(
+                    "import common\n" + path.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+
+            with self.assertRaisesRegex(ContractError, "source_files|本地依赖|依赖"):
+                run_verification_protocol(
+                    run_dir,
+                    result_id="implicit_shared",
+                    question_id="Q1",
+                    contract=self._adapter_contract(variables=["x", "z"]),
+                )
+
+    def test_adapter_contract_rejects_overlapping_declared_local_dependency(self) -> None:
+        """即使显式登记，共享领域源码也不能充当三段独立性证明。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "declared-shared-source")
+            self._write_adapter_scripts(run_dir, variables=["x", "z"])
+            shared = run_dir / "code" / "common.py"
+            shared.write_text("def score(value):\n    return value\n", encoding="utf-8")
+            contract = self._adapter_contract(variables=["x", "z"])
+            for stage_name in ("candidate_generator", "exact_scorer", "search_auditor"):
+                stage = contract["stages"][stage_name]
+                stage["source_files"] = [stage["implementation_file"], "code/common.py"]
+                stage["input_files"].append("code/common.py")
+
+            with self.assertRaisesRegex(ContractError, "共享|独立"):
+                validate_adapter_contract(contract)
+
     def test_protocol_refuses_reused_stage_outputs_before_second_execution(self) -> None:
         """第二次协议不得复用第一轮已冻结的 raw 阶段输出。"""
         with tempfile.TemporaryDirectory() as temporary:
@@ -126,7 +165,7 @@ class VerificationProtocolTests(unittest.TestCase):
                 assessment=adapter_backed_assessment(incumbent_protocol),
             )
             self.assertTrue(accepted["paper_allowed"])
-            self.assertTrue(quality_allows_paper(run_dir, "incumbent"))
+            self.assertFalse(quality_allows_paper(run_dir, "incumbent"))
 
             with self.assertRaisesRegex(ContractError, "calibration"):
                 run_synthetic_verification_protocol(
@@ -141,6 +180,7 @@ class VerificationProtocolTests(unittest.TestCase):
                 item["result_id"]: item for item in read_result_index(run_dir)["results"]
             }
             self.assertEqual("current", results["incumbent"]["status"])
+            record_passing_scientific_review(run_dir)
             self.assertTrue(quality_allows_paper(run_dir, "incumbent"))
             self.assertEqual("diagnostic", results["failed_candidate"]["status"])
 
@@ -289,25 +329,28 @@ class VerificationProtocolTests(unittest.TestCase):
             可由通用运行时执行的 adapter 合同。
         """
         return {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "adapter_id": "synthetic-sparse",
             "adapter_version": "1.0",
             "selection_contract": self._selection_contract(variables=variables),
             "stages": {
                 "candidate_generator": {
                     "implementation_file": "code/generate.py",
+                    "source_files": ["code/generate.py"],
                     "arguments": ["results/raw/candidates.json"],
                     "input_files": ["code/generate.py"],
                     "output_file": "results/raw/candidates.json",
                 },
                 "exact_scorer": {
                     "implementation_file": "code/score.py",
+                    "source_files": ["code/score.py"],
                     "arguments": ["results/raw/candidates.json", "results/raw/exact.json"],
                     "input_files": ["code/score.py", "results/raw/candidates.json"],
                     "output_file": "results/raw/exact.json",
                 },
                 "search_auditor": {
                     "implementation_file": "code/audit.py",
+                    "source_files": ["code/audit.py"],
                     "arguments": [
                         "results/raw/candidates.json",
                         "results/raw/exact.json",
@@ -399,6 +442,7 @@ class VerificationProtocolTests(unittest.TestCase):
 
             self.assertTrue(protocol["success"], protocol.get("error"))
             self.assertTrue(assessment["paper_allowed"])
+            record_passing_scientific_review(run_dir)
             self.assertTrue(quality_allows_paper(run_dir, "synthetic_exact"))
 
     def test_candidate_pool_hash_drift_revokes_adapter_acceptance(self) -> None:

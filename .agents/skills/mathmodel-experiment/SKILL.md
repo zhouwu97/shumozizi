@@ -28,7 +28,7 @@ python scripts/runtime/run_simple_experiment.py runs/<run-id> `
 
 脚本应将指标和机器证据写入 JSON，例如 `{"metrics": {"objective": 123.45}}`。执行器使用 `shell=False`，从该输出自动提取指标并记录 JSON 路径和 SHA-256；不接受自由手填数值。执行索引只保存事实。搜索型生产结果随后按冻结的题目合同执行三段式协议：candidate generator 只输出原始 candidate pool、参数、代理值和完整 trace；exact scorer 独立重算硬约束、可行性和 exact objective；search auditor 从原始 pool/trace、scorer 输出与合同重算覆盖、校准、挑战独立性和选择影响。生成器 JSON 中的 `feasibility`、`exact_recomputed`、`search_adequacy` 或 `problem_effectiveness` 只能作为诊断，不能构成 accepted 证据。论文、提交表和图表只可使用 production scope、current、registry incumbent 且独立证据链完整的结果。硬物理约束优先用有界可行参数化保证；否则必须在写入 submission、指标和 accepted 结果前由 exact scorer 排除不可行策略。
 
-对高风险搜索，generator、scorer 和 auditor 必须各自登记 adapter id/version、受控来源、允许命令、输入、输出及其哈希。generic runtime 只验证这些 provenance 与路径边界，拒绝输入改动、输出漂移、源版本不一致、路径越界和不在合同内的命令；题目数学仍由 adapter 负责。选择合同须声明共同/实体/交互变量组及明确的原生坐标覆盖度量；均值、首元素或低维投影不能作为联合覆盖。并集目标须在代理、校准、exact、选择中都输出 marginal-gain 语义。挑战计划在挑战前冻结 registry incumbent 哈希/exact 和可比标准；允许带标记的 baseline/warm start，但 auditor 必须证明独立新候选、独立覆盖和实际新区域。全域/挑战的 normal exit 仅表示 execution_valid。独立且可比但未改善的挑战维持 incumbent 并提供稳定性证据；充分但较差的挑战只记录为无信息或较弱搜索族；只有发现 scorer 或模型语义错误才可能推翻 incumbent。弱、较差、legacy 或不可审计结果始终是 `candidate`/`diagnostic`，不得覆盖 verified registry。
+对高风险搜索，generator、scorer 和 auditor 必须各自登记 adapter id/version、受控来源、允许命令、输入、输出及其哈希。每段合同的 `source_files` 必须列出该入口静态 import 到的全部本地 `code/**/*.py`，同时列入 `input_files`；不要把共同领域逻辑藏在 `common.py`，三段也不得共享这些本地源码。generic runtime 只验证这些 provenance 与路径边界，拒绝输入改动、输出漂移、源版本不一致、路径越界和不在合同内的命令；题目数学仍由 adapter 负责，且这不是任意恶意 Python 的沙箱。选择合同须声明共同/实体/交互变量组及明确的原生坐标覆盖度量；均值、首元素或低维投影不能作为联合覆盖。并集目标须在代理、校准、exact、选择中都输出 marginal-gain 语义。挑战计划在挑战前冻结 registry incumbent 哈希/exact 和可比标准；允许带标记的 baseline/warm start，但 auditor 必须证明独立新候选、独立覆盖和实际新区域。全域/挑战的 normal exit 仅表示 execution_valid。独立且可比但未改善的挑战维持 incumbent 并提供稳定性证据；充分但较差的挑战只记录为无信息或较弱搜索族；只有发现 scorer 或模型语义错误才可能推翻 incumbent。弱、较差、legacy 或不可审计结果始终是 `candidate`/`diagnostic`，不得覆盖 verified registry。
 
 不要预写复杂 manifest、不要伪造指标，也不要把一次正常退出解释为模型优秀。这是 `fail-fast` 边界：非零退出、缺少输出、空输出或损坏 JSON 必须停止后续解读，先修复或如实记录失败。
 
@@ -50,9 +50,9 @@ python scripts/runtime/run_simple_experiment.py runs/<run-id> `
 
 实现错误直接修；参数或求解器问题路线内调整；fallback 更优则切换并记录。若结果无法回答题目，明确失败边界，不得用图表或论文措辞包装为成功。
 
-## 按需科研绘图能力
+## 实验阶段的图表数据准备
 
-`mathmodel-experiment` 同时是代码与科研可视化能力入口。生成图表前，先为每张主要图填写 Figure Contract，并按需读取：
+实验阶段保存后续图表所需的真实数据、搜索轨迹、几何事件和中间诊断；不再自行决定论文视觉叙事。科学红队通过后，由 `$mathmodel-visual` 按能力路由填写 Figure Contract、选择 3D/数据/流程图工具并登记最终图表。这里可按需读取：
 
 - `skills/3coding-visual/SKILL.md`：把模型实现、真实运行、结果表和数据驱动图表组成可复现实验；
 - `skills/mathmodel-figure-templates/references/figure-catalog.md`：在需要多面板或专业统计表达时匹配最接近的模板；
@@ -70,4 +70,4 @@ python scripts/figures/use_template.py runs/<run-id> `
 
 适配器只接受 `results/index.json` 中 production scope、仍为 `current`、`execution_valid=true`、registry accepted/incumbent 且独立 scorer/auditor 证据完整的 JSON 输出；会把冻结模板源和本次渲染器复制到 `code/figures/`，并登记输入、脚本、PNG/PDF/SVG 与文字 artist 边界的哈希。当前已接入真实数据接口的模板只有 `cv-roc-ci`、`prediction-marginal-grid`、`paired-raincloud`、`correlation-pairgrid`；其他七套仅是保留的演示/布局资源，不能被称为已接入。
 
-结果 JSON 把图表数据放在 `figure_data`（或直接置于根对象）。具体格式和示例见 `docs/V3_FIGURE_TEMPLATE_ADAPTER.md`。源结果被同问同类的新执行替代后，旧图会在最终检查中阻断，必须重新生成。完成后在 `RESULTS_REPORT.md` 说明该图回答的问题、数据来源和证据边界。
+结果 JSON 把图表数据放在 `figure_data`（或直接置于根对象）。具体格式和示例见 `docs/V3_FIGURE_TEMPLATE_ADAPTER.md`。源结果被同问同类的新执行替代后，旧图会在最终检查中阻断，必须重新生成。完成后在 `RESULTS_REPORT.md` 说明可供图表阶段消费的数据、脚本和证据边界。

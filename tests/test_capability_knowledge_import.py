@@ -51,15 +51,19 @@ def test_solve_skill_requires_preflight_and_bounded_capability_selection() -> No
     assert "既有质量协议只在路线比较后约束实际执行证据" in skill
 
 
-def test_import_keeps_the_six_active_skill_architecture() -> None:
-    """知识导入不得通过新增总控 Skill 改变主动能力边界。"""
+def test_import_keeps_explicit_production_capabilities_and_review_boundary() -> None:
+    """知识导入只能接入明确能力，不得恢复旧审核生命周期。"""
     skills = sorted(path.name for path in (REPO_ROOT / ".agents" / "skills").iterdir() if path.is_dir())
 
     assert skills == [
+        "mathmodel-capability-router",
         "mathmodel-experiment",
         "mathmodel-final-check",
         "mathmodel-learn-paper",
+        "mathmodel-matlab",
         "mathmodel-paper",
+        "mathmodel-red-team",
         "mathmodel-solve",
+        "mathmodel-visual",
         "mathmodel-workflow",
     ]

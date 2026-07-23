@@ -28,9 +28,7 @@ def _plot_modules() -> tuple[Any, Any, Any]:
     Raises:
         ContractError: 未安装可选的真实绘图依赖。
     """
-    os.environ.setdefault(
-        "MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "shumozizi-matplotlib")
-    )
+    os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "shumozizi-matplotlib"))
     try:
         import matplotlib
 
@@ -39,7 +37,7 @@ def _plot_modules() -> tuple[Any, Any, Any]:
         import numpy as np
     except ImportError as exc:
         raise ContractError(
-            "缺少真实绘图依赖；请先执行 python -m pip install -e \".[figures]\""
+            '缺少真实绘图依赖；请先执行 python -m pip install -e ".[figures]"'
         ) from exc
     matplotlib.rcParams.update(
         {
@@ -147,7 +145,12 @@ def load_data(template_id: str, path: Path) -> dict[str, Any]:
             item = _object(model, f"models[{index}]")
             name = item.get("name")
             folds = item.get("folds")
-            if not isinstance(name, str) or not name.strip() or not isinstance(folds, list) or not folds:
+            if (
+                not isinstance(name, str)
+                or not name.strip()
+                or not isinstance(folds, list)
+                or not folds
+            ):
                 raise ContractError(f"models[{index}] 需要 name 和非空 folds")
             normalized_folds = []
             for fold_index, fold in enumerate(folds):
@@ -232,10 +235,28 @@ def _render_cv_roc_ci(data: dict[str, Any], plt: Any, np: Any) -> Any:
         mean = matrix.mean(axis=0)
         spread = matrix.std(axis=0, ddof=1) if len(interpolated) > 1 else np.zeros_like(mean)
         color = colors[index % len(colors)]
-        axis.fill_between(grid, np.clip(mean - spread, 0, 1), np.clip(mean + spread, 0, 1), color=color, alpha=0.16)
-        axis.plot(grid, mean, color=color, linewidth=1.8, label=f"{model['name']} (AUC={np.mean(aucs):.3f}±{np.std(aucs, ddof=1) if len(aucs) > 1 else 0:.3f})")
+        axis.fill_between(
+            grid,
+            np.clip(mean - spread, 0, 1),
+            np.clip(mean + spread, 0, 1),
+            color=color,
+            alpha=0.16,
+        )
+        axis.plot(
+            grid,
+            mean,
+            color=color,
+            linewidth=1.8,
+            label=f"{model['name']} (AUC={np.mean(aucs):.3f}±{np.std(aucs, ddof=1) if len(aucs) > 1 else 0:.3f})",
+        )
     axis.plot([0, 1], [0, 1], "--", color="#888888", linewidth=0.9, label="Random")
-    axis.set(xlim=(0, 1), ylim=(0, 1), xlabel="False Positive Rate", ylabel="True Positive Rate", title="Cross-validation ROC with fold variability")
+    axis.set(
+        xlim=(0, 1),
+        ylim=(0, 1),
+        xlabel="False Positive Rate",
+        ylabel="True Positive Rate",
+        title="Cross-validation ROC with fold variability",
+    )
     axis.grid(alpha=0.24)
     axis.legend(loc="lower right", fontsize=8)
     figure.tight_layout()
@@ -252,14 +273,25 @@ def _render_prediction_marginal_grid(data: dict[str, Any], plt: Any, np: Any) ->
         axis = axes.ravel()[index]
         actual = np.asarray(record["actual"], dtype=float)
         predicted = np.asarray(record["predicted"], dtype=float)
-        lower, upper = float(min(actual.min(), predicted.min())), float(max(actual.max(), predicted.max()))
+        lower, upper = (
+            float(min(actual.min(), predicted.min())),
+            float(max(actual.max(), predicted.max())),
+        )
         axis.scatter(actual, predicted, s=20, alpha=0.68, edgecolors="none", color="#2474a6")
         axis.plot([lower, upper], [lower, upper], "--", color="#8d4b4b", linewidth=1)
         residual = predicted - actual
         rmse = float(np.sqrt(np.mean(residual**2)))
         ss_total = float(np.sum((actual - actual.mean()) ** 2))
         r_squared = 1 - float(np.sum(residual**2)) / ss_total if ss_total else float("nan")
-        axis.text(0.03, 0.97, f"n={len(actual)}\\nR²={r_squared:.3f}\\nRMSE={rmse:.3g}", transform=axis.transAxes, va="top", fontsize=9, bbox={"facecolor": "white", "edgecolor": "#aaaaaa", "alpha": 0.9})
+        axis.text(
+            0.03,
+            0.97,
+            f"n={len(actual)}\\nR²={r_squared:.3f}\\nRMSE={rmse:.3g}",
+            transform=axis.transAxes,
+            va="top",
+            fontsize=9,
+            bbox={"facecolor": "white", "edgecolor": "#aaaaaa", "alpha": 0.9},
+        )
         axis.set(title=record["name"], xlabel="Observed", ylabel="Predicted")
         axis.grid(alpha=0.2)
     for axis in axes.ravel()[len(series) :]:
@@ -278,17 +310,55 @@ def _render_paired_raincloud(data: dict[str, Any], plt: Any, np: Any) -> Any:
     for index, group in enumerate(groups):
         before = np.asarray(group["before"], dtype=float)
         after = np.asarray(group["after"], dtype=float)
-        violin = axis.violinplot([before, after], positions=[index - 0.18, index + 0.18], widths=0.30, showmeans=False, showmedians=True)
+        violin = axis.violinplot(
+            [before, after],
+            positions=[index - 0.18, index + 0.18],
+            widths=0.30,
+            showmeans=False,
+            showmedians=True,
+        )
         for body_index, body in enumerate(violin["bodies"]):
             body.set_facecolor(colors[body_index])
             body.set_edgecolor(colors[body_index])
             body.set_alpha(0.24)
         rng = np.random.default_rng(index)
         jitter = rng.normal(0, 0.018, size=len(before))
-        axis.plot(np.column_stack([np.full(len(before), index - 0.18) + jitter, np.full(len(after), index + 0.18) + jitter]).T, np.column_stack([before, after]).T, color="#777777", alpha=0.23, linewidth=0.7)
-        axis.scatter(np.full(len(before), index - 0.18) + jitter, before, s=15, color=colors[0], alpha=0.72, label="Before" if index == 0 else None)
-        axis.scatter(np.full(len(after), index + 0.18) + jitter, after, s=15, color=colors[1], alpha=0.72, label="After" if index == 0 else None)
-        axis.text(index, max(before.max(), after.max()), f"Δ={np.mean(after - before):+.3g}", ha="center", va="bottom", fontsize=8)
+        axis.plot(
+            np.column_stack(
+                [
+                    np.full(len(before), index - 0.18) + jitter,
+                    np.full(len(after), index + 0.18) + jitter,
+                ]
+            ).T,
+            np.column_stack([before, after]).T,
+            color="#777777",
+            alpha=0.23,
+            linewidth=0.7,
+        )
+        axis.scatter(
+            np.full(len(before), index - 0.18) + jitter,
+            before,
+            s=15,
+            color=colors[0],
+            alpha=0.72,
+            label="Before" if index == 0 else None,
+        )
+        axis.scatter(
+            np.full(len(after), index + 0.18) + jitter,
+            after,
+            s=15,
+            color=colors[1],
+            alpha=0.72,
+            label="After" if index == 0 else None,
+        )
+        axis.text(
+            index,
+            max(before.max(), after.max()),
+            f"Δ={np.mean(after - before):+.3g}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
     axis.set_xticks(positions, [item["name"] for item in groups])
     axis.set(title="Paired distribution and individual changes", ylabel="Measured value")
     axis.legend()
@@ -297,33 +367,79 @@ def _render_paired_raincloud(data: dict[str, Any], plt: Any, np: Any) -> Any:
     return figure
 
 
+def _wrap_pairgrid_label(value: str, *, threshold: int = 20) -> str:
+    """在字段边界换行，避免相关矩阵的长轴标签发生相交。
+
+    Args:
+        value: 原始字段名。
+        threshold: 超过该长度时才尝试换行。
+
+    Returns:
+        适合紧凑矩阵坐标轴展示的字段标签。
+    """
+    if len(value) <= threshold or "_" not in value:
+        return value
+    parts = value.split("_")
+    if len(parts) < 2:
+        return value
+    midpoint = len(value) / 2
+    split_at = min(
+        range(1, len(parts)),
+        key=lambda index: abs(len("_".join(parts[:index])) - midpoint),
+    )
+    return f"{'_'.join(parts[:split_at])}\n{'_'.join(parts[split_at:])}"
+
+
 def _render_correlation_pairgrid(data: dict[str, Any], plt: Any, np: Any) -> Any:
     """绘制真实变量数据的相关矩阵和下三角散点图。"""
     values = np.asarray(data["values"], dtype=float)
     names = data["columns"]
+    display_names = [_wrap_pairgrid_label(name) for name in names]
     count = len(names)
-    figure, axes = plt.subplots(count, count, figsize=(max(6.5, count * 1.65), max(6.0, count * 1.55)), squeeze=False)
+    figure, axes = plt.subplots(
+        count, count, figsize=(max(6.5, count * 1.65), max(6.0, count * 1.55)), squeeze=False
+    )
     correlation = np.corrcoef(values, rowvar=False)
     for row in range(count):
         for column in range(count):
             axis = axes[row, column]
             if row == column:
-                axis.hist(values[:, row], bins=min(16, max(6, len(values) // 8)), color="#89b9ce", edgecolor="#366d89")
+                axis.hist(
+                    values[:, row],
+                    bins=min(16, max(6, len(values) // 8)),
+                    color="#89b9ce",
+                    edgecolor="#366d89",
+                )
             elif row > column:
-                axis.scatter(values[:, column], values[:, row], s=8, alpha=0.55, color="#287da1", edgecolors="none")
+                axis.scatter(
+                    values[:, column],
+                    values[:, row],
+                    s=8,
+                    alpha=0.55,
+                    color="#287da1",
+                    edgecolors="none",
+                )
                 slope, intercept = np.polyfit(values[:, column], values[:, row], 1)
                 grid = np.linspace(values[:, column].min(), values[:, column].max(), 50)
                 axis.plot(grid, slope * grid + intercept, color="#b65d7b", linewidth=1)
             else:
                 value = float(correlation[row, column])
                 axis.imshow([[value]], vmin=-1, vmax=1, cmap="RdBu_r")
-                axis.text(0, 0, f"r={value:.2f}", ha="center", va="center", fontsize=8, color="white" if abs(value) > 0.45 else "#222222")
+                axis.text(
+                    0,
+                    0,
+                    f"r={value:.2f}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="white" if abs(value) > 0.45 else "#222222",
+                )
             if row == count - 1:
-                axis.set_xlabel(names[column], fontsize=8)
+                axis.set_xlabel(display_names[column], fontsize=8)
             else:
                 axis.set_xticks([])
             if column == 0:
-                axis.set_ylabel(names[row], fontsize=8)
+                axis.set_ylabel(display_names[row], fontsize=8)
             else:
                 axis.set_yticks([])
     figure.suptitle("Correlation pair grid from registered result data", y=1.002)
@@ -401,12 +517,19 @@ def render(template_id: str, data: dict[str, Any], output_stem: Path) -> Path:
             for suffix, options in ((".png", {"dpi": 300}), (".pdf", {}), (".svg", {})):
                 figure.savefig(output_stem.with_suffix(suffix), bbox_inches="tight", **options)
         warnings_seen = [str(item.message) for item in captured]
-        missing = [item for item in warnings_seen if "glyph" in item.lower() and "missing" in item.lower()]
+        missing = [
+            item for item in warnings_seen if "glyph" in item.lower() and "missing" in item.lower()
+        ]
         if missing:
             raise ContractError(f"图表出现字体缺字警告: {missing[0]}")
         boxes_path = output_stem.with_suffix(".text-boxes.json")
         boxes_path.write_text(
-            json.dumps({"schema_version": "1.0", "boxes": _text_boxes(figure)}, ensure_ascii=False, indent=2) + "\n",
+            json.dumps(
+                {"schema_version": "1.0", "boxes": _text_boxes(figure)},
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
             encoding="utf-8",
             newline="\n",
         )

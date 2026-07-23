@@ -8,14 +8,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.figures import use_template
 from scripts.figures.use_template import generate_from_result
+from shumozizi.simple.figure_templates import render
 from shumozizi.simple.figures import read_figure_index, verify_current_figure_files
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.quality import assess_result_quality
 from tests.quality_protocol_helpers import (
     adapter_backed_assessment,
+    record_passing_scientific_review,
     run_synthetic_verification_protocol,
 )
+from tools.qa.figqa import audit_figure
 
 
 @unittest.skipUnless(
@@ -59,9 +63,7 @@ class V3FigureTests(unittest.TestCase):
             "paired": {
                 "metrics": {"objective": 0.82},
                 "figure_data": {
-                    "groups": [
-                        {"name": "处理组", "before": [2, 3, 4, 5], "after": [3, 3.5, 5, 6]}
-                    ]
+                    "groups": [{"name": "处理组", "before": [2, 3, 4, 5], "after": [3, 3.5, 5, 6]}]
                 },
             },
             "correlation": {
@@ -85,6 +87,7 @@ class V3FigureTests(unittest.TestCase):
             assessment=adapter_backed_assessment(protocol),
         )
         self.assertTrue(assessment["paper_allowed"])
+        record_passing_scientific_review(self.run_dir)
         self.figure_inputs = protocol["paths"]["artifacts"]
 
     def tearDown(self) -> None:
@@ -112,7 +115,9 @@ class V3FigureTests(unittest.TestCase):
                 self.assertGreater((self.run_dir / output).stat().st_size, 0)
         index = read_figure_index(self.run_dir)
         self.assertEqual(4, len(index["figures"]))
-        self.assertTrue(all(not item["demo"] and item["paper_allowed"] for item in index["figures"]))
+        self.assertTrue(
+            all(not item["demo"] and item["paper_allowed"] for item in index["figures"])
+        )
         verification = verify_current_figure_files(self.run_dir)
         self.assertTrue(verification["success"], verification["errors"])
 
@@ -155,11 +160,79 @@ class V3FigureTests(unittest.TestCase):
         figure["demo"] = True
         index = read_figure_index(self.run_dir)
         index["figures"] = [figure]
-        (self.run_dir / "figures" / "index.json").write_text(
-            json.dumps(index), encoding="utf-8"
-        )
+        (self.run_dir / "figures" / "index.json").write_text(json.dumps(index), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "demo"):
             read_figure_index(self.run_dir)
+
+    def test_correlation_pairgrid_wraps_long_field_labels(self) -> None:
+        """长字段名应在字段边界换行，避免导出文字框重叠。"""
+        output = self.root / "figures" / "long-labels"
+        boxes_path = render(
+            "correlation-pairgrid",
+            {
+                "columns": [
+                    "uav_index",
+                    "bomb_index",
+                    "release_time_s",
+                    "explosion_time_s",
+                    "explosion_altitude_m",
+                    "primary_missile_index",
+                    "primary_individual_duration_s",
+                    "primary_marginal_contribution_s",
+                ],
+                "values": [
+                    [1, 1, 0.1, 2.5, 1771.4, 1, 4.46, 4.46],
+                    [1, 2, 1.1, 9.1, 1486.4, 1, 0.0, 0.0],
+                    [2, 1, 0.0, 2.0, 1380.4, 1, 0.0, 0.0],
+                    [2, 2, 14.8, 22.5, 1113.5, 2, 2.50, 2.50],
+                    [3, 3, 17.2, 22.5, 561.3, 3, 2.81, 2.81],
+                ],
+            },
+            output,
+        )
+        boxes = json.loads(boxes_path.read_text(encoding="utf-8"))["boxes"]
+        audit = audit_figure(output.with_suffix(".png"), boxes)
+
+        self.assertFalse(audit["overlaps"], audit["overlaps"])
+
+    def test_frozen_runtime_sources_are_content_addressed(self) -> None:
+        """重渲染使用新源码时，不得覆盖此前图表登记的冻结副本。"""
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            template = (
+                repository
+                / "skills"
+                / "mathmodel-figure-templates"
+                / "scripts"
+                / "templates"
+                / "make_correlation_pairgrid.py"
+            )
+            renderer = repository / "src" / "shumozizi" / "simple" / "figure_templates.py"
+            template.parent.mkdir(parents=True)
+            renderer.parent.mkdir(parents=True)
+            template.write_text("template-v1\n", encoding="utf-8")
+            renderer.write_text("renderer-v1\n", encoding="utf-8")
+
+            original_root = use_template.REPO_ROOT
+            use_template.REPO_ROOT = repository
+            try:
+                _, first_renderer = use_template._copy_runtime_sources(
+                    self.run_dir, "correlation-pairgrid"
+                )
+                renderer.write_text("renderer-v2\n", encoding="utf-8")
+                _, second_renderer = use_template._copy_runtime_sources(
+                    self.run_dir, "correlation-pairgrid"
+                )
+            finally:
+                use_template.REPO_ROOT = original_root
+
+        self.assertNotEqual(first_renderer, second_renderer)
+        self.assertEqual(
+            "renderer-v1\n", (self.run_dir / first_renderer).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            "renderer-v2\n", (self.run_dir / second_renderer).read_text(encoding="utf-8")
+        )
 
 
 if __name__ == "__main__":
