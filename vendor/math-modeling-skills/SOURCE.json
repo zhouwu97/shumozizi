@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/Lupynow/math-modeling-skills",
+  "commit": "856816bda312ca9c02082f1d026d1416ebbaa861",
+  "license": "MIT",
+  "license_files": ["LICENSE"],
+  "imported_paths": [
+    "skills/math-modeling-solver/references",
+    "skills/math-modeling-paper/references"
+  ],
+  "local_modifications": []
+}

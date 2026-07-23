@@ -29,6 +29,11 @@ ACTIVE_SKILLS = {
     "paper": Path(".agents/skills/mathmodel-paper/SKILL.md"),
     "final_check": Path(".agents/skills/mathmodel-final-check/SKILL.md"),
     "red_team": Path(".agents/skills/mathmodel-red-team/SKILL.md"),
+    "matlab": Path(".agents/skills/mathmodel-matlab/SKILL.md"),
+    "learn_paper": Path(".agents/skills/mathmodel-learn-paper/SKILL.md"),
+    "geometry_oracle": Path(".agents/skills/mathmodel-geometry-oracle/SKILL.md"),
+    "geometry_visual": Path(".agents/skills/mathmodel-geometry-visual/SKILL.md"),
+    "optimizer_benchmark": Path(".agents/skills/mathmodel-optimizer-benchmark/SKILL.md"),
     "writing": Path("skills/5writing/SKILL.md"),
 }
 PROTOCOL_TERMS = (
@@ -192,6 +197,7 @@ def audit_protocol_burden(repo_root: Path = REPO_ROOT) -> dict[str, Any]:
     balanced = not missing and math_lines >= protocol_explanation_lines
     report = {
         "schema_version": "1.0",
+        "audit_scope": "documentation_style_regression",
         "active_skills": metrics,
         "protocol_terms": list(PROTOCOL_TERMS),
         "protocol_explanation_terms": list(PROTOCOL_EXPLANATION_TERMS),
@@ -240,8 +246,9 @@ def audit_protocol_burden(repo_root: Path = REPO_ROOT) -> dict[str, Any]:
             "cognitive_burden_reduced": balanced,
         },
         "limitations": (
-            "文本统计不是安全或科学正确性的证明；必须与真实执行、独立审查、"
-            "源文件/输出篡改和回执复验测试一起解释。"
+            "文本统计只是文档风格回归，不衡量数学推导深度，也不是安全或科学正确性"
+            "的证明；科学能力必须由隐藏错误注入、陌生题 held-out、反例发现率、强基线"
+            "比较，以及修复后重新命中独立真值来验证。"
         ),
         "missing_skill_files": missing,
     }

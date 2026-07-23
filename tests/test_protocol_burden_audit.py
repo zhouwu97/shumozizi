@@ -22,7 +22,9 @@ def test_protocol_burden_audit_keeps_math_focus_ahead_of_protocol() -> None:
     report = audit_protocol_burden(REPO_ROOT)
     summary = report["summary"]
 
+    assert report["audit_scope"] == "documentation_style_regression"
     assert report["missing_skill_files"] == []
+    assert len(report["active_skills"]) == 14
     assert report["main_dialogue_decisions"] == [
         "problem_families",
         "capabilities",
@@ -38,7 +40,9 @@ def test_protocol_burden_audit_keeps_math_focus_ahead_of_protocol() -> None:
     assert summary["math_focus_at_least_protocol_explanation"] is True
     assert summary["cognitive_burden_reduced"] is True
     assert all(guard["available"] for guard in report["runtime_guards"])
-    assert "不是安全或科学正确性的证明" in report["limitations"]
+    assert "不衡量数学推导深度" in report["limitations"]
+    assert "不是安全或科学正确性" in report["limitations"]
+    assert "陌生题 held-out" in report["limitations"]
 
 
 def test_route_decisions_generate_protocol_receipts_without_manual_fields(tmp_path: Path) -> None:

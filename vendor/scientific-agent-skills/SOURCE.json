@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/K-Dense-AI/scientific-agent-skills",
+  "commit": "831d49eb77eed3c792be2970921b46764012ef00",
+  "license": "MIT",
+  "license_files": ["LICENSE.md"],
+  "imported_paths": [
+    "skills/pymoo",
+    "skills/sympy",
+    "skills/scientific-visualization"
+  ],
+  "local_modifications": []
+}

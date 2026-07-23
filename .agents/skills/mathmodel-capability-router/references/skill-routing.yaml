@@ -1,0 +1,13 @@
+schema_version: "1.0"
+routes:
+  geometry_kinematics:
+    - skill: mathmodel-geometry-oracle
+      phase: experiment
+      condition: always
+    - skill: mathmodel-geometry-visual
+      phase: visualization
+      condition: spatial_structure_affects_conclusion
+  optimization:
+    - skill: mathmodel-optimizer-benchmark
+      phase: experiment
+      condition: always

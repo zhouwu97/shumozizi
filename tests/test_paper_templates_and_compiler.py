@@ -345,6 +345,43 @@ def test_latex_compile_receipt_uses_selected_latex_entrypoint(
 
 
 @pytest.mark.paper_e2e
+@pytest.mark.skipif(
+    not any(shutil.which(command) for command in ("latexmk", "xelatex", "tectonic")),
+    reason="当前环境未安装可用的 XeLaTeX 工具链",
+)
+def test_real_latex_cumcm_template_compiles_and_verifies_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """真实 LaTeX 工具链必须能编译 CUMCM 动态问题模板并复验回执。"""
+    _set_engines(monkeypatch, latex=True, typst=False)
+    run_dir = _new_run(tmp_path, "real-latex-cumcm", questions=["Q1", "Q2"])
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="latex",
+        selection_reason="阻断 CI 使用真实 XeLaTeX 编译 CUMCM 最小论文。",
+    )
+    materialize_selected_template(run_dir)
+    entrypoint = run_dir / "paper/main.tex"
+    source = entrypoint.read_text(encoding="utf-8")
+    # CI 使用 TeX Live 自带的 Fandol 字体，保留完整 CUMCM 模板结构和动态正文入口。
+    entrypoint.write_text(
+        source.replace("fontset=mac", "fontset=fandol"),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    receipt = compile_paper(run_dir)
+
+    assert receipt["engine"] == "latex"
+    assert receipt["compiler"] in {"latexmk", "xelatex", "tectonic"}
+    assert receipt["executions"]
+    assert (run_dir / "paper/final.pdf").stat().st_size > 1_000
+    assert verify_paper_compile_receipt(run_dir)["valid"] is True
+
+
+@pytest.mark.paper_e2e
 @pytest.mark.skipif(shutil.which("typst") is None, reason="当前环境未安装 typst")
 @pytest.mark.parametrize("tamper_target", ["manifest", "pdf"])
 def test_compile_receipt_binds_manifest_and_pdf(

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/oracle_semantic_receipt.schema.json",
+  "title": "Independent Oracle Semantic Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "formulation", "production_formulation", "boundary_cases", "all_cases_compared"],
+  "properties": {
+    "schema_name": {"const": "independent_oracle_semantics"},
+    "schema_version": {"const": "1.0"},
+    "formulation": {"type": "string", "minLength": 3},
+    "production_formulation": {"type": "string", "minLength": 3},
+    "boundary_cases": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {"enum": ["endpoint", "tangent", "degenerate", "inside", "outside", "zero_radius"]},
+      "allOf": [
+        {"contains": {"const": "endpoint"}},
+        {"contains": {"const": "tangent"}},
+        {"contains": {"const": "degenerate"}}
+      ]
+    },
+    "all_cases_compared": {"const": true}
+  }
+}

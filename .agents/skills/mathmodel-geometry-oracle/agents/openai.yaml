@@ -1,0 +1,4 @@
+interface:
+  display_name: "几何独立 Oracle"
+  short_description: "用独立公式复核有限线段、球体和遮挡几何。"
+  default_prompt: "Use $mathmodel-geometry-oracle to build two source-independent geometric formulations and test their boundary cases."

@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 from shumozizi.core.io import ContractError, atomic_json, load_json, resolve_inside, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.results import read_result_index
+from shumozizi.simple.source_closure import python_source_closure
 from shumozizi.simple.state import read_simple_state, utc_now
 
 ROUTE_PATH = Path("state/capability-route.json")
@@ -25,6 +26,12 @@ _ENGINE_SUFFIXES = {"python": ".py", "matlab": ".m", "octave": ".m"}
 _PROBE_TIMEOUT_SECONDS = 12
 _PROBE_CACHE: dict[tuple[str, ...], dict[str, Any]] = {}
 _CURRENT_ROUTE_SCHEMA_VERSION = "1.2"
+_ALLOWED_SHARED_ORACLE_UTILITIES = {
+    "code/shared/__init__.py",
+    "code/shared/json_io.py",
+    "code/shared/logging_utils.py",
+    "code/shared/numeric_formatting.py",
+}
 
 
 def _schema(name: str) -> dict[str, Any]:
@@ -627,6 +634,55 @@ def require_capability_route(run_dir: Path) -> dict[str, Any]:
     return route
 
 
+def _require_recorded_source_closure(run_dir: Path, result: dict[str, Any]) -> set[str]:
+    """复算并核对一次实验登记的本地源码闭包。"""
+    source_script = result.get("source_script")
+    if not isinstance(source_script, str):
+        raise ContractError("独立性检查缺少可定位的源码入口")
+    closure = set(python_source_closure(run_dir, source_script))
+    missing = closure - set(result["input_hashes"])
+    if missing:
+        raise ContractError("源码闭包未完整列入输入哈希: " + ", ".join(sorted(missing)))
+    for relative in closure:
+        path = resolve_inside(run_dir, relative, must_exist=True)
+        if sha256_file(path) != result["input_hashes"][relative]:
+            raise ContractError(f"源码闭包已漂移: {relative}")
+    return closure
+
+
+def _require_oracle_semantic_receipt(run_dir: Path, result: dict[str, Any]) -> None:
+    """要求 oracle 输出声明不同公式并覆盖最小边界反例集。"""
+    errors: list[str] = []
+    for relative in result["output_files"]:
+        if Path(relative).suffix.casefold() != ".json":
+            continue
+        path = resolve_inside(run_dir, relative, must_exist=True)
+        if sha256_file(path) != result["output_hashes"].get(relative):
+            errors.append(f"输出已漂移: {relative}")
+            continue
+        try:
+            document = load_json(path)
+        except (OSError, ValueError) as exc:
+            errors.append(f"JSON 不可读取: {relative}: {exc}")
+            continue
+        receipt = document.get("oracle_semantics") if isinstance(document, dict) else None
+        if not isinstance(receipt, dict):
+            errors.append(f"缺少 oracle_semantics: {relative}")
+            continue
+        try:
+            _require_schema(receipt, "oracle_semantic_receipt.schema.json")
+        except ContractError as exc:
+            errors.append(f"{relative}: {exc}")
+            continue
+        if receipt["formulation"].strip().casefold() == receipt[
+            "production_formulation"
+        ].strip().casefold():
+            errors.append(f"{relative}: oracle 与生产 formulation 相同")
+            continue
+        return
+    raise ContractError("independent-oracle 语义收据无效: " + "；".join(errors))
+
+
 def require_independent_oracle_execution(run_dir: Path) -> None:
     """要求高风险题在科学红队前实际运行独立 oracle。
 
@@ -659,23 +715,33 @@ def require_independent_oracle_execution(run_dir: Path) -> None:
         raise ContractError("几何/机理题在科学红队前必须实际运行 independent-oracle")
 
     # 同一脚本换一种结果标签仍是同源实现，不能承担独立 oracle 的职责。
-    production_sources = {
-        result["source_script"]
+    production_results = [
+        result
         for result in results
         if result["kind"] != "independent-oracle"
         and result["execution_mode"] == "production"
         and result["execution_valid"]
         and isinstance(result.get("source_script"), str)
-    }
+        and result.get("status") == "current"
+    ]
+    if not production_results:
+        raise ContractError("independent-oracle 缺少可比较的当前生产源码")
+    production_sources = {result["source_script"] for result in production_results}
+    production_closure: set[str] = set()
+    for production in production_results:
+        production_closure.update(_require_recorded_source_closure(run_dir, production))
     for result in candidates:
         source_script = result.get("source_script")
-        if (
-            isinstance(source_script, str)
-            and source_script in result["input_hashes"]
-            and Path(source_script).suffix.casefold() == expected_suffix
-            and source_script not in production_sources
-        ):
-            return
+        if not isinstance(source_script, str):
+            continue
+        if Path(source_script).suffix.casefold() != expected_suffix or source_script in production_sources:
+            continue
+        oracle_closure = _require_recorded_source_closure(run_dir, result)
+        shared = (oracle_closure & production_closure) - _ALLOWED_SHARED_ORACLE_UTILITIES
+        if shared:
+            raise ContractError("independent-oracle 源码闭包共享领域模块: " + ", ".join(sorted(shared)))
+        _require_oracle_semantic_receipt(run_dir, result)
+        return
     raise ContractError(
         "independent-oracle 缺少未与生产求解复用、且与能力路由一致的源码: "
         f"需要 {expected_engine} ({expected_suffix})"

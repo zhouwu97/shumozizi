@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/red_team_semantic_output.schema.json",
+  "title": "Red Team Semantic Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "evidence"],
+  "properties": {
+    "kind": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test"]},
+    "evidence": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"enum": ["independent-recompute", "alternative-formula"]}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/recompute"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "counterexample"}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/counterexample"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "small-enumeration"}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/enumeration"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "search-challenge"}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/search"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "property-test"}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/property"}}}
+    }
+  ],
+  "$defs": {
+    "recompute": {
+      "type": "object",
+      "required": ["claim_id", "method", "cases", "production_value", "independent_value", "absolute_difference", "verdict"],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "method": {"type": "string", "minLength": 3},
+        "cases": {"type": "integer", "minimum": 1},
+        "production_value": {"type": "number"},
+        "independent_value": {"type": "number"},
+        "absolute_difference": {"type": "number", "minimum": 0},
+        "verdict": {"enum": ["consistent", "inconsistent"]}
+      }
+    },
+    "counterexample": {
+      "type": "object",
+      "required": ["claim_id", "case", "expected", "production_observed", "violated_invariant", "verdict"],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "case": {"type": "object", "minProperties": 1},
+        "expected": {"type": "boolean"},
+        "production_observed": {"type": "boolean"},
+        "violated_invariant": {"type": "string", "minLength": 3},
+        "verdict": {"const": "counterexample_found"}
+      }
+    },
+    "enumeration": {
+      "type": "object",
+      "required": ["claim_id", "method", "cases", "mismatches", "verdict"],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "method": {"type": "string", "minLength": 3},
+        "cases": {"type": "integer", "minimum": 1},
+        "mismatches": {"type": "integer", "minimum": 0},
+        "verdict": {"enum": ["consistent", "inconsistent"]}
+      }
+    },
+    "search": {
+      "type": "object",
+      "required": ["incumbent_exact", "challenge_best_exact", "evaluation_budget", "independent_candidates", "feasible_candidates", "verdict"],
+      "properties": {
+        "incumbent_exact": {"type": "number"},
+        "challenge_best_exact": {"type": "number"},
+        "evaluation_budget": {"type": "integer", "minimum": 1},
+        "independent_candidates": {"type": "integer", "minimum": 1},
+        "feasible_candidates": {"type": "integer", "minimum": 0},
+        "verdict": {"enum": ["incumbent_competitive", "incumbent_not_competitive", "inconclusive"]}
+      }
+    },
+    "property": {
+      "type": "object",
+      "required": ["claim_id", "property", "cases", "failures", "verdict"],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "property": {"type": "string", "minLength": 3},
+        "cases": {"type": "integer", "minimum": 1},
+        "failures": {"type": "integer", "minimum": 0},
+        "verdict": {"enum": ["pass", "fail"]}
+      }
+    }
+  }
+}

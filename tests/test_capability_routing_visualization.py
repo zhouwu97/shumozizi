@@ -146,12 +146,40 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
     @staticmethod
     def _record_independent_oracle(run_dir: Path) -> None:
         """写入真实执行的独立 oracle 夹具，而非伪造状态字段。"""
+        production = run_dir / "code" / "production_solver.py"
+        production.write_text(
+            "import json\n"
+            "from pathlib import Path\n"
+            "Path('results/raw/production_solver.json').write_text(\n"
+            "    json.dumps({'metrics': {'objective': 1.0}}), encoding='utf-8'\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        execute_simple_experiment(
+            run_dir,
+            result_id="oracle-production",
+            question_id="shared",
+            kind="primary",
+            command=f'"{sys.executable}" code/production_solver.py',
+            expected_outputs=["results/raw/production_solver.json"],
+            metrics_from="results/raw/production_solver.json",
+        )
         script = run_dir / "code" / "independent_oracle.py"
         script.write_text(
             "import json\n"
             "from pathlib import Path\n"
             "Path('results/raw/independent_oracle.json').write_text(\n"
-            "    json.dumps({'metrics': {'oracle_cases_checked': 3}}), encoding='utf-8'\n"
+            "    json.dumps({\n"
+            "        'metrics': {'oracle_cases_checked': 3},\n"
+            "        'oracle_semantics': {\n"
+            "            'schema_name': 'independent_oracle_semantics',\n"
+            "            'schema_version': '1.0',\n"
+            "            'formulation': 'quadratic_segment_sphere_intersection',\n"
+            "            'production_formulation': 'clipped_projection_distance',\n"
+            "            'boundary_cases': ['endpoint', 'tangent', 'degenerate'],\n"
+            "            'all_cases_compared': True,\n"
+            "        },\n"
+            "    }), encoding='utf-8'\n"
             ")\n",
             encoding="utf-8",
         )
@@ -279,6 +307,125 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ContractError, "未与生产求解复用"):
+            require_independent_oracle_execution(run_dir)
+
+    def test_oracle_cannot_share_local_domain_dependency(self) -> None:
+        """不同入口若复用同一领域函数，仍不能宣称 oracle 独立。"""
+        run_dir = initialize_simple_run(self.root, "shared-oracle-closure")
+        self._enter_experiment(run_dir, ["geometry_kinematics"])
+        common = run_dir / "code" / "common_geometry.py"
+        common.write_text(
+            "def wrong_segment_distance() -> float:\n"
+            "    return 1.0\n",
+            encoding="utf-8",
+        )
+        production = run_dir / "code" / "production.py"
+        production.write_text(
+            "import json\n"
+            "from pathlib import Path\n"
+            "from common_geometry import wrong_segment_distance\n"
+            "Path('results/raw/production.json').write_text(\n"
+            "    json.dumps({'metrics': {'distance': wrong_segment_distance()}}),\n"
+            "    encoding='utf-8',\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        oracle = run_dir / "code" / "oracle.py"
+        oracle.write_text(
+            "import json\n"
+            "from pathlib import Path\n"
+            "from common_geometry import wrong_segment_distance\n"
+            "Path('results/raw/oracle.json').write_text(\n"
+            "    json.dumps({\n"
+            "        'metrics': {'distance': wrong_segment_distance()},\n"
+            "        'oracle_semantics': {\n"
+            "            'schema_name': 'independent_oracle_semantics',\n"
+            "            'schema_version': '1.0',\n"
+            "            'formulation': 'quadratic_segment_sphere_intersection',\n"
+            "            'production_formulation': 'clipped_projection_distance',\n"
+            "            'boundary_cases': ['endpoint', 'tangent', 'degenerate'],\n"
+            "            'all_cases_compared': True,\n"
+            "        },\n"
+            "    }),\n"
+            "    encoding='utf-8',\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        production_result = execute_simple_experiment(
+            run_dir,
+            result_id="production",
+            question_id="shared",
+            kind="primary",
+            command=f'"{sys.executable}" code/production.py',
+            expected_outputs=["results/raw/production.json"],
+            metrics_from="results/raw/production.json",
+        )["result"]
+        execute_simple_experiment(
+            run_dir,
+            result_id="oracle",
+            question_id="shared",
+            kind="independent-oracle",
+            command=f'"{sys.executable}" code/oracle.py',
+            expected_outputs=["results/raw/oracle.json"],
+            metrics_from="results/raw/oracle.json",
+        )
+
+        self.assertIn("code/common_geometry.py", production_result["input_hashes"])
+        with self.assertRaisesRegex(ContractError, "源码闭包共享领域模块"):
+            require_independent_oracle_execution(run_dir)
+
+    def test_oracle_requires_distinct_formulation_and_boundary_receipt(self) -> None:
+        """只换入口而不给不同原理与边界用例收据不能通过。"""
+        run_dir = initialize_simple_run(self.root, "missing-oracle-semantics")
+        self._enter_experiment(run_dir, ["geometry_kinematics"])
+        production = run_dir / "code" / "production.py"
+        production.write_text(
+            "import json\n"
+            "from pathlib import Path\n"
+            "Path('results/raw/production.json').write_text(\n"
+            "    json.dumps({'metrics': {'distance': 1.0}}), encoding='utf-8'\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        execute_simple_experiment(
+            run_dir,
+            result_id="production",
+            question_id="shared",
+            kind="primary",
+            command=f'"{sys.executable}" code/production.py',
+            expected_outputs=["results/raw/production.json"],
+            metrics_from="results/raw/production.json",
+        )
+        script = run_dir / "code" / "oracle.py"
+        script.write_text(
+            "import json\n"
+            "from pathlib import Path\n"
+            "Path('results/raw/oracle.json').write_text(\n"
+            "    json.dumps({\n"
+            "        'metrics': {'oracle_cases_checked': 1},\n"
+            "        'oracle_semantics': {\n"
+            "            'schema_name': 'independent_oracle_semantics',\n"
+            "            'schema_version': '1.0',\n"
+            "            'formulation': 'clipped_projection_distance',\n"
+            "            'production_formulation': 'clipped_projection_distance',\n"
+            "            'boundary_cases': ['endpoint'],\n"
+            "            'all_cases_compared': True,\n"
+            "        },\n"
+            "    }), encoding='utf-8'\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        execute_simple_experiment(
+            run_dir,
+            result_id="oracle",
+            question_id="shared",
+            kind="independent-oracle",
+            command=f'"{sys.executable}" code/oracle.py',
+            expected_outputs=["results/raw/oracle.json"],
+            metrics_from="results/raw/oracle.json",
+        )
+
+        with self.assertRaisesRegex(ContractError, "语义收据"):
             require_independent_oracle_execution(run_dir)
 
     def test_tooling_and_knowledge_receipts_cannot_drift_after_routing(self) -> None:

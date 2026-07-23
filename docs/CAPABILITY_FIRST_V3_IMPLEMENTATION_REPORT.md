@@ -53,6 +53,13 @@ mathmodel-experiment
 mathmodel-paper
 mathmodel-final-check
 mathmodel-learn-paper
+mathmodel-capability-router
+mathmodel-visual
+mathmodel-matlab
+mathmodel-red-team
+mathmodel-geometry-oracle
+mathmodel-geometry-visual
+mathmodel-optimizer-benchmark
 ```
 
 新 Skill 采用“分析/路线比较 → 真实实验 → 论文 → 一次终检”的连续主链，限制无意义的全量读取、固定实验族、重复审查和顶层任务膨胀。路线切换以 probe 和 `DECISIONS.md` 为依据；只有题意、核心目标、必做输出或重大预算变化才请求用户决定。
@@ -77,7 +84,7 @@ mathmodel-learn-paper
 
 新增可按需读取的知识文件：问题拆解、模型选择矩阵、预测/优化/评价/机理/统计学习/网络系统 Cookbook、模型检验菜单、论文写作说明和 Figure Contract。每个文件明确“仅生成候选，不能自动决定路线”，并在 `knowledge/README.md` 规定当前阶段最多读取一到两个相关文件。
 
-六个顶层主动 Skill 保持不变，但已经显式接入仓内能力资产：`mathmodel-solve` 按题型调用已保留的分析建模能力、一个 Cookbook 和适配的算法模板；`mathmodel-paper` 按比赛类型参考对应论文模板。科研模板的全量演示渲染检查仅在定时或手动 CI 中运行，不增加普通 PR 的成本。
+原有十个主动 Skill 保持主工作流职责，三个新增入口只处理几何 oracle、空间证据图和优化器公平比较。`mathmodel-solve` 按题型调用已保留的分析建模能力、一个 Cookbook 和适配的算法模板；`mathmodel-paper` 按比赛类型参考对应论文模板。科研模板渲染、真实 LaTeX、真实 Typst 和模板矩阵已拆成独立阻断 CI job。
 
 科研绘图能力的状态必须如实区分：仓内保留 11 套演示模板，v3 已以真实 JSON 结果、运行目录源/输出哈希和终检失效检查接入其中 4 套（`cv-roc-ci`、`prediction-marginal-grid`、`paired-raincloud`、`correlation-pairgrid`）。其余 7 套仍只作为可运行演示和布局参考，不能进入 v3 论文证据链，也不能称为“已接入”。详细数据接口、调用和失效规则见 `docs/V3_FIGURE_TEMPLATE_ADAPTER.md`。
 

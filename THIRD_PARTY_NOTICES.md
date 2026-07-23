@@ -86,3 +86,12 @@
 - `Lupynow/math-modeling-skills`：沿用已登记提交
   `856816bda312ca9c02082f1d026d1416ebbaa861`；目标 `math-modeling-solver` 目录的 `LICENSE`
   为 MIT。本次只借助其模型选择问题域，不引入其控制逻辑。
+
+### 选择性 vendored 能力包（2026-07-23）
+
+这些资产位于 `vendor/`，不会作为第二套总控工作流自动发现。每个目录的 `SOURCE.json` 记录固定提交、导入路径和本地修改；许可证原文随资产保留。
+
+- `Yuan1z0825/nature-skills`，提交 `91862221b39f7ca16d52ae0e1e9cb6c2bb31a96b`，Apache-2.0：仅导入 `skills/nature-figure`，用于多面板、统一导出和图形 QA 底座。
+- `K-Dense-AI/scientific-agent-skills`，提交 `831d49eb77eed3c792be2970921b46764012ef00`，MIT：仅导入 `pymoo`、`sympy` 和 `scientific-visualization`。
+- `Boom5426/Nature-Paper-Skills`，提交 `e6f0448271250072bc880aef91311a64e3473981`，MIT 与 Apache-2.0 混合来源：仅导入 `figure-planner`、`manuscript-optimizer` 和 `stats-reporting-audit`，保留上游 `NOTICE`；不导入 `paper-workflow`。
+- `Lupynow/math-modeling-skills`，提交 `856816bda312ca9c02082f1d026d1416ebbaa861`，目标目录 MIT：仅导入 solver/paper 的 `references`，包括 `code-templates` 与 `playbooks`；不导入 `SKILL.md`、阶段控制或写作总控。

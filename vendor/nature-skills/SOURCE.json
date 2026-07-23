@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Yuan1z0825/nature-skills",
+  "commit": "91862221b39f7ca16d52ae0e1e9cb6c2bb31a96b",
+  "license": "Apache-2.0",
+  "license_files": ["LICENSE"],
+  "imported_paths": ["skills/nature-figure"],
+  "local_modifications": []
+}

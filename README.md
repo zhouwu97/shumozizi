@@ -102,6 +102,9 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
 - `mathmodel-red-team`：必须在全新 Codex 对话中执行的科学红队和 PDF 盲审；
 - `mathmodel-final-check`：独立盲审后的机械 QA 与追溯复验；
 - `mathmodel-learn-paper`：离线论文学习。
+- `mathmodel-geometry-oracle`：以分离源码和不同公式复核有限线段、球体与遮挡几何；
+- `mathmodel-geometry-visual`：用真实结果生成三维场景、正交投影和临界事件图；
+- `mathmodel-optimizer-benchmark`：在统一 exact scorer、预算和种子下公平比较优化路线。
 
 默认生产任务不为每问创建审核，也不要求固定实验族。能力路由、题型必需的视觉证据和竞赛模板清单是生产主链的交付前置条件，不是对答案的评分或限制思考；它们只确保所需能力资产、真实图表证据和写作模板实际被使用。
 
@@ -142,7 +145,7 @@ python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 
 ## 按需知识库
 
-`knowledge/` 中保存问题拆解、模型选择、Cookbook、验证、论文写作和 Figure Contract。它们都带来源说明，只作为候选与检查菜单；每阶段最多读取一到两个相关文件，不能替代当前题的路线比较或 probe。`skills/mathmodel-figure-templates/` 保留 11 套可运行科研绘图脚本；它不是第七个主动流程 Skill。v3 已为其中 4 套提供真实结果适配器，调用说明和 JSON 数据格式见 [V3_FIGURE_TEMPLATE_ADAPTER.md](docs/V3_FIGURE_TEMPLATE_ADAPTER.md)。
+`knowledge/` 中保存问题拆解、模型选择、Cookbook、验证、论文写作和 Figure Contract。它们都带来源说明，只作为候选与检查菜单；每阶段最多读取一到两个相关文件，不能替代当前题的路线比较或 probe。`vendor/` 选择性保存 Nature 绘图、SymPy、pymoo、论文结构审查和数模 references/code-templates/playbooks，不自动发现外部总控 Skill。`skills/mathmodel-figure-templates/` 保留 11 套可运行科研绘图脚本；它不是主动流程 Skill。v3 已为其中 4 套提供真实结果适配器，调用说明和 JSON 数据格式见 [V3_FIGURE_TEMPLATE_ADAPTER.md](docs/V3_FIGURE_TEMPLATE_ADAPTER.md)。
 
 ## legacy-v2
 
@@ -154,5 +157,7 @@ python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 python -m pytest
 python -m ruff check src scripts tools tests
 ```
+
+CI 将核心运行时、模板矩阵、真实 LaTeX、真实 Typst、科研图模板和 legacy 回归分开执行。`audit_protocol_burden.py` 只检查主动 Skill 的文档风格，不能衡量推导深度或证明科学正确性；后者必须依赖隐藏错误注入、陌生题 held-out、反例发现率、强基线比较和修复后重新命中独立真值。任何未完成或超时的分片均记为状态未知，不能写成“基本通过”。
 
 第三方来源、许可证和吸收边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

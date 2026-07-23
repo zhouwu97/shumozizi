@@ -45,7 +45,8 @@ class KnowledgeContractTests(unittest.TestCase):
         after = sha256_file(REPO_ROOT / "knowledge" / "INDEX.json")
 
         self.assertEqual(before, after)
-        self.assertEqual(4, len(rebuilt["cards"]))
+        card_files = list((REPO_ROOT / "knowledge" / "cards").glob("*.json"))
+        self.assertEqual(len(card_files), len(rebuilt["cards"]))
         self.assertEqual(rebuilt, verify_knowledge_index(REPO_ROOT))
         selected = select_knowledge_cards(REPO_ROOT, {"pdf", "qa", "evidence"})
         self.assertEqual("bounded-mechanical-submission-qa", selected[0]["card_id"])

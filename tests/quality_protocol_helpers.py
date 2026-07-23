@@ -360,7 +360,15 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
         "assert (packet / 'problem').is_dir()\n"
         "(outputs / 'recompute.json').write_text(\n"
-        "    json.dumps({'independent_cases_checked': 1}), encoding='utf-8'\n"
+        "    json.dumps({\n"
+        "        'claim_id': 'synthetic-objective',\n"
+        "        'method': 'independent_fixture_oracle',\n"
+        "        'cases': 2,\n"
+        "        'production_value': 1.0,\n"
+        "        'independent_value': 1.0,\n"
+        "        'absolute_difference': 0.0,\n"
+        "        'verdict': 'consistent',\n"
+        "    }), encoding='utf-8'\n"
         ")\n",
         encoding="utf-8",
     )
@@ -379,7 +387,13 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         "from pathlib import Path\n"
         "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
         "assert (packet / 'candidate_results').is_dir()\n"
-        "(outputs / 'property.json').write_text(json.dumps({'properties_checked': 1}), encoding='utf-8')\n",
+        "(outputs / 'property.json').write_text(json.dumps({\n"
+        "    'claim_id': 'synthetic-invariant',\n"
+        "    'property': 'translation_invariance',\n"
+        "    'cases': 2,\n"
+        "    'failures': 0,\n"
+        "    'verdict': 'pass',\n"
+        "}), encoding='utf-8')\n",
         encoding="utf-8",
     )
     challenge_receipt = run_red_team_evidence(

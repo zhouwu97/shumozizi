@@ -5,17 +5,11 @@ on:
   push:
     branches: [main]
   schedule:
-    # 冻结 legacy 合同仍需持续验证，但不应阻塞每个 v3 小改的 PR 反馈。
     - cron: "17 3 * * 1"
   workflow_dispatch:
     inputs:
       full_legacy:
-        description: "运行完整 legacy 回归套件"
-        required: false
-        default: true
-        type: boolean
-      figure_template_smoke:
-        description: "渲染全部科研绘图模板（非阻断）"
+        description: "运行四分片 legacy 回归套件"
         required: false
         default: true
         type: boolean
@@ -24,48 +18,37 @@ permissions:
   contents: read
 
 jobs:
-  v3-pr-contracts:
-    name: v3 contracts and legacy smoke
+  core-runtime:
+    name: core runtime and contracts
     runs-on: windows-latest
-    # v3 合同测试包含一次真实渲染与论文编译边界，10 分钟会误杀正常 PR。
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-
       - name: Install package and test dependencies
         run: python -m pip install -e ".[test]"
-
       - name: Run v3 runtime, Skill and QA contracts
         run: >-
           python -m pytest -q -m "not template_matrix and not paper_e2e"
+          tests/test_active_skill_installation.py
           tests/test_capability_first_v3.py
+          tests/test_capability_knowledge_import.py
           tests/test_capability_routing_visualization.py
           tests/test_init_run.py
           tests/test_independent_review_workflow.py
+          tests/test_geometry_optimizer_capabilities.py
           tests/test_paper_templates_and_compiler.py
           tests/test_protocol_burden_audit.py
           tests/test_verification_protocol.py
-
-      - name: Audit lean protocol boundary
+      - name: Run documentation-style burden regression
         run: python scripts/qa/audit_protocol_burden.py
-
-      - name: Run core legacy compatibility smoke
-        run: >-
-          python -m pytest -q
-          tests/test_review_skills.py
-          tests/test_review_change_levels.py
-          tests/test_runtime_execution.py
-
       - name: Run Ruff
         run: python -m ruff check src scripts tools tests
-
       - name: Compile v3 entry points
         run: >-
           python -m py_compile
@@ -74,6 +57,7 @@ jobs:
           scripts/runtime/run_simple_experiment.py
           scripts/figures/use_template.py
           scripts/qa/run_final_checks.py
+          src/shumozizi/simple/source_closure.py
           src/shumozizi/simple/execution.py
           src/shumozizi/simple/figures.py
           src/shumozizi/simple/figure_templates.py
@@ -82,56 +66,136 @@ jobs:
           src/shumozizi/paper/compiler.py
           src/shumozizi/simple/results.py
           src/shumozizi/simple/state.py
-          tests/test_capability_first_v3.py
 
-  legacy-full:
-    name: scheduled legacy regression
-    if: >-
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && inputs.full_legacy)
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install package and test dependencies
-        run: python -m pip install -e ".[test]"
-
-      - name: Setup Typst
-        uses: typst-community/setup-typst@v4
-        with:
-          typst-version: "0.15.0"
-
-      - name: Run complete frozen regression suite
-        run: python -m pytest -q
-
-  figure-template-smoke:
-    name: scheduled figure-template smoke
-    if: >-
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && inputs.figure_template_smoke)
-    continue-on-error: true
+  template-matrix:
+    name: paper template matrix
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[test]"
+      - name: Materialize every supported template without compiling
+        run: python -m pytest -q -m template_matrix tests/test_paper_templates_and_compiler.py
 
-      - name: Install figure-template smoke dependencies
+  latex-e2e:
+    name: real LaTeX CUMCM compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package and XeLaTeX toolchain
+        run: |
+          python -m pip install -e ".[test]"
+          sudo apt-get update
+          sudo apt-get install -y latexmk texlive-xetex texlive-lang-chinese texlive-latex-extra texlive-fonts-recommended
+      - name: Compile a real LaTeX CUMCM paper
+        run: >-
+          python -m pytest -q -m paper_e2e -k real_latex_cumcm
+          tests/test_paper_templates_and_compiler.py
+
+  typst-e2e:
+    name: real Typst compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Setup Typst
+        uses: typst-community/setup-typst@v4
+        with:
+          typst-version: "0.15.0"
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[test]"
+      - name: Compile real Typst papers and verify receipts
+        run: >-
+          python -m pytest -q -m paper_e2e -k "not real_latex_cumcm"
+          tests/test_paper_templates_and_compiler.py
+
+  figure-template-smoke:
+    name: blocking scientific figure render
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install figure-template dependencies
         run: python -m pip install -e ".[test,figure-template-smoke]"
-
       - name: Render bundled templates and v3 real-data adapters
         run: python tests/figure_template_smoke.py
+
+  legacy-smoke:
+    name: core legacy compatibility smoke
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[test]"
+      - name: Run compatibility smoke
+        run: >-
+          python -m pytest -q
+          tests/test_review_skills.py
+          tests/test_review_change_levels.py
+          tests/test_runtime_execution.py
+
+  legacy-shards:
+    name: scheduled regression shard ${{ matrix.shard }}
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.full_legacy)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[test]"
+      - name: Run deterministic test-file shard
+        shell: pwsh
+        run: |
+          $all = @(Get-ChildItem tests -Filter "test_*.py" | Sort-Object Name)
+          $files = @()
+          for ($index = 0; $index -lt $all.Count; $index++) {
+            if (($index % 4) -eq ${{ matrix.shard }}) {
+              $files += $all[$index].FullName
+            }
+          }
+          python -m pytest -q -m "not paper_e2e and not template_matrix" $files

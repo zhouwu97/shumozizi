@@ -1,0 +1,4 @@
+interface:
+  display_name: "优化器公平比较"
+  short_description: "统一评分器、预算和种子比较优化路线。"
+  default_prompt: "Use $mathmodel-optimizer-benchmark to compare optimizers under one exact scorer, budget, and seed set."

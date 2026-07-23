@@ -379,6 +379,9 @@ class CapabilityFirstV3Tests(unittest.TestCase):
                 "mathmodel-red-team",
                 "mathmodel-final-check",
                 "mathmodel-learn-paper",
+                "mathmodel-geometry-oracle",
+                "mathmodel-geometry-visual",
+                "mathmodel-optimizer-benchmark",
             },
             skills,
         )

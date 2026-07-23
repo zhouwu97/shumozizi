@@ -1,0 +1,4 @@
+interface:
+  display_name: "空间几何证据图"
+  short_description: "绘制有限线段、轨迹、目标与作用区域的可核验空间图。"
+  default_prompt: "Use $mathmodel-geometry-visual to create real-data 3D and orthogonal geometric evidence figures."

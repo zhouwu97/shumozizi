@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -103,6 +104,54 @@ def _require_red_team_receipt(payload: dict[str, Any]) -> None:
     ]
     if errors:
         raise ContractError("红队证据收据无效: " + "; ".join(errors))
+
+
+def _red_team_semantic_schema() -> dict[str, Any]:
+    """读取各类红队输出的最小科学语义 Schema。"""
+    root = resolve_repo_root(Path(__file__))
+    return load_json(root / "schemas" / "red_team_semantic_output.schema.json")
+
+
+def _require_red_team_semantic_output(kind: str, path: Path) -> dict[str, Any]:
+    """验证红队输出不仅执行成功，而且包含可复验的科学比较。"""
+    try:
+        evidence = load_json(path)
+    except (OSError, ValueError) as exc:
+        raise ContractError(f"红队语义输出不是有效 JSON: {path.name}") from exc
+    payload = {"kind": kind, "evidence": evidence}
+    validator = Draft202012Validator(
+        _red_team_semantic_schema(), format_checker=FormatChecker()
+    )
+    errors = [
+        f"{'.'.join(str(part) for part in error.absolute_path) or '<root>'}: {error.message}"
+        for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.path))
+    ]
+    if errors:
+        raise ContractError("红队语义输出无效: " + "; ".join(errors))
+
+    if kind in {"independent-recompute", "alternative-formula"}:
+        expected = abs(evidence["production_value"] - evidence["independent_value"])
+        if not math.isclose(
+            evidence["absolute_difference"], expected, rel_tol=1e-9, abs_tol=1e-12
+        ):
+            raise ContractError("红队语义输出的 absolute_difference 与复算值不一致")
+    elif kind == "counterexample":
+        if evidence["expected"] == evidence["production_observed"]:
+            raise ContractError("红队语义输出未形成预期与生产观察之间的反例")
+    elif kind == "small-enumeration":
+        consistent = evidence["mismatches"] == 0
+        if (evidence["verdict"] == "consistent") != consistent:
+            raise ContractError("红队语义输出的枚举 mismatches 与 verdict 不一致")
+    elif kind == "search-challenge":
+        if evidence["independent_candidates"] > evidence["evaluation_budget"]:
+            raise ContractError("红队语义输出的独立候选数超过评价预算")
+        if evidence["feasible_candidates"] > evidence["independent_candidates"]:
+            raise ContractError("红队语义输出的可行候选数超过独立候选数")
+    elif kind == "property-test":
+        passed = evidence["failures"] == 0
+        if (evidence["verdict"] == "pass") != passed:
+            raise ContractError("红队语义输出的 property failures 与 verdict 不一致")
+    return evidence
 
 
 def _red_team_root(run_dir: Path) -> Path:
@@ -315,11 +364,27 @@ def run_red_team_evidence(
         raise ContractError("红队证据缺少非空输出: " + names)
     persistent_outputs = execution_dir / "outputs"
     shutil.copytree(outputs_dir, persistent_outputs)
+    semantic_output: Path | None = None
+    semantic_errors: list[str] = []
+    for output in outputs:
+        candidate = persistent_outputs / output.relative_to(outputs_dir)
+        if candidate.suffix.casefold() != ".json":
+            continue
+        try:
+            _require_red_team_semantic_output(kind, candidate)
+        except ContractError as exc:
+            semantic_errors.append(f"{candidate.name}: {exc}")
+            continue
+        semantic_output = candidate
+        break
+    if semantic_output is None:
+        detail = "；".join(semantic_errors) or "没有 JSON 输出"
+        raise ContractError("红队证据缺少合格的语义输出: " + detail)
     staged_packet = scratch / "packet"
     staged_inputs = _packet_input_files(staged_packet, manifest)
     receipt = {
         "schema_name": "red_team_evidence",
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "run_id": root.name,
         "evidence_id": evidence_id,
         "kind": kind,
@@ -338,6 +403,7 @@ def run_red_team_evidence(
             _file_evidence(root, persistent_outputs / path.relative_to(outputs_dir))
             for path in outputs
         ],
+        "semantic_output": _file_evidence(root, semantic_output),
         "stdout": _file_evidence(root, stdout_path),
         "stderr": _file_evidence(root, stderr_path),
         "started_at": started_at,
@@ -379,8 +445,8 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
         try:
             receipt = load_json(receipt_path)
             _require_red_team_receipt(receipt)
-            if receipt["schema_version"] != "1.1":
-                raise ContractError("旧版红队收据未在冻结 packet 清洁目录执行，不能作为当前生产放行依据")
+            if receipt["schema_version"] != "1.2":
+                raise ContractError("旧版红队收据缺少科学语义输出，不能作为当前生产放行依据")
             if receipt["run_id"] != root.name:
                 raise ContractError("红队证据收据 run_id 不匹配")
             execution_dir = receipt_path.parent.resolve()
@@ -415,7 +481,24 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
                 output = _verify_file_evidence(root, item, require_nonempty=True)
                 if execution_dir / "outputs" not in output.parents:
                     raise ContractError("红队证据输出不在对应清洁执行目录")
-            for item in (receipt["script"], *receipt["inputs"], *receipt["outputs"], receipt["stdout"], receipt["stderr"]):
+            semantic_output = _verify_file_evidence(
+                root, receipt["semantic_output"], require_nonempty=True
+            )
+            if execution_dir / "outputs" not in semantic_output.parents:
+                raise ContractError("红队语义输出不在对应清洁执行目录")
+            if not any(
+                item["path"] == receipt["semantic_output"]["path"]
+                for item in receipt["outputs"]
+            ):
+                raise ContractError("红队语义输出未列入登记输出")
+            _require_red_team_semantic_output(receipt["kind"], semantic_output)
+            for item in (
+                receipt["script"],
+                *receipt["inputs"],
+                *receipt["outputs"],
+                receipt["stdout"],
+                receipt["stderr"],
+            ):
                 path = _verify_file_evidence(root, item, require_nonempty=False)
                 evidence_files[relative_inside(root, path).as_posix()] = {
                     "path": relative_inside(root, path).as_posix(),

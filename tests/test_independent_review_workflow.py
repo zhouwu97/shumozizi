@@ -60,7 +60,15 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "from pathlib import Path\n"
                 "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
                 "assert (packet / 'problem').is_dir()\n"
-                "(outputs / 'recompute.json').write_text(json.dumps({'independent_cases_checked': 1}), encoding='utf-8')\n",
+                "(outputs / 'recompute.json').write_text(json.dumps({\n"
+                "    'claim_id': 'Q1-objective',\n"
+                "    'method': 'independent_quadratic_oracle',\n"
+                "    'cases': 12,\n"
+                "    'production_value': 3.348287,\n"
+                "    'independent_value': 3.347912,\n"
+                "    'absolute_difference': 0.000375,\n"
+                "    'verdict': 'consistent',\n"
+                "}), encoding='utf-8')\n",
                 encoding="utf-8",
             )
             counterexample = artifact_root / "minimal_counterexample.py"
@@ -70,7 +78,14 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "from pathlib import Path\n"
                 "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
                 "assert (packet / 'source_snapshot').is_dir()\n"
-                "(outputs / 'counterexample.json').write_text(json.dumps({'counterexample_cases': 1}), encoding='utf-8')\n",
+                "(outputs / 'counterexample.json').write_text(json.dumps({\n"
+                "    'claim_id': 'segment-intersection',\n"
+                "    'case': {'A': [0, 0, 0], 'B': [1, 0, 0], 'C': [2, 1, 0], 'radius': 0.5},\n"
+                "    'expected': False,\n"
+                "    'production_observed': True,\n"
+                "    'violated_invariant': 'closest point lies outside finite segment',\n"
+                "    'verdict': 'counterexample_found',\n"
+                "}), encoding='utf-8')\n",
                 encoding="utf-8",
             )
             run_red_team_evidence(
@@ -196,6 +211,32 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self._enter_paper(run_dir)
 
             self.assertTrue(scientific_review_status(run_dir)["allowed"])
+
+    def test_red_team_rejects_executed_but_scientifically_empty_output(self) -> None:
+        """真实运行但只写计数的脚本不能成为科学红队证据。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "empty-red-team-output")
+            self._prepare_scientific_phase(run_dir)
+            packet = build_review_packet(run_dir, kind="scientific")
+            script = run_dir / "review" / "red_team_artifacts" / "empty.py"
+            script.write_text(
+                "import json\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "_, outputs = (Path(value) for value in sys.argv[1:3])\n"
+                "(outputs / 'empty.json').write_text(json.dumps({'cases': 1}), encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ContractError, "语义输出"):
+                run_red_team_evidence(
+                    run_dir,
+                    evidence_id="empty",
+                    kind="independent-recompute",
+                    packet_manifest=self._manifest_relative(packet),
+                    script_path="review/red_team_artifacts/empty.py",
+                    output_paths=["empty.json"],
+                )
 
     def test_scientific_review_drift_or_p0_cannot_release_paper(self) -> None:
         """代码变化和 P0 都必须撤销论文放行，而不是只保留旧摘要。"""

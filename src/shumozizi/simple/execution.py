@@ -11,6 +11,7 @@ from typing import Any
 
 from shumozizi.core.io import ContractError, relative_inside, resolve_inside
 from shumozizi.simple.results import json_path_value, register_result, safe_result_id
+from shumozizi.simple.source_closure import python_source_closure
 from shumozizi.simple.state import read_simple_state, utc_now
 
 
@@ -176,7 +177,8 @@ def execute_simple_experiment(
             raise ContractError(f"要求新鲜输出，但预期文件已存在: {', '.join(existing)}")
     explicit_inputs = input_files or []
     source_script = _source_script(root, arguments)
-    all_inputs = list(dict.fromkeys([*explicit_inputs, *([source_script] if source_script else [])]))
+    source_inputs = python_source_closure(root, source_script) if source_script else []
+    all_inputs = list(dict.fromkeys([*explicit_inputs, *source_inputs]))
     for item in all_inputs:
         resolve_inside(root, item, must_exist=True)
 

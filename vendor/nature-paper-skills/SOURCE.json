@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/Boom5426/Nature-Paper-Skills",
+  "commit": "e6f0448271250072bc880aef91311a64e3473981",
+  "license": "MIT AND Apache-2.0",
+  "license_files": ["LICENSE", "LICENSE-APACHE", "NOTICE"],
+  "imported_paths": [
+    "skills/core/figure-planner",
+    "skills/core/manuscript-optimizer",
+    "skills/core/stats-reporting-audit"
+  ],
+  "local_modifications": []
+}
