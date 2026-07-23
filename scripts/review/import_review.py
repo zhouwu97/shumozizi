@@ -13,14 +13,20 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from shumozizi.core.io import ContractError
-from shumozizi.simple.review import import_paper_blind_review, import_scientific_review
+from shumozizi.simple.review import (
+    import_final_audit,
+    import_paper_blind_review,
+    import_scientific_review,
+)
 
 
 def main() -> int:
     """导入已完成的科学红队或 PDF 盲审报告。"""
     parser = argparse.ArgumentParser(description="导入 Capability-First v3 独立审查结论")
     parser.add_argument("run_dir")
-    parser.add_argument("--kind", choices=("scientific", "paper-blind"), required=True)
+    parser.add_argument(
+        "--kind", choices=("scientific", "paper-blind", "final-audit"), required=True
+    )
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--verdict", choices=("pass", "fail", "needs_rework", "revoked"), required=True)
     parser.add_argument("--severity", choices=("none", "P0", "P1", "P2", "P3"), required=True)
@@ -46,7 +52,7 @@ def main() -> int:
                 reviewer_thread_id=args.thread_id,
                 report_file=Path(args.report) if args.report else Path("review/SCIENTIFIC_RED_TEAM.md"),
             )
-        else:
+        elif args.kind == "paper-blind":
             summary = import_paper_blind_review(
                 root,
                 manifest_file=args.manifest,
@@ -54,6 +60,19 @@ def main() -> int:
                 highest_severity=args.severity,
                 reviewer_thread_id=args.thread_id,
                 report_file=Path(args.report) if args.report else Path("review/PAPER_BLIND_REVIEW.md"),
+            )
+        else:
+            summary = import_final_audit(
+                root,
+                manifest_file=args.manifest,
+                verdict=args.verdict,
+                highest_severity=args.severity,
+                reviewer_thread_id=args.thread_id,
+                report_file=(
+                    Path(args.report)
+                    if args.report
+                    else Path("review/FINAL_SUBMISSION_REVIEW.md")
+                ),
             )
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 0

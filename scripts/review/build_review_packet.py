@@ -20,7 +20,9 @@ def main() -> int:
     """解析命令行并输出审查包清单位置。"""
     parser = argparse.ArgumentParser(description="创建 Capability-First v3 独立审查包")
     parser.add_argument("run_dir")
-    parser.add_argument("--kind", choices=("scientific", "paper-blind"), required=True)
+    parser.add_argument(
+        "--kind", choices=("scientific", "paper-blind", "final-audit"), required=True
+    )
     args = parser.parse_args()
     try:
         packet = build_review_packet(Path(args.run_dir), kind=args.kind)

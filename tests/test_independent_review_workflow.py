@@ -15,6 +15,8 @@ from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.review import (
     build_review_packet,
     completion_status,
+    final_audit_status,
+    import_final_audit,
     import_paper_blind_review,
     import_scientific_review,
     paper_blind_review_status,
@@ -153,6 +155,39 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             report_file=report.relative_to(run_dir),
         )
         return packet
+
+    def _pass_final_audit(self, run_dir: Path) -> dict[str, object]:
+        """构建最终交付包并导入第三个独立对话的通过结论。"""
+        packet = build_review_packet(run_dir, kind="final-audit")
+        report = self._write_report(run_dir, "FINAL_SUBMISSION_REVIEW.md")
+        import_final_audit(
+            run_dir,
+            manifest_file=self._manifest_relative(packet),
+            verdict="pass",
+            highest_severity="none",
+            reviewer_thread_id="fresh-final-thread",
+            report_file=report.relative_to(run_dir),
+        )
+        return packet
+
+    @staticmethod
+    def _write_passing_mechanical_qa(run_dir: Path) -> None:
+        """写入绑定当前 PDF 的最小机械 QA 收据。"""
+        pdf = run_dir / "paper" / "final.pdf"
+        (run_dir / "qa" / "mechanical-qa.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "run_id": run_dir.name,
+                    "workflow": "capability-first-v3",
+                    "status": "pass",
+                    "final_pdf": "paper/final.pdf",
+                    "final_pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
+                    "checks": [{"id": "synthetic", "passed": True}],
+                }
+            ),
+            encoding="utf-8",
+        )
 
     @staticmethod
     def _enter_paper(run_dir: Path) -> None:
@@ -299,8 +334,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     report_file=report.relative_to(run_dir),
                 )
 
-    def test_blind_review_and_current_mechanical_qa_are_required_for_completion(self) -> None:
-        """PDF 盲审只审 PDF 包，且 complete 绑定同一份已检查 PDF。"""
+    def test_three_reviews_and_current_mechanical_qa_are_required_for_completion(self) -> None:
+        """三轮审核和机械 QA 必须依次绑定同一套当前交付物。"""
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = initialize_simple_run(Path(temporary), "paper-blind-gate")
             self._prepare_scientific_phase(run_dir)
@@ -334,25 +369,61 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self._pass_paper_blind_review(run_dir)
             update_simple_state(run_dir, phase="verify")
 
-            with self.assertRaisesRegex(ContractError, "机械 QA"):
+            with self.assertRaisesRegex(ContractError, "不允许从 verify 直接进入 complete"):
                 update_simple_state(run_dir, phase="complete")
 
-            (run_dir / "qa" / "mechanical-qa.json").write_text(
-                json.dumps(
-                    {
-                        "schema_version": "1.0",
-                        "run_id": run_dir.name,
-                        "workflow": "capability-first-v3",
-                        "status": "pass",
-                        "final_pdf": "paper/final.pdf",
-                        "final_pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
-                        "checks": [{"id": "synthetic", "passed": True}],
-                    }
-                ),
-                encoding="utf-8",
-            )
+            self._write_passing_mechanical_qa(run_dir)
+            update_simple_state(run_dir, phase="final_review")
+            with self.assertRaisesRegex(ContractError, "最终交付审核"):
+                update_simple_state(run_dir, phase="complete")
+
+            packet = self._pass_final_audit(run_dir)
+            manifest = load_json(run_dir / self._manifest_relative(packet))
+            copied = {item["source"] for item in manifest["files"]}
+            self.assertIn("paper/final.pdf", copied)
+            self.assertIn("qa/mechanical-qa.json", copied)
+            self.assertFalse(any(path.startswith("review/") for path in copied))
             self.assertTrue(completion_status(run_dir)["allowed"])
             update_simple_state(run_dir, phase="complete")
+
+    def test_final_audit_requires_third_thread_and_invalidates_on_delivery_drift(self) -> None:
+        """终审不得复用旧对话，且最终交付树变化后必须重新审核。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "final-audit-drift")
+            self._prepare_scientific_phase(run_dir)
+            self._pass_scientific_review(run_dir)
+            self._enter_paper(run_dir)
+            (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nminimal")
+            self._enter_paper_review(run_dir)
+            self._pass_paper_blind_review(run_dir)
+            update_simple_state(run_dir, phase="verify")
+            self._write_passing_mechanical_qa(run_dir)
+            update_simple_state(run_dir, phase="final_review")
+            packet = build_review_packet(run_dir, kind="final-audit")
+            report = self._write_report(run_dir, "FINAL_SUBMISSION_REVIEW.md")
+
+            with self.assertRaisesRegex(ContractError, "第三个新对话"):
+                import_final_audit(
+                    run_dir,
+                    manifest_file=self._manifest_relative(packet),
+                    verdict="pass",
+                    highest_severity="none",
+                    reviewer_thread_id="fresh-paper-thread",
+                    report_file=report.relative_to(run_dir),
+                )
+
+            import_final_audit(
+                run_dir,
+                manifest_file=self._manifest_relative(packet),
+                verdict="pass",
+                highest_severity="none",
+                reviewer_thread_id="fresh-final-thread",
+                report_file=report.relative_to(run_dir),
+            )
+            self.assertTrue(final_audit_status(run_dir)["allowed"])
+            (run_dir / "results" / "index.json").write_text("{}", encoding="utf-8")
+            self.assertFalse(final_audit_status(run_dir)["allowed"])
+            self.assertFalse(completion_status(run_dir)["allowed"])
 
     def test_paper_blind_review_cannot_reuse_the_scientific_review_thread(self) -> None:
         """两次独立审查必须绑定不同的新对话标识。"""
@@ -376,8 +447,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     report_file=report.relative_to(run_dir),
                 )
 
-    def test_review_cli_crosses_both_independent_boundaries(self) -> None:
-        """脚本入口必须执行两次隔离审查的实际阶段迁移。"""
+    def test_review_cli_crosses_all_independent_boundaries(self) -> None:
+        """脚本入口必须执行三次隔离审查的实际阶段迁移。"""
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = initialize_simple_run(Path(temporary), "review-cli-e2e")
             self._prepare_scientific_phase(run_dir)
@@ -429,9 +500,33 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 blind_report.relative_to(run_dir).as_posix(),
             )
             update_simple_state(run_dir, phase="verify")
+            self._write_passing_mechanical_qa(run_dir)
+            update_simple_state(run_dir, phase="final_review")
+            final_packet = self._run_review_cli(
+                str(BUILD_PACKET), str(run_dir), "--kind", "final-audit"
+            )
+            final_manifest = self._manifest_relative(final_packet)
+            final_report = self._write_report(run_dir, "FINAL_SUBMISSION_REVIEW.md")
+            self._run_review_cli(
+                str(IMPORT_REVIEW),
+                str(run_dir),
+                "--kind",
+                "final-audit",
+                "--manifest",
+                final_manifest,
+                "--verdict",
+                "pass",
+                "--severity",
+                "none",
+                "--thread-id",
+                "cli-final-thread",
+                "--report",
+                final_report.relative_to(run_dir).as_posix(),
+            )
 
             self.assertTrue(scientific_review_status(run_dir)["allowed"])
             self.assertTrue(paper_blind_review_status(run_dir)["allowed"])
+            self.assertTrue(final_audit_status(run_dir)["allowed"])
 
 
 if __name__ == "__main__":

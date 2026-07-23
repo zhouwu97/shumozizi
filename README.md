@@ -99,8 +99,8 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
 - `mathmodel-matlab`：检测 MATLAB/Octave，提供独立公式实现、优化挑战和三维证据图；
 - `mathmodel-visual`：在科学红队通过后，按题型生成模型图、搜索诊断图和结果图；
 - `mathmodel-paper`：以 LaTeX 为默认路径，将真实结果、图表和验证组织为完整论文；
-- `mathmodel-red-team`：必须在全新 Codex 对话中执行的科学红队和 PDF 盲审；
-- `mathmodel-final-check`：独立盲审后的机械 QA 与追溯复验；
+- `mathmodel-red-team`：必须在三个互不相同的新 Codex 对话中执行科学红队、PDF 盲审和最终交付审核；
+- `mathmodel-final-check`：独立盲审后的机械 QA、追溯复验和最终审核包准备；
 - `mathmodel-learn-paper`：离线论文学习。
 - `mathmodel-geometry-oracle`：以分离源码和不同公式复核有限线段、球体与遮挡几何；
 - `mathmodel-geometry-visual`：用真实结果生成三维场景、正交投影和临界事件图；
@@ -112,7 +112,7 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
 
 ```text
 analysis -> capability_route -> experiment -> scientific_review
--> visualization -> paper -> paper_review -> verify -> complete
+-> visualization -> paper -> paper_review -> verify -> final_review -> complete
 ```
 
 几何/运动或机理题的能力路由必须指定独立 oracle；若本机存在 MATLAB 或 Octave，可将其作为 Python 生产求解器之外的公式实现、优化挑战或三维图工具。工具探测、路由和图表合同分别由 `scripts/capabilities/detect_tools.py`、`scripts/capabilities/record_route.py`、`scripts/figures/record_visualization.py` 记录。进入论文前使用 `scripts/paper/select_template.py --materialize` 从完整 `skills/5writing` 模板库选择并实例化与比赛、语言、引擎匹配的模板；未识别比赛不会静默回退。
@@ -125,7 +125,7 @@ analysis -> capability_route -> experiment -> scientific_review
 python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
 ```
 
-新对话初始只读该包，不能访问求解上下文、质量日志、历史 run、网络或公开同题答案；它独立重建题意、攻击高风险数学原语并挑战搜索区域。导入合格报告后才能进入 `paper`。PDF 生成后依次进入 `paper_review`，重新建立 `--kind paper-blind` 包，再由另一个只看题面、附件和 PDF 的新对话盲审。PDF 盲审通过后才进入 `verify`；当前 PDF 的机械 QA 也通过后才能 `complete`。任一冻结输入、代码、结果或 PDF 漂移都会撤销相应审查。
+协调任务必须实际使用 Codex `create_thread` 新建审核任务并用 `wait_threads` 等待，不能在求解任务内自审，也不能 `fork_thread` 继承求解历史。新任务初始只读该包，不能访问求解上下文、质量日志、历史 run、网络或公开同题答案；它独立重建题意、攻击高风险数学原语并挑战搜索区域。导入时必须使用新建任务返回的真实 `threadId`。PDF 生成后进入 `paper_review`，由第二个新审核任务只看题面、附件和 PDF。盲审通过后进入 `verify` 运行机械 QA，再进入 `final_review`；第三个新审核任务只读 `--kind final-audit` 冻结包，综合检查最终 PDF、提交表、结果、图表、报告和机械 QA。三轮审核任务互不相同，终审通过后才能 `complete`；环境不能新建任务时必须阻断。任一被冻结的输入、代码、结果、图表、报告、提交物、QA 或 PDF 漂移都会撤销对应结论。
 
 ## 机械终检
 
@@ -141,7 +141,7 @@ python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 - `qa/contact-sheet.png`：便于人工快速查看的 PDF 联系表；
 - `reports/VERIFY_REPORT.md`：简短可定位的验证摘要。
 
-独立科学红队报告写入 `review/SCIENTIFIC_RED_TEAM.md`：它在论文前通过题面重建、清洁室复现、反例和不同搜索族挑战发现共模错误。PDF 盲审报告写入 `review/PAPER_BLIND_REVIEW.md`：它只看题面、附件、PDF 与提交材料。两者必须是不同的新 Codex 对话，不得读取公开同题答案、历史 run、质量日志或同一求解上下文。图表和表格编号检查仅对 caption 运行且暂为 warning，以避免正文引用误报。
+独立科学红队报告写入 `review/SCIENTIFIC_RED_TEAM.md`，PDF 盲审报告写入 `review/PAPER_BLIND_REVIEW.md`，最终交付审核写入 `review/FINAL_SUBMISSION_REVIEW.md`。三者必须来自不同的新 Codex 对话，不得读取公开同题答案、历史 run、质量日志或同一求解上下文。图表和表格编号检查仅对 caption 运行且暂为 warning，以避免正文引用误报。
 
 ## 按需知识库
 

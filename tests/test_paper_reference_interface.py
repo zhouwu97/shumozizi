@@ -180,6 +180,30 @@ def test_paper_card_is_non_rendering_writing_reference_not_claim_evidence(
     assert any("paper_references" in error for error in errors)
 
 
+def test_paper_reference_remains_valid_during_final_review(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """新增终审阶段仍属于 production 结果冻结后的论文阶段。"""
+    run_dir = tmp_path / "run-final-review"
+    _write_state(run_dir, phase="final_review")
+    index_path = _write_paper_index(tmp_path)
+    _use_controlled_paper_index(monkeypatch, index_path)
+    monkeypatch.setattr(
+        "shumozizi.paper.references.quality_allows_paper",
+        lambda _run_dir, result_id: result_id == "Q1-R1",
+    )
+
+    receipt = register_paper_references(
+        run_dir,
+        card_ids=["offline-card"],
+        production_result_ids=["Q1-R1"],
+    )
+
+    assert receipt["frozen_phase"] == "final_review"
+    assert verify_paper_references(run_dir)["valid"] is True
+
+
 def test_paper_reference_rejects_tampered_index_path(
     tmp_path: Path,
     monkeypatch,

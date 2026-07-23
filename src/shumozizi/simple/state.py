@@ -20,6 +20,7 @@ PHASES = (
     "paper",
     "paper_review",
     "verify",
+    "final_review",
     "complete",
     "blocked",
 )
@@ -32,7 +33,15 @@ ALLOWED_PHASE_TRANSITIONS = {
     "visualization": {"visualization", "paper", "blocked"},
     "paper": {"paper", "paper_review", "blocked"},
     "paper_review": {"paper_review", "paper", "verify", "blocked"},
-    "verify": {"verify", "complete", "blocked"},
+    "verify": {"verify", "final_review", "blocked"},
+    "final_review": {
+        "final_review",
+        "analysis",
+        "experiment",
+        "paper",
+        "complete",
+        "blocked",
+    },
     "complete": {"complete"},
     # 阻断只允许回到实际生产阶段，避免绕过失败修复直接交付。
     "blocked": {"blocked", "analysis", "capability_route", "experiment"},
@@ -185,6 +194,10 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             from shumozizi.simple.review import require_paper_blind_review_allowed
 
             require_paper_blind_review_allowed(run_dir)
+        if next_phase == "final_review":
+            from shumozizi.simple.review import require_final_review_allowed
+
+            require_final_review_allowed(run_dir)
         if next_phase == "complete":
             from shumozizi.simple.review import require_completion_allowed
 

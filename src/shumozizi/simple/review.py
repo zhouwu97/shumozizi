@@ -29,10 +29,20 @@ REVIEW_ROOT = Path("review")
 SUMMARY_PATH = REVIEW_ROOT / "summary.json"
 SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
+FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
 RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
 _PACKET_ROOTS = {
     "scientific": ("problem", "code", "results/raw"),
     "paper-blind": ("problem", "paper/final.pdf", "paper/submission"),
+    "final-audit": (
+        "problem",
+        "paper/final.pdf",
+        "paper/submission",
+        "results",
+        "figures",
+        "reports",
+        "qa/mechanical-qa.json",
+    ),
 }
 _PACKET_DESTINATIONS = {
     "problem": "problem",
@@ -40,10 +50,25 @@ _PACKET_DESTINATIONS = {
     "results/raw": "candidate_results",
     "paper/final.pdf": "paper/final.pdf",
     "paper/submission": "submission",
+    "results": "results",
+    "figures": "figures",
+    "reports": "reports",
+    "qa/mechanical-qa.json": "qa/mechanical-qa.json",
 }
 _REQUIRED_PACKET_ROOTS = {
     "scientific": frozenset(("problem", "code", "results/raw")),
-    "paper-blind": frozenset(("problem", "paper/final.pdf")),
+    "paper-blind": frozenset(("problem", "paper/final.pdf", "paper/submission")),
+    "final-audit": frozenset(
+        (
+            "problem",
+            "paper/final.pdf",
+            "paper/submission",
+            "results",
+            "figures",
+            "reports",
+            "qa/mechanical-qa.json",
+        )
+    ),
 }
 _SEVERITIES = {"none", "P0", "P1", "P2", "P3"}
 _VERDICTS = {"pass", "fail", "needs_rework", "revoked"}
@@ -87,6 +112,13 @@ def _require_summary(payload: dict[str, Any]) -> None:
         and paper["highest_severity"] in {"P0", "P1"}
     ):
         raise ContractError("盲审含 P0/P1 时不能给出 pass")
+    final_audit = payload.get("final_audit")
+    if (
+        final_audit is not None
+        and final_audit["verdict"] == "pass"
+        and final_audit["highest_severity"] in {"P0", "P1"}
+    ):
+        raise ContractError("最终交付审核含 P0/P1 时不能给出 pass")
 
 
 def _red_team_schema() -> dict[str, Any]:
@@ -674,7 +706,7 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
 
     Args:
         run_dir: 当前 v3 运行目录。
-        kind: ``scientific`` 或 ``paper-blind``。
+        kind: ``scientific``、``paper-blind`` 或 ``final-audit``。
 
     Returns:
         已写入的包清单。
@@ -683,13 +715,21 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
         ContractError: 阶段、包类别或所需 PDF 不满足流程边界。
     """
     if kind not in _PACKET_ROOTS:
-        raise ContractError("审查包类别必须为 scientific 或 paper-blind")
+        raise ContractError("审查包类别必须为 scientific、paper-blind 或 final-audit")
     state = read_simple_state(run_dir)
-    required_phase = "scientific_review" if kind == "scientific" else "paper_review"
+    required_phase = {
+        "scientific": "scientific_review",
+        "paper-blind": "paper_review",
+        "final-audit": "final_review",
+    }[kind]
     if state["phase"] != required_phase:
         raise ContractError(f"{kind} 审查包只能在 {required_phase} 阶段创建")
-    if kind == "paper-blind" and not (run_dir / "paper" / "final.pdf").is_file():
-        raise ContractError("盲审包需要已编译的 paper/final.pdf")
+    if kind in {"paper-blind", "final-audit"} and not (
+        run_dir / "paper" / "final.pdf"
+    ).is_file():
+        raise ContractError(f"{kind} 审查包需要已编译的 paper/final.pdf")
+    if kind == "final-audit":
+        require_final_review_allowed(run_dir)
 
     packet_id = _packet_identifier(kind, state["revision"])
     packet_dir = run_dir / REVIEW_ROOT / "packet" / kind / packet_id
@@ -891,6 +931,13 @@ def _reviewer_paper(thread_id: str) -> dict[str, Any]:
     return {"thread_id": thread_id}
 
 
+def _reviewer_final(thread_id: str) -> dict[str, Any]:
+    """记录最终交付审核使用的第三个独立对话标识。"""
+    if not thread_id.strip():
+        raise ContractError("最终交付审核必须记录新对话 thread_id")
+    return {"thread_id": thread_id}
+
+
 def _require_competition_strength_evidence(
     competition_strength: str, artifacts: dict[str, Any]
 ) -> None:
@@ -955,7 +1002,7 @@ def import_scientific_review(
     artifacts = _bind_red_team_artifacts(run_dir, report)
     _require_competition_strength_evidence(competition_strength, artifacts)
     summary = {
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "run_id": run_dir.name,
         "scientific_review": {
             "verdict": verdict,
@@ -974,6 +1021,7 @@ def import_scientific_review(
         },
         # 新科学结论会改变论文可用性；旧盲审不能跨越该边界复用。
         "paper_blind_review": None,
+        "final_audit": None,
         "updated_at": utc_now(),
     }
     _require_summary(summary)
@@ -1016,6 +1064,56 @@ def import_paper_blind_review(
         },
         "report": _review_report(run_dir, report_file),
         "reviewer": _reviewer_paper(reviewer_thread_id),
+        "reviewed_at": utc_now(),
+    }
+    # 新 PDF 盲审会改变最终交付边界，旧终审不能复用。
+    summary["final_audit"] = None
+    summary["updated_at"] = utc_now()
+    _require_summary(summary)
+    atomic_json(run_dir / SUMMARY_PATH, summary)
+    return summary
+
+
+def import_final_audit(
+    run_dir: Path,
+    *,
+    manifest_file: str,
+    verdict: str,
+    highest_severity: str,
+    reviewer_thread_id: str,
+    report_file: Path = FINAL_AUDIT_REPORT_PATH,
+) -> dict[str, Any]:
+    """绑定第三个新对话完成的最终交付审核报告。"""
+    if verdict not in _VERDICTS or highest_severity not in _SEVERITIES:
+        raise ContractError("最终交付审核 verdict 或严重性不合法")
+    if verdict == "pass" and highest_severity in {"P0", "P1"}:
+        raise ContractError("最终交付审核含 P0/P1 时不能导入为 pass")
+    if read_simple_state(run_dir)["phase"] != "final_review":
+        raise ContractError("最终交付审核只能在 final_review 阶段导入")
+    require_final_review_allowed(run_dir)
+    packet = verify_review_packet(run_dir, manifest_file)
+    if not packet["success"]:
+        raise ContractError("最终交付审核包已失效: " + "；".join(packet["errors"]))
+    manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
+    if manifest["packet_kind"] != "final-audit":
+        raise ContractError("最终交付审核必须绑定 final-audit 审查包")
+    summary = read_review_summary(run_dir)
+    used_threads = {
+        summary["scientific_review"]["reviewer"]["thread_id"],
+        summary["paper_blind_review"]["reviewer"]["thread_id"],
+    }
+    if reviewer_thread_id in used_threads:
+        raise ContractError("最终交付审核必须使用不同于前两轮审核的第三个新对话")
+    summary["schema_version"] = "1.3"
+    summary["final_audit"] = {
+        "verdict": verdict,
+        "highest_severity": highest_severity,
+        "packet": {
+            "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
+            "manifest_sha256": sha256_file(manifest_path),
+        },
+        "report": _review_report(run_dir, report_file),
+        "reviewer": _reviewer_final(reviewer_thread_id),
         "reviewed_at": utc_now(),
     }
     summary["updated_at"] = utc_now()
@@ -1110,6 +1208,76 @@ def require_paper_blind_review_allowed(run_dir: Path) -> None:
         raise ContractError("不能进入机械终检：独立 PDF 盲审未通过或已失效: " + status["reason"])
 
 
+def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
+    """返回机械 QA 是否通过且仍绑定当前最终 PDF。"""
+    try:
+        mechanical = load_json(run_dir / "qa" / "mechanical-qa.json")
+        pdf = run_dir / "paper" / "final.pdf"
+        if (
+            not isinstance(mechanical, dict)
+            or mechanical.get("schema_version") != "1.0"
+            or mechanical.get("run_id") != run_dir.name
+            or mechanical.get("workflow") != "capability-first-v3"
+            or mechanical.get("status") != "pass"
+        ):
+            return {"allowed": False, "reason": "机械 QA 未通过"}
+        checks = mechanical.get("checks")
+        if not isinstance(checks, list) or any(
+            not isinstance(check, dict) or check.get("passed") is not True for check in checks
+        ):
+            return {"allowed": False, "reason": "机械 QA 缺少全部通过的检查记录"}
+        if (
+            mechanical.get("final_pdf") != "paper/final.pdf"
+            or not pdf.is_file()
+            or mechanical.get("final_pdf_sha256") != sha256_file(pdf)
+        ):
+            return {"allowed": False, "reason": "机械 QA 未绑定当前最终 PDF"}
+        return {"allowed": True, "reason": "", "mechanical_qa": mechanical}
+    except (ContractError, OSError, TypeError, ValueError) as exc:
+        return {"allowed": False, "reason": "机械 QA 无法读取: " + str(exc)}
+
+
+def require_mechanical_qa_allowed(run_dir: Path) -> None:
+    """要求当前 PDF 的机械 QA 已全部通过。"""
+    status = mechanical_qa_status(run_dir)
+    if not status["allowed"]:
+        raise ContractError("不能进入最终交付审核：" + status["reason"])
+
+
+def require_final_review_allowed(run_dir: Path) -> None:
+    """要求前两轮独立审核和机械 QA 均仍绑定当前交付物。"""
+    require_paper_blind_review_allowed(run_dir)
+    require_mechanical_qa_allowed(run_dir)
+
+
+def final_audit_status(run_dir: Path) -> dict[str, Any]:
+    """返回第三轮最终交付审核是否仍可作为完成依据。"""
+    try:
+        require_final_review_allowed(run_dir)
+        summary = read_review_summary(run_dir)
+        review = summary.get("final_audit")
+        if review is None:
+            return {"allowed": False, "reason": "缺少独立最终交付审核"}
+        current, reason = _review_current(run_dir, review, expected_kind="final-audit")
+        reviewer_threads = {
+            summary["scientific_review"]["reviewer"]["thread_id"],
+            summary["paper_blind_review"]["reviewer"]["thread_id"],
+            review["reviewer"]["thread_id"],
+        }
+        distinct_reviewers = len(reviewer_threads) == 3
+        allowed = bool(
+            current
+            and distinct_reviewers
+            and review["verdict"] == "pass"
+            and review["highest_severity"] not in {"P0", "P1"}
+        )
+        if current and not distinct_reviewers:
+            reason = "三轮独立审核未使用三个不同对话"
+        return {"allowed": allowed, "review": review, "reason": reason}
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return {"allowed": False, "reason": str(exc)}
+
+
 def competition_submission_status(run_dir: Path) -> dict[str, Any]:
     """区分科学可用与竞赛可提交，避免 weak 结果被标记为 complete。"""
     scientific = scientific_review_status(run_dir)
@@ -1140,49 +1308,25 @@ def competition_submission_status(run_dir: Path) -> dict[str, Any]:
 
 
 def completion_status(run_dir: Path) -> dict[str, Any]:
-    """组合盲审与机械 QA，形成唯一的 complete 放行结论。"""
-    review = paper_blind_review_status(run_dir)
+    """组合三轮独立审核与机械 QA，形成唯一的 complete 放行结论。"""
+    review = final_audit_status(run_dir)
     if not review["allowed"]:
         return {"allowed": False, "reason": review["reason"]}
     competition = competition_submission_status(run_dir)
     if not competition["submission_ready"]:
         return {"allowed": False, **competition}
-    try:
-        mechanical = load_json(run_dir / "qa" / "mechanical-qa.json")
-        pdf = run_dir / "paper" / "final.pdf"
-        if (
-            not isinstance(mechanical, dict)
-            or mechanical.get("schema_version") != "1.0"
-            or mechanical.get("run_id") != run_dir.name
-            or mechanical.get("workflow") != "capability-first-v3"
-            or mechanical.get("status") != "pass"
-        ):
-            return {"allowed": False, "reason": "机械 QA 未通过"}
-        checks = mechanical.get("checks")
-        if not isinstance(checks, list) or any(
-            not isinstance(check, dict) or check.get("passed") is not True for check in checks
-        ):
-            return {"allowed": False, "reason": "机械 QA 缺少全部通过的检查记录"}
-        if (
-            mechanical.get("final_pdf") != "paper/final.pdf"
-            or not pdf.is_file()
-            or mechanical.get("final_pdf_sha256") != sha256_file(pdf)
-        ):
-            return {"allowed": False, "reason": "机械 QA 未绑定当前最终 PDF"}
-        return {
-            "allowed": True,
-            "reason": "",
-            "scientific_valid": True,
-            "competition_strength": competition["competition_strength"],
-            "submission_ready": True,
-            "status": "submission_ready",
-        }
-    except (ContractError, OSError, TypeError, ValueError) as exc:
-        return {"allowed": False, "reason": "机械 QA 无法读取: " + str(exc)}
+    return {
+        "allowed": True,
+        "reason": "",
+        "scientific_valid": True,
+        "competition_strength": competition["competition_strength"],
+        "submission_ready": True,
+        "status": "submission_ready",
+    }
 
 
 def require_completion_allowed(run_dir: Path) -> None:
-    """要求独立审查与机械 QA 同时通过，禁止仅凭 PDF 完成状态交付。"""
+    """要求三轮独立审查与机械 QA 同时通过，禁止仅凭 PDF 交付。"""
     status = completion_status(run_dir)
     if not status["allowed"]:
         raise ContractError("不能标记 complete：" + status["reason"])

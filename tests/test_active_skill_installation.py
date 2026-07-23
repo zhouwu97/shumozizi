@@ -64,6 +64,10 @@ def test_workflow_routes_problem_families_to_imported_skills() -> None:
         ],
     }
     assert "按题型选择并调用匹配的主动 Skill" in workflow_text
+    assert "`create_thread`" in workflow_text
+    assert "`wait_threads`" in workflow_text
+    assert "不得用 `fork_thread`" in workflow_text
+    assert "真实 `threadId`" in workflow_text
     for route in routing["routes"].values():
         for item in route:
             assert f"${item['skill']}" in router_text

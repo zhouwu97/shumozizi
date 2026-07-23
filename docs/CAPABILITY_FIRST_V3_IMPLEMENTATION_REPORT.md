@@ -96,7 +96,7 @@ mathmodel-optimizer-benchmark
 
 - `README.md`：v3 架构、命令、目录、主动 Skill、机械 QA 和 legacy 状态；
 - `AGENTS.md`：v3 运行约束、结果证据边界、预算策略、论文追溯和禁止事项；
-- `docs/CODEX_WORKFLOW.md`：连续生产、一次整体审查和定向修复流程。
+- `docs/CODEX_WORKFLOW.md`：连续生产、三轮新 Codex 任务独立审核和修复后重审流程。
 
 ## 验证结果
 
@@ -109,7 +109,7 @@ mathmodel-optimizer-benchmark
 - PDF 缺失时可定位的机械 QA 报告；
 - 图表文字边界重叠检测；
 - 真实 PDF 联系表生成；
-- 主动 Skill 目录只包含六项 v3 能力。
+- 主动 Skill 目录包含十三项可发现、可路由的 v3 能力。
 
 ### 6. 评审后的确定性加固
 
@@ -120,7 +120,7 @@ mathmodel-optimizer-benchmark
 - `run_final_checks.py` 会重新计算所有 current 结果的输入、输出和指标来源哈希，失败覆盖输出会阻断终检；
 - `@result`、`@metric` 追溯标记只存在于 Typst/LaTeX/Markdown 注释；旧的可渲染双中括号标记会被源码和 PDF 检查拦截；
 - 匿名检查支持 PDF 元数据与用户指定身份词，并在 `--anonymous` 启用时成为硬检查；
-- v3 运行阶段收敛为 `analysis → experiment → paper → verify → complete`，避免 `analysis` 与 `solve` 的职责重叠；
+- v3 运行阶段在能力路由和论文前后审核边界上显式推进，并以 `paper_review → verify → final_review → complete` 阻断同任务自审后直接交付；
 - Windows PR CI 现在覆盖 v3 运行时、主动 Skill、机械 QA 与核心 legacy smoke；完整 legacy 回归改为每周定时或手动触发，避免其重型审核闭环拖慢 v3 小改反馈。
 - v3 图表适配器只接受已登记的 current JSON 结果，输出 PNG/PDF/SVG、文字边界和哈希索引；源结果被替代、输入/输出/脚本哈希漂移或图表被标记为 demo 时，`current-figure-files` 会阻断终检。
 

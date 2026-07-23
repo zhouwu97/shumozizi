@@ -1,6 +1,6 @@
 interface:
   display_name: "Capability-First 建模工作流"
-  short_description: "完成整题的分析、实验、论文和一次终检"
+  short_description: "完成整题、论文和三轮独立审核闭环"
   default_prompt: "Use $mathmodel-workflow to continue the current capability-first-v3 modeling run."
 
 policy:

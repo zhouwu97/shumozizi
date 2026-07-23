@@ -9,7 +9,7 @@
     "schema_version": {"const": "3.0"},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "workflow": {"const": "capability-first-v3"},
-    "phase": {"enum": ["analysis", "capability_route", "experiment", "scientific_review", "visualization", "paper", "paper_review", "verify", "complete", "blocked"]},
+    "phase": {"enum": ["analysis", "capability_route", "experiment", "scientific_review", "visualization", "paper", "paper_review", "verify", "final_review", "complete", "blocked"]},
     "execution_mode": {"enum": ["production", "exploration"]},
     "revision": {"type": "integer", "minimum": 0},
     "competition": {"type": "string"},
