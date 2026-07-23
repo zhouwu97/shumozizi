@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "run_id", "competition", "language", "engine", "template_id", "source_path", "source_sha256", "fallback_used", "selection_reason", "created_at"],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"enum": ["1.0", "1.1", "1.2"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "competition": {"type": "string", "minLength": 1},
     "language": {"enum": ["zh", "en"]},
@@ -14,8 +14,49 @@
     "template_id": {"type": "string", "minLength": 3},
     "source_path": {"type": "string", "minLength": 1},
     "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "fallback_used": {"const": false},
+    "requested_engine": {"enum": ["auto", "typst", "latex"]},
+    "fallback_used": {"type": "boolean"},
+    "fallback_reason": {"type": ["string", "null"]},
     "selection_reason": {"type": "string", "minLength": 16},
+    "question_layout": {"$ref": "#/$defs/questionLayout"},
     "created_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"enum": ["1.0", "1.1"]}}},
+      "then": {"properties": {"fallback_used": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}},
+      "then": {"required": ["question_layout"]}
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.2"}}},
+      "then": {
+        "required": ["requested_engine", "fallback_reason", "question_layout"],
+        "allOf": [
+          {
+            "if": {"properties": {"fallback_used": {"const": true}}},
+            "then": {"properties": {"fallback_reason": {"type": "string", "minLength": 16}}}
+          },
+          {
+            "if": {"properties": {"fallback_used": {"const": false}}},
+            "then": {"properties": {"fallback_reason": {"type": "null"}}}
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "questionLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_ids", "section_path", "entrypoint_path"],
+      "properties": {
+        "question_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "section_path": {"type": "string", "minLength": 1},
+        "entrypoint_path": {"type": "string", "minLength": 1}
+      }
+    }
   }
 }

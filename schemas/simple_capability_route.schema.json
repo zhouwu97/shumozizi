@@ -4,9 +4,9 @@
   "title": "Capability-First v3 Capability Route",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "run_id", "status", "problem_families", "primary_capability", "cross_capabilities", "verification_capability", "toolchain", "tooling_sha256", "knowledge_assets", "created_at"],
+  "required": ["schema_version", "run_id", "status", "problem_families", "verification_capability", "toolchain", "tooling_sha256", "knowledge_assets", "created_at"],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"enum": ["1.0", "1.1", "1.2"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "status": {"const": "ready"},
     "problem_families": {
@@ -17,24 +17,87 @@
     },
     "primary_capability": {"$ref": "#/$defs/capability"},
     "cross_capabilities": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/capability"}},
-    "verification_capability": {"anyOf": [{"$ref": "#/$defs/capability"}, {"type": "null"}]},
-    "toolchain": {
+    "capabilities": {"type": "array", "minItems": 1, "items": {"oneOf": [{"$ref": "#/$defs/capabilityNeed"}, {"$ref": "#/$defs/leanCapability"}]}},
+    "visual_evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["production_engine", "independent_engine", "independence_strategy", "reason"],
+      "required": ["spatial_structure_affects_conclusion"],
       "properties": {
-        "production_engine": {"enum": ["python", "matlab", "octave"]},
-        "independent_engine": {"anyOf": [{"enum": ["python", "matlab", "octave"]}, {"type": "null"}]},
-        "independence_strategy": {"enum": ["not_required", "alternative_formulation", "alternative_runtime", "alternative_language"]},
+        "spatial_structure_affects_conclusion": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 16}
+      }
+    },
+    "verification_capability": {"anyOf": [{"$ref": "#/$defs/capability"}, {"type": "null"}]},
+    "toolchain": {"oneOf": [{"$ref": "#/$defs/legacyToolchain"}, {"$ref": "#/$defs/currentToolchain"}, {"$ref": "#/$defs/leanToolchain"}]},
+    "tooling_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "knowledge_assets": {"type": "array", "maxItems": 5, "items": {"oneOf": [{"$ref": "#/$defs/asset"}, {"$ref": "#/$defs/leanAsset"}]}},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.0"}}},
+      "then": {
+        "required": ["primary_capability", "cross_capabilities"],
+        "properties": {"toolchain": {"$ref": "#/$defs/legacyToolchain"}},
+        "not": {"anyOf": [{"required": ["capabilities"]}, {"required": ["visual_evidence"]}]}
+      }
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}},
+      "then": {
+        "required": ["capabilities"],
+        "properties": {"toolchain": {"$ref": "#/$defs/currentToolchain"}},
+        "not": {"anyOf": [{"required": ["primary_capability"]}, {"required": ["cross_capabilities"]}]}
+      }
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.2"}}},
+      "then": {
+        "required": ["capabilities"],
+        "properties": {
+          "capabilities": {"items": {"$ref": "#/$defs/leanCapability"}},
+          "knowledge_assets": {"items": {"$ref": "#/$defs/leanAsset"}},
+          "toolchain": {"$ref": "#/$defs/leanToolchain"}
+        },
+        "not": {"anyOf": [{"required": ["primary_capability"]}, {"required": ["cross_capabilities"]}]},
+        "allOf": [
+          {
+            "if": {"properties": {"problem_families": {"contains": {"const": "geometry_kinematics"}}}},
+            "then": {"required": ["visual_evidence"]}
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "engine": {"enum": ["python", "matlab", "octave"]},
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
         "reason": {"type": "string", "minLength": 12}
       }
     },
-    "tooling_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "knowledge_assets": {"type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/asset"}},
-    "created_at": {"type": "string", "format": "date-time"}
-  },
-  "$defs": {
-    "capability": {
+    "capabilityNeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason", "mode"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+        "reason": {"type": "string", "minLength": 12},
+        "mode": {"enum": ["required", "optional"]},
+        "activation_condition": {"type": "string", "minLength": 12}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "optional"}}},
+          "then": {"required": ["activation_condition"]}
+        }
+      ]
+    },
+    "leanCapability": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "reason"],
@@ -51,6 +114,75 @@
         "path": {"type": "string", "minLength": 1},
         "purpose": {"type": "string", "minLength": 12},
         "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "leanAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "toolRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "kind", "name"],
+      "properties": {
+        "engine": {"$ref": "#/$defs/engine"},
+        "kind": {"enum": ["function", "license"]},
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}
+      }
+    },
+    "toolRequirementReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "kind", "name", "command", "passed", "output_sha256", "checked_at"],
+      "properties": {
+        "engine": {"$ref": "#/$defs/engine"},
+        "kind": {"enum": ["function", "license"]},
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "passed": {"const": true},
+        "output_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "checked_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "legacyToolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production_engine", "independent_engine", "independence_strategy", "reason"],
+      "properties": {
+        "production_engine": {"$ref": "#/$defs/engine"},
+        "independent_engine": {"anyOf": [{"$ref": "#/$defs/engine"}, {"type": "null"}]},
+        "independence_strategy": {"enum": ["not_required", "alternative_formulation", "alternative_runtime", "alternative_language"]},
+        "reason": {"type": "string", "minLength": 12}
+      }
+    },
+    "currentToolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production_engine", "independent_engine", "independence_strategy", "reason", "requirements", "requirement_receipts"],
+      "properties": {
+        "production_engine": {"$ref": "#/$defs/engine"},
+        "independent_engine": {"anyOf": [{"$ref": "#/$defs/engine"}, {"type": "null"}]},
+        "independence_strategy": {"enum": ["not_required", "alternative_formulation", "alternative_runtime", "alternative_language"]},
+        "reason": {"type": "string", "minLength": 12},
+        "requirements": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/toolRequirement"}},
+        "requirement_receipts": {"type": "array", "items": {"$ref": "#/$defs/toolRequirementReceipt"}}
+      }
+    },
+    "leanToolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production_engine", "independent_engine", "independence_strategy", "requirements", "requirement_receipts"],
+      "properties": {
+        "production_engine": {"$ref": "#/$defs/engine"},
+        "independent_engine": {"anyOf": [{"$ref": "#/$defs/engine"}, {"type": "null"}]},
+        "independence_strategy": {"enum": ["not_required", "alternative_formulation", "alternative_runtime", "alternative_language"]},
+        "requirements": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/toolRequirement"}},
+        "requirement_receipts": {"type": "array", "items": {"$ref": "#/$defs/toolRequirementReceipt"}}
       }
     }
   }

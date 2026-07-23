@@ -12,6 +12,10 @@ PLACEHOLDER = re.compile(
     r"\b(?:TODO|TBD|PLACEHOLDER)\b|\{\{[^{}]+\}\}|<<[^<>]+>>",
     re.IGNORECASE,
 )
+TEMPLATE_RESIDUE = re.compile(
+    r"论文标题|中文摘要内容|关键词1|\[Paper Title\]",
+    re.IGNORECASE,
+)
 TEXT_SUFFIXES = {".typ", ".tex", ".md", ".txt", ".csv"}
 
 
@@ -29,6 +33,7 @@ def check_placeholders(paper_dir: Path) -> dict[str, Any]:
         for path in sorted(item for item in paper_dir.rglob("*") if item.suffix.lower() in TEXT_SUFFIXES):
             content = path.read_text(encoding="utf-8", errors="replace")
             found = sorted(set(PLACEHOLDER.findall(content)))
+            found.extend(sorted(set(TEMPLATE_RESIDUE.findall(content))))
             if LEGACY_RENDERED_MARKER.search(content):
                 found.append("遗留可渲染追溯标记")
             if found:

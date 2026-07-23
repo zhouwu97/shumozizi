@@ -19,13 +19,18 @@ from scripts.qa.check_numeric_consistency import check_numeric_consistency
 from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.paper.compiler import verify_paper_compile_receipt
 from shumozizi.paper.contributions import verify_contribution_ledger
 from shumozizi.paper.references import verify_paper_references
 from shumozizi.paper.sufficiency import run_paper_sufficiency_check
 from shumozizi.paper.templates import require_materialized_template
 from shumozizi.simple.figures import verify_current_figure_files
 from shumozizi.simple.results import verify_current_result_files
-from shumozizi.simple.review import paper_blind_review_status, scientific_review_status
+from shumozizi.simple.review import (
+    competition_submission_status,
+    paper_blind_review_status,
+    scientific_review_status,
+)
 from shumozizi.simple.state import read_simple_state
 from shumozizi.simple.visualization import require_visualization_complete
 from tools.qa.make_contact_sheet import make_contact_sheet
@@ -139,6 +144,18 @@ def run_final_checks(
             "独立科学红队的冻结输入、报告和隔离声明仍有效",
         )
     )
+    completion_release = competition_submission_status(root)
+    checks.append(
+        _check(
+            "competition-submission-release",
+            {
+                "success": completion_release.get("submission_ready", False),
+                "competition_strength": completion_release.get("competition_strength"),
+                "reason": completion_release.get("reason", ""),
+            },
+            "生产模式仅允许 qualified 或 strong 的科学审查进入 complete",
+        )
+    )
     try:
         visualization = require_visualization_complete(root)
         visualization_payload = {
@@ -154,6 +171,7 @@ def run_final_checks(
             "能力路由要求的模型与求解视觉证据已完成且输出未漂移",
         )
     )
+    template: dict[str, Any] = {}
     try:
         template = require_materialized_template(root)
         template_payload = {
@@ -168,6 +186,25 @@ def run_final_checks(
             "paper-template-manifest",
             template_payload,
             "完整写作模板与比赛、语言和排版引擎仍匹配",
+        )
+    )
+    if template_payload.get("success") and template.get("schema_version") == "1.2":
+        compile_receipt = verify_paper_compile_receipt(root)
+        compile_payload = {
+            "success": compile_receipt["valid"],
+            "errors": compile_receipt["errors"],
+        }
+    else:
+        compile_payload = {
+            "success": template_payload.get("success", False),
+            "skipped": True,
+            "reason": "历史模板清单未声明 v1.2 受控编译路径。",
+        }
+    checks.append(
+        _check(
+            "paper-compile-receipt",
+            compile_payload,
+            "最终 PDF 与当前模板、论文源文件和受控 LaTeX/Typst 编译记录一致",
         )
     )
     paper_blind_review = paper_blind_review_status(root)

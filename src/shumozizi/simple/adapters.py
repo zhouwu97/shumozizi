@@ -28,7 +28,7 @@ from shumozizi.simple.state import read_simple_state, utc_now
 
 VERIFICATION_DIRECTORY = Path("results/verification")
 STAGE_NAMES = ("candidate_generator", "exact_scorer", "search_auditor")
-ADAPTER_SCHEMA_VERSION = "1.1"
+ADAPTER_SCHEMA_VERSION = "1.2"
 _FORBIDDEN_GENERATOR_FIELDS = {
     "feasible",
     "exact_recomputed",
@@ -94,7 +94,12 @@ def _safe_argument(value: Any) -> str:
     return value
 
 
-def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]:
+def _stage_contract(
+    contract: dict[str, Any],
+    stage_name: str,
+    *,
+    run_dir: Path | None,
+) -> dict[str, Any]:
     """读取并约束一个受控 adapter 阶段。
 
     Args:
@@ -110,7 +115,7 @@ def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]
     stages = contract["stages"]
     stage = stages[stage_name]
     implementation = stage["implementation_file"]
-    source_files = stage["source_files"]
+    supplied_sources = stage.get("source_files")
     output_file = stage["output_file"]
     arguments = stage["arguments"]
     input_files = stage["input_files"]
@@ -129,10 +134,6 @@ def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]
         raise ContractError(f"{stage_name} arguments 必须是字符串数组")
     if not isinstance(input_files, list) or not all(isinstance(item, str) for item in input_files):
         raise ContractError(f"{stage_name} input_files 必须是字符串数组")
-    if not isinstance(source_files, list) or not all(
-        isinstance(item, str) for item in source_files
-    ):
-        raise ContractError(f"{stage_name} source_files 必须是字符串数组")
     if not isinstance(artifact_files, list) or not all(
         isinstance(item, str) for item in artifact_files
     ):
@@ -148,18 +149,61 @@ def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]
         if artifact == output_file:
             raise ContractError("exact_scorer 附属产物不能与精确评分输出重复")
     normalized_inputs = [_safe_argument(item) for item in input_files]
-    normalized_sources = [_safe_argument(item) for item in source_files]
-    if len(set(normalized_sources)) != len(normalized_sources):
-        raise ContractError(f"{stage_name} source_files 不能重复")
-    for source_file in normalized_sources:
-        if not source_file.startswith("code/") or Path(source_file).suffix.lower() != ".py":
-            raise ContractError(f"{stage_name} source_files 只能登记 code/ 下的 Python 源码")
-    if implementation not in normalized_inputs:
-        raise ContractError(f"{stage_name} 必须把实现源码登记为输入")
-    if implementation not in normalized_sources:
-        raise ContractError(f"{stage_name} 必须把实现源码登记为 source_files")
-    if not set(normalized_sources).issubset(normalized_inputs):
-        raise ContractError(f"{stage_name} source_files 必须同时登记为输入")
+    source_schema_version = contract["schema_version"]
+    if source_schema_version == "1.1":
+        if not isinstance(supplied_sources, list) or not all(
+            isinstance(item, str) for item in supplied_sources
+        ):
+            raise ContractError(f"{stage_name} source_files 必须是字符串数组")
+        normalized_sources = [_safe_argument(item) for item in supplied_sources]
+        if len(set(normalized_sources)) != len(normalized_sources):
+            raise ContractError(f"{stage_name} source_files 不能重复")
+        for source_file in normalized_sources:
+            if not source_file.startswith("code/") or Path(source_file).suffix.lower() != ".py":
+                raise ContractError(f"{stage_name} source_files 只能登记 code/ 下的 Python 源码")
+        if implementation not in normalized_inputs:
+            raise ContractError(f"{stage_name} 必须把实现源码登记为输入")
+        if implementation not in normalized_sources:
+            raise ContractError(f"{stage_name} 必须把实现源码登记为 source_files")
+        if not set(normalized_sources).issubset(normalized_inputs):
+            raise ContractError(f"{stage_name} source_files 必须同时登记为输入")
+    else:
+        # v1.2 的作者只声明真正的数据输入；本地源码闭包由运行时计算并冻结。
+        if supplied_sources is None:
+            if run_dir is None:
+                raise ContractError("v1.2 adapter 需要 run_dir 才能计算本地源码闭包")
+            if any(item.startswith("code/") for item in normalized_inputs):
+                raise ContractError(
+                    f"{stage_name} v1.2 input_files 只能填写非源码输入；源码闭包由运行时生成"
+                )
+            normalized_sources = sorted(_local_source_closure(run_dir, implementation))
+            normalized_inputs = list(dict.fromkeys([*normalized_sources, *normalized_inputs]))
+        else:
+            if not isinstance(supplied_sources, list) or not all(
+                isinstance(item, str) for item in supplied_sources
+            ):
+                raise ContractError(f"{stage_name} source_files 必须是字符串数组")
+            normalized_sources = [_safe_argument(item) for item in supplied_sources]
+            if len(set(normalized_sources)) != len(normalized_sources):
+                raise ContractError(f"{stage_name} source_files 不能重复")
+            for source_file in normalized_sources:
+                if not source_file.startswith("code/") or Path(source_file).suffix.lower() != ".py":
+                    raise ContractError(f"{stage_name} source_files 只能登记 code/ 下的 Python 源码")
+            if implementation not in normalized_sources:
+                raise ContractError(f"{stage_name} 必须把实现源码登记为 source_files")
+            if not set(normalized_sources).issubset(normalized_inputs):
+                raise ContractError(f"{stage_name} source_files 必须同时登记为输入")
+            non_source_code_inputs = set(normalized_inputs) - set(normalized_sources)
+            if any(item.startswith("code/") for item in non_source_code_inputs):
+                raise ContractError(
+                    f"{stage_name} v1.2 input_files 不得伪装登记额外源码；请使用运行时闭包"
+                )
+            if run_dir is not None:
+                discovered = _local_source_closure(run_dir, implementation)
+                if set(normalized_sources) != discovered:
+                    raise ContractError(
+                        f"{stage_name} v1.2 运行时源码闭包与冻结 source_files 不一致"
+                    )
     return {
         "implementation_file": implementation,
         "source_files": normalized_sources,
@@ -170,11 +214,18 @@ def _stage_contract(contract: dict[str, Any], stage_name: str) -> dict[str, Any]
     }
 
 
-def validate_adapter_contract(contract: dict[str, Any]) -> dict[str, Any]:
+def validate_adapter_contract(
+    contract: dict[str, Any],
+    *,
+    run_dir: Path | None = None,
+    require_current: bool = False,
+) -> dict[str, Any]:
     """校验每题 adapter 合同及三段式输入输出依赖。
 
     Args:
-        contract: adapter 作者提供的合同对象。
+        contract: adapter 作者提供的合同对象或历史冻结合同。
+        run_dir: 新版作者合同计算源码闭包所需的当前运行目录。
+        require_current: 为 ``True`` 时拒绝新建历史格式合同。
 
     Returns:
         深拷贝语义的规范化合同。
@@ -183,11 +234,16 @@ def validate_adapter_contract(contract: dict[str, Any]) -> dict[str, Any]:
         ContractError: 合同缺少必要阶段、使用不受控路径或未声明原始输入依赖。
     """
     _require_schema(contract, "simple_validation_adapter.schema.json", "adapter 合同")
+    if require_current and contract["schema_version"] != ADAPTER_SCHEMA_VERSION:
+        raise ContractError(f"新建 adapter 合同必须使用 schema_version {ADAPTER_SCHEMA_VERSION}")
     selection_contract = contract["selection_contract"]
     if not isinstance(selection_contract, dict):
         raise ContractError("adapter 合同缺少 selection_contract")
     validate_selection_contract(selection_contract, require_coverage=True)
-    stages = {name: _stage_contract(contract, name) for name in STAGE_NAMES}
+    stages = {
+        name: _stage_contract(contract, name, run_dir=run_dir)
+        for name in STAGE_NAMES
+    }
     declared_outputs = [
         output
         for name in STAGE_NAMES
@@ -220,7 +276,7 @@ def validate_adapter_contract(contract: dict[str, Any]) -> dict[str, Any]:
     }
     validate_selection_contract(normalized_selection, require_coverage=True)
     return {
-        "schema_version": ADAPTER_SCHEMA_VERSION,
+        "schema_version": str(contract["schema_version"]),
         "adapter_id": str(contract["adapter_id"]),
         "adapter_version": str(contract["adapter_version"]),
         "selection_contract": normalized_selection,
@@ -857,7 +913,7 @@ def run_verification_protocol(
     identifier = safe_result_id(result_id)
     root = run_dir.resolve()
     state = read_simple_state(root)
-    normalized = validate_adapter_contract(contract)
+    normalized = validate_adapter_contract(contract, run_dir=root, require_current=True)
     verification_dir = root / VERIFICATION_DIRECTORY
     verification_dir.mkdir(parents=True, exist_ok=True)
     contract_file = VERIFICATION_DIRECTORY / f"{identifier}.adapter.json"
@@ -1067,7 +1123,7 @@ def verify_verification_protocol(run_dir: Path, reference: dict[str, Any]) -> di
     contract_path = resolve_inside(root, receipt["adapter"]["contract_file"], must_exist=True)
     if sha256_file(contract_path) != receipt["adapter"]["contract_sha256"]:
         raise ContractError("adapter 合同哈希已漂移")
-    contract = validate_adapter_contract(load_json(contract_path))
+    contract = validate_adapter_contract(load_json(contract_path), run_dir=root)
     if (
         contract["adapter_id"] != receipt["adapter"]["adapter_id"]
         or contract["adapter_version"] != receipt["adapter"]["adapter_version"]

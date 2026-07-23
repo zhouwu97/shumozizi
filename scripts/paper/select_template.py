@@ -20,7 +20,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="选择 v3 数学建模论文模板")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--language", choices=("zh", "en"), required=True)
-    parser.add_argument("--engine", choices=("typst", "latex"), required=True)
+    parser.add_argument(
+        "--engine",
+        choices=("auto", "typst", "latex"),
+        default="auto",
+        help="默认优先 LaTeX；仅在 LaTeX 不可用时受控回退 Typst。",
+    )
     parser.add_argument("--reason", required=True)
     parser.add_argument("--materialize", action="store_true")
     args = parser.parse_args()

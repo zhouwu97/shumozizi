@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_knowledge_consumption.schema.json",
+  "title": "Capability-First v3 Local Knowledge Consumption Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "route_path", "route_sha256", "reader", "assets", "consumed_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "route_path": {"const": "state/capability-route.json"},
+    "route_sha256": {"$ref": "#/$defs/sha"},
+    "reader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "asset_count", "total_bytes_read"],
+      "properties": {
+        "operation": {"const": "controlled_binary_read"},
+        "asset_count": {"type": "integer", "minimum": 1},
+        "total_bytes_read": {"type": "integer", "minimum": 0}
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/asset"}
+    },
+    "consumed_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes_read"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha"},
+        "bytes_read": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

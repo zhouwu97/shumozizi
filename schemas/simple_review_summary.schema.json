@@ -6,21 +6,44 @@
   "additionalProperties": false,
   "required": ["schema_version", "run_id", "scientific_review", "paper_blind_review", "updated_at"],
   "properties": {
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"enum": ["1.0", "1.1", "1.2"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "scientific_review": {"$ref": "#/$defs/scientificReview"},
-    "paper_blind_review": {
-      "oneOf": [
-        {"type": "null"},
-        {"$ref": "#/$defs/paperBlindReview"}
-      ]
-    },
+    "paper_blind_review": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/paperBlindReview"}]},
     "updated_at": {"type": "string", "format": "date-time"}
   },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}},
+      "then": {"properties": {"scientific_review": {"required": ["artifacts"]}}}
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.2"}}},
+      "then": {
+        "properties": {
+          "scientific_review": {
+            "required": ["artifacts"],
+            "properties": {
+              "artifacts": {"required": ["receipts", "report_citations", "evidence_kinds"]}
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "findingLevel": {"enum": ["none", "P0", "P1", "P2", "P3"]},
     "verdict": {"enum": ["pass", "fail", "needs_rework", "revoked"]},
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
     "packet": {
       "type": "object",
       "additionalProperties": false,
@@ -37,6 +60,20 @@
       "properties": {
         "file": {"type": "string", "minLength": 1},
         "sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "redTeamArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipts", "report_citations"],
+      "properties": {
+        "receipts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}},
+        "report_citations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}},
+        "evidence_kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test"]}
+        }
       }
     },
     "scientificIsolation": {
@@ -65,6 +102,14 @@
         "code_visible_initially": {"const": false}
       }
     },
+    "reviewerReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thread_id"],
+      "properties": {
+        "thread_id": {"type": "string", "minLength": 1}
+      }
+    },
     "scientificReview": {
       "type": "object",
       "additionalProperties": false,
@@ -77,7 +122,8 @@
         "affected_questions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "packet": {"$ref": "#/$defs/packet"},
         "report": {"$ref": "#/$defs/report"},
-        "reviewer": {"$ref": "#/$defs/scientificIsolation"},
+        "artifacts": {"$ref": "#/$defs/redTeamArtifacts"},
+        "reviewer": {"oneOf": [{"$ref": "#/$defs/scientificIsolation"}, {"$ref": "#/$defs/reviewerReference"}]},
         "reviewed_at": {"type": "string", "format": "date-time"}
       }
     },
@@ -90,7 +136,7 @@
         "highest_severity": {"$ref": "#/$defs/findingLevel"},
         "packet": {"$ref": "#/$defs/packet"},
         "report": {"$ref": "#/$defs/report"},
-        "reviewer": {"$ref": "#/$defs/paperIsolation"},
+        "reviewer": {"oneOf": [{"$ref": "#/$defs/paperIsolation"}, {"$ref": "#/$defs/reviewerReference"}]},
         "reviewed_at": {"type": "string", "format": "date-time"}
       }
     }

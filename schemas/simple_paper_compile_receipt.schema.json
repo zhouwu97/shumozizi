@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_paper_compile_receipt.schema.json",
+  "title": "Capability-First v3 Paper Compile Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "template_manifest_path", "template_manifest_sha256", "engine", "requested_engine", "fallback_used", "fallback_reason", "compiler", "entrypoint_path", "entrypoint_sha256", "paper_source_sha256", "final_pdf_path", "final_pdf_sha256", "executions", "generated_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "template_manifest_path": {"const": "paper/template_manifest.json"},
+    "template_manifest_sha256": {"$ref": "#/$defs/sha"},
+    "engine": {"enum": ["latex", "typst"]},
+    "requested_engine": {"enum": ["auto", "latex", "typst"]},
+    "fallback_used": {"type": "boolean"},
+    "fallback_reason": {"type": ["string", "null"]},
+    "compiler": {"enum": ["latexmk", "xelatex", "pdflatex", "tectonic", "typst"]},
+    "entrypoint_path": {"pattern": "^paper/main\\.(tex|typ)$"},
+    "entrypoint_sha256": {"$ref": "#/$defs/sha"},
+    "paper_source_sha256": {"$ref": "#/$defs/sha"},
+    "final_pdf_path": {"const": "paper/final.pdf"},
+    "final_pdf_sha256": {"$ref": "#/$defs/sha"},
+    "executions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/execution"}
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"engine": {"const": "latex"}}},
+      "then": {"properties": {"entrypoint_path": {"const": "paper/main.tex"}}}
+    },
+    {
+      "if": {"properties": {"engine": {"const": "typst"}}},
+      "then": {"properties": {"compiler": {"const": "typst"}, "entrypoint_path": {"const": "paper/main.typ"}}}
+    },
+    {
+      "if": {"properties": {"fallback_used": {"const": true}}},
+      "then": {"properties": {"fallback_reason": {"type": "string", "minLength": 16}}}
+    },
+    {
+      "if": {"properties": {"fallback_used": {"const": false}}},
+      "then": {"properties": {"fallback_reason": {"type": "null"}}}
+    }
+  ],
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "exit_code", "stdout_sha256", "stderr_sha256"],
+      "properties": {
+        "command": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "exit_code": {"const": 0},
+        "stdout_sha256": {"$ref": "#/$defs/sha"},
+        "stderr_sha256": {"$ref": "#/$defs/sha"}
+      }
+    }
+  }
+}

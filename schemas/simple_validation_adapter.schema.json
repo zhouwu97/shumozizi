@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "adapter_id", "adapter_version", "selection_contract", "stages"],
   "properties": {
-    "schema_version": {"const": "1.1"},
+    "schema_version": {"enum": ["1.1", "1.2"]},
     "adapter_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "adapter_version": {"type": "string", "minLength": 1},
     "selection_contract": {"type": "object"},
@@ -21,11 +21,27 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}},
+      "then": {
+        "properties": {
+          "stages": {
+            "properties": {
+              "candidate_generator": {"required": ["source_files"]},
+              "exact_scorer": {"required": ["source_files"]},
+              "search_auditor": {"required": ["source_files"]}
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "stage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["implementation_file", "source_files", "arguments", "input_files", "output_file"],
+      "required": ["implementation_file", "arguments", "input_files", "output_file"],
       "properties": {
         "implementation_file": {"type": "string", "minLength": 1},
         "source_files": {

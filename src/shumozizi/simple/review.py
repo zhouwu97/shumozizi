@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -18,12 +21,14 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.repo_root import resolve_repo_root
+from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.state import read_simple_state, utc_now
 
 REVIEW_ROOT = Path("review")
 SUMMARY_PATH = REVIEW_ROOT / "summary.json"
 SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
+RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
 _PACKET_ROOTS = {
     "scientific": ("problem", "code", "results/raw"),
     "paper-blind": ("problem", "paper/final.pdf", "paper/submission"),
@@ -42,6 +47,16 @@ _REQUIRED_PACKET_ROOTS = {
 _SEVERITIES = {"none", "P0", "P1", "P2", "P3"}
 _VERDICTS = {"pass", "fail", "needs_rework", "revoked"}
 _VISUALIZATION_CODE_DIRECTORY = Path("figures")
+_RED_TEAM_KINDS = {
+    "independent-recompute",
+    "counterexample",
+    "small-enumeration",
+    "alternative-formula",
+    "search-challenge",
+    "property-test",
+}
+_SAFE_EVIDENCE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+_REPORT_ARTIFACT_PATH = re.compile(r"review[\\/]red_team_artifacts[\\/][A-Za-z0-9._/\\-]+")
 
 
 def _schema() -> dict[str, Any]:
@@ -71,6 +86,381 @@ def _require_summary(payload: dict[str, Any]) -> None:
         and paper["highest_severity"] in {"P0", "P1"}
     ):
         raise ContractError("盲审含 P0/P1 时不能给出 pass")
+
+
+def _red_team_schema() -> dict[str, Any]:
+    """读取红队可执行证据收据 Schema。"""
+    root = resolve_repo_root(Path(__file__))
+    return load_json(root / "schemas" / "red_team_evidence_receipt.schema.json")
+
+
+def _require_red_team_receipt(payload: dict[str, Any]) -> None:
+    """验证红队脚本的最小可执行证据收据。"""
+    validator = Draft202012Validator(_red_team_schema(), format_checker=FormatChecker())
+    errors = [
+        f"{'.'.join(str(part) for part in error.absolute_path) or '<root>'}: {error.message}"
+        for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.path))
+    ]
+    if errors:
+        raise ContractError("红队证据收据无效: " + "; ".join(errors))
+
+
+def _red_team_root(run_dir: Path) -> Path:
+    """返回当前运行中唯一允许保存红队产物的目录。"""
+    return (run_dir.resolve() / RED_TEAM_ARTIFACTS_PATH).resolve()
+
+
+def _file_evidence(run_dir: Path, path: Path) -> dict[str, Any]:
+    """为运行内文件生成冻结路径、哈希和大小。"""
+    relative = relative_inside(run_dir, path)
+    return {
+        "path": relative.as_posix(),
+        "sha256": sha256_file(path),
+        "size_bytes": path.stat().st_size,
+    }
+
+
+def _require_red_team_artifact_path(run_dir: Path, relative: str, *, must_exist: bool) -> Path:
+    """限制脚本、输出和日志全部留在审查证据目录。"""
+    path = resolve_inside(run_dir, relative, must_exist=must_exist)
+    root = _red_team_root(run_dir)
+    if path != root and root not in path.parents:
+        raise ContractError("红队脚本和输出必须位于 review/red_team_artifacts/ 内")
+    return path
+
+
+def _red_team_engine_command(run_dir: Path, engine: str) -> str:
+    """只接受能力路由已实际探测且选择的红队执行引擎。"""
+    if engine not in {"python", "matlab", "octave"}:
+        raise ContractError("红队证据仅支持 python、matlab 或 octave")
+    route = require_capability_route(run_dir)
+    toolchain = route["toolchain"]
+    selected = {toolchain["production_engine"]}
+    if toolchain.get("independent_engine") is not None:
+        selected.add(toolchain["independent_engine"])
+    if engine not in selected:
+        raise ContractError("红队引擎必须是当前能力路由选择的生产或独立引擎")
+    tooling = load_json(run_dir / "state" / "tooling.json")
+    for record in tooling.get("engines", []):
+        if not isinstance(record, dict) or record.get("engine") != engine:
+            continue
+        command = record.get("command")
+        probe = record.get("probe")
+        if (
+            record.get("available") is True
+            and isinstance(command, str)
+            and isinstance(probe, dict)
+            and probe.get("exit_code") == 0
+            and probe.get("timed_out") is False
+        ):
+            return command
+    raise ContractError(f"红队引擎未通过当前运行的烟雾测试: {engine}")
+
+
+def _safe_red_team_argument(value: str) -> str:
+    """限制不经 Shell 传递给 Python 红队脚本的附加参数。"""
+    if not isinstance(value, str) or not value or "\x00" in value:
+        raise ContractError("红队脚本参数必须是非空字符串")
+    candidate = Path(value)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ContractError("红队脚本参数包含不安全路径")
+    return value
+
+
+def _packet_input_files(packet_dir: Path, manifest: dict[str, Any]) -> list[Path]:
+    """返回审查脚本可读取的冻结 packet 文件，而不接受任意 run 输入。"""
+    files: list[Path] = []
+    for item in manifest["files"]:
+        packet_relative = item["packet"]
+        files.append(_safe_packet_path(packet_dir, packet_relative, must_exist=True))
+    return files
+
+
+def _red_team_command(
+    engine: str, command: str, script_name: str, arguments: list[str]
+) -> list[str]:
+    """构造在清洁目录执行的无 Shell 红队命令。"""
+    if engine == "python":
+        return [command, "-I", script_name, "packet", "outputs", *arguments]
+    if "'" in script_name:
+        raise ContractError("MATLAB/Octave 红队脚本名不允许单引号")
+    if arguments:
+        raise ContractError("MATLAB/Octave 红队脚本请通过环境变量读取 packet 与输出目录")
+    expression = f"run('{script_name}')"
+    if engine == "matlab":
+        return [command, "-batch", expression]
+    return [command, "--quiet", "--no-gui", "--eval", expression]
+
+
+def run_red_team_evidence(
+    run_dir: Path,
+    *,
+    evidence_id: str,
+    kind: str,
+    packet_manifest: str,
+    script_path: str,
+    output_paths: list[str],
+    engine: str = "python",
+    arguments: list[str] | None = None,
+    timeout_seconds: int = 300,
+) -> dict[str, Any]:
+    """在冻结 scientific packet 的清洁目录实际执行一项红队证据。
+
+    审查脚本只会接收到 packet 副本和空输出目录。该边界减少了无意读取生产
+    上下文的风险，但不把任意本地脚本误称为操作系统级沙箱；新对话隔离仍由
+    Codex 协调层负责。
+
+    Args:
+        run_dir: 当前 v3 运行目录。
+        evidence_id: 本次攻击的安全唯一标识。
+        kind: 攻击产物类型。
+        packet_manifest: 已冻结 scientific 审查包清单的运行内路径。
+        script_path: 红队脚本的运行内相对路径。
+        output_paths: 脚本在 ``outputs/`` 下新建的相对输出名。
+        engine: 已由能力路由烟雾测试的 Python、MATLAB 或 Octave。
+        arguments: 仅 Python 脚本使用的受控参数。
+        timeout_seconds: 命令最长运行秒数。
+
+    Returns:
+        写入的红队证据收据。
+
+    Raises:
+        ContractError: packet、命令或输出不满足独立可执行证据边界。
+    """
+    if not _SAFE_EVIDENCE_ID.fullmatch(evidence_id):
+        raise ContractError("红队 evidence_id 不合法")
+    if kind not in _RED_TEAM_KINDS:
+        raise ContractError("不支持的红队证据类型")
+    if timeout_seconds < 1 or timeout_seconds > 3600:
+        raise ContractError("红队证据 timeout_seconds 必须在 1 至 3600 之间")
+    root = run_dir.resolve()
+    manifest_path, manifest = _read_packet_manifest(root, packet_manifest)
+    if manifest["packet_kind"] != "scientific":
+        raise ContractError("红队证据只能读取 scientific 冻结审查包")
+    packet_status = verify_review_packet(root, packet_manifest)
+    if not packet_status["success"]:
+        raise ContractError("红队 scientific 审查包已失效: " + "；".join(packet_status["errors"]))
+    artifact_root = _red_team_root(root)
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    original_script = _require_red_team_artifact_path(root, script_path, must_exist=True)
+    suffix = {"python": ".py", "matlab": ".m", "octave": ".m"}.get(engine)
+    if suffix is None or not original_script.is_file() or original_script.suffix.casefold() != suffix:
+        raise ContractError("红队脚本扩展名与执行引擎不一致")
+    if original_script.stat().st_size == 0:
+        raise ContractError("红队证据脚本不能为空")
+    clean_names: list[str] = []
+    for value in output_paths:
+        candidate = Path(value)
+        if not value or candidate.is_absolute() or ".." in candidate.parts:
+            raise ContractError("红队输出必须是 outputs/ 下的相对文件名")
+        clean_names.append(candidate.as_posix())
+    if not clean_names or len(set(clean_names)) != len(clean_names):
+        raise ContractError("红队证据至少需要一个不重复输出")
+    execution_dir = artifact_root / "executions" / evidence_id
+    if execution_dir.exists():
+        raise ContractError("红队 evidence_id 已存在，拒绝覆盖既有执行")
+    execution_dir.mkdir(parents=True)
+    scratch = execution_dir / "scratch"
+    packet_dir = manifest_path.parent
+    shutil.copytree(packet_dir, scratch / "packet")
+    staged_script = scratch / f"script{suffix}"
+    persistent_script = execution_dir / f"script{suffix}"
+    shutil.copy2(original_script, staged_script)
+    shutil.copy2(original_script, persistent_script)
+    outputs_dir = scratch / "outputs"
+    outputs_dir.mkdir()
+    outputs = [outputs_dir / name for name in clean_names]
+    command_path = _red_team_engine_command(root, engine)
+    safe_arguments = [_safe_red_team_argument(value) for value in (arguments or [])]
+    command = _red_team_command(engine, command_path, staged_script.name, safe_arguments)
+    started_at = utc_now()
+    environment = dict(os.environ)
+    environment["SHUMOZIZI_REVIEW_PACKET"] = "packet"
+    environment["SHUMOZIZI_REVIEW_OUTPUTS"] = "outputs"
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=scratch,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            check=False,
+            env=environment,
+        )
+        exit_code, timed_out = completed.returncode, False
+        stdout, stderr = completed.stdout, completed.stderr
+    except subprocess.TimeoutExpired as exc:
+        exit_code, timed_out = 124, True
+        stdout = (
+            exc.stdout.decode("utf-8", errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or "")
+        )
+        stderr = (
+            exc.stderr.decode("utf-8", errors="replace")
+            if isinstance(exc.stderr, bytes)
+            else (exc.stderr or "")
+        ) + f"\n红队证据执行超过 {timeout_seconds} 秒，已终止。\n"
+    stdout_path = execution_dir / "stdout.log"
+    stderr_path = execution_dir / "stderr.log"
+    stdout_path.write_text(stdout, encoding="utf-8", newline="\n")
+    stderr_path.write_text(stderr, encoding="utf-8", newline="\n")
+    if exit_code != 0 or timed_out:
+        raise ContractError(f"红队证据命令未成功完成（exit_code={exit_code}）")
+    missing = [path for path in outputs if not path.is_file() or path.stat().st_size == 0]
+    if missing:
+        names = ", ".join(path.relative_to(outputs_dir).as_posix() for path in missing)
+        raise ContractError("红队证据缺少非空输出: " + names)
+    persistent_outputs = execution_dir / "outputs"
+    shutil.copytree(outputs_dir, persistent_outputs)
+    staged_packet = scratch / "packet"
+    staged_inputs = _packet_input_files(staged_packet, manifest)
+    receipt = {
+        "schema_name": "red_team_evidence",
+        "schema_version": "1.1",
+        "run_id": root.name,
+        "evidence_id": evidence_id,
+        "kind": kind,
+        "engine": engine,
+        "packet": {
+            "manifest_file": relative_inside(root, manifest_path).as_posix(),
+            "manifest_sha256": sha256_file(manifest_path),
+            "packet_tree_sha256": _packet_tree_hash(packet_dir, exclude_visualization_scripts=False),
+        },
+        "command": command,
+        "exit_code": exit_code,
+        "timed_out": timed_out,
+        "script": _file_evidence(root, persistent_script),
+        "inputs": [_file_evidence(root, path) for path in staged_inputs],
+        "outputs": [
+            _file_evidence(root, persistent_outputs / path.relative_to(outputs_dir))
+            for path in outputs
+        ],
+        "stdout": _file_evidence(root, stdout_path),
+        "stderr": _file_evidence(root, stderr_path),
+        "started_at": started_at,
+        "finished_at": utc_now(),
+    }
+    _require_red_team_receipt(receipt)
+    receipt_path = execution_dir / "receipt.json"
+    atomic_json(receipt_path, receipt)
+    return receipt
+
+
+def _verify_file_evidence(run_dir: Path, evidence: dict[str, Any], *, require_nonempty: bool) -> Path:
+    """重新计算一条冻结文件证据，防止审查结果跨文件变更复用。"""
+    path = resolve_inside(run_dir, evidence["path"], must_exist=True)
+    if sha256_file(path) != evidence["sha256"] or path.stat().st_size != evidence["size_bytes"]:
+        raise ContractError(f"红队证据文件哈希或大小已变化: {evidence['path']}")
+    if require_nonempty and path.stat().st_size == 0:
+        raise ContractError(f"红队证据输出为空: {evidence['path']}")
+    return path
+
+
+def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
+    """复验所有已冻结红队执行，返回可供导入摘要绑定的文件清单。"""
+    root = run_dir.resolve()
+    errors: list[str] = []
+    receipts: list[dict[str, str]] = []
+    evidence_files: dict[str, dict[str, str]] = {}
+    evidence_kinds: set[str] = set()
+    receipt_paths = sorted((_red_team_root(root) / "executions").glob("*/receipt.json"))
+    if not receipt_paths:
+        return {
+            "valid": False,
+            "errors": ["缺少 review/red_team_artifacts/ 下的实际执行证据"],
+            "receipts": [],
+            "files": {},
+            "kinds": [],
+        }
+    for receipt_path in receipt_paths:
+        try:
+            receipt = load_json(receipt_path)
+            _require_red_team_receipt(receipt)
+            if receipt["schema_version"] != "1.1":
+                raise ContractError("旧版红队收据未在冻结 packet 清洁目录执行，不能作为当前生产放行依据")
+            if receipt["run_id"] != root.name:
+                raise ContractError("红队证据收据 run_id 不匹配")
+            execution_dir = receipt_path.parent.resolve()
+            packet = receipt["packet"]
+            packet_status = verify_review_packet(root, packet["manifest_file"])
+            if not packet_status["success"]:
+                raise ContractError("红队绑定的 scientific 审查包已失效: " + "；".join(packet_status["errors"]))
+            manifest_path, manifest = _read_packet_manifest(root, packet["manifest_file"])
+            if manifest["packet_kind"] != "scientific":
+                raise ContractError("红队证据未绑定 scientific 审查包")
+            if packet["manifest_sha256"] != sha256_file(manifest_path):
+                raise ContractError("红队证据审查包清单哈希已变化")
+            if packet["packet_tree_sha256"] != _packet_tree_hash(
+                manifest_path.parent, exclude_visualization_scripts=False
+            ):
+                raise ContractError("红队证据审查包快照已变化")
+            relative_receipt = relative_inside(root, receipt_path).as_posix()
+            receipts.append({"path": relative_receipt, "sha256": sha256_file(receipt_path)})
+            script = _verify_file_evidence(root, receipt["script"], require_nonempty=True)
+            if execution_dir not in script.parents:
+                raise ContractError("红队证据脚本不在对应清洁执行目录")
+            if script.suffix.casefold() != {"python": ".py", "matlab": ".m", "octave": ".m"}[receipt["engine"]]:
+                raise ContractError("红队脚本与收据引擎不一致")
+            if not any(script.name in part for part in receipt["command"]):
+                raise ContractError("红队证据命令未绑定登记脚本")
+            for item in receipt["inputs"]:
+                input_path = _verify_file_evidence(root, item, require_nonempty=False)
+                staged_packet = execution_dir / "scratch" / "packet"
+                if staged_packet not in input_path.parents:
+                    raise ContractError("红队证据读取了冻结 packet 以外的输入")
+            for item in receipt["outputs"]:
+                output = _verify_file_evidence(root, item, require_nonempty=True)
+                if execution_dir / "outputs" not in output.parents:
+                    raise ContractError("红队证据输出不在对应清洁执行目录")
+            for item in (receipt["script"], *receipt["inputs"], *receipt["outputs"], receipt["stdout"], receipt["stderr"]):
+                path = _verify_file_evidence(root, item, require_nonempty=False)
+                evidence_files[relative_inside(root, path).as_posix()] = {
+                    "path": relative_inside(root, path).as_posix(),
+                    "sha256": sha256_file(path),
+                }
+            evidence_kinds.add(receipt["kind"])
+        except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+            errors.append(f"{receipt_path.name}: {exc}")
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "receipts": receipts,
+        "files": evidence_files,
+        "kinds": sorted(evidence_kinds),
+    }
+
+
+def _bind_red_team_artifacts(run_dir: Path, report: dict[str, str]) -> dict[str, Any]:
+    """将报告引用与真实执行证据绑定，避免自由文本自证科学正确性。"""
+    verification = verify_red_team_artifacts(run_dir)
+    if not verification["valid"]:
+        raise ContractError("红队执行证据无效: " + "；".join(verification["errors"]))
+    report_path = _safe_run_path(run_dir, report["file"])
+    content = report_path.read_text(encoding="utf-8")
+    citations: list[dict[str, str]] = []
+    for match in _REPORT_ARTIFACT_PATH.finditer(content):
+        relative = match.group(0).replace("\\", "/").rstrip(".,;:!?")
+        if relative not in verification["files"]:
+            raise ContractError(f"审查报告引用了不存在或未执行的红队证据: {relative}")
+        citations.append(verification["files"][relative])
+    unique = {item["path"]: item for item in citations}
+    if not unique:
+        raise ContractError("科学审查报告必须引用至少一个 review/red_team_artifacts/ 的真实输出")
+    output_paths = {
+        item["path"]
+        for receipt_path in verification["receipts"]
+        for item in load_json(_safe_run_path(run_dir, receipt_path["path"]))["outputs"]
+    }
+    if not set(unique) & output_paths:
+        raise ContractError("科学审查报告必须引用至少一个实际红队输出，而非只引用脚本")
+    return {
+        "receipts": verification["receipts"],
+        "report_citations": list(unique.values()),
+        "evidence_kinds": verification["kinds"],
+    }
 
 
 def _safe_run_path(run_dir: Path, relative: str, *, must_exist: bool = True) -> Path:
@@ -405,31 +795,34 @@ def read_review_summary(run_dir: Path) -> dict[str, Any]:
 
 
 def _reviewer_scientific(thread_id: str) -> dict[str, Any]:
-    """生成审查隔离声明，调用方只可提供新对话标识。"""
+    """记录由协调层负责核验的新科学审查对话标识。"""
     if not thread_id.strip():
         raise ContractError("独立科学审查必须记录新对话 thread_id")
-    return {
-        "thread_id": thread_id,
-        "fresh_context": True,
-        "solver_context_visible": False,
-        "previous_review_visible": False,
-        "quality_verdicts_visible": False,
-        "decision_log_visible_initially": False,
-    }
+    return {"thread_id": thread_id}
 
 
 def _reviewer_paper(thread_id: str) -> dict[str, Any]:
-    """生成盲审隔离声明，禁止初始接触代码和已有结论。"""
+    """记录由协调层负责核验的独立 PDF 盲审对话标识。"""
     if not thread_id.strip():
         raise ContractError("独立盲审必须记录新对话 thread_id")
-    return {
-        "thread_id": thread_id,
-        "fresh_context": True,
-        "solver_context_visible": False,
-        "scientific_review_visible": False,
-        "quality_verdicts_visible": False,
-        "code_visible_initially": False,
-    }
+    return {"thread_id": thread_id}
+
+
+def _require_competition_strength_evidence(
+    competition_strength: str, artifacts: dict[str, Any]
+) -> None:
+    """阻止 CLI 仅靠一个标签把科学结果抬成可竞赛提交。"""
+    if competition_strength not in {"qualified", "strong"}:
+        return
+    kinds = set(artifacts.get("evidence_kinds", []))
+    has_independent_check = bool(kinds & {"independent-recompute", "alternative-formula"})
+    has_adversarial_check = bool(
+        kinds & {"counterexample", "small-enumeration", "search-challenge", "property-test"}
+    )
+    if not has_independent_check or not has_adversarial_check:
+        raise ContractError(
+            "qualified/strong 需要至少一项独立复算或替代公式，且需要一项反例、枚举、挑战或性质测试的真实收据"
+        )
 
 
 def _review_report(run_dir: Path, relative: Path) -> dict[str, str]:
@@ -475,8 +868,11 @@ def import_scientific_review(
     packet = verify_review_packet(run_dir, manifest_file)
     if not packet["success"]:
         raise ContractError("科学审查包已失效: " + "；".join(packet["errors"]))
+    report = _review_report(run_dir, report_file)
+    artifacts = _bind_red_team_artifacts(run_dir, report)
+    _require_competition_strength_evidence(competition_strength, artifacts)
     summary = {
-        "schema_version": "1.0",
+        "schema_version": "1.2",
         "run_id": run_dir.name,
         "scientific_review": {
             "verdict": verdict,
@@ -488,7 +884,8 @@ def import_scientific_review(
                 "manifest_file": packet["manifest_file"],
                 "manifest_sha256": packet["manifest_sha256"],
             },
-            "report": _review_report(run_dir, report_file),
+            "report": report,
+            "artifacts": artifacts,
             "reviewer": _reviewer_scientific(reviewer_thread_id),
             "reviewed_at": utc_now(),
         },
@@ -559,6 +956,15 @@ def _review_current(
     report = _safe_run_path(run_dir, review["report"]["file"])
     if sha256_file(report) != review["report"]["sha256"]:
         return False, "审查报告哈希已变化"
+    if expected_kind == "scientific":
+        if "artifacts" not in review:
+            return False, "科学审查缺少可执行红队证据；旧摘要不能作为生产放行依据"
+        try:
+            artifacts = _bind_red_team_artifacts(run_dir, review["report"])
+        except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+            return False, str(exc)
+        if artifacts != review["artifacts"]:
+            return False, "红队证据收据或报告引用已变化"
     return True, ""
 
 
@@ -574,9 +980,16 @@ def scientific_review_status(run_dir: Path) -> dict[str, Any]:
             and review["highest_severity"] not in {"P0", "P1"}
             and not review["full_rerun_required"]
         )
-        return {"allowed": allowed, "review": review, "reason": reason}
+        submission_ready = allowed and review["competition_strength"] in {"qualified", "strong"}
+        return {
+            "allowed": allowed,
+            "submission_ready": submission_ready,
+            "competition_strength": review["competition_strength"],
+            "review": review,
+            "reason": reason,
+        }
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
-        return {"allowed": False, "reason": str(exc)}
+        return {"allowed": False, "submission_ready": False, "reason": str(exc)}
 
 
 def require_paper_generation_allowed(run_dir: Path) -> None:
@@ -614,11 +1027,43 @@ def require_paper_blind_review_allowed(run_dir: Path) -> None:
         raise ContractError("不能进入机械终检：独立 PDF 盲审未通过或已失效: " + status["reason"])
 
 
+def competition_submission_status(run_dir: Path) -> dict[str, Any]:
+    """区分科学可用与竞赛可提交，避免 weak 结果被标记为 complete。"""
+    scientific = scientific_review_status(run_dir)
+    if not scientific["allowed"]:
+        return {
+            "scientific_valid": False,
+            "competition_strength": scientific.get("competition_strength", "unknown"),
+            "submission_ready": False,
+            "status": "scientific_review_unavailable",
+            "reason": scientific["reason"],
+        }
+    strength = scientific["competition_strength"]
+    if strength not in {"qualified", "strong"}:
+        return {
+            "scientific_valid": True,
+            "competition_strength": strength,
+            "submission_ready": False,
+            "status": "scientifically_valid_but_not_competitive",
+            "reason": f"科学结果可写成论文但竞争力为 {strength}，不能标记 complete",
+        }
+    return {
+        "scientific_valid": True,
+        "competition_strength": strength,
+        "submission_ready": True,
+        "status": "submission_ready",
+        "reason": "",
+    }
+
+
 def completion_status(run_dir: Path) -> dict[str, Any]:
     """组合盲审与机械 QA，形成唯一的 complete 放行结论。"""
     review = paper_blind_review_status(run_dir)
     if not review["allowed"]:
         return {"allowed": False, "reason": review["reason"]}
+    competition = competition_submission_status(run_dir)
+    if not competition["submission_ready"]:
+        return {"allowed": False, **competition}
     try:
         mechanical = load_json(run_dir / "qa" / "mechanical-qa.json")
         pdf = run_dir / "paper" / "final.pdf"
@@ -641,7 +1086,14 @@ def completion_status(run_dir: Path) -> dict[str, Any]:
             or mechanical.get("final_pdf_sha256") != sha256_file(pdf)
         ):
             return {"allowed": False, "reason": "机械 QA 未绑定当前最终 PDF"}
-        return {"allowed": True, "reason": ""}
+        return {
+            "allowed": True,
+            "reason": "",
+            "scientific_valid": True,
+            "competition_strength": competition["competition_strength"],
+            "submission_ready": True,
+            "status": "submission_ready",
+        }
     except (ContractError, OSError, TypeError, ValueError) as exc:
         return {"allowed": False, "reason": "机械 QA 无法读取: " + str(exc)}
 
