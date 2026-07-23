@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shumozizi.core.io import ContractError
+from shumozizi.core.io import ContractError, load_json
 from shumozizi.simple.adapters import run_verification_protocol, validate_adapter_contract
 from shumozizi.simple.execution import execute_simple_experiment
 from shumozizi.simple.initialization import initialize_simple_run
@@ -80,7 +80,7 @@ class VerificationProtocolTests(unittest.TestCase):
             contract["stages"]["search_auditor"]["output_file"] = "results/raw/exact.json"
 
             with self.assertRaisesRegex(ContractError, "输出.*重复|重复.*输出"):
-                validate_adapter_contract(contract)
+                validate_adapter_contract(contract, run_dir=run_dir)
 
     def test_adapter_contract_rejects_implicit_shared_local_dependency(self) -> None:
         """三段入口不能通过未登记的 common.py 复用同一领域逻辑。"""
@@ -115,10 +115,35 @@ class VerificationProtocolTests(unittest.TestCase):
             for stage_name in ("candidate_generator", "exact_scorer", "search_auditor"):
                 stage = contract["stages"][stage_name]
                 stage["source_files"] = [stage["implementation_file"], "code/common.py"]
-                stage["input_files"].append("code/common.py")
+                stage["input_files"] = [
+                    stage["implementation_file"],
+                    "code/common.py",
+                    *stage["input_files"],
+                ]
 
             with self.assertRaisesRegex(ContractError, "共享|独立"):
                 validate_adapter_contract(contract)
+
+    def test_v12_runtime_materializes_source_closure_without_author_fields(self) -> None:
+        """作者只写数据输入，运行时仍冻结入口与本地导入源码。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "runtime-source-closure")
+            variables = ["x", "z"]
+            self._write_adapter_scripts(run_dir, variables=variables)
+            contract = self._adapter_contract(variables=variables)
+            self.assertNotIn("source_files", contract["stages"]["candidate_generator"])
+            protocol = run_verification_protocol(
+                run_dir,
+                result_id="runtime_closure",
+                question_id="Q1",
+                contract=contract,
+            )
+
+            receipt = load_json(run_dir / protocol["verification"]["protocol_file"])
+            frozen = load_json(run_dir / receipt["adapter"]["contract_file"])
+            stage = frozen["stages"]["candidate_generator"]
+            self.assertEqual(["code/generate.py"], stage["source_files"])
+            self.assertIn("code/generate.py", stage["input_files"])
 
     def test_protocol_refuses_reused_stage_outputs_before_second_execution(self) -> None:
         """第二次协议不得复用第一轮已冻结的 raw 阶段输出。"""
@@ -329,38 +354,31 @@ class VerificationProtocolTests(unittest.TestCase):
             可由通用运行时执行的 adapter 合同。
         """
         return {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "adapter_id": "synthetic-sparse",
             "adapter_version": "1.0",
             "selection_contract": self._selection_contract(variables=variables),
             "stages": {
                 "candidate_generator": {
                     "implementation_file": "code/generate.py",
-                    "source_files": ["code/generate.py"],
                     "arguments": ["results/raw/candidates.json"],
-                    "input_files": ["code/generate.py"],
+                    "input_files": [],
                     "output_file": "results/raw/candidates.json",
                 },
                 "exact_scorer": {
                     "implementation_file": "code/score.py",
-                    "source_files": ["code/score.py"],
                     "arguments": ["results/raw/candidates.json", "results/raw/exact.json"],
-                    "input_files": ["code/score.py", "results/raw/candidates.json"],
+                    "input_files": ["results/raw/candidates.json"],
                     "output_file": "results/raw/exact.json",
                 },
                 "search_auditor": {
                     "implementation_file": "code/audit.py",
-                    "source_files": ["code/audit.py"],
                     "arguments": [
                         "results/raw/candidates.json",
                         "results/raw/exact.json",
                         "results/raw/audit.json",
                     ],
-                    "input_files": [
-                        "code/audit.py",
-                        "results/raw/candidates.json",
-                        "results/raw/exact.json",
-                    ],
+                    "input_files": ["results/raw/candidates.json", "results/raw/exact.json"],
                     "output_file": "results/raw/audit.json",
                 },
             },

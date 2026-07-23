@@ -18,6 +18,7 @@ from shumozizi.simple.review import (
     import_paper_blind_review,
     import_scientific_review,
     paper_blind_review_status,
+    run_red_team_evidence,
     scientific_review_status,
     verify_review_packet,
 )
@@ -45,8 +46,53 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
     def _write_report(run_dir: Path, name: str) -> Path:
         """写入满足导入要求的最小自由审查报告。"""
         report = run_dir / "review" / name
+        evidence_reference = ""
+        if name == "SCIENTIFIC_RED_TEAM.md":
+            artifact_root = run_dir / "review" / "red_team_artifacts"
+            manifests = sorted((run_dir / "review" / "packet" / "scientific").glob("*/manifest.json"))
+            if not manifests:
+                raise AssertionError("测试红队缺少 scientific packet")
+            manifest = manifests[-1].relative_to(run_dir).as_posix()
+            recompute = artifact_root / "minimal_recompute.py"
+            recompute.write_text(
+                "import json\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+                "assert (packet / 'problem').is_dir()\n"
+                "(outputs / 'recompute.json').write_text(json.dumps({'independent_cases_checked': 1}), encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            counterexample = artifact_root / "minimal_counterexample.py"
+            counterexample.write_text(
+                "import json\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+                "assert (packet / 'source_snapshot').is_dir()\n"
+                "(outputs / 'counterexample.json').write_text(json.dumps({'counterexample_cases': 1}), encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            run_red_team_evidence(
+                run_dir,
+                evidence_id="minimal-recompute",
+                kind="independent-recompute",
+                packet_manifest=manifest,
+                script_path="review/red_team_artifacts/minimal_recompute.py",
+                output_paths=["recompute.json"],
+            )
+            receipt = run_red_team_evidence(
+                run_dir,
+                evidence_id="minimal-counterexample",
+                kind="counterexample",
+                packet_manifest=manifest,
+                script_path="review/red_team_artifacts/minimal_counterexample.py",
+                output_paths=["counterexample.json"],
+            )
+            evidence_reference = "证据：`" + receipt["outputs"][0]["path"] + "`。\n"
         report.write_text(
-            "# 独立审查\n\n已从题面重建问题，并记录了可复现实验与反例检查。\n",
+            "# 独立审查\n\n已从题面重建问题，并记录了可复现实验与反例检查。\n"
+            + evidence_reference,
             encoding="utf-8",
         )
         return report
@@ -197,7 +243,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self.assertFalse(verified["success"])
             self.assertIn("路径", "；".join(verified["errors"]))
 
-            report = self._write_report(run_dir, "SCIENTIFIC_RED_TEAM.md")
+            report = run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
+            report.write_text("# 失效包测试\n\n该报告不会绕过已损坏的审查包。\n", encoding="utf-8")
             with self.assertRaisesRegex(ContractError, "审查包|路径"):
                 import_scientific_review(
                     run_dir,

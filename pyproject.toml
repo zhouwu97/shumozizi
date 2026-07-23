@@ -37,6 +37,10 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 addopts = "--strict-config --strict-markers"
+markers = [
+  "template_matrix: 全模板动态章节矩阵，仅在定时或手动完整回归中运行",
+  "paper_e2e: 真实论文编译与回执回归，仅在定时或手动完整回归中运行",
+]
 
 [tool.ruff]
 target-version = "py312"

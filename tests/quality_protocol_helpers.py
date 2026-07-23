@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.simple.adapters import run_verification_protocol
-from shumozizi.simple.review import build_review_packet, import_scientific_review
+from shumozizi.simple.review import (
+    build_review_packet,
+    import_scientific_review,
+    run_red_team_evidence,
+)
 from shumozizi.simple.state import read_simple_state, update_simple_state
 
 
@@ -230,31 +234,28 @@ def _write_synthetic_adapter(
         encoding="utf-8",
     )
     return {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "adapter_id": "synthetic-quality-test",
         "adapter_version": "1.0",
         "selection_contract": selection_contract,
         "stages": {
             "candidate_generator": {
                 "implementation_file": generator_path,
-                "source_files": [generator_path],
                 "arguments": [candidate_output],
-                "input_files": [generator_path],
+                "input_files": [],
                 "output_file": candidate_output,
             },
             "exact_scorer": {
                 "implementation_file": scorer_path,
-                "source_files": [scorer_path],
                 "arguments": [candidate_output, exact_output, *artifact_paths.values()],
-                "input_files": [scorer_path, candidate_output],
+                "input_files": [candidate_output],
                 "output_file": exact_output,
                 "artifact_files": list(artifact_paths.values()),
             },
             "search_auditor": {
                 "implementation_file": auditor_path,
-                "source_files": [auditor_path],
                 "arguments": [candidate_output, exact_output, audit_output],
-                "input_files": [auditor_path, candidate_output, exact_output],
+                "input_files": [candidate_output, exact_output],
                 "output_file": audit_output,
             },
         },
@@ -350,9 +351,51 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
     if read_simple_state(run_dir)["phase"] != "scientific_review":
         raise ValueError("测试科学审查只能从 analysis 或 experiment 开始")
     packet = build_review_packet(run_dir, kind="scientific")
+    artifact_root = run_dir / "review" / "red_team_artifacts"
+    recompute = artifact_root / "synthetic_recompute.py"
+    recompute.write_text(
+        "import json\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+        "assert (packet / 'problem').is_dir()\n"
+        "(outputs / 'recompute.json').write_text(\n"
+        "    json.dumps({'independent_cases_checked': 1}), encoding='utf-8'\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    run_red_team_evidence(
+        run_dir,
+        evidence_id="synthetic-recompute",
+        kind="independent-recompute",
+        packet_manifest=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+        script_path="review/red_team_artifacts/synthetic_recompute.py",
+        output_paths=["recompute.json"],
+    )
+    challenge = artifact_root / "synthetic-property.py"
+    challenge.write_text(
+        "import json\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+        "assert (packet / 'candidate_results').is_dir()\n"
+        "(outputs / 'property.json').write_text(json.dumps({'properties_checked': 1}), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    challenge_receipt = run_red_team_evidence(
+        run_dir,
+        evidence_id="synthetic-property",
+        kind="property-test",
+        packet_manifest=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+        script_path="review/red_team_artifacts/synthetic-property.py",
+        output_paths=["property.json"],
+    )
     report = run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
     report.write_text(
-        "# 合成科学红队报告\n\n已绑定独立公式、反例和污染范围。\n",
+        "# 合成科学红队报告\n\n"
+        "已绑定独立公式、反例和污染范围。证据：`"
+        + challenge_receipt["outputs"][0]["path"]
+        + "`。\n",
         encoding="utf-8",
     )
     return import_scientific_review(
