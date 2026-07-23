@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/objective_semantics_review.schema.json",
+  "title": "Independent Objective Semantics Review Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "verdict",
+    "highest_severity",
+    "packet",
+    "assessment",
+    "report",
+    "reviewer",
+    "reviewed_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "objective_semantics_review"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "verdict": {"enum": ["pass", "fail", "needs_rework", "revoked"]},
+    "highest_severity": {"enum": ["none", "P0", "P1", "P2", "P3"]},
+    "packet": {"$ref": "#/$defs/fileBinding"},
+    "assessment": {"$ref": "#/$defs/fileBinding"},
+    "report": {"$ref": "#/$defs/fileBinding"},
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thread_id"],
+      "properties": {"thread_id": {"type": "string", "minLength": 1}}
+    },
+    "reviewed_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "fileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha"}
+      }
+    }
+  }
+}

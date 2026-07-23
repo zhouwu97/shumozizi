@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from shumozizi.core.io import atomic_json
 from shumozizi.paper.templates import materialize_selected_template, select_paper_template
 from shumozizi.simple.capabilities import (
     record_knowledge_consumption,
     write_capability_route,
     write_local_tooling,
+)
+from shumozizi.simple.review import (
+    build_review_packet,
+    import_objective_semantics_review,
+    objective_semantics_review_required,
 )
 from shumozizi.simple.state import read_simple_state, update_simple_state
 from shumozizi.simple.visualization import (
@@ -21,6 +27,54 @@ from shumozizi.simple.visualization import (
 def prepare_minimal_capability_route(run_dir: Path) -> None:
     """登记无需独立 oracle 的最小本地能力路由并进入实验阶段。"""
     state = read_simple_state(run_dir)
+    if state["phase"] == "analysis" and objective_semantics_review_required(run_dir):
+        build_review_packet(run_dir, kind="objective-semantics")
+        manifest = next(
+            (run_dir / "review" / "packet" / "objective-semantics").glob("*/manifest.json")
+        )
+        questions = []
+        for question_id in state["required_questions"]:
+            questions.append(
+                {
+                    "question_id": question_id,
+                    "interpretations": [
+                        {
+                            "objective_id": "synthetic_objective",
+                            "formula": "J = 1",
+                            "unit": "dimensionless",
+                            "aggregation": "single_entity",
+                            "language_basis": ["测试题面要求回答该问题。"],
+                        }
+                    ],
+                    "selected_objective_id": "synthetic_objective",
+                    "selection_basis": "language_evidence",
+                    "selection_confidence": "high",
+                    "diagnostic_objective_ids": [],
+                    "ambiguity_note": "",
+                }
+            )
+        atomic_json(
+            run_dir / "review" / "OBJECTIVE_SEMANTICS.json",
+            {
+                "schema_name": "objective_semantics_assessment",
+                "schema_version": "1.0",
+                "run_id": run_dir.name,
+                "source_scope": "problem_only",
+                "network_used": False,
+                "questions": questions,
+            },
+        )
+        (run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md").write_text(
+            "# 独立目标语义预审\n\n测试夹具仅依据题面重建目标，并确认无额外聚合歧义。\n",
+            encoding="utf-8",
+        )
+        import_objective_semantics_review(
+            run_dir,
+            manifest_file=manifest.relative_to(run_dir).as_posix(),
+            verdict="pass",
+            highest_severity="none",
+            reviewer_thread_id=f"semantic-{run_dir.name}",
+        )
     if state["phase"] in {"analysis", "blocked"}:
         update_simple_state(run_dir, phase="capability_route")
     write_local_tooling(run_dir)

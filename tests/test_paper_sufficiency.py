@@ -136,7 +136,14 @@ def test_five_question_paper_with_only_abstract_and_results_table_is_blocked() -
 def test_complete_short_paper_is_not_blocked_by_page_count_alone() -> None:
     """内容完整的短论文可以通过，页数只作为报告信息而非硬阈值。"""
     question_text = "\n".join(
-        f"Q{number}\n直接答案：已回答。模型与算法：共享模型。关键结果：结果稳定。验证与边界：已说明。"
+        (
+            f"Q{number}\n直接答案：本问采用实体时长求和作为目标。"
+            "模型与算法：令 J=sum_i T_i，并在硬约束满足后用精确评分器复算候选。"
+            f"关键结果：第 {number} 问的当前结果为 {10 + number}.25 s，表 1 给出参数与结果。"
+            "该数值高于基线，因此表明局部搜索确实改善了题目目标，而非只改善代理值。"
+            "验证与边界：独立实现复算误差低于 0.01 s；结论仅适用于题面给定参数，"
+            "若边界条件变化仍需重新做敏感性分析。"
+        )
         for number in range(1, 6)
     )
     report = assess_paper_sufficiency(
@@ -166,8 +173,11 @@ def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None
     )
     body = "\n".join(
         (
-            f"{question_id}\n直接答案：已回答。模型与算法：已说明。"
-            "关键结果：已复算。验证与边界：已说明。"
+            f"{question_id}\n直接答案：采用各实体有效时长求和。"
+            "模型与算法：令 J=sum_i T_i，并用独立精确评分器计算每个可行候选。"
+            "关键结果：最优值为 21.25 s，表 1 同时列出约束余量和基线结果。"
+            "该结果比基线提高 8.2%，因此表明改进来自可行区域内的目标提升。"
+            "验证与边界：第二实现的差值小于 0.01 s，但该结论不外推到不同题面参数。"
         )
         for question_id in question_ids
     )
@@ -189,6 +199,30 @@ def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None
 
     assert report["status"] == "pass"
     assert all(item["complete"] for item in report["question_coverage"])
+
+
+def test_question_labels_without_argument_are_blocked() -> None:
+    """标题、标签和结论口号齐全也不能替代逐问论证。"""
+    report = assess_paper_sufficiency(
+        _blueprint(["Q1"]),
+        pdf_text="""
+        摘要
+        问题重述与假设
+        共享模型
+        Q1
+        直接答案：完成。模型与算法：优化。关键结果：很好。验证与边界：通过。
+        全局稳健性：已说明。
+        结论
+        参考文献
+        """,
+        page_count=8,
+    )
+
+    coverage = report["question_coverage"][0]
+    assert report["status"] == "blocked"
+    assert not coverage["argumentation"]["substantive_body"]
+    assert not coverage["argumentation"]["derivation_or_quantitative_evidence"]
+    assert not coverage["argumentation"]["explanation_present"]
 
 
 def test_question_section_needs_its_own_current_production_result(

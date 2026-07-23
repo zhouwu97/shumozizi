@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,9 @@ TABLE_CAPTION_PATTERN = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 LEGACY_PROVENANCE_MARKER = re.compile(r"\[\[(?:result|metric):", re.IGNORECASE)
+MIN_BODY_FONT_SAMPLE_CHARACTERS = 600
+MAX_DOMINANT_BODY_FONT_SIZE = 14.0
+MIN_SPARSE_PAGE_CHARACTERS = 120
 
 
 def _duplicates(values: list[str]) -> list[int]:
@@ -80,12 +84,23 @@ def audit_pdf(
     blank_pages: list[int] = []
     clipping_pages: list[int] = []
     overlap_pages: list[int] = []
+    sparse_pages: list[int] = []
+    font_sizes: Counter[float] = Counter()
     with pdfplumber.open(str(path)) as document:
         for number, page in enumerate(document.pages, start=1):
             chars = page.chars or []
             images = page.images or []
+            visible_chars = [
+                char for char in chars if str(char.get("text", "")).strip()
+            ]
+            for char in visible_chars:
+                size = round(float(char.get("size", 0.0)) * 2) / 2
+                if size > 0:
+                    font_sizes[size] += 1
             if not (page.extract_text() or "").strip() and not chars and not images:
                 blank_pages.append(number)
+            elif len(visible_chars) < MIN_SPARSE_PAGE_CHARACTERS and not images:
+                sparse_pages.append(number)
             for char in chars:
                 if (
                     float(char["x0"]) < -0.1
@@ -114,6 +129,32 @@ def audit_pdf(
     check("blank-pages", not blank_pages, "未发现空白页" if not blank_pages else f"空白页: {blank_pages}")
     check("clipping", not clipping_pages, "未发现文字裁切" if not clipping_pages else f"疑似裁切页: {clipping_pages}")
     check("text-overlap", not overlap_pages, "未发现文字重叠" if not overlap_pages else f"疑似重叠页: {overlap_pages}")
+    dominant_font_size = None
+    dominant_font_count = 0
+    if font_sizes:
+        dominant_font_size, dominant_font_count = font_sizes.most_common(1)[0]
+    font_sample_sufficient = dominant_font_count >= MIN_BODY_FONT_SAMPLE_CHARACTERS
+    font_size_passed = bool(
+        not font_sample_sufficient
+        or dominant_font_size is None
+        or dominant_font_size <= MAX_DOMINANT_BODY_FONT_SIZE
+    )
+    if not font_sample_sufficient:
+        font_details = "正文字符样本不足，主字号交由 PDF 盲审判断"
+    elif font_size_passed:
+        font_details = f"正文主字号约 {dominant_font_size:g} pt"
+    else:
+        font_details = (
+            f"正文主字号约 {dominant_font_size:g} pt，超过 "
+            f"{MAX_DOMINANT_BODY_FONT_SIZE:g} pt 可读性上限"
+        )
+    check("body-font-size", font_size_passed, font_details)
+    check(
+        "sparse-content-pages",
+        not sparse_pages,
+        "未发现稀疏内容页" if not sparse_pages else f"疑似稀疏内容页: {sparse_pages}",
+        blocking=False,
+    )
     check(
         "figure-numbering",
         not figure_duplicates,

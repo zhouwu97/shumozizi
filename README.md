@@ -6,7 +6,7 @@ shumozizi 是面向 Codex 桌面版的数学建模工作台，帮助参赛者和
 
 ## 当前定位与能力边界
 
-当前版本适合作为**证据约束下的人机协作建模工作台**：Codex 负责结构分析、路线生成、编码、实验、图表和论文初稿，运行时负责冻结事实与阻断伪验证，独立新对话负责科学红队和 PDF 盲审。参赛者仍需对题意解释、关键假设和最终提交负责。
+当前版本适合作为**证据约束下的人机协作建模工作台**：Codex 负责结构分析、路线生成、编码、实验和图表；专业 `$research-writing-skill` 负责论证提纲和正文展开，`$mathmodel-paper` 负责数模证据、LaTeX 与交付；运行时负责冻结事实与阻断伪验证，独立新对话负责目标语义预审、科学红队和 PDF 盲审。参赛者仍需对题意解释、关键假设和最终提交负责。
 
 已经由自动化测试覆盖的能力包括：
 
@@ -33,12 +33,12 @@ shumozizi 是面向 Codex 桌面版的数学建模工作台，帮助参赛者和
              ↓
 运行证据层：命令、日志、输出、哈希、随机种子、独立实现
              ↓
-独立审查层：新对话科学红队 → 新对话 PDF 盲审
+独立审查层：只读题面的目标语义预审 → 科学红队 → PDF 盲审
              ↓
 机械交付层：编译、路径、占位符、匿名、PDF QA
 ```
 
-局部证据层只证明程序运行过且受控实现彼此一致；它不能排除共享的错误数学语义。实验结束后必须由新的 Codex 对话基于冻结审查包重建问题、做反例和独立挑战，科学红队通过才可写论文。PDF 生成后必须再由另一新对话盲审，机械 QA 只复验提交与追溯。
+局部证据层只证明程序运行过且受控实现彼此一致；它不能排除共享的错误数学语义。正式题面进入能力路由前，先由只读题面且禁止联网的新 Codex 对话逐问区分求和、并集、交集等目标口径。实验结束后再由另一个新对话基于冻结审查包重建问题、做反例和独立挑战，科学红队通过才可写论文。PDF 生成后必须再由另一新对话盲审，机械 QA 只复验提交与追溯。
 
 ## 快速开始
 
@@ -98,7 +98,7 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
 - `mathmodel-experiment`：代码、真实运行、按题型验证、保存搜索轨迹、几何事件和真实绘图数据；
 - `mathmodel-matlab`：检测 MATLAB/Octave，提供独立公式实现、优化挑战和三维证据图；
 - `mathmodel-visual`：在科学红队通过后，按题型生成模型图、搜索诊断图和结果图；
-- `mathmodel-paper`：以 LaTeX 为默认路径，将真实结果、图表和验证组织为完整论文；
+- `mathmodel-paper`：调用已安装的 `$research-writing-skill` 建立论证提纲和正文，再以 LaTeX 将真实结果、图表和验证组织为完整论文；
 - `mathmodel-red-team`：必须在三个互不相同的新 Codex 对话中执行科学红队、PDF 盲审和最终交付审核；
 - `mathmodel-final-check`：独立盲审后的机械 QA、追溯复验和最终审核包准备；
 - `mathmodel-learn-paper`：离线论文学习。
@@ -111,7 +111,7 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
 完整主链为：
 
 ```text
-analysis -> capability_route -> experiment -> scientific_review
+analysis -> objective-semantics review -> capability_route -> experiment -> scientific_review
 -> visualization -> paper -> paper_review -> verify -> final_review -> complete
 ```
 
@@ -125,7 +125,7 @@ analysis -> capability_route -> experiment -> scientific_review
 python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
 ```
 
-协调任务必须实际使用 Codex `create_thread` 新建审核任务并用 `wait_threads` 等待，不能在求解任务内自审，也不能 `fork_thread` 继承求解历史。新任务初始只读该包，不能访问求解上下文、质量日志、历史 run、网络或公开同题答案；它独立重建题意、攻击高风险数学原语并挑战搜索区域。导入时必须使用新建任务返回的真实 `threadId`。PDF 生成后进入 `paper_review`，由第二个新审核任务只看题面、附件和 PDF。盲审通过后进入 `verify` 运行机械 QA，再进入 `final_review`；第三个新审核任务只读 `--kind final-audit` 冻结包，综合检查最终 PDF、提交表、结果、图表、报告和机械 QA。三轮审核任务互不相同，终审通过后才能 `complete`；环境不能新建任务时必须阻断。任一被冻结的输入、代码、结果、图表、报告、提交物、QA 或 PDF 漂移都会撤销对应结论。
+协调任务必须实际使用 Codex `create_thread` 新建审核任务并用 `wait_threads` 等待，不能在求解任务内自审，也不能 `fork_thread` 继承求解历史。实验前的目标语义预审只读题面；后续科学红队初始只读科学包，不能访问求解上下文、质量日志、历史 run、网络或公开同题答案。PDF 生成后由第三个新审核任务只看题面、附件和 PDF；机械 QA 后，第四个新审核任务只读 `--kind final-audit` 冻结包。目标语义预审与三轮后续审核的任务 ID 必须全部不同，终审通过后才能 `complete`；环境不能新建任务时必须阻断。任一被冻结的输入、代码、结果、图表、报告、提交物、QA 或 PDF 漂移都会撤销对应结论。
 
 ## 机械终检
 
@@ -137,7 +137,7 @@ python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 
 该命令生成：
 
-- `qa/mechanical-qa.json`：PDF、空白页、裁切、文字重叠、占位符、失效结果引用、current 结果哈希、输出指标来源和关键数字检查；
+- `qa/mechanical-qa.json`：PDF、空白/稀疏页、正文主字号、裁切、文字重叠、逐问论证充分性、占位符、失效结果引用、current 结果哈希、输出指标来源和关键数字检查；
 - `qa/contact-sheet.png`：便于人工快速查看的 PDF 联系表；
 - `reports/VERIFY_REPORT.md`：简短可定位的验证摘要。
 

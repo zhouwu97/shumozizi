@@ -27,11 +27,15 @@ from shumozizi.simple.state import read_simple_state, utc_now
 
 REVIEW_ROOT = Path("review")
 SUMMARY_PATH = REVIEW_ROOT / "summary.json"
+OBJECTIVE_SEMANTICS_REPORT_PATH = REVIEW_ROOT / "OBJECTIVE_SEMANTICS_REVIEW.md"
+OBJECTIVE_SEMANTICS_ASSESSMENT_PATH = REVIEW_ROOT / "OBJECTIVE_SEMANTICS.json"
+OBJECTIVE_SEMANTICS_RECEIPT_PATH = REVIEW_ROOT / "objective-semantics.json"
 SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
 FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
 RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
 _PACKET_ROOTS = {
+    "objective-semantics": ("problem",),
     "scientific": ("problem", "code", "results/raw"),
     "paper-blind": ("problem", "paper/final.pdf", "paper/submission"),
     "final-audit": (
@@ -56,6 +60,7 @@ _PACKET_DESTINATIONS = {
     "qa/mechanical-qa.json": "qa/mechanical-qa.json",
 }
 _REQUIRED_PACKET_ROOTS = {
+    "objective-semantics": frozenset(("problem",)),
     "scientific": frozenset(("problem", "code", "results/raw")),
     "paper-blind": frozenset(("problem", "paper/final.pdf", "paper/submission")),
     "final-audit": frozenset(
@@ -91,6 +96,25 @@ def _schema() -> dict[str, Any]:
     return load_json(root / "schemas" / "simple_review_summary.schema.json")
 
 
+def _objective_schema(name: str) -> dict[str, Any]:
+    """读取目标语义预审的评估或收据 Schema。"""
+    root = resolve_repo_root(Path(__file__))
+    return load_json(root / "schemas" / f"{name}.schema.json")
+
+
+def _validate_document(payload: dict[str, Any], schema_name: str, label: str) -> None:
+    """用指定 Schema 校验目标语义文档并返回可读错误。"""
+    validator = Draft202012Validator(
+        _objective_schema(schema_name), format_checker=FormatChecker()
+    )
+    errors = [
+        f"{'.'.join(str(part) for part in error.absolute_path) or '<root>'}: {error.message}"
+        for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.path))
+    ]
+    if errors:
+        raise ContractError(f"{label}不符合协议: " + "; ".join(errors))
+
+
 def _require_summary(payload: dict[str, Any]) -> None:
     """确保审查摘要格式正确且语义不自相矛盾。"""
     validator = Draft202012Validator(_schema(), format_checker=FormatChecker())
@@ -112,6 +136,15 @@ def _require_summary(payload: dict[str, Any]) -> None:
         and paper["highest_severity"] in {"P0", "P1"}
     ):
         raise ContractError("盲审含 P0/P1 时不能给出 pass")
+    if payload["schema_version"] == "1.4" and paper is not None and paper["verdict"] == "pass":
+        assessment = paper["assessment"]
+        if (
+            not assessment["argumentation_complete"]
+            or not assessment["readability_passed"]
+            or assessment["empty_sections"]
+            or assessment["unreadable_pages"]
+        ):
+            raise ContractError("盲审未确认逐问论证完整和页面可读时不能给出 pass")
     final_audit = payload.get("final_audit")
     if (
         final_audit is not None
@@ -706,7 +739,7 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
 
     Args:
         run_dir: 当前 v3 运行目录。
-        kind: ``scientific``、``paper-blind`` 或 ``final-audit``。
+        kind: ``objective-semantics``、``scientific``、``paper-blind`` 或 ``final-audit``。
 
     Returns:
         已写入的包清单。
@@ -715,9 +748,12 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
         ContractError: 阶段、包类别或所需 PDF 不满足流程边界。
     """
     if kind not in _PACKET_ROOTS:
-        raise ContractError("审查包类别必须为 scientific、paper-blind 或 final-audit")
+        raise ContractError(
+            "审查包类别必须为 objective-semantics、scientific、paper-blind 或 final-audit"
+        )
     state = read_simple_state(run_dir)
     required_phase = {
+        "objective-semantics": "analysis",
         "scientific": "scientific_review",
         "paper-blind": "paper_review",
         "final-audit": "final_review",
@@ -908,6 +944,169 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
         return {"success": False, "errors": [str(exc)]}
 
 
+def objective_semantics_review_required(run_dir: Path) -> bool:
+    """判断当前生产运行是否具有需要独立解释的正式题面。"""
+    state = read_simple_state(run_dir)
+    return bool(
+        state.get("execution_mode") == "production"
+        and state.get("artifacts", {}).get("statement")
+    )
+
+
+def _validate_objective_assessment(
+    run_dir: Path, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """校验独立任务逐问给出的目标解释、备选聚合和选择依据。"""
+    _validate_document(
+        payload,
+        "objective_semantics_assessment",
+        "独立目标语义评估",
+    )
+    state = read_simple_state(run_dir)
+    if payload["run_id"] != state["run_id"]:
+        raise ContractError("独立目标语义评估 run_id 不匹配")
+    required_questions = list(state["required_questions"])
+    if not required_questions:
+        raise ContractError("目标语义预审前必须登记全部必答问题")
+    question_ids = [item["question_id"] for item in payload["questions"]]
+    if len(question_ids) != len(set(question_ids)):
+        raise ContractError("独立目标语义评估包含重复问题")
+    if set(question_ids) != set(required_questions):
+        raise ContractError("独立目标语义评估必须逐一覆盖全部必答问题")
+    for question in payload["questions"]:
+        objective_ids = [item["objective_id"] for item in question["interpretations"]]
+        if len(objective_ids) != len(set(objective_ids)):
+            raise ContractError(f"{question['question_id']} 包含重复 objective_id")
+        selected = question["selected_objective_id"]
+        if selected not in objective_ids:
+            raise ContractError(f"{question['question_id']} 的主目标不在候选解释中")
+        diagnostics = set(question["diagnostic_objective_ids"])
+        if not diagnostics.issubset(objective_ids):
+            raise ContractError(f"{question['question_id']} 的诊断指标不在候选解释中")
+        if selected in diagnostics:
+            raise ContractError(f"{question['question_id']} 的主目标不能同时标为诊断指标")
+        if question["selection_confidence"] == "ambiguous":
+            if len(objective_ids) < 2 or not question["ambiguity_note"].strip():
+                raise ContractError(f"{question['question_id']} 的歧义必须保留至少两个解释并说明原因")
+            if question["selection_basis"] == "language_evidence":
+                raise ContractError(
+                    f"{question['question_id']} 仍有歧义时必须记录用户裁决或显式建模假设"
+                )
+    return payload
+
+
+def _bound_review_file(run_dir: Path, relative: Path, *, suffix: str) -> dict[str, str]:
+    """将审查任务写入的运行内文件绑定为路径与哈希。"""
+    path = _safe_run_path(run_dir, relative.as_posix())
+    path_relative = relative_inside(run_dir, path)
+    if (
+        not path_relative.parts
+        or path_relative.parts[0] != REVIEW_ROOT.name
+        or path_relative.parts[1:2] == ("packet",)
+        or path.suffix.lower() != suffix
+    ):
+        raise ContractError(f"独立审查文件必须位于 review/ 下且扩展名为 {suffix}")
+    return {"file": path_relative.as_posix(), "sha256": sha256_file(path)}
+
+
+def import_objective_semantics_review(
+    run_dir: Path,
+    *,
+    manifest_file: str,
+    verdict: str,
+    highest_severity: str,
+    reviewer_thread_id: str,
+    assessment_file: Path = OBJECTIVE_SEMANTICS_ASSESSMENT_PATH,
+    report_file: Path = OBJECTIVE_SEMANTICS_REPORT_PATH,
+) -> dict[str, Any]:
+    """绑定只读题面的独立目标语义预审，并冻结实验必须消费的主目标。"""
+    if verdict not in _VERDICTS or highest_severity not in _SEVERITIES:
+        raise ContractError("目标语义预审 verdict 或严重性不合法")
+    if verdict == "pass" and highest_severity in {"P0", "P1"}:
+        raise ContractError("目标语义预审含 P0/P1 时不能导入为 pass")
+    if read_simple_state(run_dir)["phase"] != "analysis":
+        raise ContractError("目标语义预审只能在 analysis 阶段导入")
+    manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
+    if manifest["packet_kind"] != "objective-semantics":
+        raise ContractError("目标语义预审必须绑定 objective-semantics 审查包")
+    packet = verify_review_packet(run_dir, manifest_file)
+    if not packet["success"]:
+        raise ContractError("目标语义预审包已失效: " + "；".join(packet["errors"]))
+    assessment_path = _safe_run_path(run_dir, assessment_file.as_posix())
+    assessment = load_json(assessment_path)
+    if not isinstance(assessment, dict):
+        raise ContractError("独立目标语义评估必须是 JSON 对象")
+    _validate_objective_assessment(run_dir, assessment)
+    if not reviewer_thread_id.strip():
+        raise ContractError("目标语义预审必须记录新对话 thread_id")
+    receipt = {
+        "schema_name": "objective_semantics_review",
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "verdict": verdict,
+        "highest_severity": highest_severity,
+        "packet": {
+            "file": relative_inside(run_dir, manifest_path).as_posix(),
+            "sha256": sha256_file(manifest_path),
+        },
+        "assessment": _bound_review_file(run_dir, assessment_file, suffix=".json"),
+        "report": _review_report(run_dir, report_file),
+        "reviewer": {"thread_id": reviewer_thread_id},
+        "reviewed_at": utc_now(),
+    }
+    _validate_document(receipt, "objective_semantics_review", "目标语义预审收据")
+    atomic_json(run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH, receipt)
+    return receipt
+
+
+def objective_semantics_review_status(run_dir: Path) -> dict[str, Any]:
+    """复验题面、独立目标解释、选择结果和报告均未漂移。"""
+    if not objective_semantics_review_required(run_dir):
+        return {"allowed": True, "required": False, "reason": "当前运行没有登记正式题面"}
+    try:
+        receipt = load_json(run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH)
+        if not isinstance(receipt, dict):
+            raise ContractError("目标语义预审收据必须是 JSON 对象")
+        _validate_document(receipt, "objective_semantics_review", "目标语义预审收据")
+        if receipt["run_id"] != run_dir.name:
+            raise ContractError("目标语义预审收据 run_id 不匹配")
+        packet = verify_review_packet(run_dir, receipt["packet"]["file"])
+        if not packet["success"]:
+            raise ContractError("目标语义预审包已失效: " + "；".join(packet["errors"]))
+        if packet["manifest_sha256"] != receipt["packet"]["sha256"]:
+            raise ContractError("目标语义预审包清单哈希已变化")
+        assessment_path = _safe_run_path(run_dir, receipt["assessment"]["file"])
+        if sha256_file(assessment_path) != receipt["assessment"]["sha256"]:
+            raise ContractError("目标语义评估已变化")
+        assessment = load_json(assessment_path)
+        if not isinstance(assessment, dict):
+            raise ContractError("独立目标语义评估必须是 JSON 对象")
+        _validate_objective_assessment(run_dir, assessment)
+        report_path = _safe_run_path(run_dir, receipt["report"]["file"])
+        if sha256_file(report_path) != receipt["report"]["sha256"]:
+            raise ContractError("目标语义预审报告已变化")
+        allowed = bool(
+            receipt["verdict"] == "pass"
+            and receipt["highest_severity"] not in {"P0", "P1"}
+        )
+        return {
+            "allowed": allowed,
+            "required": True,
+            "review": receipt,
+            "assessment": assessment,
+            "reason": "" if allowed else "目标语义预审未通过",
+        }
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return {"allowed": False, "required": True, "reason": str(exc)}
+
+
+def require_objective_semantics_review(run_dir: Path) -> None:
+    """要求实验前已有只读题面的独立目标语义结论。"""
+    status = objective_semantics_review_status(run_dir)
+    if not status["allowed"]:
+        raise ContractError("不能进入能力路由：独立目标语义预审未通过或已失效: " + status["reason"])
+
+
 def read_review_summary(run_dir: Path) -> dict[str, Any]:
     """读取当前独立审查摘要。"""
     payload = load_json(run_dir / SUMMARY_PATH)
@@ -992,6 +1191,11 @@ def import_scientific_review(
         raise ContractError("P0/P1 或全量重跑要求不能导入为 pass")
     if read_simple_state(run_dir)["phase"] != "scientific_review":
         raise ContractError("科学审查结论只能在 scientific_review 阶段导入")
+    semantics = objective_semantics_review_status(run_dir)
+    if not semantics["allowed"]:
+        raise ContractError("科学审查前的目标语义预审未通过或已失效: " + semantics["reason"])
+    if semantics.get("required") and reviewer_thread_id == semantics["review"]["reviewer"]["thread_id"]:
+        raise ContractError("科学红队必须使用不同于目标语义预审的新对话")
     _, manifest = _read_packet_manifest(run_dir, manifest_file)
     if manifest["packet_kind"] != "scientific":
         raise ContractError("科学审查必须绑定 scientific 审查包")
@@ -1036,6 +1240,10 @@ def import_paper_blind_review(
     verdict: str,
     highest_severity: str,
     reviewer_thread_id: str,
+    argumentation_complete: bool,
+    readability_passed: bool,
+    empty_sections: list[str] | None = None,
+    unreadable_pages: list[int] | None = None,
     report_file: Path = PAPER_BLIND_REPORT_PATH,
 ) -> dict[str, Any]:
     """绑定独立盲审报告；它只决定提交可读性，不替代科学红队。"""
@@ -1043,6 +1251,15 @@ def import_paper_blind_review(
         raise ContractError("盲审 verdict 或严重性不合法")
     if verdict == "pass" and highest_severity in {"P0", "P1"}:
         raise ContractError("盲审含 P0/P1 时不能导入为 pass")
+    empty_sections = list(dict.fromkeys(empty_sections or []))
+    unreadable_pages = list(dict.fromkeys(unreadable_pages or []))
+    if verdict == "pass" and (
+        not argumentation_complete
+        or not readability_passed
+        or empty_sections
+        or unreadable_pages
+    ):
+        raise ContractError("PDF 盲审未确认逐问论证完整和页面可读时不能导入为 pass")
     if read_simple_state(run_dir)["phase"] != "paper_review":
         raise ContractError("PDF 盲审结论只能在 paper_review 阶段导入")
     require_paper_generation_allowed(run_dir)
@@ -1053,8 +1270,13 @@ def import_paper_blind_review(
     if manifest["packet_kind"] != "paper-blind":
         raise ContractError("盲审必须绑定 paper-blind 审查包")
     summary = read_review_summary(run_dir)
-    if reviewer_thread_id == summary["scientific_review"]["reviewer"]["thread_id"]:
-        raise ContractError("PDF 盲审必须使用不同于科学红队的新对话")
+    used_threads = {summary["scientific_review"]["reviewer"]["thread_id"]}
+    semantics = objective_semantics_review_status(run_dir)
+    if semantics.get("required"):
+        used_threads.add(semantics["review"]["reviewer"]["thread_id"])
+    if reviewer_thread_id in used_threads:
+        raise ContractError("PDF 盲审必须使用不同于目标语义预审和科学红队的新对话")
+    summary["schema_version"] = "1.4"
     summary["paper_blind_review"] = {
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -1063,6 +1285,12 @@ def import_paper_blind_review(
             "manifest_sha256": sha256_file(manifest_path),
         },
         "report": _review_report(run_dir, report_file),
+        "assessment": {
+            "argumentation_complete": argumentation_complete,
+            "readability_passed": readability_passed,
+            "empty_sections": empty_sections,
+            "unreadable_pages": unreadable_pages,
+        },
         "reviewer": _reviewer_paper(reviewer_thread_id),
         "reviewed_at": utc_now(),
     }
@@ -1102,9 +1330,12 @@ def import_final_audit(
         summary["scientific_review"]["reviewer"]["thread_id"],
         summary["paper_blind_review"]["reviewer"]["thread_id"],
     }
+    semantics = objective_semantics_review_status(run_dir)
+    if semantics.get("required"):
+        used_threads.add(semantics["review"]["reviewer"]["thread_id"])
     if reviewer_thread_id in used_threads:
         raise ContractError("最终交付审核必须使用不同于前两轮审核的第三个新对话")
-    summary["schema_version"] = "1.3"
+    summary["schema_version"] = "1.4"
     summary["final_audit"] = {
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -1152,6 +1383,13 @@ def _review_current(
 def scientific_review_status(run_dir: Path) -> dict[str, Any]:
     """返回科学红队是否仍可作为论文放行依据。"""
     try:
+        semantics = objective_semantics_review_status(run_dir)
+        if not semantics["allowed"]:
+            return {
+                "allowed": False,
+                "submission_ready": False,
+                "reason": "目标语义预审未通过或已失效: " + semantics["reason"],
+            }
         summary = read_review_summary(run_dir)
         review = summary["scientific_review"]
         current, reason = _review_current(run_dir, review, expected_kind="scientific")
@@ -1191,10 +1429,21 @@ def paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
         if review is None:
             return {"allowed": False, "reason": "缺少独立 PDF 盲审"}
         current, reason = _review_current(run_dir, review, expected_kind="paper-blind")
+        assessment = review.get("assessment")
+        assessment_passed = bool(
+            assessment is None
+            or (
+                assessment["argumentation_complete"]
+                and assessment["readability_passed"]
+                and not assessment["empty_sections"]
+                and not assessment["unreadable_pages"]
+            )
+        )
         allowed = bool(
             current
             and review["verdict"] == "pass"
             and review["highest_severity"] not in {"P0", "P1"}
+            and assessment_passed
         )
         return {"allowed": allowed, "review": review, "reason": reason}
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:

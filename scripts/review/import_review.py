@@ -15,6 +15,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from shumozizi.core.io import ContractError
 from shumozizi.simple.review import (
     import_final_audit,
+    import_objective_semantics_review,
     import_paper_blind_review,
     import_scientific_review,
 )
@@ -25,7 +26,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="导入 Capability-First v3 独立审查结论")
     parser.add_argument("run_dir")
     parser.add_argument(
-        "--kind", choices=("scientific", "paper-blind", "final-audit"), required=True
+        "--kind",
+        choices=("objective-semantics", "scientific", "paper-blind", "final-audit"),
+        required=True,
     )
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--verdict", choices=("pass", "fail", "needs_rework", "revoked"), required=True)
@@ -35,10 +38,33 @@ def main() -> int:
     parser.add_argument("--competition-strength", choices=("weak", "qualified", "strong", "unknown"))
     parser.add_argument("--full-rerun-required", action="store_true")
     parser.add_argument("--affected-question", action="append", default=[])
+    parser.add_argument("--assessment")
+    parser.add_argument("--argumentation-complete", action="store_true")
+    parser.add_argument("--readability-passed", action="store_true")
+    parser.add_argument("--empty-section", action="append", default=[])
+    parser.add_argument("--unreadable-page", action="append", type=int, default=[])
     args = parser.parse_args()
     try:
         root = Path(args.run_dir)
-        if args.kind == "scientific":
+        if args.kind == "objective-semantics":
+            summary = import_objective_semantics_review(
+                root,
+                manifest_file=args.manifest,
+                verdict=args.verdict,
+                highest_severity=args.severity,
+                reviewer_thread_id=args.thread_id,
+                assessment_file=(
+                    Path(args.assessment)
+                    if args.assessment
+                    else Path("review/OBJECTIVE_SEMANTICS.json")
+                ),
+                report_file=(
+                    Path(args.report)
+                    if args.report
+                    else Path("review/OBJECTIVE_SEMANTICS_REVIEW.md")
+                ),
+            )
+        elif args.kind == "scientific":
             if args.competition_strength is None:
                 parser.error("scientific 审查必须提供 --competition-strength")
             summary = import_scientific_review(
@@ -59,6 +85,10 @@ def main() -> int:
                 verdict=args.verdict,
                 highest_severity=args.severity,
                 reviewer_thread_id=args.thread_id,
+                argumentation_complete=args.argumentation_complete,
+                readability_passed=args.readability_passed,
+                empty_sections=args.empty_section,
+                unreadable_pages=args.unreadable_page,
                 report_file=Path(args.report) if args.report else Path("review/PAPER_BLIND_REVIEW.md"),
             )
         else:

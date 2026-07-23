@@ -1,4 +1,4 @@
 interface:
   display_name: "Math Modeling Paper"
-  short_description: "Write a paper from current reproducible v3 results"
-  default_prompt: "Use $mathmodel-paper to write or patch the current v3 paper."
+  short_description: "Write an argued LaTeX paper from current v3 evidence"
+  default_prompt: "Use $mathmodel-paper with $research-writing-skill to outline, write, compile, and check the current v3 paper."

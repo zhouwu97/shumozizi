@@ -1,4 +1,4 @@
-"""创建供新 Codex 对话使用的冻结科学或 PDF 盲审包。"""
+"""创建供新 Codex 对话使用的冻结题意、科学或论文审查包。"""
 
 # ruff: noqa: E402
 
@@ -21,7 +21,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="创建 Capability-First v3 独立审查包")
     parser.add_argument("run_dir")
     parser.add_argument(
-        "--kind", choices=("scientific", "paper-blind", "final-audit"), required=True
+        "--kind",
+        choices=("objective-semantics", "scientific", "paper-blind", "final-audit"),
+        required=True,
     )
     args = parser.parse_args()
     try:

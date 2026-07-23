@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/objective_semantics_assessment.schema.json",
+  "title": "Independent Objective Semantics Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "source_scope", "network_used", "questions"],
+  "properties": {
+    "schema_name": {"const": "objective_semantics_assessment"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "source_scope": {"const": "problem_only"},
+    "network_used": {"const": false},
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/question"}
+    }
+  },
+  "$defs": {
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objective_id", "formula", "unit", "aggregation", "language_basis"],
+      "properties": {
+        "objective_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "formula": {"type": "string", "minLength": 2},
+        "unit": {"type": "string", "minLength": 1},
+        "aggregation": {
+          "enum": ["single_entity", "sum_per_entity", "union_any", "intersection_all", "weighted", "multiobjective", "other"]
+        },
+        "language_basis": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 2}
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question_id",
+        "interpretations",
+        "selected_objective_id",
+        "selection_basis",
+        "selection_confidence",
+        "diagnostic_objective_ids",
+        "ambiguity_note"
+      ],
+      "properties": {
+        "question_id": {"type": "string", "minLength": 1},
+        "interpretations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/objective"}
+        },
+        "selected_objective_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "selection_basis": {"enum": ["language_evidence", "user_decision", "declared_assumption"]},
+        "selection_confidence": {"enum": ["high", "medium", "ambiguous"]},
+        "diagnostic_objective_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
+        },
+        "ambiguity_note": {"type": "string"}
+      }
+    }
+  }
+}

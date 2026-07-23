@@ -49,6 +49,19 @@ CITATION_PATTERN = re.compile(
     r"\[[0-9][0-9,;\- ]*\]|[（(][^（）()]{0,40}(?:19|20)\d{2}[^（）()]{0,40}[）)]"
 )
 FORMULA_PATTERN = re.compile(r"(?:\$\$|\\\[|\\\(|(?<![<>=])=(?![=>]))")
+EXPLANATION_PATTERN = re.compile(
+    r"因此|由此|可见|表明|意味着|原因(?:是|在于)|这是因为|"
+    r"从而|故而|据此|because|therefore|thus|indicat(?:e|es|ed)|implies?",
+    re.IGNORECASE,
+)
+QUANTITATIVE_PATTERN = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:%|秒|分钟|小时|米|千米|克|千克|元|次|个|"
+    r"s|ms|min|h|m|km|kg|yuan)?\b",
+    re.IGNORECASE,
+)
+SENTENCE_PATTERN = re.compile(r"[。！？；.!?;]")
+MIN_QUESTION_TEXT_CHARACTERS = 120
+MIN_QUESTION_SENTENCES = 3
 
 
 def _run_output_path(run_dir: Path, path: Path | None, default: Path, label: str) -> Path:
@@ -282,17 +295,26 @@ def _question_segment(
     *,
     required_elements: list[str],
 ) -> tuple[bool, str]:
-    """选择最早覆盖本题所需元素的候选文本段。
+    """选择元素覆盖和实质论证最完整的候选正文段。
 
-    若没有完整候选段，回退到最早出现位置，使真实缺项仍会在报告中暴露。
+    目录、摘要和结论可能重复题号。优先选择覆盖元素、包含定量证据和解释且
+    正文更长的候选段，使短标签不能抢在真正正文前通过检查。
     """
     segments = _question_segments(text, question_id, all_question_ids)
     if not segments:
         return False, ""
-    for segment in segments:
-        if all(_element_detected(element, segment) for element in required_elements):
-            return True, segment
-    return True, segments[0]
+
+    def score(segment: str) -> tuple[int, int, int, int, int]:
+        signals = _argument_signals(segment)
+        return (
+            sum(_element_detected(element, segment) for element in required_elements),
+            int(signals["derivation_or_quantitative_evidence"]),
+            int(signals["explanation_present"]),
+            int(signals["substantive_body"]),
+            int(signals["text_characters"]),
+        )
+
+    return True, max(segments, key=score)
 
 
 def _element_detected(element: str, text: str) -> bool:
@@ -320,6 +342,31 @@ def _densities(text: str, page_count: int) -> dict[str, int | float]:
         "figures_per_page": round(figures / divisor, 4),
         "tables_per_page": round(tables / divisor, 4),
         "citations_per_page": round(citations / divisor, 4),
+    }
+
+
+def _argument_signals(text: str) -> dict[str, int | bool]:
+    """提取逐问正文是否形成最小论证链的可解释信号。"""
+    compact = re.sub(r"\s+", "", text)
+    text_characters = len(compact)
+    sentence_count = len(SENTENCE_PATTERN.findall(text))
+    quantitative = bool(
+        FORMULA_PATTERN.search(text)
+        or QUANTITATIVE_PATTERN.search(text)
+        or FIGURE_PATTERN.search(text)
+        or TABLE_PATTERN.search(text)
+    )
+    explanation = EXPLANATION_PATTERN.search(text) is not None
+    substantive = bool(
+        text_characters >= MIN_QUESTION_TEXT_CHARACTERS
+        and sentence_count >= MIN_QUESTION_SENTENCES
+    )
+    return {
+        "text_characters": text_characters,
+        "sentence_count": sentence_count,
+        "substantive_body": substantive,
+        "derivation_or_quantitative_evidence": quantitative,
+        "explanation_present": explanation,
     }
 
 
@@ -408,6 +455,7 @@ def assess_paper_sufficiency(
                     "question_id": question_id,
                     "heading_detected": False,
                     "elements": {},
+                    "argumentation": _argument_signals(""),
                     "complete": False,
                 }
             )
@@ -422,12 +470,21 @@ def assess_paper_sufficiency(
             element: heading_detected and _element_detected(element, segment)
             for element in section["required_elements"]
         }
-        complete = heading_detected and all(elements.values()) and section["draft_allowed"]
+        argumentation = _argument_signals(segment) if heading_detected else _argument_signals("")
+        complete = bool(
+            heading_detected
+            and all(elements.values())
+            and argumentation["substantive_body"]
+            and argumentation["derivation_or_quantitative_evidence"]
+            and argumentation["explanation_present"]
+            and section["draft_allowed"]
+        )
         question_coverage.append(
             {
                 "question_id": question_id,
                 "heading_detected": heading_detected,
                 "elements": elements,
+                "argumentation": argumentation,
                 "complete": complete,
             }
         )
@@ -450,6 +507,12 @@ def assess_paper_sufficiency(
             missing = [element for element, detected in elements.items() if not detected]
             if not heading_detected:
                 missing.insert(0, "question_heading")
+            if not argumentation["substantive_body"]:
+                missing.append("substantive_body")
+            if not argumentation["derivation_or_quantitative_evidence"]:
+                missing.append("derivation_or_quantitative_evidence")
+            if not argumentation["explanation_present"]:
+                missing.append("explanation")
             hard_failures.append(f"question:{question_id}: 缺少 {', '.join(missing)}")
 
     warnings: list[str] = []

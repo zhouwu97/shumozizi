@@ -78,7 +78,7 @@
     "question_coverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["question_id", "heading_detected", "elements", "complete"],
+      "required": ["question_id", "heading_detected", "elements", "argumentation", "complete"],
       "properties": {
         "question_id": {"type": "string", "minLength": 1},
         "heading_detected": {"type": "boolean"},
@@ -86,7 +86,26 @@
           "type": "object",
           "additionalProperties": {"type": "boolean"}
         },
+        "argumentation": {"$ref": "#/$defs/argumentation"},
         "complete": {"type": "boolean"}
+      }
+    },
+    "argumentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text_characters",
+        "sentence_count",
+        "substantive_body",
+        "derivation_or_quantitative_evidence",
+        "explanation_present"
+      ],
+      "properties": {
+        "text_characters": {"type": "integer", "minimum": 0},
+        "sentence_count": {"type": "integer", "minimum": 0},
+        "substantive_body": {"type": "boolean"},
+        "derivation_or_quantitative_evidence": {"type": "boolean"},
+        "explanation_present": {"type": "boolean"}
       }
     }
   }

@@ -171,6 +171,10 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             from shumozizi.simple.capabilities import require_capability_route
 
             require_capability_route(run_dir)
+        if next_phase == "capability_route":
+            from shumozizi.simple.review import require_objective_semantics_review
+
+            require_objective_semantics_review(run_dir)
         if next_phase == "scientific_review":
             from shumozizi.simple.capabilities import require_independent_oracle_execution
 

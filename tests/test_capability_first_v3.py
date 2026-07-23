@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from reportlab.pdfgen import canvas
+
 from scripts.qa.check_numeric_consistency import check_numeric_consistency
 from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
@@ -362,6 +364,38 @@ class CapabilityFirstV3Tests(unittest.TestCase):
         text = "如图 1 所示，结果稳定。\n图 1：模型结果\n正文再次引用图 1。\n"
 
         self.assertEqual(["1"], FIGURE_CAPTION_PATTERN.findall(text))
+
+    def test_pdf_qa_blocks_oversized_dominant_body_font(self) -> None:
+        """大量正文使用异常大字号时不能只靠视觉盲审发现。"""
+        pdf = self.root / "oversized-body.pdf"
+        document = canvas.Canvas(str(pdf))
+        document.setFont("Helvetica", 18)
+        for line in range(38):
+            document.drawString(54, 800 - line * 20, "quantitative model result and validation evidence")
+        document.save()
+
+        report = audit_pdf(pdf)
+        font_check = next(item for item in report["checks"] if item["id"] == "body-font-size")
+
+        self.assertFalse(font_check["passed"])
+        self.assertTrue(font_check["blocking"])
+        self.assertFalse(report["success"])
+
+    def test_pdf_qa_warns_on_sparse_nonblank_page(self) -> None:
+        """只有少量文字的非空页应显式交给盲审判断。"""
+        pdf = self.root / "sparse-page.pdf"
+        document = canvas.Canvas(str(pdf))
+        document.setFont("Helvetica", 10)
+        document.drawString(54, 780, "A short appendix note")
+        document.save()
+
+        report = audit_pdf(pdf)
+        sparse_check = next(
+            item for item in report["checks"] if item["id"] == "sparse-content-pages"
+        )
+
+        self.assertFalse(sparse_check["passed"])
+        self.assertFalse(sparse_check["blocking"])
 
     def test_active_skills_keep_production_capabilities_and_review_boundaries(self) -> None:
         """自动发现目录应包含路由、可视化和独立审查等生产能力。"""

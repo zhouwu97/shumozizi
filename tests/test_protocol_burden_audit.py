@@ -92,6 +92,8 @@ def test_active_skills_keep_latex_first_and_runtime_receipts() -> None:
     assert "record_knowledge_consumption.py" in router
     assert "--engine auto" in workflow
     assert "--engine auto" in paper
+    assert "$research-writing-skill" in paper
+    assert "argument_outline" in paper
     assert "--engine auto" in writing
     assert "WebSearch" not in writing
     assert "WebFetch" not in writing

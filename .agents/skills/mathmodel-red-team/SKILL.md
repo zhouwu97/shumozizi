@@ -1,6 +1,6 @@
 ---
 name: mathmodel-red-team
-description: 在 Capability-First v3 中执行独立科学红队、PDF 盲审或最终交付审核。用于发现模型、几何、约束、搜索、论证和提交物中的错误；每轮必须在不同的全新 Codex 对话中使用，不得由求解对话角色扮演替代。
+description: 在 Capability-First v3 中执行目标语义预审、独立科学红队、PDF 盲审或最终交付审核。用于发现题意目标、模型、几何、约束、搜索、论证和提交物中的错误；每轮必须在不同的全新 Codex 对话中使用，不得由求解对话角色扮演替代。
 ---
 
 # 独立红队审查
@@ -13,6 +13,28 @@ description: 在 Capability-First v3 中执行独立科学红队、PDF 盲审或
 2. 审查期间只读取对应 `review/packet/` 的冻结副本。可按需读取仓库的通用本地知识库来选择方法或攻击，但不得读取历史 run、同题旧解、公开同题答案或网络内容。
 3. 审查者独立形成判断。不能为了“通过流程”默认认可候选，也不能以缺少外部标准答案为理由跳过复现、反例或挑战。
 4. 对发现的 P0/P1，保存最小复现、受影响问题和恢复条件；不得替求解器直接改写模型、结果、论文或历史运行。审查任务只写指定报告并返回；协调任务用 `create_thread` 返回的真实 `threadId` 导入。环境不能新建任务时必须阻断，不能自填 ID 放行。
+
+## 目标语义预审
+
+正式题面完成初步分析后、进入 `capability_route` 前，由协调任务创建：
+
+```powershell
+python scripts/review/build_review_packet.py runs/<run-id> --kind objective-semantics
+```
+
+用全新 Codex 对话只读 `review/packet/objective-semantics/<packet-id>/`。不得读取求解报告、代码、结果、历史 run、网络或公开同题答案。逐问枚举可能的目标公式、单位、聚合语义和题面语言依据，重点区分逐实体求和、并集、交集、加权与多目标；选中的主目标必须给出题面依据。若语言仍不足以排除多个解释，保留备选，并将依据标为用户裁决或显式假设，不能假装题面已经唯一确定。
+
+将结构化评估写入 `review/OBJECTIVE_SEMANTICS.json`，自由报告写入 `review/OBJECTIVE_SEMANTICS_REVIEW.md`，再导入：
+
+```powershell
+python scripts/review/import_review.py runs/<run-id> `
+  --kind objective-semantics `
+  --manifest review/packet/objective-semantics/<packet-id>/manifest.json `
+  --assessment review/OBJECTIVE_SEMANTICS.json `
+  --verdict pass --severity none --thread-id <fresh-codex-thread-id>
+```
+
+该任务只校验题意目标，不替代后续科学红队；后续三轮审核必须使用另外三个新对话。题面、评估或报告变化会撤销预审结论。
 
 ## 科学红队
 
@@ -65,8 +87,11 @@ python scripts/review/build_review_packet.py runs/<run-id> --kind paper-blind
 ```powershell
 python scripts/review/import_review.py runs/<run-id> `
   --kind paper-blind --manifest review/packet/paper-blind/<packet-id>/manifest.json `
-  --verdict pass --severity none --thread-id <fresh-codex-thread-id>
+  --verdict pass --severity none --thread-id <fresh-codex-thread-id> `
+  --argumentation-complete --readability-passed
 ```
+
+只有逐问“主张—推导—证据—解释—限制”完整、没有空壳章节，且正文字号、图表、分页和公式均可读时，才能带上这两个通过标志。发现空章节或不可读页面时，以 `--empty-section`、`--unreadable-page` 记录并给出非通过 verdict。
 
 PDF 或提交材料变更会撤销盲审。盲审通过后进入 `verify`，由 `$mathmodel-final-check` 做机械检查。
 

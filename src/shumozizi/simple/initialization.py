@@ -20,6 +20,7 @@ SIMPLE_DIRECTORIES = (
     "paper/sections",
     "paper/submission",
     "review/red_team_artifacts",
+    "review/packet/objective-semantics",
     "review/packet/scientific",
     "review/packet/paper-blind",
     "review/packet/final-audit",

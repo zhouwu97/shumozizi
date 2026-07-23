@@ -152,6 +152,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             verdict="pass",
             highest_severity="none",
             reviewer_thread_id="fresh-paper-thread",
+            argumentation_complete=True,
+            readability_passed=True,
             report_file=report.relative_to(run_dir),
         )
         return packet
@@ -444,6 +446,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     verdict="pass",
                     highest_severity="none",
                     reviewer_thread_id="fresh-scientific-thread",
+                    argumentation_complete=True,
+                    readability_passed=True,
                     report_file=report.relative_to(run_dir),
                 )
 
@@ -496,6 +500,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "none",
                 "--thread-id",
                 "cli-paper-thread",
+                "--argumentation-complete",
+                "--readability-passed",
                 "--report",
                 blind_report.relative_to(run_dir).as_posix(),
             )
