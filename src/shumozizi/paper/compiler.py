@@ -41,6 +41,28 @@ _GENERATED_PAPER_FILES = {
     "main.vrb",
     "main.xdv",
 }
+_GENERATED_PAPER_SUFFIXES = (
+    ".aux",
+    ".bbl",
+    ".bcf",
+    ".blg",
+    ".fdb_latexmk",
+    ".fls",
+    ".idx",
+    ".ilg",
+    ".ind",
+    ".lof",
+    ".log",
+    ".lot",
+    ".nav",
+    ".out",
+    ".run.xml",
+    ".snm",
+    ".synctex.gz",
+    ".toc",
+    ".vrb",
+    ".xdv",
+)
 
 
 def _schema() -> dict[str, Any]:
@@ -66,7 +88,10 @@ def _paper_source_sha256(paper_dir: Path) -> str:
     files = sorted(
         path
         for path in paper_dir.rglob("*")
-        if path.is_file() and path.relative_to(paper_dir).as_posix() not in _GENERATED_PAPER_FILES
+        if path.is_file()
+        and path.relative_to(paper_dir).as_posix() not in _GENERATED_PAPER_FILES
+        # LaTeX 的 \include 会在章节目录生成同名 .aux；这些是编译输出，不是源文件漂移。
+        and not path.name.endswith(_GENERATED_PAPER_SUFFIXES)
     )
     for path in files:
         digest.update(path.relative_to(paper_dir).as_posix().encode("utf-8"))

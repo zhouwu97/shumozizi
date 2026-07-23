@@ -321,6 +321,8 @@ def test_latex_compile_receipt_uses_selected_latex_entrypoint(
     fake_compiler = tmp_path / "fake_xelatex.py"
     fake_compiler.write_text(
         "from pathlib import Path\n"
+        "Path('sections/questions.aux').write_text('generated aux', encoding='utf-8')\n"
+        "Path('main.log').write_text('generated log', encoding='utf-8')\n"
         "Path('main.pdf').write_bytes(b'%PDF-1.4\\nminimal latex output')\n",
         encoding="utf-8",
     )
