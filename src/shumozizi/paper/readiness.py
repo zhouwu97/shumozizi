@@ -1,5 +1,4 @@
-"""编译前轻量硬门：确认论证大纲存在、关键主张绑定当前结果、图表已生成、
-MATLAB 源码与执行齐备、源码附录策略明确。
+"""编译前轻量硬门：确认论证地图、当前结果、当前图表和源码策略真实绑定。
 
 不检查字数、句数、页数、关键词密度——只检查"是否具备最小编译前提"。
 
@@ -9,21 +8,27 @@ MATLAB 源码与执行齐备、源码附录策略明确。
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, load_json
+from shumozizi.core.io import (
+    ContractError,
+    json_bytes,
+    load_json,
+    sha256_bytes,
+    sha256_file,
+)
 from shumozizi.core.schema import validate_document
-from shumozizi.simple.capabilities import require_capability_route
+from shumozizi.simple.capabilities import ROUTE_PATH
+from shumozizi.simple.critical_claims import CRITICAL_CLAIMS_PATH, read_critical_claims
 from shumozizi.simple.figures import verify_current_figure_files
+from shumozizi.simple.method_profile import METHOD_PROFILE_PATH
+from shumozizi.simple.objective_semantics import objective_semantics_digest
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state
 
-# MATLAB/Octave 工作脚本目录：与 mathmodel-matlab skill 一致（编译发生在 paper
-# 阶段，source/ 提交包此时尚不存在，因此不能查 source/matlab/）。
-_MATLAB_WORK_DIR = ("code", "matlab")
-_MATLAB_ENGINES = {"matlab", "octave"}
 _APPENDIX_MODES = {"pdf", "attachment", "both"}
 
 
@@ -49,10 +54,10 @@ def _question_ids_from_state(run_dir: Path) -> list[str]:
     return list(state["required_questions"])
 
 
-def _current_production_result_ids(run_dir: Path) -> set[str]:
-    """返回所有可作为论文事实的 current production 结果 ID。"""
+def _current_production_results(run_dir: Path) -> dict[str, dict[str, Any]]:
+    """返回所有可作为论文事实的 current production 结果。"""
     index = read_result_index(run_dir)
-    allowed: set[str] = set()
+    allowed: dict[str, dict[str, Any]] = {}
     for result in index["results"]:
         if result.get("status") != "current":
             continue
@@ -60,54 +65,39 @@ def _current_production_result_ids(run_dir: Path) -> set[str]:
             continue
         if not quality_allows_paper(run_dir, result["result_id"]):
             continue
-        allowed.add(result["result_id"])
+        allowed[result["result_id"]] = result
     return allowed
 
 
-def _matlab_required(run_dir: Path) -> bool:
-    """判断当前能力路由是否要求 MATLAB/Octave 参与。"""
-    try:
-        route = require_capability_route(run_dir)
-    except ContractError:
-        return False
-    toolchain = route["toolchain"]
-    selected = {
-        toolchain.get("production_engine"),
-        toolchain.get("independent_engine"),
+def _tree_digest(root: Path, *, exclude_names: set[str] | None = None) -> str:
+    """计算目录内路径集合和文件内容的稳定摘要。"""
+    digest = hashlib.sha256()
+    if root.is_dir():
+        excluded = exclude_names or set()
+        for path in sorted(item for item in root.rglob("*") if item.is_file()):
+            if path.name in excluded:
+                continue
+            digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(bytes.fromhex(sha256_file(path)))
+    return digest.hexdigest()
+
+
+def argument_map_bindings(run_dir: Path) -> dict[str, str]:
+    """重新计算当前论证地图必须绑定的全部运行事实。"""
+    results = _current_production_results(run_dir)
+    accepted = [results[key] for key in sorted(results)]
+    return {
+        "capability_route_sha256": sha256_file(run_dir / ROUTE_PATH),
+        "method_profile_sha256": sha256_file(run_dir / METHOD_PROFILE_PATH),
+        "critical_claims_sha256": sha256_file(run_dir / CRITICAL_CLAIMS_PATH),
+        "objective_semantics_digest": objective_semantics_digest(run_dir),
+        "accepted_results_digest": sha256_bytes(json_bytes(accepted)),
+        "claim_evidence_digest": _tree_digest(
+            run_dir / "claims", exclude_names={"ARGUMENT_MAP.json"}
+        ),
+        "figure_index_sha256": sha256_file(run_dir / "figures" / "index.json"),
     }
-    return bool(selected & _MATLAB_ENGINES)
-
-
-def _has_matlab_source_and_execution(run_dir: Path) -> bool:
-    """确认 code/matlab/ 有非空 .m 文件，且存在对应的 MATLAB/Octave 执行。
-
-    只有真实登记、执行有效的 .m 结果才算"执行收据"，而非 rglob 到任意文件。
-    """
-    matlab_dir = run_dir.joinpath(*_MATLAB_WORK_DIR)
-    if not matlab_dir.is_dir():
-        return False
-    has_nonempty_m = any(
-        script.is_file() and script.stat().st_size > 0
-        for script in matlab_dir.rglob("*.m")
-    )
-    if not has_nonempty_m:
-        return False
-    # 要求结果索引中存在由 code/matlab/ 脚本产生的有效执行（执行收据）
-    try:
-        index = read_result_index(run_dir)
-    except ContractError:
-        return False
-    matlab_prefix = "/".join(_MATLAB_WORK_DIR) + "/"
-    for result in index["results"]:
-        source_script = result.get("source_script", "")
-        if (
-            isinstance(source_script, str)
-            and source_script.startswith(matlab_prefix)
-            and source_script.endswith(".m")
-            and result.get("execution_valid")
-        ):
-            return True
-    return False
 
 
 def _source_appendix_strategy_clear(run_dir: Path) -> bool:
@@ -124,6 +114,13 @@ def _source_appendix_strategy_clear(run_dir: Path) -> bool:
     except (OSError, ValueError):
         return False
     appendix = blueprint.get("source_code_appendix")
+    if isinstance(appendix, list):
+        return bool(appendix) and all(
+            isinstance(item, dict)
+            and isinstance(item.get("source_path"), str)
+            and isinstance(item.get("sha256"), str)
+            for item in appendix
+        )
     if not isinstance(appendix, dict):
         return False
     if appendix.get("mode") not in _APPENDIX_MODES:
@@ -167,6 +164,19 @@ def _validate_readiness(run_dir: Path) -> list[str]:
     if schema_errors:
         errors.append("argument_map.json 不符合 schema: " + "；".join(schema_errors))
         return errors
+    if arg_map.get("schema_version") != "3.0":
+        errors.append("生产论文只接受 argument_map 3.0；2.0 仅供历史只读兼容")
+        return errors
+    if arg_map.get("run_id") != run_dir.name:
+        errors.append("argument_map run_id 与当前运行不一致")
+    try:
+        expected_bindings = argument_map_bindings(run_dir)
+    except (ContractError, OSError, KeyError, ValueError) as exc:
+        errors.append(f"无法重算 argument_map 绑定: {exc}")
+        return errors
+    for field, expected in expected_bindings.items():
+        if arg_map.get(field) != expected:
+            errors.append(f"argument_map 绑定已失效: {field}")
 
     claims = arg_map.get("claims", [])
     if not claims:
@@ -185,19 +195,35 @@ def _validate_readiness(run_dir: Path) -> list[str]:
         errors.append(f"argument_map 缺少必答问题: {', '.join(missing_questions)}")
 
     # 3. 每个 claim 的 result_ids 必须绑定当前 production 结果
-    allowed_result_ids = _current_production_result_ids(run_dir)
+    allowed_results = _current_production_results(run_dir)
+    critical_claims = {
+        item["claim_id"]: item for item in read_critical_claims(run_dir)["claims"]
+    }
     for claim in claims:
         claim_id = claim.get("claim_id", "<未命名>")
+        critical = critical_claims.get(claim_id)
+        if critical is None or critical.get("question_id") != claim.get("question_id"):
+            errors.append(f"论证主张 {claim_id} 未绑定当前同问 critical claim")
         result_ids = claim.get("result_ids", [])
         if not result_ids:
             errors.append(f"主张 {claim_id} 未绑定任何 result_id")
             continue
-        stale = [rid for rid in result_ids if rid not in allowed_result_ids]
+        stale = [rid for rid in result_ids if rid not in allowed_results]
         if stale:
             errors.append(
                 f"主张 {claim_id} 绑定了非当前/不可写入论文的结果: "
                 f"{', '.join(stale)}"
             )
+        for result_id in result_ids:
+            result = allowed_results.get(result_id)
+            if result is None:
+                continue
+            question_id = claim.get("question_id")
+            if result.get("question_id") != question_id and not (
+                result.get("dependency_scope") in {"shared", "global"}
+                and question_id in result.get("affected_question_ids", [])
+            ):
+                errors.append(f"主张 {claim_id} 不能由其他问题结果 {result_id} 背书")
 
     # 4. 图表：claim 引用的 figure_ids 必须是已真实生成的当前图
     #    只有当确有主张引用图时才校验当前图，避免无图论文被图索引缺失误伤。
@@ -217,15 +243,25 @@ def _validate_readiness(run_dir: Path) -> list[str]:
                     "主张引用了尚未生成的图表（仅 figure_plan 不算已生成）: "
                     + ", ".join(missing_figures)
                 )
+        figure_index = load_json(run_dir / "figures" / "index.json")
+        current_figure_map = {
+            item["figure_id"]: item
+            for item in figure_index.get("figures", [])
+            if item.get("status") == "current"
+            and item.get("figure_stage", "publication") == "publication"
+        }
+        for claim in claims:
+            for figure_id in claim.get("figure_ids", []):
+                figure = current_figure_map.get(figure_id)
+                if figure is not None and figure.get("question_id") not in {
+                    None,
+                    claim.get("question_id"),
+                }:
+                    errors.append(
+                        f"主张 {claim.get('claim_id')} 不能引用其他问题图 {figure_id}"
+                    )
 
-    # 5. MATLAB 路由但缺少 code/matlab/ 源码或执行收据
-    if _matlab_required(run_dir) and not _has_matlab_source_and_execution(run_dir):
-        errors.append(
-            "能力路由选择了 MATLAB/Octave，但 code/matlab/ 缺少非空 .m 源码"
-            "或缺少对应的有效执行收据"
-        )
-
-    # 6. 源码附录策略
+    # 5. 源码附录策略
     if not _source_appendix_strategy_clear(run_dir):
         errors.append(
             "缺少 paper/content_blueprint.json 或 source_code_appendix 策略为空"
@@ -260,4 +296,3 @@ def require_paper_readiness(run_dir: Path) -> None:
         raise ContractError(
             "论文编译前提未满足，请在编译前修复:\n- " + "\n- ".join(status["errors"])
         )
-

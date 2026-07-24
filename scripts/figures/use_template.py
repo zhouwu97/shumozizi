@@ -154,6 +154,11 @@ def generate_from_result(
     output_prefix: str,
     input_result: str | None = None,
     figure_id: str | None = None,
+    figure_stage: str = "publication",
+    claim_ids: list[str] | None = None,
+    scientific_question: str | None = None,
+    expected_takeaway: str | None = None,
+    cannot_prove: str | None = None,
 ) -> dict[str, object]:
     """以 current 真实结果生成并登记一张 v3 图表。
 
@@ -190,6 +195,11 @@ def generate_from_result(
         renderer_script=renderer_script,
         outputs=outputs,
         text_boxes=relative_inside(root, text_boxes).as_posix(),
+        figure_stage=figure_stage,
+        claim_ids=claim_ids,
+        scientific_question=scientific_question,
+        expected_takeaway=expected_takeaway,
+        cannot_prove=cannot_prove,
     )
     return {"success": True, "figure": entry, "outputs": outputs}
 
@@ -203,6 +213,11 @@ def main() -> int:
     parser.add_argument("--output-prefix")
     parser.add_argument("--input-result")
     parser.add_argument("--figure-id")
+    parser.add_argument("--stage", choices=("evidence", "publication"), default="publication")
+    parser.add_argument("--claim-id", action="append", default=[])
+    parser.add_argument("--scientific-question")
+    parser.add_argument("--expected-takeaway")
+    parser.add_argument("--cannot-prove")
     parser.add_argument("--list", action="store_true", help="列出已接入真实数据接口的模板")
     args = parser.parse_args()
     if args.list:
@@ -218,6 +233,11 @@ def main() -> int:
             output_prefix=args.output_prefix,
             input_result=args.input_result,
             figure_id=args.figure_id,
+            figure_stage=args.stage,
+            claim_ids=args.claim_id,
+            scientific_question=args.scientific_question,
+            expected_takeaway=args.expected_takeaway,
+            cannot_prove=args.cannot_prove,
         )
     except (ContractError, OSError) as exc:
         print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False, indent=2))

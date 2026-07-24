@@ -108,7 +108,7 @@ class V3FigureTests(unittest.TestCase):
                 template_id=template_id,
                 result_id="q1_visual",
                 input_result=input_result,
-                output_prefix=f"figures/{template_id}",
+                output_prefix=f"figures/publication/{template_id}",
             )
             self.assertTrue(generated["success"])
             for output in generated["outputs"]:
@@ -128,7 +128,7 @@ class V3FigureTests(unittest.TestCase):
             template_id="cv-roc-ci",
             result_id="q1_visual",
             input_result=self.figure_inputs["roc"],
-            output_prefix="figures/q1_roc",
+            output_prefix="figures/publication/q1_roc",
         )
         rerun = run_synthetic_verification_protocol(
             self.run_dir,
@@ -154,7 +154,7 @@ class V3FigureTests(unittest.TestCase):
             template_id="cv-roc-ci",
             result_id="q1_visual",
             input_result=self.figure_inputs["roc"],
-            output_prefix="figures/q1_roc",
+            output_prefix="figures/publication/q1_roc",
         )
         figure = generated["figure"]
         figure["demo"] = True

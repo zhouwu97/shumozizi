@@ -11,9 +11,11 @@ from jsonschema import Draft202012Validator, FormatChecker
 from shumozizi.core.io import (
     ContractError,
     atomic_json,
+    json_bytes,
     load_json,
     relative_inside,
     resolve_inside,
+    sha256_bytes,
     sha256_file,
 )
 from shumozizi.core.repo_root import resolve_repo_root
@@ -78,6 +80,11 @@ def register_figure(
     renderer_script: str,
     outputs: list[str],
     text_boxes: str,
+    figure_stage: str = "publication",
+    claim_ids: list[str] | None = None,
+    scientific_question: str | None = None,
+    expected_takeaway: str | None = None,
+    cannot_prove: str | None = None,
 ) -> dict[str, Any]:
     """登记一次真实图表生成并替代同 ID 的旧 current 图。
 
@@ -103,19 +110,21 @@ def register_figure(
     index = read_figure_index(run_dir)
     results = read_result_index(run_dir)
     source_result = next((item for item in results["results"] if item["result_id"] == result_id), None)
-    if (
-        source_result is None
-        or source_result["status"] != "current"
-        or not source_result["execution_valid"]
-        or not quality_allows_paper(run_dir, result_id)
-    ):
-        raise ContractError("图表只能绑定 current、execution_valid=true 且通过质量层的真实结果")
+    if figure_stage not in {"evidence", "publication"}:
+        raise ContractError("figure_stage 必须为 evidence 或 publication")
+    if source_result is None or source_result["status"] != "current" or not source_result["execution_valid"]:
+        raise ContractError("图表只能绑定 current 且 execution_valid=true 的真实结果")
+    if figure_stage == "publication" and not quality_allows_paper(run_dir, result_id):
+        raise ContractError("publication 图只能绑定已通过科学审核和质量层的结果")
     input_record = _file_record(run_dir, input_result)
     if input_record["path"] not in source_result["output_hashes"]:
         raise ContractError("图表输入必须是所绑定结果的已登记输出")
     if input_record["sha256"] != source_result["output_hashes"][input_record["path"]]:
         raise ContractError("图表输入哈希与所绑定结果不一致")
     output_records = [_file_record(run_dir, item) for item in outputs]
+    expected_prefix = f"figures/{figure_stage}/"
+    if any(not item["path"].startswith(expected_prefix) for item in output_records):
+        raise ContractError(f"{figure_stage} 图输出必须位于 {expected_prefix}")
     suffixes = {Path(item["path"]).suffix.lower() for item in output_records}
     if suffixes != {".png", ".pdf", ".svg"} or any(
         resolve_inside(run_dir, item["path"], must_exist=True).stat().st_size == 0
@@ -132,7 +141,19 @@ def register_figure(
         "outputs": output_records,
         "text_boxes": _file_record(run_dir, text_boxes),
         "status": "current",
-        "paper_allowed": True,
+        "question_id": source_result["question_id"],
+        "claim_ids": list(claim_ids or []),
+        "figure_stage": figure_stage,
+        "scientific_question": scientific_question
+        or f"{source_result['question_id']} 的当前结果呈现什么可复验结构？",
+        "expected_takeaway": expected_takeaway
+        or "展示当前结果中可由图形直接核对的主要结构与差异。",
+        "cannot_prove": cannot_prove
+        or "该图不能单独证明模型正确性、因果关系或结论的普遍有效性。",
+        "source_result_ids": [result_id],
+        "source_result_sha256s": {result_id: sha256_bytes(json_bytes(source_result))},
+        "objective_semantics_sha256": source_result["objective_semantics_sha256"],
+        "paper_allowed": figure_stage == "publication",
         "demo": False,
         "created_at": utc_now(),
     }
@@ -156,7 +177,9 @@ def _verify_recorded_file(run_dir: Path, record: dict[str, str], label: str) -> 
     return None
 
 
-def verify_current_figure_files(run_dir: Path) -> dict[str, Any]:
+def verify_current_figure_files(
+    run_dir: Path, *, figure_stage: str = "publication"
+) -> dict[str, Any]:
     """复验当前图表仍由 current 真实结果生成且输出未漂移。
 
     Args:
@@ -173,19 +196,36 @@ def verify_current_figure_files(run_dir: Path) -> dict[str, Any]:
     for figure in index["figures"]:
         if figure["status"] != "current":
             continue
+        recorded_stage = figure.get("figure_stage", "publication")
+        if recorded_stage != figure_stage:
+            continue
         figure_id = figure["figure_id"]
         checked.append(figure_id)
-        if figure["demo"] or not figure["paper_allowed"]:
+        if figure["demo"] or (figure_stage == "publication" and not figure["paper_allowed"]):
             errors.append({"figure_id": figure_id, "message": "demo 图或未允许图不能进入论文"})
         result = result_map.get(figure["result_id"])
         if (
             result is None
             or result["status"] != "current"
             or not result["execution_valid"]
-            or not quality_allows_paper(run_dir, figure["result_id"])
+            or (
+                figure_stage == "publication"
+                and not quality_allows_paper(run_dir, figure["result_id"])
+            )
         ):
             errors.append({"figure_id": figure_id, "message": "源结果已被替代或不再可用于论文"})
         else:
+            expected_result_sha = sha256_bytes(json_bytes(result))
+            recorded_sha = figure.get("source_result_sha256s", {}).get(
+                figure["result_id"]
+            )
+            if recorded_sha is not None and recorded_sha != expected_result_sha:
+                errors.append({"figure_id": figure_id, "message": "源结果条目变化后图表需要重新生成"})
+            if figure.get("objective_semantics_sha256") not in {
+                None,
+                result.get("objective_semantics_sha256"),
+            }:
+                errors.append({"figure_id": figure_id, "message": "图表绑定的目标语义已变化"})
             input_path = figure["input_result"]["path"]
             if input_path not in result["output_hashes"]:
                 errors.append({"figure_id": figure_id, "message": "图表输入不再属于源结果输出"})
