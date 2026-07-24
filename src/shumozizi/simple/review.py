@@ -24,6 +24,7 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.repo_root import resolve_repo_root
+from shumozizi.core.schema import validate_document
 from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
@@ -2060,56 +2061,255 @@ def _require_competition_strength_evidence(
             )
 
 
-# ── 红队覆盖声明：防止关键词扫描退化 ──
+# ── 红队覆盖声明：自由审核 + 动态风险差集 + 专项追问闭环 ──
+#
+# 设计要点（防止 general-coverage 自报退化）：
+# 1. required_risks 由协调层从能力路由、目标语义、decision_space 和关键主张
+#    动态派生；自由审核 AI 不读取该集合，只产出自由报告。
+# 2. 独立覆盖提取器读取当前 SCIENTIFIC_RED_TEAM.md，产出 covered_risks 映射，
+#    每项必须绑定当前报告 SHA 和真实标题锚点或行范围。
+# 3. 协调层比较 required_risks 与 covered_risks：缺失或 insufficient 的风险
+#    必须有 closed 的专项 follow_up（真实任务回执 + 专项报告）才放行。
+# 4. covered_risks 只能引用动态派生的 risk_id；general-coverage 或任意未知
+#    risk_id 一律拒绝；未预设的新风险放入 additional_findings，不替代具体风险。
 
 _COVERAGE_DECLARATION_PATH = REVIEW_ROOT / "red_team_coverage.json"
+_COVERAGE_SATISFIED = {"sufficient", "not_applicable"}
+_COVERAGE_NEEDS_FOLLOW_UP = {"insufficient", "requires_independent_verification"}
 
 
-def _validate_coverage_declaration(run_dir: Path, declaration: dict[str, Any]) -> list[str]:
-    """验证红队覆盖声明不是关键词扫描，而是结构化的逐风险结论。
+def _derive_required_risks(
+    route: dict[str, Any],
+    assessment: dict[str, Any] | None,
+) -> dict[str, str]:
+    """从路由题型、工具链和逐问 decision_space 动态派生必答高风险集合。
 
-    协调程序只核对：
-    - 当前路由要求的高风险 risk_id 是否均有结论
-    - 是否给出自由报告中的位置
-    - 需要追问的方向是否明确
+    Args:
+        route: 已校验能力路由。
+        assessment: 目标语义评估（可为 None，表示无正式题面）。
+
+    Returns:
+        risk_id -> 该风险的简短说明，供追问和差集比较使用。
+    """
+    families = set(route.get("problem_families", []))
+    toolchain = route.get("toolchain", {})
+    engines = {
+        toolchain.get("production_engine"),
+        toolchain.get("independent_engine"),
+    }
+    risks: dict[str, str] = {}
+
+    if "geometry_kinematics" in families:
+        risks["geometry-continuous-boundary"] = "连续边界/临界端点是否用连续量证明"
+        risks["geometry-finite-segment"] = "有限线段端点、切线与退化反例是否覆盖"
+    if "optimization" in families:
+        risks["optimization-multiseed"] = "同预算多种子搜索稳定性是否验证"
+        if engines & {"matlab", "octave"}:
+            risks["optimization-proxy-exact"] = "代理目标与精确目标一致性是否交叉验证"
+    if "mechanism_dynamics" in families:
+        risks["mechanism-conservation"] = "守恒量/量纲一致性是否检验"
+    if "network_system" in families:
+        risks["network-scale-robustness"] = "规模放大与拓扑扰动下结论是否稳健"
+    if "prediction_statistical" in families:
+        risks["prediction-holdout-generalization"] = "留出/交叉验证泛化是否成立"
+    if "evaluation_ranking" in families:
+        risks["evaluation-weight-sensitivity"] = "权重/指标扰动下排名是否稳定"
+
+    # 逐问 decision_space：可变动作与固定多动作各自的高风险方向
+    questions = (assessment or {}).get("questions", [])
+    for question in questions:
+        decision = question.get("decision_space", {}) if isinstance(question, dict) else {}
+        cardinality = decision.get("action_cardinality")
+        question_id = question.get("question_id", "?")
+        if cardinality == "variable":
+            risks[f"action-activation-{question_id}"] = (
+                f"{question_id} 可变动作数量的完整激活挑战"
+            )
+        elif cardinality == "fixed" and (decision.get("allowed_action_count") or 0) >= 2:
+            risks[f"fixed-action-utilization-{question_id}"] = (
+                f"{question_id} 固定多动作的逐一消融边际贡献"
+            )
+    return risks
+
+
+def _route_required_risks(run_dir: Path) -> dict[str, str]:
+    """读取当前路由与目标语义，派生本次运行的必答高风险集合。"""
+    route = require_capability_route(run_dir)
+    semantics = objective_semantics_review_status(run_dir)
+    assessment = semantics.get("assessment") if semantics.get("required") else None
+    return _derive_required_risks(route, assessment)
+
+
+def _report_heading_anchors(text: str) -> set[str]:
+    """提取 Markdown 报告中的标题锚点（归一化后用于位置校验）。"""
+    anchors: set[str] = set()
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            title = stripped.lstrip("#").strip()
+            if title:
+                anchors.add(_normalize_anchor(title))
+    return anchors
+
+
+def _normalize_anchor(value: str) -> str:
+    """归一化标题锚点：小写、去空白与连字符，便于稳健匹配。"""
+    return re.sub(r"[\s\-_]+", "", value.strip().lower())
+
+
+def _evidence_location_is_real(
+    location: str, report_text: str, report_relative: str, anchors: set[str]
+) -> bool:
+    """校验 evidence_location 指向报告中真实存在的标题锚点或行范围。
+
+    支持两种形式：
+    - ``review/X.md#标题``：标题必须在报告中真实存在；
+    - ``review/X.md:L10-L20``：行范围必须落在报告实际行数内。
+    """
+    if "#" in location:
+        path_part, _, anchor = location.partition("#")
+        if path_part and path_part != report_relative:
+            return False
+        return bool(anchor.strip()) and _normalize_anchor(anchor) in anchors
+    match = re.search(r":L(\d+)(?:-L?(\d+))?$", location)
+    if match:
+        path_part = location[: match.start()]
+        if path_part and path_part != report_relative:
+            return False
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else start
+        total_lines = len(report_text.splitlines())
+        return 1 <= start <= end <= total_lines
+    return False
+
+
+def _evaluate_coverage(
+    declaration: dict[str, Any],
+    required_risks: dict[str, str],
+    report_text: str,
+    report_relative: str,
+) -> list[str]:
+    """纯函数：在已知 required_risks 和报告内容下评估覆盖声明是否放行。
+
+    不做 schema 结构校验（调用方已用 Draft202012Validator 校验），只做语义门：
+    风险归属、位置真实性、差集覆盖、追问闭环。
     """
     errors: list[str] = []
-    required_fields = {"schema_name", "schema_version", "run_id", "review_file", "covered_risks"}
-    if not isinstance(declaration, dict) or not required_fields.issubset(declaration):
-        errors.append("覆盖声明缺少必要字段")
-        return errors
+    anchors = _report_heading_anchors(report_text)
+    covered = declaration.get("covered_risks", [])
+    follow_ups = {
+        item["risk_id"]: item
+        for item in declaration.get("follow_ups", [])
+        if isinstance(item, dict) and isinstance(item.get("risk_id"), str)
+    }
+
+    seen: set[str] = set()
+    covered_ok: set[str] = set()
+    for item in covered:
+        risk_id = item["risk_id"]
+        conclusion = item["conclusion"]
+        if risk_id in seen:
+            errors.append(f"risk_id 重复: {risk_id}")
+            continue
+        seen.add(risk_id)
+        # 4. 只接受动态派生的 risk_id；general-coverage / 未知 ID 一律拒绝
+        if risk_id not in required_risks:
+            errors.append(
+                f"covered_risks 含未派生的 risk_id: {risk_id}；"
+                "general-coverage 或任意 ID 不能替代具体动态风险，"
+                "新风险应放入 additional_findings"
+            )
+            continue
+        # 4. evidence_location 必须指向报告真实标题锚点或行范围
+        if not _evidence_location_is_real(
+            item["evidence_location"], report_text, report_relative, anchors
+        ):
+            errors.append(
+                f"{risk_id}: evidence_location 未指向报告真实标题或行范围: "
+                f"{item['evidence_location']}"
+            )
+            continue
+        # 5/6. insufficient / requires_independent_verification 需要 closed 专项追问
+        if conclusion in _COVERAGE_NEEDS_FOLLOW_UP:
+            follow_up = follow_ups.get(risk_id)
+            if follow_up is None:
+                errors.append(
+                    f"{risk_id}: conclusion={conclusion} 但缺少专项 follow_up"
+                )
+            elif follow_up.get("status") != "closed":
+                errors.append(
+                    f"{risk_id}: 专项 follow_up 未关闭（status="
+                    f"{follow_up.get('status')}），不能放行"
+                )
+            else:
+                covered_ok.add(risk_id)
+        elif conclusion in _COVERAGE_SATISFIED:
+            covered_ok.add(risk_id)
+
+    # 5. required_risks 差集：任一未被充分覆盖（缺失或未闭合）即阻断
+    uncovered = sorted(set(required_risks) - covered_ok)
+    if uncovered:
+        errors.append(
+            "以下动态派生的高风险方向未被充分覆盖或专项追问未闭合: "
+            + ", ".join(uncovered)
+        )
+    return errors
+
+
+def _validate_coverage_declaration(
+    run_dir: Path, declaration: dict[str, Any]
+) -> list[str]:
+    """校验覆盖声明：真实 schema 调用 + 报告绑定 + 动态差集 + 追问闭环。"""
+    # 8. 真实调用 Schema（Draft202012Validator），不再手写字段检查
+    schema_errors = validate_document(
+        declaration, "red_team_coverage_declaration"
+    )
+    if schema_errors:
+        return schema_errors
+
+    errors: list[str] = []
     if declaration["run_id"] != run_dir.name:
         errors.append("覆盖声明 run_id 不匹配")
-    if not isinstance(declaration["covered_risks"], list) or not declaration["covered_risks"]:
-        errors.append("covered_risks 必须是非空数组")
+
+    review_file = declaration["review_file"]
+    try:
+        report_path = _safe_run_path(run_dir, review_file)
+    except (ContractError, OSError, KeyError, ValueError):
+        errors.append(f"review_file 不存在或越界: {review_file}")
         return errors
-    seen_risks: set[str] = set()
-    for item in declaration["covered_risks"]:
-        if not isinstance(item, dict):
-            errors.append("covered_risks 条目必须是对象")
-            continue
-        risk_id = item.get("risk_id", "")
-        if not isinstance(risk_id, str) or not risk_id.strip():
-            errors.append("每个风险条目必须有非空 risk_id")
-        elif risk_id in seen_risks:
-            errors.append(f"risk_id 重复: {risk_id}")
-        else:
-            seen_risks.add(risk_id)
-        conclusion = item.get("conclusion", "")
-        if conclusion not in {"sufficient", "insufficient", "not_applicable", "requires_independent_verification"}:
-            errors.append(f"{risk_id}: conclusion 必须为 sufficient/insufficient/not_applicable/requires_independent_verification")
-        if not isinstance(item.get("evidence_location", ""), str) or not item["evidence_location"].strip():
-            errors.append(f"{risk_id}: 缺少 evidence_location，不能确认审核 AI 实际检查了该风险")
-        if conclusion == "insufficient" and not item.get("follow_up_required"):
-            errors.append(f"{risk_id}: conclusion=insufficient 但 follow_up_required 未设为 true；协调层应自动触发追问")
+    if not report_path.is_file():
+        errors.append(f"review_file 不存在: {review_file}")
+        return errors
 
-    review_file = declaration.get("review_file", "")
-    if review_file:
-        try:
-            _safe_run_path(run_dir, review_file)
-        except (ContractError, OSError, KeyError, ValueError):
-            errors.append(f"review_file 不存在或越界: {review_file}")
+    report_text = report_path.read_text(encoding="utf-8")
+    # 4. 覆盖必须绑定当前报告内容 SHA，报告变更即失效
+    if sha256_file(report_path) != declaration["report_sha256"]:
+        errors.append(
+            "report_sha256 与当前报告不一致：覆盖提取所依据的报告已变化，"
+            "需重新提取覆盖映射"
+        )
+        return errors
 
+    # follow_up 引用的任务回执与专项报告必须真实存在
+    for follow_up in declaration.get("follow_ups", []):
+        for key in ("task_receipt", "report_file"):
+            relative = follow_up.get(key, "")
+            try:
+                candidate = _safe_run_path(run_dir, relative)
+            except (ContractError, OSError, KeyError, ValueError):
+                errors.append(f"follow_up.{key} 越界: {relative}")
+                continue
+            if not candidate.is_file():
+                errors.append(
+                    f"follow_up[{follow_up.get('risk_id')}].{key} 不存在: {relative}"
+                )
+
+    # 1/2. required_risks 由协调层动态派生，审核 AI 不读取此集合
+    required_risks = _route_required_risks(run_dir)
+    report_relative = relative_inside(run_dir, report_path).as_posix()
+    errors.extend(
+        _evaluate_coverage(declaration, required_risks, report_text, report_relative)
+    )
     return errors
 
 
@@ -2122,9 +2322,9 @@ def require_coverage_declaration_valid(run_dir: Path) -> dict[str, Any]:
     if not path.is_file():
         raise ContractError(
             "科学红队必须输出 review/red_team_coverage.json；"
-            "该声明由审核 AI 在自由报告完成后生成，"
-            "记录每个高风险方向的实际结论和报告中对应位置，"
-            "不能退化为关键词扫描"
+            "该声明由独立覆盖提取器在自由报告完成后生成，"
+            "把报告中的实际论证绑定到协调层动态派生的高风险方向，"
+            "不能退化为 general-coverage 自报"
         )
     try:
         declaration = load_json(path)

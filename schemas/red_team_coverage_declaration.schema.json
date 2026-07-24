@@ -2,18 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/zhouwu97/shumozizi/schemas/red_team_coverage_declaration.schema.json",
   "title": "红队覆盖声明",
-  "description": "审核 AI 在自由报告完成后输出的轻量覆盖声明，用于防止关键词扫描退化。协调程序仅核对 risk_id 是否均有结论并标注报告位置。",
+  "description": "由独立覆盖提取器在自由审查报告完成后生成的覆盖映射：把当前报告中的实际论证绑定到协调层动态派生的高风险方向。covered_risks 只能引用动态派生的 risk_id，未预设的新风险放入 additional_findings；insufficient/requires_independent_verification 的风险必须有 closed 的专项 follow_up。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_name", "schema_version", "run_id", "review_file", "covered_risks"],
+  "required": ["schema_name", "schema_version", "run_id", "review_file", "report_sha256", "covered_risks"],
   "properties": {
     "schema_name": {"const": "red_team_coverage_declaration"},
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "2.0"},
     "run_id": {"type": "string", "minLength": 1},
-    "review_file": {"type": "string", "minLength": 1, "description": "自由审查报告在 review/ 下的相对路径，如 SCIENTIFIC_RED_TEAM.md"},
+    "review_file": {"type": "string", "minLength": 1, "description": "自由审查报告在 review/ 下的相对路径，如 review/SCIENTIFIC_RED_TEAM.md"},
+    "report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "覆盖提取所依据的报告内容 SHA256，与当前报告不一致则声明失效"},
     "covered_risks": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -22,34 +23,50 @@
           "risk_id": {
             "type": "string",
             "minLength": 1,
-            "description": "当前路由要求覆盖的高风险方向标识，如 optimization-multiseed、geometry-continuous"
+            "description": "协调层动态派生的高风险方向标识，如 optimization-multiseed、geometry-continuous-boundary；不接受 general-coverage 等占位或未知 ID"
           },
           "conclusion": {
             "enum": ["sufficient", "insufficient", "not_applicable", "requires_independent_verification"],
-            "description": "审核 AI 对该风险的最终判断；insufficient 或 requires_independent_verification 会触发专项追问"
+            "description": "审核 AI 对该风险的最终判断；insufficient 或 requires_independent_verification 必须有 closed 的专项 follow_up"
           },
           "evidence_location": {
             "type": "string",
             "minLength": 1,
-            "description": "自由报告中论证此结论的位置，如 SCIENTIFIC_RED_TEAM.md#搜索稳定性"
+            "description": "自由报告中论证此结论的真实位置：标题锚点 review/X.md#标题 或行范围 review/X.md:L10-L20"
           },
           "follow_up_required": {
             "type": "boolean",
-            "default": false,
-            "description": "审核 AI 判断是否需要针对该风险的专项追问"
+            "default": false
           }
         }
       }
     },
-    "required_follow_ups": {
+    "follow_ups": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["risk_id", "question"],
+        "required": ["risk_id", "task_receipt", "report_file", "status"],
         "properties": {
           "risk_id": {"type": "string", "minLength": 1},
-          "question": {"type": "string", "minLength": 1, "description": "针对该风险应追问的具体问题"}
+          "task_receipt": {"type": "string", "minLength": 1, "description": "专项追问任务回执文件的运行内相对路径"},
+          "report_file": {"type": "string", "minLength": 1, "description": "专项追问报告的运行内相对路径"},
+          "status": {"enum": ["open", "closed"]},
+          "resolution": {"type": "string"}
+        }
+      }
+    },
+    "additional_findings": {
+      "type": "array",
+      "description": "自由报告中发现的、未被动态派生集预设的新风险；保留为记录，不替代具体 required 风险，也不阻止放行。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["risk_id", "note"],
+        "properties": {
+          "risk_id": {"type": "string", "minLength": 1},
+          "note": {"type": "string", "minLength": 1},
+          "evidence_location": {"type": "string"}
         }
       }
     },

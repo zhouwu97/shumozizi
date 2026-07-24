@@ -112,31 +112,29 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 output_paths=["property.json"],
             )
             evidence_reference = "证据：`" + receipt["outputs"][0]["path"] + "`。\n"
-            # 写入覆盖声明（科学审查导入时的硬门）
-            import datetime as _dt
-            coverage_path = run_dir / "review" / "red_team_coverage.json"
-            coverage_path.write_text(
-                json.dumps({
-                    "schema_name": "red_team_coverage_declaration",
-                    "schema_version": "1.0",
-                    "run_id": run_dir.name,
-                    "review_file": f"review/{name}",
-                    "covered_risks": [
-                        {
-                            "risk_id": "general-coverage",
-                            "conclusion": "sufficient",
-                            "evidence_location": f"review/{name}#conclusion",
-                        }
-                    ],
-                    "generated_at": _dt.datetime.now(_dt.UTC).isoformat().replace("+00:00", "Z"),
-                }, indent=2),
-                encoding="utf-8",
-            )
         report.write_text(
             "# 独立审查\n\n已从题面重建问题，并记录了可复现实验与反例检查。\n"
             + evidence_reference,
             encoding="utf-8",
         )
+        if name == "SCIENTIFIC_RED_TEAM.md":
+            # 覆盖声明必须绑定当前报告 SHA；最小夹具的路由为 other 题型，
+            # 动态派生风险集为空，因此 covered_risks 也为空即可放行。
+            import datetime as _dt
+            report_sha = hashlib.sha256(report.read_bytes()).hexdigest()
+            coverage_path = run_dir / "review" / "red_team_coverage.json"
+            coverage_path.write_text(
+                json.dumps({
+                    "schema_name": "red_team_coverage_declaration",
+                    "schema_version": "2.0",
+                    "run_id": run_dir.name,
+                    "review_file": f"review/{name}",
+                    "report_sha256": report_sha,
+                    "covered_risks": [],
+                    "generated_at": _dt.datetime.now(_dt.UTC).isoformat().replace("+00:00", "Z"),
+                }, indent=2),
+                encoding="utf-8",
+            )
         return report
 
     @staticmethod
@@ -299,6 +297,24 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self._enter_paper(run_dir)
 
             self.assertTrue(scientific_review_status(run_dir)["allowed"])
+
+    def test_compile_paper_invokes_readiness_gate(self) -> None:
+        """compile_paper 必须在启动编译器之前调用最小编译前提硬门。
+
+        科学红队已放行、模板已实例化，但缺少 argument_map.json，
+        因此 compile_paper 应因"编译前提未满足"阻断，而非进入编译器。
+        """
+        from shumozizi.paper.compiler import compile_paper
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "readiness-gate")
+            self._prepare_scientific_phase(run_dir)
+            self._pass_scientific_review(run_dir)
+            self._enter_paper(run_dir)
+            # 科学红队放行成立，但没有 paper/argument_map.json
+            self.assertTrue(scientific_review_status(run_dir)["allowed"])
+            with self.assertRaisesRegex(ContractError, "编译前提|argument_map"):
+                compile_paper(run_dir)
 
     def test_red_team_rejects_executed_but_scientifically_empty_output(self) -> None:
         """真实运行但只写计数的脚本不能成为科学红队证据。"""
