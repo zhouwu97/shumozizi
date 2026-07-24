@@ -294,6 +294,8 @@ def run_final_checks(
         "schema_version": "1.0",
         "run_id": state["run_id"],
         "workflow": "capability-first-v3",
+        "generator_id": "shumozizi.qa.run_final_checks",
+        "generator_version": "1.0",
         "status": "pass" if not failed else "blocked",
         "final_pdf": "paper/final.pdf",
         "final_pdf_sha256": sha256_file(pdf) if pdf.is_file() else None,
@@ -301,6 +303,7 @@ def run_final_checks(
         "hard_failures": failed,
         "warnings": [*pdf_report.get("warnings", []), *content_report.get("warnings", [])],
         "generated_at": _utc_now(),
+        "command": ["python", "scripts/qa/run_final_checks.py", root.name],
     }
     atomic_json(root / "qa" / "mechanical-qa.json", report)
     lines = [

@@ -93,7 +93,12 @@
           "scientific_review": {
             "required": ["artifacts", "objective_semantics", "question_reviews"],
             "properties": {
-              "artifacts": {"required": ["receipts", "report_citations", "evidence_kinds"]}
+              "artifacts": {"required": ["receipts", "report_citations", "evidence_kinds"]},
+              "question_reviews": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"$ref": "#/$defs/questionReview"}
+              }
             }
           },
           "paper_blind_review": {
@@ -147,7 +152,7 @@
         "evidence_kinds": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test", "action-activation-challenge", "geometry-continuous-validation"]}
+          "items": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test", "action-activation-challenge", "fixed-action-utilization", "geometry-continuous-validation"]}
         }
       }
     },
@@ -202,7 +207,10 @@
           "oneOf": [{"type": "null"}, {"$ref": "#/$defs/report"}]
         },
         "question_reviews": {
-          "oneOf": [{"type": "null"}, {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/questionReview"}}]
+          "oneOf": [
+            {"type": "null"},
+            {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/questionReview"}}
+          ]
         },
         "reviewer": {"oneOf": [{"$ref": "#/$defs/scientificIsolation"}, {"$ref": "#/$defs/reviewerReference"}]},
         "reviewed_at": {"type": "string", "format": "date-time"}

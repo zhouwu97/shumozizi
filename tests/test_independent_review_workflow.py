@@ -184,8 +184,16 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
 
     @staticmethod
     def _write_passing_mechanical_qa(run_dir: Path) -> None:
-        """写入绑定当前 PDF 的最小真实机械 QA 收据。"""
+        """写入绑定当前 PDF 的最小真实机械 QA 收据，使用正式检查器 ID。"""
         pdf = run_dir / "paper" / "final.pdf"
+        check_ids = [
+            "state-phase", "scientific-review-release",
+            "competition-submission-release", "visualization-contract",
+            "paper-template-manifest", "paper-compile-receipt",
+            "paper-blind-review-release", "pdf", "paper-content-sufficiency",
+            "placeholders", "result-references", "numeric-consistency",
+            "current-result-files", "current-figure-files", "contact-sheet",
+        ]
         (run_dir / "qa" / "mechanical-qa.json").write_text(
             json.dumps(
                 {
@@ -193,18 +201,15 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     "run_id": run_dir.name,
                     "workflow": "capability-first-v3",
                     "status": "pass",
-                    "generator_id": "run_final_checks",
+                    "generator_id": "shumozizi.qa.run_final_checks",
+                    "generator_version": "1.0",
                     "generated_at": "2026-07-24T00:00:00Z",
+                    "command": ["python", "scripts/qa/run_final_checks.py", run_dir.name],
                     "final_pdf": "paper/final.pdf",
                     "final_pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
                     "checks": [
                         {"id": check_id, "passed": True}
-                        for check_id in [
-                            "pdf_exists", "pdf_hash", "anonymous",
-                            "placeholder_scan", "result_reference",
-                            "metric_consistency", "figure_readability",
-                            "submission_manifest",
-                        ]
+                        for check_id in check_ids
                     ],
                 }
             ),

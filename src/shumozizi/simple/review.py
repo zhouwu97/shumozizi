@@ -79,14 +79,15 @@ _SAFE_EVIDENCE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _REPORT_ARTIFACT_PATH = re.compile(r"review[\\/]red_team_artifacts[\\/][A-Za-z0-9._/\\-]+")
 
-# 科学审查包白名单：文件名不得包含这些标签片段
+# 科学审查包文件名过滤：只排除明确的质量协议后缀文件，
+# 不使用 broad 子串匹配（会误杀 q5_best_so_far.json 等科学数据）
 _PACKET_LABEL_EXCLUDE = re.compile(
-    r"(quality|verified|accepted|best|final|paper_allowed|search_adequacy|"
-    r"competition_strength|qualified|strong|current|candidate_accepted)",
+    r"(\.quality\.json|\.quality_verified\.json|\.acceptance\.json|"
+    r"\.quality_audit\.json|\.quality_exact\.json|\.quality_candidates\.json)",
     re.IGNORECASE,
 )
 
-# 科学审查包内容级去标签：从结果 JSON 中删除这些键
+# 科学审查包内容级去标签：从结果 JSON 中递归删除这些键
 _PACKET_CONTENT_EXCLUDE_KEYS = frozenset({
     "accepted", "paper_allowed", "search_adequacy",
     "competition_strength", "qualified", "strong",
@@ -106,23 +107,34 @@ def _packet_should_exclude(path: Path) -> bool:
     return False
 
 
-def _neutralize_candidate_json(source: Path, target: Path) -> None:
-    """生成中性候选结果：复制 JSON 并删除质量裁决字段。
+def _neutralize_value(value: Any) -> Any:
+    """递归删除质量裁决字段，用于内存中的哈希计算。"""
+    if isinstance(value, dict):
+        return {
+            key: _neutralize_value(item)
+            for key, item in value.items()
+            if key not in _PACKET_CONTENT_EXCLUDE_KEYS
+        }
+    if isinstance(value, list):
+        return [_neutralize_value(item) for item in value]
+    return value
 
-    不直接修改源文件。
-    """
+
+def _neutralize_candidate_json(source: Path, target: Path) -> None:
+    """生成中性候选结果：递归复制 JSON 并删除质量裁决字段。"""
     import json as _json
 
     try:
         data = _json.loads(source.read_text(encoding="utf-8"))
+        neutralized = _neutralize_value(data)
     except (OSError, ValueError):
         shutil.copy2(source, target)
         return
-    if isinstance(data, dict):
-        for key in list(data):
-            if key in _PACKET_CONTENT_EXCLUDE_KEYS:
-                del data[key]
-    target.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    target.write_text(
+        _json.dumps(neutralized, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _infer_source_root(source_relative: str) -> str:
@@ -1297,7 +1309,7 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
                 exclude_quality_labels=False,
             ) != expected_hash:
                 errors.append(f"冻结审查副本已变化: {packet_relative}")
-        # ── 逐文件验证：包文件哈希匹配；对于非中性化的源文件也检查源 ──
+        # ── 逐文件验证：包文件哈希匹配；对于中性化源文件，重新中性化并比较 ──
         for item in manifest["files"]:
             if not isinstance(item, dict):
                 errors.append("审查包文件条目不是对象")
@@ -1316,10 +1328,38 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
                 packet_hash = sha256_file(packet_file)
                 if packet_hash != expected_hash:
                     errors.append(f"冻结审查文件已变化: {packet_relative}")
-                # 非 candidate_results 源文件必须仍匹配（未中性化）
-                if source_relative and not _source_is_candidate_results(
+                # 中性化源文件：重新中性化当前源并与冻结副本比较
+                if source_relative and _source_is_candidate_results(
                     _infer_source_root(source_relative)
                 ):
+                    source_file = _safe_run_path(run_dir, source_relative)
+                    if not source_file.is_file():
+                        errors.append(f"候选源文件已缺失: {source_relative}")
+                    else:
+                        import json as _json2
+
+                        # 在内存中重新中性化当前源并计算哈希
+                        try:
+                            source_data = _json2.loads(
+                                source_file.read_text(encoding="utf-8")
+                            )
+                        except (OSError, ValueError):
+                            errors.append(f"候选源文件不可读: {source_relative}")
+                            continue
+                        neutralized = _neutralize_value(source_data)
+                        neutralized_bytes = _json2.dumps(
+                            neutralized, ensure_ascii=False, indent=2
+                        ).encode("utf-8")
+                        current_neutralized_hash = hashlib.sha256(
+                            neutralized_bytes
+                        ).hexdigest()
+                        if current_neutralized_hash != expected_hash:
+                            errors.append(
+                                f"候选结果已变化（重新中性化后哈希不匹配）: "
+                                f"{source_relative}"
+                            )
+                # 非中性化源文件：直接比较哈希
+                elif source_relative:
                     source = _safe_run_path(run_dir, source_relative)
                     if source.is_file() and sha256_file(source) != expected_hash:
                         errors.append(f"原始审查文件已变化: {source_relative}")
@@ -1335,6 +1375,44 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
         }
     except (ContractError, OSError, TypeError, ValueError) as exc:
         return {"success": False, "errors": [str(exc)]}
+
+
+def _verify_language_evidence_source(
+    run_dir: Path, ref: dict[str, Any]
+) -> None:
+    """验证 language_evidence_ref 引用的源文件真实存在于审查包中。
+
+    只校验文件存在性和原文片段是否可定位，不判断原文是否真正排除其他解释。
+    """
+    source_file = ref.get("source_file", "").strip()
+    excerpt = ref.get("excerpt", "").strip()
+    if not source_file:
+        return
+    packet_match = list(
+        (run_dir / "review" / "packet" / "objective-semantics").glob("*/**")
+    )
+    found = False
+    for candidate in packet_match:
+        if candidate.is_file() and candidate.name == Path(source_file).name:
+            found = True
+            if excerpt:
+                try:
+                    content = candidate.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    raise ContractError(
+                        f"language_evidence 引用的题面文件无法读取: {source_file}"
+                    )
+                normalized_content = " ".join(content.split())
+                normalized_excerpt = " ".join(excerpt.split())
+                if normalized_excerpt not in normalized_content:
+                    raise ContractError(
+                        f"language_evidence 引用的原文片段未在 {source_file} 中找到"
+                    )
+            break
+    if not found:
+        raise ContractError(
+            f"language_evidence 引用的源文件不在审查包中: {source_file}"
+        )
 
 
 def objective_semantics_review_required(run_dir: Path) -> bool:
@@ -1468,6 +1546,8 @@ def _validate_objective_assessment(
                         f"{question['question_id']} 的 language_evidence 必须绑定题面原文引用，"
                         f"缺少: {', '.join(missing_parts)}"
                     )
+                # 验证 source_file 真实存在于 objective-semantics 冻结包中
+                _verify_language_evidence_source(run_dir, ref)
         if question["materiality"] == "high" and question["selection_confidence"] == "ambiguous":
             if question["selection_basis"] != "user_decision":
                 raise ContractError(
@@ -2398,23 +2478,33 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
             return {"allowed": False, "reason": "机械 QA 必须由正式检查器生成，不接受手写伪造"}
         if not mechanical.get("generated_at"):
             return {"allowed": False, "reason": "机械 QA 缺少 generator_id 或 generated_at"}
-        # 最低必要检查集合
+        # 最低必要检查集合：与 run_final_checks.py 使用的稳定 ID 一致
         required_check_ids = {
-            "pdf_exists", "pdf_hash", "anonymous", "placeholder_scan",
-            "result_reference", "metric_consistency",
-            "figure_readability", "submission_manifest",
+            "state-phase", "scientific-review-release",
+            "competition-submission-release", "visualization-contract",
+            "paper-template-manifest", "paper-compile-receipt",
+            "paper-blind-review-release", "pdf", "paper-content-sufficiency",
+            "placeholders", "result-references", "numeric-consistency",
+            "current-result-files", "current-figure-files", "contact-sheet",
         }
         checks = mechanical.get("checks")
-        if not isinstance(checks, list) or any(
-            not isinstance(check, dict) or check.get("passed") is not True for check in checks
-        ):
-            return {"allowed": False, "reason": "机械 QA 缺少全部通过的检查记录"}
+        if not isinstance(checks, list):
+            return {"allowed": False, "reason": "机械 QA 缺少检查列表"}
         check_ids = {check.get("id", "") for check in checks}
-        if "synthetic" in check_ids or not (check_ids & required_check_ids):
+        if "synthetic" in check_ids:
+            return {"allowed": False, "reason": "机械 QA 包含 synthetic 伪造检查"}
+        # 必须覆盖全部必要检查（issubset）
+        if not required_check_ids.issubset(check_ids):
+            missing_ids = required_check_ids - check_ids
             return {
                 "allowed": False,
-                "reason": "机械 QA 缺少正式检查项，不能只含 synthetic 伪类",
+                "reason": f"机械 QA 缺少必要检查项: {', '.join(sorted(missing_ids))}",
             }
+        if any(
+            not isinstance(check, dict) or check.get("passed") is not True
+            for check in checks
+        ):
+            return {"allowed": False, "reason": "机械 QA 存在未通过的检查记录"}
         if (
             mechanical.get("final_pdf") != "paper/final.pdf"
             or not pdf.is_file()
