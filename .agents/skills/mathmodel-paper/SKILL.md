@@ -31,4 +31,4 @@ description: 使用 Capability-First v3 中真实执行且仍有效的结果撰�
 
    源码策略必须服从赛事要求：PDF 放必要的关键代码与可核查说明；赛事要求完整工程时，把完整源码、环境与入口放入提交附件。独立验证可以使用任何真实登记的引擎、反例或性质测试，不强制 MATLAB，也不强制把完整工程文本塞入 PDF。
 
-   生成 `paper/final.pdf` 后运行 `paper_structure_signal_report` 与 PDF 机械检查，新生产报告只写 `qa/paper-structure-signals.json`，状态为 `signals_present` 或 `missing_required_signals`。`mechanical_gate_passed=true` 仅表示逐问结构和最低非空壳信号存在，明确不评价数学正确性或论证质量，也不能绕过独立 PDF 盲审。进入 `paper_review` 后先由全新对话输出开放盲审报告，再由独立 coverage task 从当前 critical claims、argument map、publication figures 和赛事规则派生风险并查漏；additional findings 的 P0/P1 必须阻断。修改论文、图表或 PDF 后必须重新编译、重新盲审、动态查漏和机械终检。
+   生成 `paper/final.pdf` 后运行 `paper_structure_signal_report` 与 PDF 机械检查，新生产报告只写 `qa/paper-structure-signals.json`，状态为 `signals_present` 或 `missing_required_signals`。`mechanical_gate_passed=true` 仅表示逐问结构和最低非空壳信号存在，明确不评价数学正确性或论证质量，也不能绕过独立 PDF 盲审。进入 `paper_review` 后先由全新对话输出开放盲审报告，再由独立 coverage task 从当前 critical claims、argument map、publication figures 和赛事规则派生风险并查漏；additional findings 的 P0/P1 或任意 `disposition=blocking` 必须阻断。修改论文、图表或 PDF 后必须重新编译、重新盲审、动态查漏和机械终检。

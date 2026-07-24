@@ -48,8 +48,6 @@ _PACKET_ROOTS = {
         "results/raw",
         "results/evidence",
         "figures/evidence",
-        "analysis/method_profile.json",
-        "analysis/critical_claims.json",
     ),
     "paper-blind": ("problem", "paper/final.pdf", "paper/submission"),
     "final-audit": ("problem", "paper/final.pdf", "paper/submission"),
@@ -60,8 +58,6 @@ _PACKET_DESTINATIONS = {
     "results/raw": "candidate_results",
     "results/evidence": "results_evidence",
     "figures/evidence": "figures_evidence",
-    "analysis/method_profile.json": "analysis_snapshot/method_profile.json",
-    "analysis/critical_claims.json": "analysis_snapshot/critical_claims.json",
     "paper/final.pdf": "paper/final.pdf",
     "paper/submission": "submission",
     "results": "results",
@@ -73,7 +69,6 @@ _REQUIRED_PACKET_ROOTS = {
     "objective-semantics": frozenset(("problem",)),
     "scientific": frozenset((
         "problem", "code", "results/raw", "results/evidence", "figures/evidence",
-        "analysis/method_profile.json", "analysis/critical_claims.json",
     )),
     "paper-blind": frozenset(("problem", "paper/final.pdf", "paper/submission")),
     "final-audit": frozenset(("problem", "paper/final.pdf", "paper/submission")),
@@ -2671,10 +2666,12 @@ def _evaluate_coverage(
             covered_ok.add(risk_id)
 
     for finding in declaration.get("additional_findings", []):
-        if finding.get("severity") in {"P0", "P1"}:
+        severity = finding.get("severity")
+        disposition = finding.get("disposition")
+        if severity in {"P0", "P1"} or disposition == "blocking":
             errors.append(
                 f"additional finding {finding.get('finding_id')} 为 "
-                f"{finding.get('severity')}，必须阻断并闭环"
+                f"severity={severity}, disposition={disposition}，必须阻断并闭环"
             )
 
     # 5. required_risks 差集：任一未被充分覆盖（缺失或未闭合）即阻断

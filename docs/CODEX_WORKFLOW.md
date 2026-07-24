@@ -78,7 +78,7 @@ baseline 可以作为显式标记的 warm start 进入 pool。它不计作挑战
 
 Q1-Q5 每问都必须有可定位的直接答案，不能只藏在总表、图注或前一问。每问最少包含：题目要求和采用解释、模型选择理由、变量/数据/假设、核心模型或公式、实际求解、当前运行结果、结果意味着什么、验证和限制、直接答案；只有合同明确依赖时才说明前序消费关系。每个实验簇给出 takeaway，公式、图、表和引用必须服务于本问主张。`qa/paper-structure-signals.json` 会机械阻断缺问、空章节、缺直接答案、缺当前 production 结果，以及明显不满足 120 字符、3 个句子或技术内容等最低非空壳信号的问答段；解释词缺失只产生警告。检查器不会通过扩充关键词来模拟数学理解。PDF 主字号异常偏大也会阻断，稀疏内容页进入盲审警告。
 
-`paper_structure_signal_report` 的新生产状态只允许 `signals_present` 或 `missing_required_signals`，并固定声明 `mechanical_gate_passed`、`assesses_mathematical_correctness=false`、`assesses_argument_quality=false` 和 `independent_pdf_review_required=true`。旧 `paper_sufficiency_report` 只允许读取历史运行，新生产不得继续写入。即使 `mechanical_gate_passed=true`，没有有效开放 PDF 盲审、独立 coverage task、当前报告与 required risks 哈希绑定以及 closed follow-up，也不能进入最终放行；盲审和 additional findings 中的 P0/P1 必须阻断。模型合理性、推导有效性、结果解释和论文说服力只由独立 PDF 盲审裁决。
+`paper_structure_signal_report` 的新生产状态只允许 `signals_present` 或 `missing_required_signals`，并固定声明 `mechanical_gate_passed`、`assesses_mathematical_correctness=false`、`assesses_argument_quality=false` 和 `independent_pdf_review_required=true`。旧 `paper_sufficiency_report` 只允许读取历史运行，新生产不得继续写入。即使 `mechanical_gate_passed=true`，没有有效开放 PDF 盲审、独立 coverage task、当前报告与 required risks 哈希绑定以及 closed follow-up，也不能进入最终放行；盲审和 additional findings 中的 P0/P1 或任意 `disposition=blocking` 必须阻断。模型合理性、推导有效性、结果解释和论文说服力只由独立 PDF 盲审裁决。
 
 `reports/VERIFY_REPORT.md` 只提供 PDF 内容异常和覆盖定位；页数、公式、图、表或引用密度单独异常仅为 warning。结构信号、开放 PDF 盲审及动态查漏均有效且机械 QA 通过后，才能进入 `final_review`，建立 `final-audit` 包，由第三个新审核对话按数学建模竞赛论文标准自由判断最终 PDF、提交材料和源码附录；它只能看到题面、最终 PDF 和提交文件，不得依赖内部结果或前轮结论，也不得按固定表格打勾代替判断。报告写入 `review/FINAL_SUBMISSION_REVIEW.md`。任何交付物修订都要回到对应生产阶段修复、重编译并重新执行受影响的盲审、动态查漏、机械 QA 和终审；审查后只允许一次集中修订，二次仍不通过就停止。
 

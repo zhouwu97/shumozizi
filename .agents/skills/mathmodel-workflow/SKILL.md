@@ -41,6 +41,6 @@ description: 以 Capability-First v3 完成整道数学建模赛题的分析、�
    ```
 
    `auto` 优先 LaTeX；Typst 仅为用户显式选择或 LaTeX 不可用时的有记录回退。未知赛事不得静默用 `default`。
-8. 主链顺序固定为：自由分析 → baseline/首轮真实实验 → `method_profile` → `critical_claims` → 开放科学审核 → 报告完成后动态生成 `required_risks` → 独立覆盖提取与专项追问 → 独立验证 → `independent_evidence_consequence` 负面证据级联回退 → 科学图 → 论文 → 开放 PDF 盲审与动态查漏 → 机械终检。自由审核任务不得读取 `required_risks`。任何审核或独立反例发现问题都回到 `analysis`、`experiment` 或 `paper` 修复；源码按赛事规则在 PDF 关键代码与附件完整工程之间分配。论文相关修改后重新编译，并重新执行受影响的盲审、机械 QA 和最终交付审核；正常退出、保住 baseline、空图或模板文本都不等于解题成功。
+8. 主链顺序固定为：自由分析 → baseline/首轮真实实验 → `method_profile` → `critical_claims` → 开放科学审核 → 报告完成后动态生成 `required_risks` → 独立覆盖提取与专项追问 → 独立验证 → `independent_evidence_consequence` 负面证据级联回退 → 科学图 → 论文 → 开放 PDF 盲审与动态查漏 → 机械终检。开放科学审核包不得包含 `method_profile`、`critical_claims` 或 `required_risks`；报告冻结后才由协调层读取这些事实派生动态风险。任何审核或独立反例发现问题都回到 `analysis`、`experiment` 或 `paper` 修复；源码按赛事规则在 PDF 关键代码与附件完整工程之间分配。论文相关修改后重新编译，并重新执行受影响的盲审、机械 QA 和最终交付审核；正常退出、保住 baseline、空图或模板文本都不等于解题成功。
 
 详细的搜索边界、收据格式和防伪规则只在实际需要时查阅 `docs/CODEX_WORKFLOW.md`，不要把它逐项抄进主对话。

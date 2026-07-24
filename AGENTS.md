@@ -39,9 +39,9 @@ python scripts/codex/init_run.py <problem_path> `
 或使用 `scripts/codex/init_simple_run.py`。v3 状态只在
 `runs/<run-id>/state/run.json`，关键判断记录在 `state/DECISIONS.md`。它只保存进度、路线、下一步、预算和产物路径；不得保存科学是否通过、finding 是否关闭或任何审核状态。阶段必须依次经过 `analysis -> capability_route -> experiment -> scientific_review -> visualization -> paper -> paper_review -> verify -> final_review -> complete`；`blocked` 只能回到 `analysis`、`capability_route` 或 `experiment`。独立审查的冻结包、报告和可机读摘要只允许存放在 `review/`，不写回 `run.json`。
 
-`capability_route` 冻结工具探测、主能力、交叉能力、独立验证能力和少量本地知识资产，但不预填方法画像。进入 `experiment` 后先实际运行 baseline/首轮 production 实验，再根据真实方法属性、代码和执行收据生成 `analysis/method_profile.json` 与独立的 `analysis/critical_claims.json`。所有 production 结果绑定逐问 objective semantics 哈希及 dependency scope。科学审核先由自由审核任务在不可见 `required_risks` 的条件下输出报告，报告冻结后才动态生成风险并由独立 coverage task 查漏；覆盖、专项 follow-up 和 `not_applicable` 都必须绑定可复验事实与真实任务回执。任何独立引擎、反例、性质失败或更优候选形成负面证据时，必须在 verdict 检查前通过 `independent_evidence_consequence` 级联失效相关结果、图、argument map、论文和审核。
+`capability_route` 冻结工具探测、主能力、交叉能力、独立验证能力和少量本地知识资产，但不预填方法画像。进入 `experiment` 后先实际运行 baseline/首轮 production 实验，再根据真实方法属性、代码和执行收据生成 `analysis/method_profile.json` 与独立的 `analysis/critical_claims.json`。所有 production 结果绑定逐问 objective semantics 哈希及 dependency scope。科学审核先由自由审核任务在不可见 `method_profile`、`critical_claims` 和 `required_risks` 的无锚包上输出报告；报告冻结后，协调层才从这些运行内事实动态生成风险并由独立 coverage task 查漏。覆盖、专项 follow-up 和 `not_applicable` 都必须绑定可复验事实与真实任务回执。任何独立引擎、反例、性质失败或更优候选形成负面证据时，必须在 verdict 检查前通过 `independent_evidence_consequence` 级联失效相关结果、图、argument map、论文和审核。
 
-实验诊断与验证图写入 `figures/evidence/`，科学审核通过后的论文图写入 `figures/publication/`。`paper_review` 同样先开放盲审、后动态生成论文风险并独立查漏；additional findings 的 P0/P1 必须阻断。`verify` 只执行机械 QA，不能重新定义科学正确性或论文论证质量。
+实验诊断与验证图写入 `figures/evidence/`，科学审核通过后的论文图写入 `figures/publication/`。`paper_review` 同样先开放盲审、后动态生成论文风险并独立查漏；additional findings 的 P0/P1 或任意 `disposition=blocking` 必须阻断。`verify` 只执行机械 QA，不能重新定义科学正确性或论文论证质量。
 
 v3 运行时只能使用 `shumozizi.simple`。禁止导入 `shumozizi.workflow.state_service`、审核模块或 legacy 结果准入链。
 
@@ -73,7 +73,7 @@ python scripts/runtime/run_simple_experiment.py runs/<run-id> `
 python scripts/qa/run_final_checks.py runs/<run-id>
 ```
 
-它生成 `qa/paper-structure-signals.json`、`qa/mechanical-qa.json`、`qa/contact-sheet.png` 与 `reports/VERIFY_REPORT.md`。结构信号只检查缺问、空章节、直接答案、当前结果以及 120 字符、3 个句子、技术内容和解释词等最低非空壳信号；新报告状态只能是 `signals_present` 或 `missing_required_signals`，并明确 `assesses_mathematical_correctness=false`、`assesses_argument_quality=false`、`independent_pdf_review_required=true`。即使 `mechanical_gate_passed=true`，没有有效开放 PDF 盲审、动态覆盖与已关闭专项追问也不得放行。模型合理性、推导有效性、结果解释和说服力只由独立盲审裁决；additional findings 中的 P0/P1 必须阻断。
+它生成 `qa/paper-structure-signals.json`、`qa/mechanical-qa.json`、`qa/contact-sheet.png` 与 `reports/VERIFY_REPORT.md`。结构信号只检查缺问、空章节、直接答案、当前结果以及 120 字符、3 个句子、技术内容和解释词等最低非空壳信号；新报告状态只能是 `signals_present` 或 `missing_required_signals`，并明确 `assesses_mathematical_correctness=false`、`assesses_argument_quality=false`、`independent_pdf_review_required=true`。即使 `mechanical_gate_passed=true`，没有有效开放 PDF 盲审、动态覆盖与已关闭专项追问也不得放行。模型合理性、推导有效性、结果解释和说服力只由独立盲审裁决；additional findings 中的 P0/P1 或任意 `disposition=blocking` 必须阻断。
 
 ## 代码与文件约束
 

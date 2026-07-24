@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError
+from shumozizi.core.schema import validate_document
 from shumozizi.paper.readiness import (
     argument_map_bindings,
     check_paper_readiness,
@@ -139,6 +140,27 @@ class PaperReadinessGateTests(unittest.TestCase):
             any("必答问题" in err and "Q2" in err for err in status["errors"]),
             status["errors"],
         )
+
+    def test_superseded_argument_map_is_valid_but_cannot_release_paper(self) -> None:
+        """级联失效后的 v3 地图保持合同合法，但不能继续用于成文。"""
+        run_dir = self._init("superseded-argument-map")
+        argument_map = _valid_argument_map(run_dir)
+        argument_map["status"] = "superseded"
+        argument_map["superseded_reason"] = "independent_evidence:counterexample"
+
+        self.assertEqual([], validate_document(argument_map, "argument_map"))
+        (run_dir / "paper" / "argument_map.json").write_text(
+            json.dumps(argument_map), encoding="utf-8"
+        )
+        status = check_paper_readiness(run_dir)
+        self.assertFalse(status["ready"])
+        self.assertTrue(
+            any("superseded" in err or "已失效" in err for err in status["errors"]),
+            status["errors"],
+        )
+
+        argument_map.pop("superseded_reason")
+        self.assertTrue(validate_document(argument_map, "argument_map"))
 
     def test_claim_bound_to_noncurrent_result_blocks(self) -> None:
         """主张绑定的 result_id 不是当前 production 结果时阻断。"""

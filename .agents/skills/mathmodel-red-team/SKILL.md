@@ -44,7 +44,7 @@ python scripts/review/import_review.py runs/<run-id> `
 python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
 ```
 
-新建 Codex 对话时只给它生成的 `review/packet/scientific/<packet-id>/`。该包只含题面与附件、当前运行内源代码和候选原始结果；不含质量标签、决策日志、审查结论或 QA。
+新建 Codex 对话时只给它生成的 `review/packet/scientific/<packet-id>/`。该包只含题面与附件、当前运行内源代码、候选原始/证据结果和证据图；不含质量标签、`method_profile`、`critical_claims`、决策日志、审查结论或 QA，避免用生产侧的方法叙事和预选主张锚定首轮攻击。
 
 审查者应根据题目和风险自由选择最有信息量的攻击，而不是机械逐项打勾。
 
@@ -71,7 +71,7 @@ python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
 
 ### 第二步：独立覆盖提取
 
-协调程序只在自由报告冻结后生成动态 `required_risks`，再由独立 coverage task 读取报告并提取实际覆盖方向。coverage declaration 必须绑定当前报告 SHA-256、`required_risks` SHA-256 和真实 coverage task receipt；开放审核 AI 始终不得读取 `required_risks`。
+协调程序只在自由报告冻结后从运行目录读取 route、objective semantics、`method_profile`、`critical_claims` 和执行收据，生成动态 `required_risks`，再由独立 coverage task 读取报告并提取实际覆盖方向。coverage declaration 必须绑定当前报告 SHA-256、`required_risks` SHA-256 和真实 coverage task receipt；开放审核 AI 始终不得读取 `method_profile`、`critical_claims` 或 `required_risks`。
 
 ### 第三步：专项追问
 
@@ -114,7 +114,7 @@ python scripts/review/build_review_packet.py runs/<run-id> --kind paper-blind
 
 盲审依据题意和 PDF 判断：是否逐问直接回答、建模假设与结论是否自洽、推导和图表能否支撑主张、结果解释是否诚实、是否存在空洞章节、不可读图表、无证据的竞争力宣称或匿名问题。对声明为空间、求解或稳定性证据的图，要核查实际可见对象、坐标/单位、边界和论证关系；一张漂亮但不呈现这些对象的 3D 散点图不能承担模型验证。它可标出需要求解任务进一步复核的证据，但不能在看不到代码时臆造数值或数学结论。
 
-将开放报告写入 `runs/<run-id>/review/PAPER_BLIND_REVIEW.md`，报告冻结后再动态生成论文风险、创建独立 coverage task、导入 coverage declaration，并对未覆盖风险创建绑定真实回执和 closed resolution 的专项 follow-up。开放盲审 AI 不得预读 `required_risks`；清单外 additional findings 的 P0/P1 同样阻断，P2 回到论文修改。
+将开放报告写入 `runs/<run-id>/review/PAPER_BLIND_REVIEW.md`，报告冻结后再动态生成论文风险、创建独立 coverage task、导入 coverage declaration，并对未覆盖风险创建绑定真实回执和 closed resolution 的专项 follow-up。开放盲审 AI 不得预读 `required_risks`；清单外 additional findings 的 P0/P1 无条件阻断，任意严重度只要 `disposition=blocking` 也必须阻断，只有非 blocking 的 P2 才可作为修改建议保留。
 
 再由协调任务导入：
 

@@ -73,7 +73,7 @@
     },
     "additional_findings": {
       "type": "array",
-      "description": "自由报告中发现的、未被动态派生集预设的新风险；P0/P1 必须阻断。",
+      "description": "自由报告中发现的、未被动态派生集预设的新风险；P0/P1 或任意 disposition=blocking 必须阻断。",
       "items": {
         "type": "object",
         "additionalProperties": false,

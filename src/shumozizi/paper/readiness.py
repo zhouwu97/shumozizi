@@ -167,6 +167,11 @@ def _validate_readiness(run_dir: Path) -> list[str]:
     if arg_map.get("schema_version") != "3.0":
         errors.append("生产论文只接受 argument_map 3.0；2.0 仅供历史只读兼容")
         return errors
+    if arg_map.get("status") != "current":
+        errors.append(
+            "argument_map 已失效（status=superseded），必须根据当前证据重新生成"
+        )
+        return errors
     if arg_map.get("run_id") != run_dir.name:
         errors.append("argument_map run_id 与当前运行不一致")
     try:

@@ -463,6 +463,11 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             copied = {item["source"] for item in manifest["files"]}
 
             self.assertNotIn("results/quality.json", copied)
+            self.assertNotIn("analysis/method_profile.json", copied)
+            self.assertNotIn("analysis/critical_claims.json", copied)
+            self.assertFalse(
+                any(path.startswith("analysis_snapshot/") for path in copied)
+            )
             self.assertFalse(any(path.startswith("state/") for path in copied))
             self.assertFalse(any(path.startswith("qa/") for path in copied))
             # 回归：results/raw 下含 quality 标签的文件也应被排除
@@ -470,6 +475,23 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self.assertFalse(quality_labeled, f"quality-labeled files leaked: {quality_labeled}")
             with self.assertRaisesRegex(ContractError, "独立科学红队|有必答问题"):
                 update_simple_state(run_dir, phase="visualization")
+
+            report = run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
+            report.write_text("# 开放科学审核\n\n冻结报告。\n", encoding="utf-8")
+            generate_required_review_risks(run_dir, scope="scientific")
+            bindings = load_json(run_dir / "review" / "required_risks.json")[
+                "source_bindings"
+            ]
+            self.assertEqual(
+                sha256_file(run_dir / "analysis" / "method_profile.json"),
+                bindings["method_profile_sha256"],
+            )
+            self.assertEqual(
+                sha256_file(run_dir / "analysis" / "critical_claims.json"),
+                bindings["critical_claims_sha256"],
+            )
+            report.unlink()
+            (run_dir / "review" / "required_risks.json").unlink()
 
             self._pass_scientific_review(run_dir)
             self._enter_paper(run_dir)

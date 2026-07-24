@@ -271,7 +271,7 @@ class CoverageGateOrchestratorTests(unittest.TestCase):
         )
         self.assertEqual("closed", self._validate()["follow_ups"][0]["status"])
 
-    def test_additional_p0_p1_blocks_but_p2_is_preserved(self) -> None:
+    def test_additional_findings_respect_severity_and_disposition(self) -> None:
         finding = {
             "finding_id": "unexpected-instability",
             "severity": "P1",
@@ -287,6 +287,12 @@ class CoverageGateOrchestratorTests(unittest.TestCase):
             self._validate()
 
         finding["severity"] = "P2"
+        with self.assertRaisesRegex(ContractError, "blocking|必须阻断"):
+            self._write_declaration(
+                covered_risks=self._covered(), additional_findings=[finding]
+            )
+            self._validate()
+
         finding["disposition"] = "advisory"
         self._write_declaration(
             covered_risks=self._covered(), additional_findings=[finding]
