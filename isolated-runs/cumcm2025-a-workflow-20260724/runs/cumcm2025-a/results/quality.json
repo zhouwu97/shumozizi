@@ -1,0 +1,974 @@
+{
+  "schema_version": "3.0",
+  "run_id": "cumcm2025-a",
+  "assessments": [
+    {
+      "result_id": "q1_quality_verified",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q1_quality_verified.json",
+        "protocol_sha256": "89a14fb0c66a66648a4491611e78ea4746ff4cad406e92516a4899dfc9590401"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v1",
+          "scorer_version": "event-brent-v1",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 1e-08
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-23T19:39:22.174526Z"
+    },
+    {
+      "result_id": "q2_quality_verified",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q2_quality_verified.json",
+        "protocol_sha256": "071657c82c07759d444dc927823a6c5ba5ba77f4cb6f6769a2192ce832faf584"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v1",
+          "scorer_version": "event-brent-v1",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 1e-08
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q1"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-23T19:39:25.456504Z"
+    },
+    {
+      "result_id": "q3_quality_verified",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q3_quality_verified.json",
+        "protocol_sha256": "f09e5ed9ed14622cc52a332f4f1bf4caaf4240e155220eadd1eec39f6b010a96"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v1",
+          "scorer_version": "event-brent-v1",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 1e-08
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q2"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-23T19:39:28.280749Z"
+    },
+    {
+      "result_id": "q4_quality_verified",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q4_quality_verified.json",
+        "protocol_sha256": "baedad365494f006969acf28dadcf7aa8f4135c5953ed8cb17639efaf5d6ff08"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v1",
+          "scorer_version": "event-brent-v1",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 1e-08
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q3"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-23T19:39:31.012324Z"
+    },
+    {
+      "result_id": "q5_quality_verified",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q5_quality_verified.json",
+        "protocol_sha256": "0ea0a759a034f0c9b0ba78600c102773d911136e7b0b95eeac3ae9b32cf35adf"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "objective_missile_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v1",
+          "scorer_version": "event-brent-v1",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 1e-08
+        },
+        "coverage": {
+          "candidate_variables": [
+            "action_count"
+          ],
+          "groups": [
+            {
+              "id": "all_action_counts",
+              "variables": [
+                "action_count"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 16,
+              "bounds": {
+                "action_count": [
+                  0.0,
+                  15.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q4"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-23T19:39:34.335887Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision1",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q1_quality_verified_revision1.json",
+        "protocol_sha256": "1b668adee0d61d25490afbb59016adeaf5cbe4fb275b37702a090966008c62cd"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:37:45.682149Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision1",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q2_quality_verified_revision1.json",
+        "protocol_sha256": "afd2b9b83905fd08b878e451b418dc67ca0f1839620c3032b4037cbad0e2fe22"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q1"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:37:50.244841Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision1",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q3_quality_verified_revision1.json",
+        "protocol_sha256": "45142a0f0bb450a913e7bf68c4df5f0c7a930c5abaae4f7a4961639393951760"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q2"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:37:54.212382Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision1",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q4_quality_verified_revision1.json",
+        "protocol_sha256": "32dcda61879acf0bb61a78e07d512817639bc15e89f6cffcb242486d1b9a956e"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q3"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:37:59.271188Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision2",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "candidate",
+      "paper_allowed": false,
+      "verification": {
+        "protocol_file": "results/verification/q1_quality_verified_revision2.json",
+        "protocol_sha256": "25f6cf377cb70b8b71ae0fd3ac775bd2680f408580eb0cb735b18a21e0970354"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.0"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "no_objective_progress_above_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:42:47.626972Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision3",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q1_quality_verified_revision3.json",
+        "protocol_sha256": "35c4132e48df430c362b9b042be75684dc4fca56b6afa75197ec4fc5ed03b41f"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.1"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:46:00.998015Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision3",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q2_quality_verified_revision3.json",
+        "protocol_sha256": "2ee2b60e86ef31a3c876af9af313c8047b09794f3cd104115ee6d6586f8d35bb"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q1"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.1"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:46:06.694247Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision3",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q3_quality_verified_revision3.json",
+        "protocol_sha256": "db9c1e28f8b3339857ab269b96ed930973d6b68c815a049c3f09b5ea3de53dd8"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q2"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.1"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:46:11.903274Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision3",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q4_quality_verified_revision3.json",
+        "protocol_sha256": "ba0303da28e09be2b7cb3547aa8e67be70b86f718e5cce9d33db37765b21702c"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "duration_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "variant"
+          ],
+          "groups": [
+            {
+              "id": "local_variants",
+              "variables": [
+                "variant"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 3,
+              "bounds": {
+                "variant": [
+                  0.0,
+                  2.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q3"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.1"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:46:18.247050Z"
+    },
+    {
+      "result_id": "q5_quality_verified_revision3",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "feasibility_valid": true,
+      "exact_recomputed": true,
+      "search_adequacy": "passed",
+      "problem_effectiveness": "progressed",
+      "result_role": "accepted",
+      "paper_allowed": true,
+      "verification": {
+        "protocol_file": "results/verification/q5_quality_verified_revision3.json",
+        "protocol_sha256": "f78b72ef64744efd3efba80506e7904bcb27d686c22a2d9376c74d4ba0159bcf"
+      },
+      "selection_contract": {
+        "objective": {
+          "metric": "objective_missile_s",
+          "direction": "maximize",
+          "objective_version": "finite-cylinder-union-v2",
+          "scorer_version": "adaptive-lipschitz-time-v2",
+          "constraint_version": "flight-kinematics-v1",
+          "semantics": "union",
+          "fine_tolerance": 5e-05
+        },
+        "coverage": {
+          "candidate_variables": [
+            "action_count",
+            "seed"
+          ],
+          "groups": [
+            {
+              "id": "all_action_counts",
+              "variables": [
+                "action_count"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 16,
+              "bounds": {
+                "action_count": [
+                  0.0,
+                  15.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            },
+            {
+              "id": "both_seeds",
+              "variables": [
+                "seed"
+              ],
+              "metric": "occupied_bins",
+              "bins_per_variable": 2,
+              "bounds": {
+                "seed": [
+                  202505.0,
+                  202506.0
+                ]
+              },
+              "minimum_joint_coverage": 1.0
+            }
+          ]
+        },
+        "required_evidence": [
+          "finite-cylinder-exact-score",
+          "continuous-geometry-certificate"
+        ],
+        "required_prior_questions": [
+          "Q4"
+        ],
+        "verification_adapter": {
+          "adapter_id": "cumcm2025a-independent-quality",
+          "adapter_version": "1.1"
+        }
+      },
+      "reasons": [
+        "独立候选生成、有限圆柱精确评分与搜索审计均已实际执行",
+        "established_initial_lower_bound"
+      ],
+      "assessed_at": "2026-07-24T00:48:04.040845Z"
+    }
+  ]
+}

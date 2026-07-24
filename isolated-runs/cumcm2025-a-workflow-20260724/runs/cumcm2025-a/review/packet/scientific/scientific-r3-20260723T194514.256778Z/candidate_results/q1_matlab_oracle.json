@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "question": "Q1",
+  "engine": "24.1.0.2537033 (R2024a)",
+  "oracle_semantics": {
+    "schema_name": "independent_oracle_semantics",
+    "schema_version": "1.0",
+    "formulation": "quadratic-segment-roots-with-endpoint-containment-and-continuous-cylinder-surface-maximization",
+    "production_formulation": "projection-clipping-distance-with-deterministic-cylinder-surface-grid",
+    "boundary_cases": [
+      "endpoint",
+      "tangent",
+      "degenerate",
+      "inside",
+      "outside"
+    ],
+    "all_cases_compared": true
+  },
+  "metrics": {
+    "left_endpoint_s": 8.0564454904319582,
+    "right_endpoint_s": 9.44808815870171,
+    "duration_s": 1.3916426682697516,
+    "production_endpoint_max_abs_error_s": 2.9148982569893178E-6
+  },
+  "critical_target_points_m": {
+    "left": [
+      1.3379189957561564,
+      206.87095137232063,
+      0
+    ],
+    "right": [
+      7,
+      200,
+      5
+    ]
+  },
+  "boundary_cases": {
+    "endpoint": true,
+    "tangent": true,
+    "degenerate": true,
+    "inside": true,
+    "outside": false
+  },
+  "figures": [
+    "figures/matlab_q1_margin.png",
+    "figures/matlab_q1_endpoints.png"
+  ]
+}

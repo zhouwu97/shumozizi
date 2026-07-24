@@ -190,3 +190,103 @@ def test_high_materiality_ambiguity_requires_hash_bound_human_decision(tmp_path:
     decisions["decisions"][0]["raw_user_response"] = "改为并集口径。"
     atomic_json(run_dir / "state" / "ambiguity-decisions.json", decisions)
     assert not objective_semantics_review_status(run_dir)["allowed"]
+
+
+def test_medium_confidence_with_conflicting_aggregations_is_machine_blocked(
+    tmp_path: Path,
+) -> None:
+    """回归：machine 判定不能通过把 selection_confidence 写成 medium 绕过。
+
+    当同一问题同时存在 sum_per_entity 和 intersection_all 两种聚合，
+    且题面语言不能唯一排除时，必须要求用户裁决，不论 AI 自评 confidence 为何。
+    """
+    run_dir = _prepare_run(tmp_path)
+    packet = build_review_packet(run_dir, kind="objective-semantics")
+
+    # 构造 exact 绕过场景：高影响 + medium 置信度 + declared_assumption
+    assessment = _assessment(run_dir.name)
+    assessment["questions"][0]["materiality"] = "high"
+    assessment["questions"][0]["selection_confidence"] = "medium"
+    assessment["questions"][0]["selection_basis"] = "declared_assumption"
+    assessment["questions"][0]["human_confirmation_required"] = False
+    assessment["questions"][0]["ambiguity_note"] = "题面未唯一规定跨三枚导弹求和或交集"
+
+    atomic_json(run_dir / "review" / "OBJECTIVE_SEMANTICS.json", assessment)
+    (run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md").write_text(
+        "# 目标语义预审\n\n题面可解释为求和或交集，选择求和作为建模假设。\n",
+        encoding="utf-8",
+    )
+
+    # 应被 machine 字段拦截，不再允许绕过
+    with pytest.raises(ContractError, match=r"用户裁决|绕过"):
+        import_objective_semantics_review(
+            run_dir,
+            manifest_file=_manifest_relative(packet),
+            verdict="pass",
+            highest_severity="none",
+            reviewer_thread_id="objective-review-thread",
+        )
+
+
+def test_machine_derived_fields_are_populated_on_valid_assessment(
+    tmp_path: Path,
+) -> None:
+    """非冲突评估也应补充 machine 字段，便于下游统一消费。"""
+    run_dir = _prepare_run(tmp_path)
+    packet = build_review_packet(run_dir, kind="objective-semantics")
+
+    # 只有一个主目标，无冲突 — 使用默认的 _assessment（ambiguous=False）
+    atomic_json(run_dir / "review" / "OBJECTIVE_SEMANTICS.json", _assessment(run_dir.name))
+    (run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md").write_text(
+        "# 目标语义预审\n\n确认主目标。\n",
+        encoding="utf-8",
+    )
+    receipt = import_objective_semantics_review(
+        run_dir,
+        manifest_file=_manifest_relative(packet),
+        verdict="pass",
+        highest_severity="none",
+        reviewer_thread_id="objective-review-thread",
+    )
+
+    # 读取评估以验证 machine 字段已被补入
+    assessment = load_json(run_dir / "review" / "OBJECTIVE_SEMANTICS.json")
+    q = assessment["questions"][0]
+    assert "distinct_aggregation_count" in q
+    assert "distinct_aggregations" in q
+    assert "changes_primary_result" in q
+    assert isinstance(q["changes_primary_result"], bool)
+    assert "user_decision_required" in q
+    # 该评估有 3 种不同聚合（sum_per_entity, union_any, intersection_all）
+    # 包含 sum+intersection 冲突对 → changes_primary_result=true
+    assert q["changes_primary_result"] is True
+    assert q["distinct_aggregation_count"] == 3
+    # 自填 selection_basis=language_evidence 声明语言已解决 → True
+    # user_decision_required 在此为 False（AI 声称语言唯一排除了其他解释）
+    assert q["user_decision_required"] is False
+    assert receipt["verdict"] == "pass"
+
+
+def test_conflicting_aggregations_with_user_decision_marks_decision_required(
+    tmp_path: Path,
+) -> None:
+    """当 AI 选择 declared_assumption 而非 language_evidence 时，冲突必须要求用户裁决。"""
+    run_dir = _prepare_run(tmp_path)
+    packet = build_review_packet(run_dir, kind="objective-semantics")
+
+    assessment = _assessment(run_dir.name, ambiguous=True)
+    assessment["questions"][0]["selection_basis"] = "declared_assumption"
+    atomic_json(run_dir / "review" / "OBJECTIVE_SEMANTICS.json", assessment)
+    (run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md").write_text(
+        "# 目标语义预审\n\n存在冲突聚合，选择求和作为建模假设。\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ContractError, match=r"用户裁决|绕过"):
+        import_objective_semantics_review(
+            run_dir,
+            manifest_file=_manifest_relative(packet),
+            verdict="pass",
+            highest_severity="none",
+            reviewer_thread_id="objective-review-thread",
+        )

@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "run_id": "cumcm2025-a",
+  "packet_kind": "objective-semantics",
+  "packet_id": "objective-semantics-r0-20260723T175927.559116Z",
+  "source_roots": [
+    {
+      "source": "problem",
+      "packet": "problem",
+      "sha256": "223586ff8257259d033c95de741b077fd117a95876d94ec71a0542bdc5d16669"
+    }
+  ],
+  "files": [
+    {
+      "source": "problem/attachments/format2025.doc",
+      "packet": "problem/attachments/format2025.doc",
+      "sha256": "69fc08c6a446c08e7116be35e8f99986377255318971d63d691fc11a9013917a"
+    },
+    {
+      "source": "problem/attachments/附件/result1.xlsx",
+      "packet": "problem/attachments/附件/result1.xlsx",
+      "sha256": "af04b16e6a4719628971bcf5a03d230c9da6738e67eebac9276d254fdd4df1a7"
+    },
+    {
+      "source": "problem/attachments/附件/result2.xlsx",
+      "packet": "problem/attachments/附件/result2.xlsx",
+      "sha256": "c681d5e378538f71c77fca199a3ca8303a04dbcfc7bd95f870ae22f01ab69f91"
+    },
+    {
+      "source": "problem/attachments/附件/result3.xlsx",
+      "packet": "problem/attachments/附件/result3.xlsx",
+      "sha256": "b648c82d63e459ba6e6b3711ae79875e373521cd543b45571c4d8ff1ad5ec54a"
+    },
+    {
+      "source": "problem/rendered/page-1.png",
+      "packet": "problem/rendered/page-1.png",
+      "sha256": "3101631d72027de7eab6d473032d1f1b1f07b4c85398ea8789dc6600480489e5"
+    },
+    {
+      "source": "problem/statement.pdf",
+      "packet": "problem/statement.pdf",
+      "sha256": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447"
+    }
+  ],
+  "created_at": "2026-07-23T17:59:27.583950Z"
+}

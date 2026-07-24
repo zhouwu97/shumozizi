@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.2",
+  "run_id": "cumcm2025-a",
+  "result_id": "q5_quality_verified_revision3",
+  "question_id": "Q5",
+  "execution_mode": "production",
+  "adapter": {
+    "adapter_id": "cumcm2025a-independent-quality",
+    "adapter_version": "1.1",
+    "contract_file": "results/verification/q5_quality_verified_revision3.adapter.json",
+    "contract_sha256": "dc868e7480aa66a7332922c720abcff4209cd7178698c0c3d1f5a43017c5f704"
+  },
+  "stages": {
+    "candidate_generator": {
+      "result_id": "q5_quality_verified_revision3.candidate_generator",
+      "implementation_file": "code/quality_candidate_generator.py",
+      "implementation_sha256": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035",
+      "source_files": [
+        "code/quality_candidate_generator.py"
+      ],
+      "source_hashes": {
+        "code/quality_candidate_generator.py": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035"
+      },
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q5 results/raw/q5.json results/raw/q5.quality.candidates.json",
+      "command_sha256": "a12b6aff0f7d4d20256058d938b1cdd9bf8b5ea76b715bbfa3c2e4737693007c",
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_file": "results/raw/q5.quality.candidates.json",
+      "output_sha256": "faecd8aa670ae93db62cc669bc25199c0a11d3c4a34448ede329a7c050366215",
+      "artifact_hashes": {}
+    },
+    "exact_scorer": {
+      "result_id": "q5_quality_verified_revision3",
+      "implementation_file": "code/quality_exact_scorer.py",
+      "implementation_sha256": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76",
+      "source_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py"
+      ],
+      "source_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76"
+      },
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q5 results/raw/q5.quality.candidates.json results/raw/q5.json results/raw/q5.quality.exact.json",
+      "command_sha256": "836e370e8f51267e3ba59ebc1e0c4491a7c0db4d38166a302f82e4f760d8fe23",
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76",
+        "results/raw/q5.quality.candidates.json": "faecd8aa670ae93db62cc669bc25199c0a11d3c4a34448ede329a7c050366215",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_file": "results/raw/q5.quality.exact.json",
+      "output_sha256": "147bd91e6bb4fa5fe37474ac8963e7c3784cf2e107655328c9623522d4383a4c",
+      "artifact_hashes": {}
+    },
+    "search_auditor": {
+      "result_id": "q5_quality_verified_revision3.search_auditor",
+      "implementation_file": "code/quality_search_auditor.py",
+      "implementation_sha256": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae",
+      "source_files": [
+        "code/quality_search_auditor.py"
+      ],
+      "source_hashes": {
+        "code/quality_search_auditor.py": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae"
+      },
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q5 results/raw/q5.quality.candidates.json results/raw/q5.quality.exact.json results/raw/q5.json results/raw/q5.quality.audit.json",
+      "command_sha256": "8523727cf27cb072e3da1da423449d532d2abf79641e095796c0e6783cb68de5",
+      "input_hashes": {
+        "code/quality_search_auditor.py": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae",
+        "results/raw/q5.quality.candidates.json": "faecd8aa670ae93db62cc669bc25199c0a11d3c4a34448ede329a7c050366215",
+        "results/raw/q5.quality.exact.json": "147bd91e6bb4fa5fe37474ac8963e7c3784cf2e107655328c9623522d4383a4c",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_file": "results/raw/q5.quality.audit.json",
+      "output_sha256": "e885efaf9fc2ab5c902fc8f6d52595a0806743ec4df14b462bcbef48cb25184f",
+      "artifact_hashes": {}
+    }
+  },
+  "created_at": "2026-07-24T00:48:01.619780Z"
+}

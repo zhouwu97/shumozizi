@@ -230,6 +230,9 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self.assertNotIn("results/quality.json", copied)
             self.assertFalse(any(path.startswith("state/") for path in copied))
             self.assertFalse(any(path.startswith("qa/") for path in copied))
+            # 回归：results/raw 下含 quality 标签的文件也应被排除
+            quality_labeled = {path for path in copied if "quality" in path}
+            self.assertFalse(quality_labeled, f"quality-labeled files leaked: {quality_labeled}")
             with self.assertRaisesRegex(ContractError, "独立科学红队"):
                 update_simple_state(run_dir, phase="visualization")
 

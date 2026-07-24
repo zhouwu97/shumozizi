@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "manifest": "../../MATERIALS_MANIFEST.json",
+  "validated_at_local": "2026-07-24",
+  "algorithm": "SHA256",
+  "all_passed": true,
+  "materials": [
+    {
+      "path": "problem-materials/A题.pdf",
+      "size_bytes": 286520,
+      "sha256": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+      "passed": true
+    },
+    {
+      "path": "problem-materials/附件/result1.xlsx",
+      "size_bytes": 10316,
+      "sha256": "af04b16e6a4719628971bcf5a03d230c9da6738e67eebac9276d254fdd4df1a7",
+      "passed": true
+    },
+    {
+      "path": "problem-materials/附件/result2.xlsx",
+      "size_bytes": 10438,
+      "sha256": "c681d5e378538f71c77fca199a3ca8303a04dbcfc7bd95f870ae22f01ab69f91",
+      "passed": true
+    },
+    {
+      "path": "problem-materials/附件/result3.xlsx",
+      "size_bytes": 9763,
+      "sha256": "b648c82d63e459ba6e6b3711ae79875e373521cd543b45571c4d8ff1ad5ec54a",
+      "passed": true
+    },
+    {
+      "path": "problem-materials/format2025.doc",
+      "size_bytes": 70144,
+      "sha256": "69fc08c6a446c08e7116be35e8f99986377255318971d63d691fc11a9013917a",
+      "passed": true
+    }
+  ]
+}

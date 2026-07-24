@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.2",
+  "run_id": "cumcm2025-a",
+  "result_id": "q1_quality_verified",
+  "question_id": "Q1",
+  "execution_mode": "production",
+  "adapter": {
+    "adapter_id": "cumcm2025a-independent-quality",
+    "adapter_version": "1.0",
+    "contract_file": "results/verification/q1_quality_verified.adapter.json",
+    "contract_sha256": "a5570e7e5ac1b24fcd3193597636bb30fd899aa6e047fe5ddc3ea386fc20ada6"
+  },
+  "stages": {
+    "candidate_generator": {
+      "result_id": "q1_quality_verified.candidate_generator",
+      "implementation_file": "code/quality_candidate_generator.py",
+      "implementation_sha256": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c",
+      "source_files": [
+        "code/quality_candidate_generator.py"
+      ],
+      "source_hashes": {
+        "code/quality_candidate_generator.py": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c"
+      },
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q1 results/raw/q1.json results/raw/q1.quality.candidates.json",
+      "command_sha256": "bebfdff56870341ff764d42bb7263158a52c209f1846c8764720946d286bba41",
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "output_file": "results/raw/q1.quality.candidates.json",
+      "output_sha256": "6ab703fc24cdaebf16d02eca660dd0531db002f3ecd12779df40356459bc760a",
+      "artifact_hashes": {}
+    },
+    "exact_scorer": {
+      "result_id": "q1_quality_verified",
+      "implementation_file": "code/quality_exact_scorer.py",
+      "implementation_sha256": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e",
+      "source_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py"
+      ],
+      "source_hashes": {
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/quality_exact_scorer.py": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e"
+      },
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.json results/raw/q1.quality.exact.json",
+      "command_sha256": "3d46bb8a1f282c82c24fd6705e4986a4f715d0184aa1af7223b267bb73386c34",
+      "input_hashes": {
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/quality_exact_scorer.py": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e",
+        "results/raw/q1.quality.candidates.json": "6ab703fc24cdaebf16d02eca660dd0531db002f3ecd12779df40356459bc760a",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "output_file": "results/raw/q1.quality.exact.json",
+      "output_sha256": "4c2cf715855d229a46b4486790903eb7e1c4e8e5f3bef6f1b106be6c067af469",
+      "artifact_hashes": {}
+    },
+    "search_auditor": {
+      "result_id": "q1_quality_verified.search_auditor",
+      "implementation_file": "code/quality_search_auditor.py",
+      "implementation_sha256": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8",
+      "source_files": [
+        "code/quality_search_auditor.py"
+      ],
+      "source_hashes": {
+        "code/quality_search_auditor.py": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8"
+      },
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.quality.exact.json results/raw/q1.json results/raw/q1.quality.audit.json",
+      "command_sha256": "522b09b6a501bf33e39aa7000fdbb09e863ba4f3f7194838affc31b2316512f5",
+      "input_hashes": {
+        "code/quality_search_auditor.py": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8",
+        "results/raw/q1.quality.candidates.json": "6ab703fc24cdaebf16d02eca660dd0531db002f3ecd12779df40356459bc760a",
+        "results/raw/q1.quality.exact.json": "4c2cf715855d229a46b4486790903eb7e1c4e8e5f3bef6f1b106be6c067af469",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "output_file": "results/raw/q1.quality.audit.json",
+      "output_sha256": "8905452f144a90952bc35a50e224a040fe8d786acd5c2761050a3701ef1cb974",
+      "artifact_hashes": {}
+    }
+  },
+  "created_at": "2026-07-23T19:39:21.599178Z"
+}

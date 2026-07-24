@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "renderer": "MATLAB exportgraphics",
+  "engine": "24.1.0.2537033 (R2024a)",
+  "source_script": "code/matlab/q5_action_count_oracle.m",
+  "output_file": "figures/matlab_q5_action_count_challenge.png",
+  "output_bytes": 125231,
+  "generated_at": "2026-07-24T00:36:11.437Z"
+}

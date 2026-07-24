@@ -38,6 +38,8 @@ def main() -> int:
     parser.add_argument("--competition-strength", choices=("weak", "qualified", "strong", "unknown"))
     parser.add_argument("--full-rerun-required", action="store_true")
     parser.add_argument("--affected-question", action="append", default=[])
+    parser.add_argument("--per-question", action="append", default=None,
+                        help="逐问 verdict 与 strength，格式: Q1=pass,strong Q3=needs_rework,weak")
     parser.add_argument("--assessment")
     parser.add_argument("--argumentation-complete", action="store_true")
     parser.add_argument("--readability-passed", action="store_true")
@@ -67,6 +69,31 @@ def main() -> int:
         elif args.kind == "scientific":
             if args.competition_strength is None:
                 parser.error("scientific 审查必须提供 --competition-strength")
+            # 逐问审查：格式为 "Q1=pass,strong" 用逗号分隔 verdict 和 strength
+            question_reviews = None
+            if args.per_question:
+                question_reviews = []
+                for entry in args.per_question:
+                    parts = entry.split("=", 1)
+                    if len(parts) != 2:
+                        parser.error(f"per-question 格式错误，应为 Q1=verdict,strength: {entry}")
+                    question_id = parts[0]
+                    verdict_strength = parts[1].rsplit(",", 1)
+                    if len(verdict_strength) != 2:
+                        parser.error(
+                            f"per-question verdict/strength 格式错误，"
+                            f"应为 verdict,strength: {parts[1]}"
+                        )
+                    q_verdict, q_strength = verdict_strength
+                    if q_verdict not in ("pass", "fail", "needs_rework", "revoked"):
+                        parser.error(f"per-question verdict 不合法: {q_verdict}")
+                    if q_strength not in ("weak", "qualified", "strong", "unknown"):
+                        parser.error(f"per-question competition_strength 不合法: {q_strength}")
+                    question_reviews.append({
+                        "question_id": question_id,
+                        "verdict": q_verdict,
+                        "competition_strength": q_strength,
+                    })
             summary = import_scientific_review(
                 root,
                 manifest_file=args.manifest,
@@ -77,6 +104,7 @@ def main() -> int:
                 affected_questions=args.affected_question,
                 reviewer_thread_id=args.thread_id,
                 report_file=Path(args.report) if args.report else Path("review/SCIENTIFIC_RED_TEAM.md"),
+                question_reviews=question_reviews,
             )
         elif args.kind == "paper-blind":
             summary = import_paper_blind_review(

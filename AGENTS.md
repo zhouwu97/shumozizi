@@ -17,9 +17,12 @@
 - `mathmodel-matlab`：MATLAB/Octave 的独立 oracle、优化挑战和三维证据图；
 - `mathmodel-visual`：按题型生成模型、搜索与结果的 Figure Contract；
 - `mathmodel-paper`：从真实 current 结果撰写和编译论文；
-- `mathmodel-red-team`：在全新 Codex 对话中执行科学红队或 PDF 盲审；
+- `mathmodel-red-team`：在全新 Codex 对话中执行目标语义预审、科学红队或 PDF 盲审；
 - `mathmodel-final-check`：独立盲审后的机械 QA 与追溯复验；
-- `mathmodel-learn-paper`：离线学习论文，不进入比赛主链。
+- `mathmodel-learn-paper`：离线学习论文，不进入比赛主链；
+- `mathmodel-geometry-visual`：按几何题要求绘制临界边界、投影与三维证据图；
+- `mathmodel-geometry-oracle`：独立几何公式/数值交叉验证；
+- `mathmodel-optimizer-benchmark`：为优化题提供多种子、同预算的搜索质量证据。
 
 用户只要求数据分析、调试代码或修改论文时，不得自动启动完整工作流。完整赛题由连续生产、独立科学红队、论文、独立 PDF 盲审和最终交付审核组成；目标语义预审、科学红队、PDF 盲审和最终审核必须各自新建 Codex 对话，不能复用求解或论文上下文。最终审核按数学建模竞赛论文标准自由判断，不能按表格勾选代替结论；论文必须直接收录完整 Python/MATLAB 源码文本，MATLAB 高风险路线还需正文使用 `.m` 生成的证明图。一次集中修订后的二次仍不通过即停止。
 
@@ -33,7 +36,7 @@ python scripts/codex/init_run.py <problem_path> `
 ```
 
 或使用 `scripts/codex/init_simple_run.py`。v3 状态只在
-`runs/<run-id>/state/run.json`，关键判断记录在 `state/DECISIONS.md`。它只保存进度、路线、下一步、预算和产物路径；不得保存科学是否通过、finding 是否关闭或任何审核状态。阶段必须依次经过 `analysis -> capability_route -> experiment -> scientific_review -> visualization -> paper -> paper_review -> verify -> complete`；`blocked` 只能回到 `analysis`、`capability_route` 或 `experiment`。独立审查的冻结包、报告和可机读摘要只允许存放在 `review/`，不写回 `run.json`。
+`runs/<run-id>/state/run.json`，关键判断记录在 `state/DECISIONS.md`。它只保存进度、路线、下一步、预算和产物路径；不得保存科学是否通过、finding 是否关闭或任何审核状态。阶段必须依次经过 `analysis -> capability_route -> experiment -> scientific_review -> visualization -> paper -> paper_review -> verify -> final_review -> complete`；`blocked` 只能回到 `analysis`、`capability_route` 或 `experiment`。独立审查的冻结包、报告和可机读摘要只允许存放在 `review/`，不写回 `run.json`。
 
 `capability_route` 先冻结工具探测、主能力、至多两个交叉能力、独立验证能力和至多五项本地知识资产；几何/机理题必须有独立 oracle，并在进入 `scientific_review` 前以 `kind=independent-oracle` 实际运行、登记相应的 `.py` 或 `.m` 源码。`scientific_review` 必须由新对话只读取 `review/packet/scientific/`：从题面独立重建问题，攻击最高风险模型原语与搜索区域，检查共模错误和下游继承。通过后先进入 `visualization`，完成按题型要求的模型、搜索和结果证据图及完整模板实例化，才可写论文。`paper_review` 必须由另一个新对话只读取 `review/packet/paper-blind/`，初始不可见源码、科学审查和质量标签；PDF 变更会使盲审失效。`verify` 只执行机械 QA，不能重新定义科学正确性。
 

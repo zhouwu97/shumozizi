@@ -1,0 +1,146 @@
+{
+  "schema_version": "1.0",
+  "question": "Q4",
+  "search": {
+    "algorithm": "multi-drone-differential-evolution",
+    "seeds": [
+      202504,
+      202514
+    ],
+    "selected_seed": "pre-revision-feasible-baseline",
+    "trials": [
+      {
+        "seed": 202504,
+        "evaluations": 2957,
+        "proxy_best_s": 10.24987314591932,
+        "exact_objective_s": 8.117224866664671,
+        "exact_lower_bound_s": 8.095731432724449
+      },
+      {
+        "seed": 202514,
+        "evaluations": 2957,
+        "proxy_best_s": 14.999814359881928,
+        "exact_objective_s": 11.255405462319585,
+        "exact_lower_bound_s": 11.22326180970257
+      },
+      {
+        "seed": "pre-revision-feasible-baseline",
+        "evaluations": 1,
+        "proxy_best_s": 15.49980817187799,
+        "exact_objective_s": 11.491355079385027,
+        "exact_lower_bound_s": 11.459112962221703
+      }
+    ],
+    "initial_population_size": 64,
+    "baseline_proxy_s": 10.24987314591932
+  },
+  "result": {
+    "durations_s": {
+      "M1": 11.491355079385027
+    },
+    "intervals_s": {
+      "M1": [
+        [
+          1.2683727841779966,
+          5.849688902106557
+        ],
+        [
+          10.54849068691523,
+          14.439325611182403
+        ],
+        [
+          23.60625297859531,
+          26.625457015784605
+        ]
+      ]
+    },
+    "objective_missile_s": 11.491355079385027,
+    "objective_lower_bound_missile_s": 11.459112962221703,
+    "objective_upper_bound_missile_s": 11.523631816839261,
+    "temporal_uncertainty_missile_s": 0.06451885461755857,
+    "min_duration_s": 11.491355079385027,
+    "diagnostics": {
+      "M1": {
+        "duration_s": 11.491355079385027,
+        "duration_lower_bound_s": 11.459112962221703,
+        "duration_upper_bound_s": 11.523631816839261,
+        "temporal_uncertainty_s": 0.06451885461755857,
+        "uncertain_cell_count": 464,
+        "function_evaluations": 8777,
+        "temporal_tolerance_s": 0.0002,
+        "temporal_lipschitz_mps": 303.0,
+        "temporal_method": "adaptive-lipschitz-interval-classification"
+      }
+    },
+    "actions": [
+      {
+        "drone": "FY1",
+        "heading_deg": 6.346111804588276,
+        "speed_mps": 118.36994381695882,
+        "release_time_s": 0.24865402370438616,
+        "fuse_delay_s": 0.5954877516203663,
+        "burst_time_s": 0.8441417753247524,
+        "release_point_m": [
+          17829.252805785676,
+          3.2533716363086524,
+          1800.0
+        ],
+        "burst_point_m": [
+          17899.308730425,
+          11.044691205680003,
+          1798.2624322545837
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY2",
+        "heading_deg": 276.40413276190856,
+        "speed_mps": 139.75543403026546,
+        "release_time_s": 3.741987702412821,
+        "fuse_delay_s": 5.967716380375645,
+        "burst_time_s": 9.709704082788466,
+        "release_point_m": [
+          12058.331626319266,
+          880.3002390510258,
+          1400.0
+        ],
+        "burst_point_m": [
+          12151.358816562297,
+          51.48383906854724,
+          1225.4931698966413
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY3",
+        "heading_deg": 90.53562451037284,
+        "speed_mps": 139.55366983823427,
+        "release_time_s": 17.909239157335207,
+        "fuse_delay_s": 4.335210981622374,
+        "burst_time_s": 22.244450138957582,
+        "release_point_m": [
+          5976.635855597401,
+          -500.80916119392214,
+          700.0
+        ],
+        "burst_point_m": [
+          5970.980199625613,
+          104.15900492298215,
+          607.9091341496218
+        ],
+        "assigned_missile": "M1"
+      }
+    ],
+    "target_semantics": "finite-cylinder-full-occlusion-by-spatial-union",
+    "target_sample_count": 1082,
+    "continuous_time_method": "adaptive-lipschitz-interval-classification",
+    "individual_durations_s": [
+      4.581298828124998,
+      3.89068603515625,
+      3.0194091796875
+    ]
+  },
+  "metrics": {
+    "duration_s": 11.491355079385027
+  }
+}

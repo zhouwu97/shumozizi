@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "question": "Q2",
+  "search": {
+    "algorithm": "scipy-differential-evolution-on-point-proxy",
+    "seed": 202501,
+    "evaluations": 8049,
+    "proxy_best_s": 4.832487810564553,
+    "baseline_proxy_s": 1.4350821019637436,
+    "baseline_exact_s": 1.3916455831734833,
+    "initial_population_size": 64,
+    "parameterization": "heading-speed-burst-time-delay-fraction",
+    "success": false,
+    "message": "Maximum number of iterations has been exceeded."
+  },
+  "result": {
+    "durations_s": {
+      "M1": 4.585611193169984
+    },
+    "intervals_s": {
+      "M1": [
+        [
+          0.9107722688315798,
+          5.496383462001564
+        ]
+      ]
+    },
+    "objective_missile_s": 4.585611193169984,
+    "min_duration_s": 4.585611193169984,
+    "diagnostics": {
+      "M1": {
+        "duration_s": 4.585611193169984,
+        "root_count": 2,
+        "function_evaluations": 1695,
+        "bracket_step_s": 0.04
+      }
+    },
+    "actions": [
+      {
+        "drone": "FY1",
+        "heading_deg": 6.9084480840368805,
+        "speed_mps": 139.94044349663437,
+        "release_time_s": 2.476970794296207e-05,
+        "fuse_delay_s": 0.7135656360524383,
+        "burst_time_s": 0.7135904057603812,
+        "release_point_m": [
+          17800.003441117366,
+          0.00041693577858640206,
+          1800.0
+        ],
+        "burst_point_m": [
+          17899.135134898086,
+          12.011500987520815,
+          1797.5050380069208
+        ],
+        "assigned_missile": "M1"
+      }
+    ],
+    "target_semantics": "finite-cylinder-full-occlusion-by-spatial-union",
+    "target_sample_count": 1082,
+    "continuous_time_method": "event-partition-plus-brent-root-refinement"
+  },
+  "metrics": {
+    "duration_s": 4.585611193169984
+  }
+}

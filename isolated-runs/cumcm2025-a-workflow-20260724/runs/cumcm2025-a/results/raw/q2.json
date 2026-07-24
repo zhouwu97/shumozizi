@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "question": "Q2",
+  "search": {
+    "algorithm": "scipy-differential-evolution-on-point-proxy",
+    "seeds": [
+      202501,
+      202511
+    ],
+    "selected_seed": "pre-revision-feasible-baseline",
+    "trials": [
+      {
+        "seed": 202501,
+        "evaluations": 1925,
+        "proxy_best_s": 3.999950495968514,
+        "success": true,
+        "message": "Optimization terminated successfully.",
+        "exact_objective_s": 3.73321533203125,
+        "exact_lower_bound_s": 3.72650146484375
+      },
+      {
+        "seed": 202511,
+        "evaluations": 1685,
+        "proxy_best_s": 4.749941213962611,
+        "success": true,
+        "message": "Optimization terminated successfully.",
+        "exact_objective_s": 4.558868408203125,
+        "exact_lower_bound_s": 4.54803466796875
+      },
+      {
+        "seed": "pre-revision-feasible-baseline",
+        "evaluations": 1,
+        "proxy_best_s": 4.74994121396261,
+        "success": true,
+        "message": "红队冻结包可行基线参与同一 exact 复排",
+        "exact_objective_s": 4.585723876953125,
+        "exact_lower_bound_s": 4.574432373046875
+      }
+    ],
+    "baseline_proxy_s": 1.4999814359881922,
+    "baseline_exact_s": 1.391754150390625,
+    "initial_population_size": 48,
+    "parameterization": "heading-speed-burst-time-delay-fraction"
+  },
+  "result": {
+    "durations_s": {
+      "M1": 4.585723876953125
+    },
+    "intervals_s": {
+      "M1": [
+        [
+          0.9107339604478812,
+          5.496457837401007
+        ]
+      ]
+    },
+    "objective_missile_s": 4.585723876953125,
+    "objective_lower_bound_missile_s": 4.574432373046875,
+    "objective_upper_bound_missile_s": 4.59686279296875,
+    "temporal_uncertainty_missile_s": 0.022430419921875,
+    "min_duration_s": 4.585723876953125,
+    "diagnostics": {
+      "M1": {
+        "duration_s": 4.585723876953125,
+        "duration_lower_bound_s": 4.574432373046875,
+        "duration_upper_bound_s": 4.59686279296875,
+        "temporal_uncertainty_s": 0.022430419921875,
+        "uncertain_cell_count": 147,
+        "function_evaluations": 2525,
+        "temporal_tolerance_s": 0.0002,
+        "temporal_lipschitz_mps": 303.0,
+        "temporal_method": "adaptive-lipschitz-interval-classification"
+      }
+    },
+    "actions": [
+      {
+        "drone": "FY1",
+        "heading_deg": 6.9084480840368805,
+        "speed_mps": 139.94044349663437,
+        "release_time_s": 2.476970794296207e-05,
+        "fuse_delay_s": 0.7135656360524383,
+        "burst_time_s": 0.7135904057603812,
+        "release_point_m": [
+          17800.003441117366,
+          0.00041693577858640206,
+          1800.0
+        ],
+        "burst_point_m": [
+          17899.135134898086,
+          12.011500987520815,
+          1797.5050380069208
+        ],
+        "assigned_missile": "M1"
+      }
+    ],
+    "target_semantics": "finite-cylinder-full-occlusion-by-spatial-union",
+    "target_sample_count": 1082,
+    "continuous_time_method": "adaptive-lipschitz-interval-classification"
+  },
+  "metrics": {
+    "duration_s": 4.585723876953125
+  }
+}

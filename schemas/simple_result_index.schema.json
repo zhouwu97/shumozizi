@@ -40,6 +40,7 @@
           },
           "status": {"enum": ["current", "superseded", "failed", "diagnostic"]},
           "execution_mode": {"enum": ["production", "exploration"]},
+          "objective_semantics_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
           "execution_valid": {"type": "boolean"},
           "exit_code": {"type": "integer"},
           "stdout_path": {"type": "string", "minLength": 1},

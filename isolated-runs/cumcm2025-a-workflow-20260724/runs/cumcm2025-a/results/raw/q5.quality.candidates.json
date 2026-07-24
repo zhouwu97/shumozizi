@@ -1,0 +1,589 @@
+{
+  "schema_name": "candidate_generation",
+  "adapter_id": "cumcm2025a-independent-quality",
+  "adapter_version": "1.1",
+  "candidate_variables": [
+    "action_count",
+    "seed"
+  ],
+  "candidates": [
+    {
+      "id": "seed_202505_count_0",
+      "coordinates": {
+        "action_count": 0.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 0.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 0.0,
+      "role": "baseline"
+    },
+    {
+      "id": "seed_202505_count_1",
+      "coordinates": {
+        "action_count": 1.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 1.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 4.1827392578125,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_2",
+      "coordinates": {
+        "action_count": 2.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 2.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 5.948456198872325,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_3",
+      "coordinates": {
+        "action_count": 3.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 3.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 7.977456930917591,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_4",
+      "coordinates": {
+        "action_count": 4.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 4.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 11.553325575505827,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_5",
+      "coordinates": {
+        "action_count": 5.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 5.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 11.553325575505827,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_6",
+      "coordinates": {
+        "action_count": 6.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 6.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 14.451464625906263,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_7",
+      "coordinates": {
+        "action_count": 7.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 7.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 17.849190491170006,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_8",
+      "coordinates": {
+        "action_count": 8.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 8.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 19.665894331782024,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_9",
+      "coordinates": {
+        "action_count": 9.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 9.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 22.108740547725926,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_10",
+      "coordinates": {
+        "action_count": 10.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 10.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 24.01843891027106,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_11",
+      "coordinates": {
+        "action_count": 11.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 11.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 26.467209609732087,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_12",
+      "coordinates": {
+        "action_count": 12.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 12.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 26.70554534687807,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_13",
+      "coordinates": {
+        "action_count": 13.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 13.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 28.83660466793865,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_14",
+      "coordinates": {
+        "action_count": 14.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 14.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 30.552420185693407,
+      "role": "search"
+    },
+    {
+      "id": "seed_202505_count_15",
+      "coordinates": {
+        "action_count": 15.0,
+        "seed": 202505.0
+      },
+      "parameters": {
+        "action_count": 15.0,
+        "seed": 202505.0
+      },
+      "proxy_value": 30.552445633454838,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_0",
+      "coordinates": {
+        "action_count": 0.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 0.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 0.0,
+      "role": "baseline"
+    },
+    {
+      "id": "seed_202506_count_1",
+      "coordinates": {
+        "action_count": 1.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 1.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 3.2244873046875,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_2",
+      "coordinates": {
+        "action_count": 2.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 2.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 6.104827133668608,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_3",
+      "coordinates": {
+        "action_count": 3.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 3.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 7.181341565271115,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_4",
+      "coordinates": {
+        "action_count": 4.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 4.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 10.882510538881718,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_5",
+      "coordinates": {
+        "action_count": 5.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 5.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 11.233208380873466,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_6",
+      "coordinates": {
+        "action_count": 6.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 6.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 14.655034113079395,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_7",
+      "coordinates": {
+        "action_count": 7.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 7.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 17.492340356394287,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_8",
+      "coordinates": {
+        "action_count": 8.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 8.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 18.39033568271571,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_9",
+      "coordinates": {
+        "action_count": 9.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 9.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 20.90368591401059,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_10",
+      "coordinates": {
+        "action_count": 10.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 10.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 23.87179284121129,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_11",
+      "coordinates": {
+        "action_count": 11.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 11.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 26.34244242286601,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_12",
+      "coordinates": {
+        "action_count": 12.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 12.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 28.107785344608626,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_13",
+      "coordinates": {
+        "action_count": 13.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 13.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 30.21049570365276,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_14",
+      "coordinates": {
+        "action_count": 14.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 14.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 30.552420185693407,
+      "role": "search"
+    },
+    {
+      "id": "seed_202506_count_15",
+      "coordinates": {
+        "action_count": 15.0,
+        "seed": 202506.0
+      },
+      "parameters": {
+        "action_count": 15.0,
+        "seed": 202506.0
+      },
+      "proxy_value": 30.552688947337252,
+      "role": "search"
+    }
+  ],
+  "search_trace": [
+    {
+      "step": 0,
+      "candidate_id": "seed_202505_count_0",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 1,
+      "candidate_id": "seed_202505_count_1",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 2,
+      "candidate_id": "seed_202505_count_2",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 3,
+      "candidate_id": "seed_202505_count_3",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 4,
+      "candidate_id": "seed_202505_count_4",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 5,
+      "candidate_id": "seed_202505_count_5",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 6,
+      "candidate_id": "seed_202505_count_6",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 7,
+      "candidate_id": "seed_202505_count_7",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 8,
+      "candidate_id": "seed_202505_count_8",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 9,
+      "candidate_id": "seed_202505_count_9",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 10,
+      "candidate_id": "seed_202505_count_10",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 11,
+      "candidate_id": "seed_202505_count_11",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 12,
+      "candidate_id": "seed_202505_count_12",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 13,
+      "candidate_id": "seed_202505_count_13",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 14,
+      "candidate_id": "seed_202505_count_14",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 15,
+      "candidate_id": "seed_202505_count_15",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 16,
+      "candidate_id": "seed_202506_count_0",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 17,
+      "candidate_id": "seed_202506_count_1",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 18,
+      "candidate_id": "seed_202506_count_2",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 19,
+      "candidate_id": "seed_202506_count_3",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 20,
+      "candidate_id": "seed_202506_count_4",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 21,
+      "candidate_id": "seed_202506_count_5",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 22,
+      "candidate_id": "seed_202506_count_6",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 23,
+      "candidate_id": "seed_202506_count_7",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 24,
+      "candidate_id": "seed_202506_count_8",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 25,
+      "candidate_id": "seed_202506_count_9",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 26,
+      "candidate_id": "seed_202506_count_10",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 27,
+      "candidate_id": "seed_202506_count_11",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 28,
+      "candidate_id": "seed_202506_count_12",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 29,
+      "candidate_id": "seed_202506_count_13",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 30,
+      "candidate_id": "seed_202506_count_14",
+      "event": "action_count_challenge"
+    },
+    {
+      "step": 31,
+      "candidate_id": "seed_202506_count_15",
+      "event": "action_count_challenge"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.2",
+  "problem_families": [
+    "geometry_kinematics",
+    "optimization"
+  ],
+  "capabilities": [
+    {
+      "id": "continuous-cylinder-occlusion",
+      "reason": "有限圆柱、有限视线段与烟幕球联合覆盖直接决定每个有效时刻。"
+    },
+    {
+      "id": "event-root-isolation",
+      "reason": "遮挡状态在生效端点、切线和几何裕量零点变化，必须连续定位区间。"
+    },
+    {
+      "id": "variable-cardinality-search",
+      "reason": "Q5 动作数为零至十五且目标非光滑，需要激活、插入和多种子挑战。"
+    }
+  ],
+  "visual_evidence": {
+    "spatial_structure_affects_conclusion": true,
+    "reason": "导弹、有限圆柱、烟幕球和左右临界端点的空间关系决定遮挡判定。"
+  },
+  "verification_capability": {
+    "id": "matlab-quadratic-segment-oracle",
+    "reason": "MATLAB 用线段代入球面二次方程和端点内含独立复算 Python 投影裁剪。"
+  },
+  "toolchain": {
+    "production_engine": "python",
+    "independent_engine": "matlab",
+    "independence_strategy": "alternative_language",
+    "requirements": [],
+    "requirement_receipts": []
+  },
+  "knowledge_assets": [
+    {
+      "path": "knowledge/cards/structural-preflight.json",
+      "sha256": "2fc64c530c32fcf576ed3284532c231a86b99b29c51959bc6ad03317361d83bd"
+    },
+    {
+      "path": "knowledge/model-selection-matrix.md",
+      "sha256": "299c70be9a9798136cb2efc6db4d7b40f30d7bf36976f626263b4da376c1fcf8"
+    },
+    {
+      "path": "knowledge/cards/structured-optimization.json",
+      "sha256": "74c4db0a9b5e49bbca35c590571d67d948d9f860ca9e9d58cc2ef294b782fe8c"
+    },
+    {
+      "path": "knowledge/cards/sparse-nonsmooth-search.json",
+      "sha256": "09eb3c4cc87fe62e16f52cc589b2411ad02f2de74f56a85cb14c51ec85442652"
+    }
+  ],
+  "run_id": "cumcm2025-a",
+  "status": "ready",
+  "created_at": "2026-07-23T18:25:51.138403Z",
+  "tooling_sha256": "38779178db791364b06d8bad3250a28552f44d118dfaf449cadcf238a110c6d9"
+}

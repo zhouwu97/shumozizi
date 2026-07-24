@@ -1,0 +1,8 @@
+{
+  "reasons": [
+    "conditional_pass with unresolved P1",
+    "assessment does not conform to objective_semantics_assessment schema"
+  ],
+  "reviewer_thread_id": "019f9022-5786-7dd0-b419-ba7de7155c5b",
+  "outcome": "not_importable"
+}

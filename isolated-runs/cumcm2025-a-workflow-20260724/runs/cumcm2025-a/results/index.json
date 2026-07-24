@@ -1,0 +1,3488 @@
+{
+  "schema_version": "1.0",
+  "run_id": "cumcm2025-a",
+  "results": [
+    {
+      "result_id": "q1_primary",
+      "question_id": "Q1",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q1",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "b862c328706f91a65925faf06257e0dea96f3840c2dd54d429257fff53ce69b1",
+        "code/solve_questions.py": "7dcf245239c25334ce98797ec064d0dd6bf74177b474982c315125183177b14c"
+      },
+      "output_files": [],
+      "output_hashes": {},
+      "metrics": {},
+      "metric_sources": {},
+      "status": "failed",
+      "execution_mode": "production",
+      "execution_valid": false,
+      "exit_code": 1,
+      "stdout_path": "results/raw/q1_primary.stdout.log",
+      "stderr_path": "results/raw/q1_primary.stderr.log",
+      "started_at": "2026-07-23T18:30:54.611804Z",
+      "finished_at": "2026-07-23T18:30:55.181826Z",
+      "duration_seconds": 0.563,
+      "error": "命令退出码为 1",
+      "created_at": "2026-07-23T18:30:55.243055Z"
+    },
+    {
+      "result_id": "q1_primary_r1",
+      "question_id": "Q1",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q1",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/solve_questions.py": "7dcf245239c25334ce98797ec064d0dd6bf74177b474982c315125183177b14c"
+      },
+      "output_files": [
+        "results/raw/q1.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "metrics": {
+        "duration_s": 1.3916455831763876,
+        "left_endpoint_s": 8.056442575533701,
+        "right_endpoint_s": 9.448088158710089
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q1.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+        },
+        "left_endpoint_s": {
+          "file": "results/raw/q1.json",
+          "json_path": "metrics.left_endpoint_s",
+          "file_sha256": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+        },
+        "right_endpoint_s": {
+          "file": "results/raw/q1.json",
+          "json_path": "metrics.right_endpoint_s",
+          "file_sha256": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_primary_r1.stdout.log",
+      "stderr_path": "results/raw/q1_primary_r1.stderr.log",
+      "started_at": "2026-07-23T18:31:26.258108Z",
+      "finished_at": "2026-07-23T18:31:27.091145Z",
+      "duration_seconds": 0.828,
+      "error": null,
+      "created_at": "2026-07-23T18:31:27.162330Z"
+    },
+    {
+      "result_id": "q1_matlab_oracle",
+      "question_id": "Q1",
+      "kind": "independent-oracle",
+      "source_script": null,
+      "command": "matlab -batch \"run('code/matlab/q1_geometry_oracle.m')\"",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "output_files": [],
+      "output_hashes": {},
+      "metrics": {},
+      "metric_sources": {},
+      "status": "failed",
+      "execution_mode": "production",
+      "execution_valid": false,
+      "exit_code": 1,
+      "stdout_path": "results/raw/q1_matlab_oracle.stdout.log",
+      "stderr_path": "results/raw/q1_matlab_oracle.stderr.log",
+      "started_at": "2026-07-23T18:33:33.633256Z",
+      "finished_at": "2026-07-23T18:33:42.923307Z",
+      "duration_seconds": 9.297,
+      "error": "命令退出码为 1",
+      "created_at": "2026-07-23T18:33:42.983499Z"
+    },
+    {
+      "result_id": "q1_matlab_oracle_r1",
+      "question_id": "Q1",
+      "kind": "independent-oracle",
+      "source_script": "code/matlab/q1_geometry_oracle.m",
+      "command": "code/run_matlab_oracle.cmd code/matlab/q1_geometry_oracle.m",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q1.json",
+        "code/run_matlab_oracle.cmd",
+        "code/matlab/q1_geometry_oracle.m"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f",
+        "code/run_matlab_oracle.cmd": "7c11cef93cae8259dba5bfd3b3bc598281f86e03fee234537f3622d6b55ca26d",
+        "code/matlab/q1_geometry_oracle.m": "719170f270db1c8fa1f15f71cfafd37ea45da13ccb315fed72a942c675756c8a"
+      },
+      "output_files": [],
+      "output_hashes": {},
+      "metrics": {},
+      "metric_sources": {},
+      "status": "failed",
+      "execution_mode": "production",
+      "execution_valid": false,
+      "exit_code": 1,
+      "stdout_path": "results/raw/q1_matlab_oracle_r1.stdout.log",
+      "stderr_path": "results/raw/q1_matlab_oracle_r1.stderr.log",
+      "started_at": "2026-07-23T18:34:47.982358Z",
+      "finished_at": "2026-07-23T18:34:47.984477Z",
+      "duration_seconds": 0.0,
+      "error": "命令无法执行: [WinError 2] 系统找不到指定的文件。",
+      "created_at": "2026-07-23T18:34:48.054289Z"
+    },
+    {
+      "result_id": "q1_matlab_oracle_r2",
+      "question_id": "Q1",
+      "kind": "independent-oracle",
+      "source_script": "code/matlab/q1_geometry_oracle.m",
+      "command": "cmd /c code/run_matlab_oracle.cmd code/matlab/q1_geometry_oracle.m",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q1.json",
+        "code/run_matlab_oracle.cmd",
+        "code/matlab/q1_geometry_oracle.m"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f",
+        "code/run_matlab_oracle.cmd": "7c11cef93cae8259dba5bfd3b3bc598281f86e03fee234537f3622d6b55ca26d",
+        "code/matlab/q1_geometry_oracle.m": "719170f270db1c8fa1f15f71cfafd37ea45da13ccb315fed72a942c675756c8a"
+      },
+      "output_files": [],
+      "output_hashes": {},
+      "metrics": {},
+      "metric_sources": {},
+      "status": "failed",
+      "execution_mode": "production",
+      "execution_valid": false,
+      "exit_code": 1,
+      "stdout_path": "results/raw/q1_matlab_oracle_r2.stdout.log",
+      "stderr_path": "results/raw/q1_matlab_oracle_r2.stderr.log",
+      "started_at": "2026-07-23T18:35:08.060730Z",
+      "finished_at": "2026-07-23T18:35:09.292064Z",
+      "duration_seconds": 1.234,
+      "error": "缺少预期输出: results/raw/q1_matlab_oracle.json, figures/matlab_q1_margin.png, figures/matlab_q1_endpoints.png",
+      "created_at": "2026-07-23T18:35:09.389782Z"
+    },
+    {
+      "result_id": "q1_matlab_oracle_r3",
+      "question_id": "Q1",
+      "kind": "independent-oracle",
+      "source_script": "code/matlab/q1_geometry_oracle.m",
+      "command": "cmd /c code\\run_matlab_oracle.cmd code\\matlab\\q1_geometry_oracle.m",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q1.json",
+        "code/run_matlab_oracle.cmd",
+        "code/matlab/q1_geometry_oracle.m"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f",
+        "code/run_matlab_oracle.cmd": "7c11cef93cae8259dba5bfd3b3bc598281f86e03fee234537f3622d6b55ca26d",
+        "code/matlab/q1_geometry_oracle.m": "719170f270db1c8fa1f15f71cfafd37ea45da13ccb315fed72a942c675756c8a"
+      },
+      "output_files": [
+        "results/raw/q1_matlab_oracle.json",
+        "figures/matlab_q1_margin.png",
+        "figures/matlab_q1_endpoints.png"
+      ],
+      "output_hashes": {
+        "results/raw/q1_matlab_oracle.json": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab",
+        "figures/matlab_q1_margin.png": "ca56a7d90ac4fa5e769cacb19cb940c5a8081eb200fd9b65cd600b1d76868104",
+        "figures/matlab_q1_endpoints.png": "403837b7d9bf64f1ec5c595af349924728e69ea9b95ec16a72d464dbca108b36"
+      },
+      "metrics": {
+        "left_endpoint_s": 8.056445490431958,
+        "right_endpoint_s": 9.44808815870171,
+        "duration_s": 1.3916426682697516,
+        "production_endpoint_max_abs_error_s": 2.914898256989318e-06
+      },
+      "metric_sources": {
+        "left_endpoint_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.left_endpoint_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        },
+        "right_endpoint_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.right_endpoint_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        },
+        "duration_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        },
+        "production_endpoint_max_abs_error_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.production_endpoint_max_abs_error_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        }
+      },
+      "status": "failed",
+      "execution_mode": "production",
+      "execution_valid": false,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_matlab_oracle_r3.stdout.log",
+      "stderr_path": "results/raw/q1_matlab_oracle_r3.stderr.log",
+      "started_at": "2026-07-23T18:36:22.711765Z",
+      "finished_at": "2026-07-23T18:36:41.037208Z",
+      "duration_seconds": 18.328,
+      "error": "历史 superseded oracle 的源码哈希已漂移，禁止参与当前独立验证",
+      "created_at": "2026-07-23T18:36:41.115997Z"
+    },
+    {
+      "result_id": "q1_matlab_oracle_r4",
+      "question_id": "Q1",
+      "kind": "independent-oracle",
+      "source_script": "code/matlab/q1_geometry_oracle.m",
+      "command": "cmd /c code\\run_matlab_oracle.cmd code\\matlab\\q1_geometry_oracle.m",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q1.json",
+        "code/run_matlab_oracle.cmd",
+        "code/matlab/q1_geometry_oracle.m"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f",
+        "code/run_matlab_oracle.cmd": "7c11cef93cae8259dba5bfd3b3bc598281f86e03fee234537f3622d6b55ca26d",
+        "code/matlab/q1_geometry_oracle.m": "ce3d1cdf5e37dbe6284098352ccd089f6168bf833e95fbfd9bb4a8aca1315405"
+      },
+      "output_files": [
+        "results/raw/q1_matlab_oracle.json",
+        "figures/matlab_q1_margin.png",
+        "figures/matlab_q1_endpoints.png"
+      ],
+      "output_hashes": {
+        "results/raw/q1_matlab_oracle.json": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab",
+        "figures/matlab_q1_margin.png": "e928d00d1934f60f8427ecf5e1ed3583fb035d0fc0275d2e3142f5f6648bc97d",
+        "figures/matlab_q1_endpoints.png": "fc53e73e0fae72cb43916aaa6c2a96d19f1d7d64cabcb7b3e8c978fb5064cf53"
+      },
+      "metrics": {
+        "left_endpoint_s": 8.056445490431958,
+        "right_endpoint_s": 9.44808815870171,
+        "duration_s": 1.3916426682697516,
+        "production_endpoint_max_abs_error_s": 2.914898256989318e-06
+      },
+      "metric_sources": {
+        "left_endpoint_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.left_endpoint_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        },
+        "right_endpoint_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.right_endpoint_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        },
+        "duration_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        },
+        "production_endpoint_max_abs_error_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.production_endpoint_max_abs_error_s",
+          "file_sha256": "14e7712322ffde050620666e87be138f2d737d6e91fb0b2cc25c12915a832eab"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_matlab_oracle_r4.stdout.log",
+      "stderr_path": "results/raw/q1_matlab_oracle_r4.stderr.log",
+      "started_at": "2026-07-23T18:38:13.831411Z",
+      "finished_at": "2026-07-23T18:38:32.898428Z",
+      "duration_seconds": 19.063,
+      "error": null,
+      "created_at": "2026-07-23T18:38:32.981794Z"
+    },
+    {
+      "result_id": "q2_primary",
+      "question_id": "Q2",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q2",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/solve_questions.py": "7dcf245239c25334ce98797ec064d0dd6bf74177b474982c315125183177b14c"
+      },
+      "output_files": [
+        "results/raw/q2.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.json": "78608735acfc59f84c729adb138e4239c1c19dcd4c88c3b6ad4d48afdf13d5db"
+      },
+      "metrics": {
+        "duration_s": 0.0
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q2.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "78608735acfc59f84c729adb138e4239c1c19dcd4c88c3b6ad4d48afdf13d5db"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_primary.stdout.log",
+      "stderr_path": "results/raw/q2_primary.stderr.log",
+      "started_at": "2026-07-23T18:38:59.814758Z",
+      "finished_at": "2026-07-23T18:39:00.885989Z",
+      "duration_seconds": 1.063,
+      "error": null,
+      "created_at": "2026-07-23T18:39:00.955090Z"
+    },
+    {
+      "result_id": "q2_primary_r1",
+      "question_id": "Q2",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code\\solve_questions.py --question Q2",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/solve_questions.py": "840869e7a8658ff6e1398ee3ee4e84d00a8c7a2078aae36d3e83d6470c076614"
+      },
+      "output_files": [
+        "results/raw/q2.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.json": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f"
+      },
+      "metrics": {
+        "duration_s": 4.585611193169984
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q2.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_primary_r1.stdout.log",
+      "stderr_path": "results/raw/q2_primary_r1.stderr.log",
+      "started_at": "2026-07-23T18:46:53.199165Z",
+      "finished_at": "2026-07-23T18:47:54.966435Z",
+      "duration_seconds": 61.766,
+      "error": null,
+      "created_at": "2026-07-23T18:47:55.036016Z"
+    },
+    {
+      "result_id": "q3_primary",
+      "question_id": "Q3",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code\\solve_questions.py --question Q3",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/solve_questions.py": "81bce02a3f491c9a0704efcf4b8558cff6bba7221079e4b3a7aafc36dd76ac0c",
+        "results/raw/q2.json": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f"
+      },
+      "output_files": [
+        "results/raw/q3.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46"
+      },
+      "metrics": {
+        "duration_s": 6.4031594063295545
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q3.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_primary.stdout.log",
+      "stderr_path": "results/raw/q3_primary.stderr.log",
+      "started_at": "2026-07-23T18:50:59.554350Z",
+      "finished_at": "2026-07-23T18:54:10.189618Z",
+      "duration_seconds": 190.64,
+      "error": null,
+      "created_at": "2026-07-23T18:54:10.259861Z"
+    },
+    {
+      "result_id": "q4_primary",
+      "question_id": "Q4",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code\\solve_questions.py --question Q4",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/solve_questions.py": "81bce02a3f491c9a0704efcf4b8558cff6bba7221079e4b3a7aafc36dd76ac0c",
+        "results/raw/q2.json": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f"
+      },
+      "output_files": [
+        "results/raw/q4.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.json": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5"
+      },
+      "metrics": {
+        "duration_s": 11.491346511204792
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q4.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_primary.stdout.log",
+      "stderr_path": "results/raw/q4_primary.stderr.log",
+      "started_at": "2026-07-23T18:54:40.058020Z",
+      "finished_at": "2026-07-23T18:58:37.686288Z",
+      "duration_seconds": 237.625,
+      "error": null,
+      "created_at": "2026-07-23T18:58:37.757036Z"
+    },
+    {
+      "result_id": "q5_primary",
+      "question_id": "Q5",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code\\solve_questions.py --question Q5",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/solve_questions.py": "8bd57f57e7f8cfe5ef93d1976c46c900c0373aff01ff88154cde2867a26e6c47",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46"
+      },
+      "output_files": [
+        "results/raw/q5.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.json": "ba18767b3c70b14dba694b81515f9ad71c1ec51eb5fb266fd05d6ed39e0fb375"
+      },
+      "metrics": {
+        "objective_missile_s": 30.552798403427147,
+        "min_duration_s": 7.618544471196472,
+        "action_count": 15,
+        "duration_M1_s": 14.155865560711927,
+        "duration_M2_s": 8.77838837151875,
+        "duration_M3_s": 7.618544471196472
+      },
+      "metric_sources": {
+        "objective_missile_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.objective_missile_s",
+          "file_sha256": "ba18767b3c70b14dba694b81515f9ad71c1ec51eb5fb266fd05d6ed39e0fb375"
+        },
+        "min_duration_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.min_duration_s",
+          "file_sha256": "ba18767b3c70b14dba694b81515f9ad71c1ec51eb5fb266fd05d6ed39e0fb375"
+        },
+        "action_count": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.action_count",
+          "file_sha256": "ba18767b3c70b14dba694b81515f9ad71c1ec51eb5fb266fd05d6ed39e0fb375"
+        },
+        "duration_M1_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M1_s",
+          "file_sha256": "ba18767b3c70b14dba694b81515f9ad71c1ec51eb5fb266fd05d6ed39e0fb375"
+        },
+        "duration_M2_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M2_s",
+          "file_sha256": "ba18767b3c70b14dba694b81515f9ad71c1ec51eb5fb266fd05d6ed39e0fb375"
+        },
+        "duration_M3_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M3_s",
+          "file_sha256": "ba18767b3c70b14dba694b81515f9ad71c1ec51eb5fb266fd05d6ed39e0fb375"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_primary.stdout.log",
+      "stderr_path": "results/raw/q5_primary.stderr.log",
+      "started_at": "2026-07-23T19:05:58.290192Z",
+      "finished_at": "2026-07-23T19:09:45.064751Z",
+      "duration_seconds": 226.781,
+      "error": null,
+      "created_at": "2026-07-23T19:09:45.144457Z"
+    },
+    {
+      "result_id": "q5_primary_r1",
+      "question_id": "Q5",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code\\solve_questions.py --question Q5",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/solve_questions.py": "377637299dbe49e42b0d2087e9b2e129bb91d028412c5df879e44c79b0d273a4",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46"
+      },
+      "output_files": [
+        "results/raw/q5.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+      },
+      "metrics": {
+        "objective_missile_s": 30.55279840342665,
+        "min_duration_s": 7.618544471196465,
+        "action_count": 14,
+        "duration_M1_s": 14.155865560711604,
+        "duration_M2_s": 8.778388371518583,
+        "duration_M3_s": 7.618544471196465
+      },
+      "metric_sources": {
+        "objective_missile_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.objective_missile_s",
+          "file_sha256": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+        },
+        "min_duration_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.min_duration_s",
+          "file_sha256": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+        },
+        "action_count": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.action_count",
+          "file_sha256": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+        },
+        "duration_M1_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M1_s",
+          "file_sha256": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+        },
+        "duration_M2_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M2_s",
+          "file_sha256": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+        },
+        "duration_M3_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M3_s",
+          "file_sha256": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_primary_r1.stdout.log",
+      "stderr_path": "results/raw/q5_primary_r1.stderr.log",
+      "started_at": "2026-07-23T19:11:02.888295Z",
+      "finished_at": "2026-07-23T19:14:49.985521Z",
+      "duration_seconds": 227.109,
+      "error": null,
+      "created_at": "2026-07-23T19:14:50.064789Z"
+    },
+    {
+      "result_id": "q5_matlab_oracle",
+      "question_id": "Q5",
+      "kind": "independent-oracle",
+      "source_script": "code/matlab/q5_action_count_oracle.m",
+      "command": "cmd /c code\\run_matlab_oracle.cmd code\\matlab\\q5_action_count_oracle.m",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q5.json",
+        "results/raw/q3.json",
+        "code/run_matlab_oracle.cmd",
+        "code/matlab/q5_action_count_oracle.m"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46",
+        "code/run_matlab_oracle.cmd": "7c11cef93cae8259dba5bfd3b3bc598281f86e03fee234537f3622d6b55ca26d",
+        "code/matlab/q5_action_count_oracle.m": "7dedaee0080ce23540896c8ec66ebce1b6cb8cd8fbb621901c46922b7d926854"
+      },
+      "output_files": [
+        "results/raw/q5_matlab_oracle.json",
+        "figures/matlab_q5_action_count_challenge.png",
+        "figures/matlab_q5_action_count_challenge.render.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5_matlab_oracle.json": "b970e0c24f625f0e417b1a345f7e77ccc21c61b231de36d02b231729c4ba212f",
+        "figures/matlab_q5_action_count_challenge.png": "5f621cbcf3252d55513eaa8ceecb0fbd0cc3dce7536f9b21e0cb2ffd703a97e3",
+        "figures/matlab_q5_action_count_challenge.render.json": "9781e5f77b1b961859a705c72a33c6377250bb2582d150e75c15b68bcef6ef86"
+      },
+      "metrics": {
+        "objective_13_missile_s": 30.210364260302548,
+        "objective_14_missile_s": 30.55279840366888,
+        "objective_15_missile_s": 30.55279840366888,
+        "gain_14_to_15_missile_s": 0,
+        "production_max_abs_error_missile_s": 2.4223112404797575e-10,
+        "step_refinement_max_abs_difference_missile_s": 4.934719299853896e-11
+      },
+      "metric_sources": {
+        "objective_13_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.objective_13_missile_s",
+          "file_sha256": "b970e0c24f625f0e417b1a345f7e77ccc21c61b231de36d02b231729c4ba212f"
+        },
+        "objective_14_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.objective_14_missile_s",
+          "file_sha256": "b970e0c24f625f0e417b1a345f7e77ccc21c61b231de36d02b231729c4ba212f"
+        },
+        "objective_15_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.objective_15_missile_s",
+          "file_sha256": "b970e0c24f625f0e417b1a345f7e77ccc21c61b231de36d02b231729c4ba212f"
+        },
+        "gain_14_to_15_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.gain_14_to_15_missile_s",
+          "file_sha256": "b970e0c24f625f0e417b1a345f7e77ccc21c61b231de36d02b231729c4ba212f"
+        },
+        "production_max_abs_error_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.production_max_abs_error_missile_s",
+          "file_sha256": "b970e0c24f625f0e417b1a345f7e77ccc21c61b231de36d02b231729c4ba212f"
+        },
+        "step_refinement_max_abs_difference_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.step_refinement_max_abs_difference_missile_s",
+          "file_sha256": "b970e0c24f625f0e417b1a345f7e77ccc21c61b231de36d02b231729c4ba212f"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_matlab_oracle.stdout.log",
+      "stderr_path": "results/raw/q5_matlab_oracle.stderr.log",
+      "started_at": "2026-07-23T19:17:55.370234Z",
+      "finished_at": "2026-07-23T19:18:10.388273Z",
+      "duration_seconds": 15.016,
+      "error": null,
+      "created_at": "2026-07-23T19:18:10.473626Z"
+    },
+    {
+      "result_id": "continuous_geometry_certificate",
+      "question_id": "ALL",
+      "kind": "robustness",
+      "source_script": "code/validate_continuous_geometry.py",
+      "command": "python code\\validate_continuous_geometry.py",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/validate_continuous_geometry.py",
+        "results/raw/q1.json",
+        "results/raw/q2.json",
+        "results/raw/q3.json",
+        "results/raw/q4.json",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/validate_continuous_geometry.py": "0b6c4f924a55b5e638822f39da8e604339c707a8e1fffaf89521f0fc57508aa3",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f",
+        "results/raw/q2.json": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46",
+        "results/raw/q4.json": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5",
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+      },
+      "output_files": [
+        "results/raw/continuous_geometry_certificate.json"
+      ],
+      "output_hashes": {
+        "results/raw/continuous_geometry_certificate.json": "2d1a6c2960e4e92dc674aa7811bbd4106d21da664e37a2b72d75bbb1fd8023ae"
+      },
+      "metrics": {
+        "surface_cover_radius_upper_bound_m": 0.3162203648061001,
+        "maximum_spatial_bound_width_missile_s": 0.9097398002414643,
+        "maximum_time_refinement_range_missile_s": 4.601297121098469e-11
+      },
+      "metric_sources": {
+        "surface_cover_radius_upper_bound_m": {
+          "file": "results/raw/continuous_geometry_certificate.json",
+          "json_path": "metrics.surface_cover_radius_upper_bound_m",
+          "file_sha256": "2d1a6c2960e4e92dc674aa7811bbd4106d21da664e37a2b72d75bbb1fd8023ae"
+        },
+        "maximum_spatial_bound_width_missile_s": {
+          "file": "results/raw/continuous_geometry_certificate.json",
+          "json_path": "metrics.maximum_spatial_bound_width_missile_s",
+          "file_sha256": "2d1a6c2960e4e92dc674aa7811bbd4106d21da664e37a2b72d75bbb1fd8023ae"
+        },
+        "maximum_time_refinement_range_missile_s": {
+          "file": "results/raw/continuous_geometry_certificate.json",
+          "json_path": "metrics.maximum_time_refinement_range_missile_s",
+          "file_sha256": "2d1a6c2960e4e92dc674aa7811bbd4106d21da664e37a2b72d75bbb1fd8023ae"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/continuous_geometry_certificate.stdout.log",
+      "stderr_path": "results/raw/continuous_geometry_certificate.stderr.log",
+      "started_at": "2026-07-23T19:21:17.302394Z",
+      "finished_at": "2026-07-23T19:21:42.050609Z",
+      "duration_seconds": 24.75,
+      "error": null,
+      "created_at": "2026-07-23T19:21:42.132494Z"
+    },
+    {
+      "result_id": "submission_tables",
+      "question_id": "ALL",
+      "kind": "submission",
+      "source_script": "code/fill_submission_tables.py",
+      "command": "python code\\fill_submission_tables.py",
+      "input_files": [
+        "problem/attachments/附件/result1.xlsx",
+        "problem/attachments/附件/result2.xlsx",
+        "problem/attachments/附件/result3.xlsx",
+        "results/raw/q3.json",
+        "results/raw/q4.json",
+        "results/raw/q5.json",
+        "code/fill_submission_tables.py"
+      ],
+      "input_hashes": {
+        "problem/attachments/附件/result1.xlsx": "af04b16e6a4719628971bcf5a03d230c9da6738e67eebac9276d254fdd4df1a7",
+        "problem/attachments/附件/result2.xlsx": "c681d5e378538f71c77fca199a3ca8303a04dbcfc7bd95f870ae22f01ab69f91",
+        "problem/attachments/附件/result3.xlsx": "b648c82d63e459ba6e6b3711ae79875e373521cd543b45571c4d8ff1ad5ec54a",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46",
+        "results/raw/q4.json": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5",
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab",
+        "code/fill_submission_tables.py": "ebb50824af3d533528d4362977549697d8b976ca25f596a54713d8fff0cc1164"
+      },
+      "output_files": [
+        "results/raw/submission_tables.json",
+        "submission/result1.xlsx",
+        "submission/result2.xlsx",
+        "submission/result3.xlsx"
+      ],
+      "output_hashes": {
+        "results/raw/submission_tables.json": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599",
+        "submission/result1.xlsx": "027cf2bd9f0f276cfd197cb1becfcf2cb6abe4512399371bcf19f5d8af068580",
+        "submission/result2.xlsx": "e2879bf65aebdbd1c544574a78a3ef1e76e07fd1e674d5ee1624fa6299edf4ae",
+        "submission/result3.xlsx": "0ea26f3743fdfc20359d3a4608f8c32697e99b3a7e5fa48b9f4d766418632063"
+      },
+      "metrics": {
+        "result1_filled_actions": 3,
+        "result2_filled_actions": 3,
+        "result3_filled_actions": 14
+      },
+      "metric_sources": {
+        "result1_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result1_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        },
+        "result2_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result2_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        },
+        "result3_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result3_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/submission_tables.stdout.log",
+      "stderr_path": "results/raw/submission_tables.stderr.log",
+      "started_at": "2026-07-23T19:28:06.327001Z",
+      "finished_at": "2026-07-23T19:28:06.697727Z",
+      "duration_seconds": 0.375,
+      "error": null,
+      "created_at": "2026-07-23T19:28:06.785357Z"
+    },
+    {
+      "result_id": "submission_tables_r1",
+      "question_id": "ALL",
+      "kind": "submission",
+      "source_script": "code/fill_submission_tables.py",
+      "command": "python code\\fill_submission_tables.py",
+      "input_files": [
+        "problem/attachments/附件/result1.xlsx",
+        "problem/attachments/附件/result2.xlsx",
+        "problem/attachments/附件/result3.xlsx",
+        "results/raw/q3.json",
+        "results/raw/q4.json",
+        "results/raw/q5.json",
+        "code/fill_submission_tables.py"
+      ],
+      "input_hashes": {
+        "problem/attachments/附件/result1.xlsx": "af04b16e6a4719628971bcf5a03d230c9da6738e67eebac9276d254fdd4df1a7",
+        "problem/attachments/附件/result2.xlsx": "c681d5e378538f71c77fca199a3ca8303a04dbcfc7bd95f870ae22f01ab69f91",
+        "problem/attachments/附件/result3.xlsx": "b648c82d63e459ba6e6b3711ae79875e373521cd543b45571c4d8ff1ad5ec54a",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46",
+        "results/raw/q4.json": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5",
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab",
+        "code/fill_submission_tables.py": "7f9a5199a562f088cac10afe4e194aa3389e319a2cc795034155edc2bf2a9420"
+      },
+      "output_files": [
+        "results/raw/submission_tables.json",
+        "submission/result1.xlsx",
+        "submission/result2.xlsx",
+        "submission/result3.xlsx"
+      ],
+      "output_hashes": {
+        "results/raw/submission_tables.json": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599",
+        "submission/result1.xlsx": "1cbc8b14a0dc4e4bb4727a1ac8fe2483d88618d33b8be94f9227fb236b23fc2e",
+        "submission/result2.xlsx": "09eeb19e4ad3ef42ec76cabb0b8f9a2cf6457f4fe449a707cf8083a15e5c670e",
+        "submission/result3.xlsx": "1d3dcd956f0cfbe4d780e55ba2813b84199fc8926689c68d1df906eb405068f6"
+      },
+      "metrics": {
+        "result1_filled_actions": 3,
+        "result2_filled_actions": 3,
+        "result3_filled_actions": 14
+      },
+      "metric_sources": {
+        "result1_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result1_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        },
+        "result2_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result2_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        },
+        "result3_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result3_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/submission_tables_r1.stdout.log",
+      "stderr_path": "results/raw/submission_tables_r1.stderr.log",
+      "started_at": "2026-07-23T19:29:46.965518Z",
+      "finished_at": "2026-07-23T19:29:47.328060Z",
+      "duration_seconds": 0.359,
+      "error": null,
+      "created_at": "2026-07-23T19:29:47.414848Z"
+    },
+    {
+      "result_id": "q1_quality_verified.candidate_generator",
+      "question_id": "Q1",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q1 results/raw/q1.json results/raw/q1.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "output_files": [
+        "results/raw/q1.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.candidates.json": "6ab703fc24cdaebf16d02eca660dd0531db002f3ecd12779df40356459bc760a"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified.candidate_generator.stderr.log",
+      "started_at": "2026-07-23T19:39:20.115762Z",
+      "finished_at": "2026-07-23T19:39:20.163362Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:20.229492Z"
+    },
+    {
+      "result_id": "q1_quality_verified",
+      "question_id": "Q1",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.json results/raw/q1.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/quality_exact_scorer.py": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e",
+        "results/raw/q1.quality.candidates.json": "6ab703fc24cdaebf16d02eca660dd0531db002f3ecd12779df40356459bc760a",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "output_files": [
+        "results/raw/q1.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.exact.json": "4c2cf715855d229a46b4486790903eb7e1c4e8e5f3bef6f1b106be6c067af469"
+      },
+      "metrics": {
+        "duration_s": 1.3916455831763876
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q1.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "4c2cf715855d229a46b4486790903eb7e1c4e8e5f3bef6f1b106be6c067af469"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified.stderr.log",
+      "started_at": "2026-07-23T19:39:20.359881Z",
+      "finished_at": "2026-07-23T19:39:21.221177Z",
+      "duration_seconds": 0.875,
+      "error": null,
+      "created_at": "2026-07-23T19:39:21.294217Z"
+    },
+    {
+      "result_id": "q1_quality_verified.search_auditor",
+      "question_id": "Q1",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.quality.exact.json results/raw/q1.json results/raw/q1.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.quality.exact.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8",
+        "results/raw/q1.quality.candidates.json": "6ab703fc24cdaebf16d02eca660dd0531db002f3ecd12779df40356459bc760a",
+        "results/raw/q1.quality.exact.json": "4c2cf715855d229a46b4486790903eb7e1c4e8e5f3bef6f1b106be6c067af469",
+        "results/raw/q1.json": "79fd599ff98b320fd089e97276217efcaa5a4e763abb5e34e9aa66be334a3e0f"
+      },
+      "output_files": [
+        "results/raw/q1.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.audit.json": "8905452f144a90952bc35a50e224a040fe8d786acd5c2761050a3701ef1cb974"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified.search_auditor.stderr.log",
+      "started_at": "2026-07-23T19:39:21.419678Z",
+      "finished_at": "2026-07-23T19:39:21.468102Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:21.538272Z"
+    },
+    {
+      "result_id": "q2_quality_verified.candidate_generator",
+      "question_id": "Q2",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q2 results/raw/q2.json results/raw/q2.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c",
+        "results/raw/q2.json": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f"
+      },
+      "output_files": [
+        "results/raw/q2.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.candidates.json": "56abb797e3f9826162d5ab3913258b9bc58a0e8e703d786240ebedead5b3f5db"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified.candidate_generator.stderr.log",
+      "started_at": "2026-07-23T19:39:22.460930Z",
+      "finished_at": "2026-07-23T19:39:22.511544Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:22.579023Z"
+    },
+    {
+      "result_id": "q2_quality_verified",
+      "question_id": "Q2",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.json results/raw/q2.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/quality_exact_scorer.py": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e",
+        "results/raw/q2.quality.candidates.json": "56abb797e3f9826162d5ab3913258b9bc58a0e8e703d786240ebedead5b3f5db",
+        "results/raw/q2.json": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f"
+      },
+      "output_files": [
+        "results/raw/q2.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.exact.json": "8c2cdbb4e5a352aca1c9053da0512f1a20af63f226b16fc9e8c36dfba7f16bfb"
+      },
+      "metrics": {
+        "duration_s": 4.585611193169984
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q2.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "8c2cdbb4e5a352aca1c9053da0512f1a20af63f226b16fc9e8c36dfba7f16bfb"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified.stderr.log",
+      "started_at": "2026-07-23T19:39:22.714338Z",
+      "finished_at": "2026-07-23T19:39:23.329462Z",
+      "duration_seconds": 0.625,
+      "error": null,
+      "created_at": "2026-07-23T19:39:23.408093Z"
+    },
+    {
+      "result_id": "q2_quality_verified.search_auditor",
+      "question_id": "Q2",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.quality.exact.json results/raw/q2.json results/raw/q2.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.quality.exact.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8",
+        "results/raw/q2.quality.candidates.json": "56abb797e3f9826162d5ab3913258b9bc58a0e8e703d786240ebedead5b3f5db",
+        "results/raw/q2.quality.exact.json": "8c2cdbb4e5a352aca1c9053da0512f1a20af63f226b16fc9e8c36dfba7f16bfb",
+        "results/raw/q2.json": "105738394c9da2cdc30149a3b82e76077312f08adbbd0421bb6458974113f55f"
+      },
+      "output_files": [
+        "results/raw/q2.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.audit.json": "8905452f144a90952bc35a50e224a040fe8d786acd5c2761050a3701ef1cb974"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified.search_auditor.stderr.log",
+      "started_at": "2026-07-23T19:39:23.536126Z",
+      "finished_at": "2026-07-23T19:39:23.587223Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:23.657063Z"
+    },
+    {
+      "result_id": "q3_quality_verified.candidate_generator",
+      "question_id": "Q3",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q3 results/raw/q3.json results/raw/q3.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46"
+      },
+      "output_files": [
+        "results/raw/q3.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.candidates.json": "e18c75ebfeaf1535c38e435a582f9dbc58ec3e0ff9f7c0411762faf286989c16"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified.candidate_generator.stderr.log",
+      "started_at": "2026-07-23T19:39:25.749320Z",
+      "finished_at": "2026-07-23T19:39:25.799531Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-23T19:39:25.865116Z"
+    },
+    {
+      "result_id": "q3_quality_verified",
+      "question_id": "Q3",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q3 results/raw/q3.quality.candidates.json results/raw/q3.json results/raw/q3.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q3.quality.candidates.json",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/quality_exact_scorer.py": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e",
+        "results/raw/q3.quality.candidates.json": "e18c75ebfeaf1535c38e435a582f9dbc58ec3e0ff9f7c0411762faf286989c16",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46"
+      },
+      "output_files": [
+        "results/raw/q3.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.exact.json": "bf8f8cba031dec920918d028aff784b3e1030c7b21c603c3ea1e5104c4bef3c8"
+      },
+      "metrics": {
+        "duration_s": 6.4031594063295545
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q3.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "bf8f8cba031dec920918d028aff784b3e1030c7b21c603c3ea1e5104c4bef3c8"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified.stderr.log",
+      "started_at": "2026-07-23T19:39:25.997859Z",
+      "finished_at": "2026-07-23T19:39:26.687869Z",
+      "duration_seconds": 0.688,
+      "error": null,
+      "created_at": "2026-07-23T19:39:26.764956Z"
+    },
+    {
+      "result_id": "q3_quality_verified.search_auditor",
+      "question_id": "Q3",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q3 results/raw/q3.quality.candidates.json results/raw/q3.quality.exact.json results/raw/q3.json results/raw/q3.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q3.quality.candidates.json",
+        "results/raw/q3.quality.exact.json",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8",
+        "results/raw/q3.quality.candidates.json": "e18c75ebfeaf1535c38e435a582f9dbc58ec3e0ff9f7c0411762faf286989c16",
+        "results/raw/q3.quality.exact.json": "bf8f8cba031dec920918d028aff784b3e1030c7b21c603c3ea1e5104c4bef3c8",
+        "results/raw/q3.json": "2c6e2348fe4ad9c5abaa679daeff22828ffad6ac577bbe0b79e0e2eb92e63d46"
+      },
+      "output_files": [
+        "results/raw/q3.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.audit.json": "0fb91853d7c9edec48be512cf31712de03616b602c54e04b67800734ef1a349e"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified.search_auditor.stderr.log",
+      "started_at": "2026-07-23T19:39:26.887166Z",
+      "finished_at": "2026-07-23T19:39:26.937880Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:27.006772Z"
+    },
+    {
+      "result_id": "q4_quality_verified.candidate_generator",
+      "question_id": "Q4",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q4 results/raw/q4.json results/raw/q4.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c",
+        "results/raw/q4.json": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5"
+      },
+      "output_files": [
+        "results/raw/q4.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.candidates.json": "e83d32dfe220fe047e35f49e2dc3996dd44c2b50bb9e90e7b0d59e017d0e3bef"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified.candidate_generator.stderr.log",
+      "started_at": "2026-07-23T19:39:28.555253Z",
+      "finished_at": "2026-07-23T19:39:28.601125Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:28.666024Z"
+    },
+    {
+      "result_id": "q4_quality_verified",
+      "question_id": "Q4",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q4 results/raw/q4.quality.candidates.json results/raw/q4.json results/raw/q4.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q4.quality.candidates.json",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/quality_exact_scorer.py": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e",
+        "results/raw/q4.quality.candidates.json": "e83d32dfe220fe047e35f49e2dc3996dd44c2b50bb9e90e7b0d59e017d0e3bef",
+        "results/raw/q4.json": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5"
+      },
+      "output_files": [
+        "results/raw/q4.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.exact.json": "566febbcda5432919320badf8b16fd9967f08953c55129f46e01178cc17f944f"
+      },
+      "metrics": {
+        "duration_s": 11.491346511204792
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q4.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "566febbcda5432919320badf8b16fd9967f08953c55129f46e01178cc17f944f"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified.stderr.log",
+      "started_at": "2026-07-23T19:39:28.797244Z",
+      "finished_at": "2026-07-23T19:39:29.488556Z",
+      "duration_seconds": 0.703,
+      "error": null,
+      "created_at": "2026-07-23T19:39:29.562576Z"
+    },
+    {
+      "result_id": "q4_quality_verified.search_auditor",
+      "question_id": "Q4",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q4 results/raw/q4.quality.candidates.json results/raw/q4.quality.exact.json results/raw/q4.json results/raw/q4.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q4.quality.candidates.json",
+        "results/raw/q4.quality.exact.json",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8",
+        "results/raw/q4.quality.candidates.json": "e83d32dfe220fe047e35f49e2dc3996dd44c2b50bb9e90e7b0d59e017d0e3bef",
+        "results/raw/q4.quality.exact.json": "566febbcda5432919320badf8b16fd9967f08953c55129f46e01178cc17f944f",
+        "results/raw/q4.json": "6f8454d764797f1cd3e1e50124ea767eced871b8ffc56008b5eb4994386bf7a5"
+      },
+      "output_files": [
+        "results/raw/q4.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.audit.json": "104042a595e1de137060b26e6b5de0f5fab0aa3671ec9025b25831ded27eba52"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified.search_auditor.stderr.log",
+      "started_at": "2026-07-23T19:39:29.684714Z",
+      "finished_at": "2026-07-23T19:39:29.739443Z",
+      "duration_seconds": 0.062,
+      "error": null,
+      "created_at": "2026-07-23T19:39:29.808632Z"
+    },
+    {
+      "result_id": "q5_quality_verified.candidate_generator",
+      "question_id": "Q5",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q5 results/raw/q5.json results/raw/q5.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "730792bf14b785d7e46b31ccfdc05d96ee636cfc54de530706be35e824ad1d2c",
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+      },
+      "output_files": [
+        "results/raw/q5.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.quality.candidates.json": "eccbdf1f17ad21747012b8b960805c179d64f5bc261c76f0f75da853baba91ab"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_quality_verified.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q5_quality_verified.candidate_generator.stderr.log",
+      "started_at": "2026-07-23T19:39:31.289748Z",
+      "finished_at": "2026-07-23T19:39:31.337193Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:31.401525Z"
+    },
+    {
+      "result_id": "q5_quality_verified",
+      "question_id": "Q5",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q5 results/raw/q5.quality.candidates.json results/raw/q5.json results/raw/q5.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q5.quality.candidates.json",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "5f0152dfa2644c876a77098e28e73c0e840b2c0b8b342c497e4cb46fae94a644",
+        "code/quality_exact_scorer.py": "b01cb0d214f2e0b142b2d72c110140c7046ee4ddb33e6c4da1dbb7120e49cb7e",
+        "results/raw/q5.quality.candidates.json": "eccbdf1f17ad21747012b8b960805c179d64f5bc261c76f0f75da853baba91ab",
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+      },
+      "output_files": [
+        "results/raw/q5.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.quality.exact.json": "2e18fb6386fc4e498d779d17133cdd636bd36b2425d112531b896554e432e29a"
+      },
+      "metrics": {
+        "objective_missile_s": 30.55279840342665
+      },
+      "metric_sources": {
+        "objective_missile_s": {
+          "file": "results/raw/q5.quality.exact.json",
+          "json_path": "metrics.objective_missile_s",
+          "file_sha256": "2e18fb6386fc4e498d779d17133cdd636bd36b2425d112531b896554e432e29a"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_quality_verified.stdout.log",
+      "stderr_path": "results/raw/q5_quality_verified.stderr.log",
+      "started_at": "2026-07-23T19:39:31.530367Z",
+      "finished_at": "2026-07-23T19:39:32.890532Z",
+      "duration_seconds": 1.359,
+      "error": null,
+      "created_at": "2026-07-23T19:39:32.962255Z"
+    },
+    {
+      "result_id": "q5_quality_verified.search_auditor",
+      "question_id": "Q5",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q5 results/raw/q5.quality.candidates.json results/raw/q5.quality.exact.json results/raw/q5.json results/raw/q5.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q5.quality.candidates.json",
+        "results/raw/q5.quality.exact.json",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "1d35af5f983fcba496a3dac301d31b43208a0ca1491b8ca352acd0d3fe2556b8",
+        "results/raw/q5.quality.candidates.json": "eccbdf1f17ad21747012b8b960805c179d64f5bc261c76f0f75da853baba91ab",
+        "results/raw/q5.quality.exact.json": "2e18fb6386fc4e498d779d17133cdd636bd36b2425d112531b896554e432e29a",
+        "results/raw/q5.json": "0243c384bbb8412cb69089dd05d9a0602d0312934cc0ade7add52cd29ced81ab"
+      },
+      "output_files": [
+        "results/raw/q5.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.quality.audit.json": "5b5ea22403f8b785c899c22a0710b70b7f54c4532850f6a9739835a9de7a1d1a"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_quality_verified.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q5_quality_verified.search_auditor.stderr.log",
+      "started_at": "2026-07-23T19:39:33.081599Z",
+      "finished_at": "2026-07-23T19:39:33.128751Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-23T19:39:33.198502Z"
+    },
+    {
+      "result_id": "temporal_interval_certificate_r1",
+      "question_id": "ALL",
+      "kind": "independent-oracle",
+      "source_script": "code/validate_temporal_intervals.py",
+      "command": "python code/validate_temporal_intervals.py",
+      "input_files": [
+        "code/model_core.py",
+        "code/validate_temporal_intervals.py"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/validate_temporal_intervals.py": "02dd3ebe288f60f4e8f0bd5d6f601ab71bac9c0cb447bb12edba2b0aceda8e07"
+      },
+      "output_files": [
+        "results/raw/temporal_interval_certificate.json"
+      ],
+      "output_hashes": {
+        "results/raw/temporal_interval_certificate.json": "4766717dc54981af525244664828c328bb57262720712548315eeabe05644030"
+      },
+      "metrics": {
+        "case_count": 5,
+        "passed_count": 5,
+        "maximum_bound_width_s": 0.01251220703125
+      },
+      "metric_sources": {
+        "case_count": {
+          "file": "results/raw/temporal_interval_certificate.json",
+          "json_path": "metrics.case_count",
+          "file_sha256": "4766717dc54981af525244664828c328bb57262720712548315eeabe05644030"
+        },
+        "passed_count": {
+          "file": "results/raw/temporal_interval_certificate.json",
+          "json_path": "metrics.passed_count",
+          "file_sha256": "4766717dc54981af525244664828c328bb57262720712548315eeabe05644030"
+        },
+        "maximum_bound_width_s": {
+          "file": "results/raw/temporal_interval_certificate.json",
+          "json_path": "metrics.maximum_bound_width_s",
+          "file_sha256": "4766717dc54981af525244664828c328bb57262720712548315eeabe05644030"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/temporal_interval_certificate_r1.stdout.log",
+      "stderr_path": "results/raw/temporal_interval_certificate_r1.stderr.log",
+      "started_at": "2026-07-24T00:05:24.673527Z",
+      "finished_at": "2026-07-24T00:05:25.277724Z",
+      "duration_seconds": 0.594,
+      "error": null,
+      "created_at": "2026-07-24T00:05:25.353193Z"
+    },
+    {
+      "result_id": "q1_primary_r2",
+      "question_id": "Q1",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q1",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/solve_questions.py": "b1f8ac9be13bf4b742b6f96e09a3a1c5f831832ea08c439caa7df624447a9b58"
+      },
+      "output_files": [
+        "results/raw/q1.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "metrics": {
+        "duration_s": 1.3916778564453125,
+        "left_endpoint_s": 8.056428527832033,
+        "right_endpoint_s": 9.448106384277345
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q1.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+        },
+        "left_endpoint_s": {
+          "file": "results/raw/q1.json",
+          "json_path": "metrics.left_endpoint_s",
+          "file_sha256": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+        },
+        "right_endpoint_s": {
+          "file": "results/raw/q1.json",
+          "json_path": "metrics.right_endpoint_s",
+          "file_sha256": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_primary_r2.stdout.log",
+      "stderr_path": "results/raw/q1_primary_r2.stderr.log",
+      "started_at": "2026-07-24T00:05:33.239598Z",
+      "finished_at": "2026-07-24T00:05:34.086001Z",
+      "duration_seconds": 0.844,
+      "error": null,
+      "created_at": "2026-07-24T00:05:34.176088Z"
+    },
+    {
+      "result_id": "q2_primary_r2",
+      "question_id": "Q2",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q2",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/solve_questions.py": "b1f8ac9be13bf4b742b6f96e09a3a1c5f831832ea08c439caa7df624447a9b58"
+      },
+      "output_files": [
+        "results/raw/q2.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "metrics": {
+        "duration_s": 4.585723876953125
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q2.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_primary_r2.stdout.log",
+      "stderr_path": "results/raw/q2_primary_r2.stderr.log",
+      "started_at": "2026-07-24T00:05:42.018508Z",
+      "finished_at": "2026-07-24T00:05:54.909331Z",
+      "duration_seconds": 12.89,
+      "error": null,
+      "created_at": "2026-07-24T00:05:54.988027Z"
+    },
+    {
+      "result_id": "q3_primary_r2",
+      "question_id": "Q3",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q3",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/solve_questions.py": "b1f8ac9be13bf4b742b6f96e09a3a1c5f831832ea08c439caa7df624447a9b58"
+      },
+      "output_files": [
+        "results/raw/q3.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+      },
+      "metrics": {
+        "duration_s": 6.403136776467861
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q3.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_primary_r2.stdout.log",
+      "stderr_path": "results/raw/q3_primary_r2.stderr.log",
+      "started_at": "2026-07-24T00:07:15.983625Z",
+      "finished_at": "2026-07-24T00:07:52.276201Z",
+      "duration_seconds": 36.297,
+      "error": null,
+      "created_at": "2026-07-24T00:07:52.360614Z"
+    },
+    {
+      "result_id": "q4_primary_r2",
+      "question_id": "Q4",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q4",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/solve_questions.py": "b1f8ac9be13bf4b742b6f96e09a3a1c5f831832ea08c439caa7df624447a9b58"
+      },
+      "output_files": [
+        "results/raw/q4.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+      },
+      "metrics": {
+        "duration_s": 11.491355079385027
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q4.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_primary_r2.stdout.log",
+      "stderr_path": "results/raw/q4_primary_r2.stderr.log",
+      "started_at": "2026-07-24T00:08:03.173053Z",
+      "finished_at": "2026-07-24T00:09:00.337601Z",
+      "duration_seconds": 57.156,
+      "error": null,
+      "created_at": "2026-07-24T00:09:00.417901Z"
+    },
+    {
+      "result_id": "q5_primary_r2",
+      "question_id": "Q5",
+      "kind": "primary",
+      "source_script": "code/solve_questions.py",
+      "command": "python code/solve_questions.py --question Q5",
+      "input_files": [
+        "problem/statement.pdf",
+        "code/model_core.py",
+        "code/solve_questions.py"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/solve_questions.py": "b1f8ac9be13bf4b742b6f96e09a3a1c5f831832ea08c439caa7df624447a9b58"
+      },
+      "output_files": [
+        "results/raw/q5.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "metrics": {
+        "objective_missile_s": 30.55276934166756,
+        "min_duration_s": 7.61855583246567,
+        "action_count": 14,
+        "duration_M1_s": 14.15585501865262,
+        "duration_M2_s": 8.77835849054927,
+        "duration_M3_s": 7.61855583246567
+      },
+      "metric_sources": {
+        "objective_missile_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.objective_missile_s",
+          "file_sha256": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+        },
+        "min_duration_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.min_duration_s",
+          "file_sha256": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+        },
+        "action_count": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.action_count",
+          "file_sha256": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+        },
+        "duration_M1_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M1_s",
+          "file_sha256": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+        },
+        "duration_M2_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M2_s",
+          "file_sha256": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+        },
+        "duration_M3_s": {
+          "file": "results/raw/q5.json",
+          "json_path": "metrics.duration_M3_s",
+          "file_sha256": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_primary_r2.stdout.log",
+      "stderr_path": "results/raw/q5_primary_r2.stderr.log",
+      "started_at": "2026-07-24T00:09:13.238003Z",
+      "finished_at": "2026-07-24T00:27:49.140004Z",
+      "duration_seconds": 1115.891,
+      "error": null,
+      "created_at": "2026-07-24T00:27:49.263956Z"
+    },
+    {
+      "result_id": "continuous_geometry_certificate_r2",
+      "question_id": "ALL",
+      "kind": "independent-oracle",
+      "source_script": "code/validate_continuous_geometry.py",
+      "command": "python code/validate_continuous_geometry.py",
+      "input_files": [
+        "code/model_core.py",
+        "code/validate_continuous_geometry.py",
+        "results/raw/q1.json",
+        "results/raw/q2.json",
+        "results/raw/q3.json",
+        "results/raw/q4.json",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/validate_continuous_geometry.py": "c0c01b389f5c0444a6c2829d0bf4b56e0b1c08210e390e3094b13df50c7b3faa",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_files": [
+        "results/raw/continuous_geometry_certificate.json"
+      ],
+      "output_hashes": {
+        "results/raw/continuous_geometry_certificate.json": "b34caacbd590af8f41aa8ed756cefa346ab35e22da27702c237248e653871244"
+      },
+      "metrics": {
+        "surface_cover_radius_upper_bound_m": 0.3162203648061001,
+        "maximum_spatial_bound_width_missile_s": 0.9431823558592676,
+        "maximum_time_refinement_range_missile_s": 0.00039442776751030806
+      },
+      "metric_sources": {
+        "surface_cover_radius_upper_bound_m": {
+          "file": "results/raw/continuous_geometry_certificate.json",
+          "json_path": "metrics.surface_cover_radius_upper_bound_m",
+          "file_sha256": "b34caacbd590af8f41aa8ed756cefa346ab35e22da27702c237248e653871244"
+        },
+        "maximum_spatial_bound_width_missile_s": {
+          "file": "results/raw/continuous_geometry_certificate.json",
+          "json_path": "metrics.maximum_spatial_bound_width_missile_s",
+          "file_sha256": "b34caacbd590af8f41aa8ed756cefa346ab35e22da27702c237248e653871244"
+        },
+        "maximum_time_refinement_range_missile_s": {
+          "file": "results/raw/continuous_geometry_certificate.json",
+          "json_path": "metrics.maximum_time_refinement_range_missile_s",
+          "file_sha256": "b34caacbd590af8f41aa8ed756cefa346ab35e22da27702c237248e653871244"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/continuous_geometry_certificate_r2.stdout.log",
+      "stderr_path": "results/raw/continuous_geometry_certificate_r2.stderr.log",
+      "started_at": "2026-07-24T00:29:16.270102Z",
+      "finished_at": "2026-07-24T00:32:02.313886Z",
+      "duration_seconds": 166.046,
+      "error": null,
+      "created_at": "2026-07-24T00:32:02.410124Z"
+    },
+    {
+      "result_id": "q1_matlab_oracle_revision1",
+      "question_id": "Q1",
+      "kind": "independent-oracle",
+      "source_script": "code/matlab/q1_geometry_oracle.m",
+      "command": "cmd /c code\\\\run_matlab_oracle.cmd code\\\\matlab\\\\q1_geometry_oracle.m",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q1.json",
+        "code/run_matlab_oracle.cmd",
+        "code/matlab/q1_geometry_oracle.m"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c",
+        "code/run_matlab_oracle.cmd": "7c11cef93cae8259dba5bfd3b3bc598281f86e03fee234537f3622d6b55ca26d",
+        "code/matlab/q1_geometry_oracle.m": "9788d4706ff6a39ce3882626eea794ce5eff897e18d4b82a6acd75cfcc755a49"
+      },
+      "output_files": [
+        "results/raw/q1_matlab_oracle.json",
+        "figures/matlab_q1_margin.png",
+        "figures/matlab_q1_endpoints.png",
+        "figures/matlab_q1.render.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1_matlab_oracle.json": "0cc010304c9c68f7d10f53e82a3acea26c03ac5875dc2834da27bb99718efc79",
+        "figures/matlab_q1_margin.png": "d85ad3e243e12954f9e14d5bddcd588cb83ff645d7698f1d783d2b3c600e2af6",
+        "figures/matlab_q1_endpoints.png": "f72b03e31f5ef8ce55949ad0b64d3e9b94f2e88186b8363114d13e5afa69afa0",
+        "figures/matlab_q1.render.json": "1cdafe682a90b3bfd351f2edd160b550dc5f1c3f16822e0c4289c5917143e7eb"
+      },
+      "metrics": {
+        "left_endpoint_s": 8.056445490431958,
+        "right_endpoint_s": 9.44808815870171,
+        "duration_s": 1.3916426682697516,
+        "production_endpoint_max_abs_error_s": 1.822557563535554e-05
+      },
+      "metric_sources": {
+        "left_endpoint_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.left_endpoint_s",
+          "file_sha256": "0cc010304c9c68f7d10f53e82a3acea26c03ac5875dc2834da27bb99718efc79"
+        },
+        "right_endpoint_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.right_endpoint_s",
+          "file_sha256": "0cc010304c9c68f7d10f53e82a3acea26c03ac5875dc2834da27bb99718efc79"
+        },
+        "duration_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "0cc010304c9c68f7d10f53e82a3acea26c03ac5875dc2834da27bb99718efc79"
+        },
+        "production_endpoint_max_abs_error_s": {
+          "file": "results/raw/q1_matlab_oracle.json",
+          "json_path": "metrics.production_endpoint_max_abs_error_s",
+          "file_sha256": "0cc010304c9c68f7d10f53e82a3acea26c03ac5875dc2834da27bb99718efc79"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_matlab_oracle_revision1.stdout.log",
+      "stderr_path": "results/raw/q1_matlab_oracle_revision1.stderr.log",
+      "started_at": "2026-07-24T00:34:44.889454Z",
+      "finished_at": "2026-07-24T00:35:14.506182Z",
+      "duration_seconds": 29.625,
+      "error": null,
+      "created_at": "2026-07-24T00:35:14.631590Z"
+    },
+    {
+      "result_id": "q5_matlab_oracle_revision1",
+      "question_id": "Q5",
+      "kind": "independent-oracle",
+      "source_script": "code/matlab/q5_action_count_oracle.m",
+      "command": "cmd /c code\\\\run_matlab_oracle.cmd code\\\\matlab\\\\q5_action_count_oracle.m",
+      "input_files": [
+        "problem/statement.pdf",
+        "results/raw/q5.json",
+        "code/run_matlab_oracle.cmd",
+        "code/matlab/q5_action_count_oracle.m"
+      ],
+      "input_hashes": {
+        "problem/statement.pdf": "a37f6aad30b16ea09da9cb320ce194b12d3a28874008cf9ff19549f6c6079447",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5",
+        "code/run_matlab_oracle.cmd": "7c11cef93cae8259dba5bfd3b3bc598281f86e03fee234537f3622d6b55ca26d",
+        "code/matlab/q5_action_count_oracle.m": "1e5cc935ad223061896142630ad833abcadff912265d85127894b6632d731c8b"
+      },
+      "output_files": [
+        "results/raw/q5_matlab_oracle.json",
+        "figures/matlab_q5_action_count_challenge.png",
+        "figures/matlab_q5_action_count_challenge.render.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5_matlab_oracle.json": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98",
+        "figures/matlab_q5_action_count_challenge.png": "93ab7d907d4f3a267c554263c2bb8fec3b338f28f141c7b17a69c7b595ac611e",
+        "figures/matlab_q5_action_count_challenge.render.json": "5057b270db44931bd02d5e51459c5d1bc5f99836fd5ce293f745655a38615ba9"
+      },
+      "metrics": {
+        "objective_13_missile_s": 30.210364260302548,
+        "objective_14_missile_s": 30.55279840366888,
+        "objective_15_missile_s": 30.55279840366888,
+        "gain_14_to_15_missile_s": 0,
+        "python_14_15_intervals_overlap": true,
+        "matlab_gain_resolution_missile_s": 4.934719299853896e-11,
+        "matlab_gain_resolved": false,
+        "production_max_abs_error_missile_s": 2.906200132102299e-05,
+        "step_refinement_max_abs_difference_missile_s": 4.934719299853896e-11
+      },
+      "metric_sources": {
+        "objective_13_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.objective_13_missile_s",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "objective_14_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.objective_14_missile_s",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "objective_15_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.objective_15_missile_s",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "gain_14_to_15_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.gain_14_to_15_missile_s",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "python_14_15_intervals_overlap": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.python_14_15_intervals_overlap",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "matlab_gain_resolution_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.matlab_gain_resolution_missile_s",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "matlab_gain_resolved": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.matlab_gain_resolved",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "production_max_abs_error_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.production_max_abs_error_missile_s",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        },
+        "step_refinement_max_abs_difference_missile_s": {
+          "file": "results/raw/q5_matlab_oracle.json",
+          "json_path": "metrics.step_refinement_max_abs_difference_missile_s",
+          "file_sha256": "4c06775024f482bd7f28901bc943ab76112dda5eb28bdc2279a996c22e992d98"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_matlab_oracle_revision1.stdout.log",
+      "stderr_path": "results/raw/q5_matlab_oracle_revision1.stderr.log",
+      "started_at": "2026-07-24T00:35:54.721100Z",
+      "finished_at": "2026-07-24T00:36:14.672941Z",
+      "duration_seconds": 19.953,
+      "error": null,
+      "created_at": "2026-07-24T00:36:14.791861Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision1.candidate_generator",
+      "question_id": "Q1",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q1 results/raw/q1.json results/raw/q1.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "b072f30950d1c7243de92b29e9677772577cd149310475c27f7174e6dc5a8abd",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.candidates.json": "762c4b034caf21573e8308ffcfa2f330e558dfc0dc568261c92b61a600401cdd"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision1.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision1.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:37:43.477226Z",
+      "finished_at": "2026-07-24T00:37:43.542465Z",
+      "duration_seconds": 0.062,
+      "error": null,
+      "created_at": "2026-07-24T00:37:43.620949Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision1",
+      "question_id": "Q1",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.json results/raw/q1.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "d6d629e4f7cbacd8e6abd678283b790fb5ad6727afcb8c72f99e84287737838d",
+        "results/raw/q1.quality.candidates.json": "762c4b034caf21573e8308ffcfa2f330e558dfc0dc568261c92b61a600401cdd",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.exact.json": "e737f3f0e1fbe783a44105e1c92a0b347761b541aa864894ee39c85afca6ecb7"
+      },
+      "metrics": {
+        "duration_s": 1.391754150390625
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q1.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "e737f3f0e1fbe783a44105e1c92a0b347761b541aa864894ee39c85afca6ecb7"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision1.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision1.stderr.log",
+      "started_at": "2026-07-24T00:37:43.782306Z",
+      "finished_at": "2026-07-24T00:37:44.538516Z",
+      "duration_seconds": 0.75,
+      "error": null,
+      "created_at": "2026-07-24T00:37:44.625082Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision1.search_auditor",
+      "question_id": "Q1",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.quality.exact.json results/raw/q1.json results/raw/q1.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.quality.exact.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "a834ff90493a1dee3a135c8507a7b7c7947cf11f2ccab150511cdd76a37943bd",
+        "results/raw/q1.quality.candidates.json": "762c4b034caf21573e8308ffcfa2f330e558dfc0dc568261c92b61a600401cdd",
+        "results/raw/q1.quality.exact.json": "e737f3f0e1fbe783a44105e1c92a0b347761b541aa864894ee39c85afca6ecb7",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.audit.json": "8905452f144a90952bc35a50e224a040fe8d786acd5c2761050a3701ef1cb974"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision1.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision1.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:37:44.776948Z",
+      "finished_at": "2026-07-24T00:37:44.835710Z",
+      "duration_seconds": 0.062,
+      "error": null,
+      "created_at": "2026-07-24T00:37:44.919402Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision1.candidate_generator",
+      "question_id": "Q2",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q2 results/raw/q2.json results/raw/q2.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "b072f30950d1c7243de92b29e9677772577cd149310475c27f7174e6dc5a8abd",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.candidates.json": "90790e78b9aa472850895c11f52ae0194a28764fbc4aabeedb1ad3fe43368f88"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision1.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision1.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:37:46.001013Z",
+      "finished_at": "2026-07-24T00:37:46.056420Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-24T00:37:46.133290Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision1",
+      "question_id": "Q2",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.json results/raw/q2.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "d6d629e4f7cbacd8e6abd678283b790fb5ad6727afcb8c72f99e84287737838d",
+        "results/raw/q2.quality.candidates.json": "90790e78b9aa472850895c11f52ae0194a28764fbc4aabeedb1ad3fe43368f88",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.exact.json": "f1ac97f89c54830ab2f40063cb083eb147b936f157af3607fc9025a5d5b30f62"
+      },
+      "metrics": {
+        "duration_s": 4.585723876953125
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q2.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "f1ac97f89c54830ab2f40063cb083eb147b936f157af3607fc9025a5d5b30f62"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision1.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision1.stderr.log",
+      "started_at": "2026-07-24T00:37:46.286831Z",
+      "finished_at": "2026-07-24T00:37:47.118793Z",
+      "duration_seconds": 0.828,
+      "error": null,
+      "created_at": "2026-07-24T00:37:47.202682Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision1.search_auditor",
+      "question_id": "Q2",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.quality.exact.json results/raw/q2.json results/raw/q2.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.quality.exact.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "a834ff90493a1dee3a135c8507a7b7c7947cf11f2ccab150511cdd76a37943bd",
+        "results/raw/q2.quality.candidates.json": "90790e78b9aa472850895c11f52ae0194a28764fbc4aabeedb1ad3fe43368f88",
+        "results/raw/q2.quality.exact.json": "f1ac97f89c54830ab2f40063cb083eb147b936f157af3607fc9025a5d5b30f62",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.audit.json": "8905452f144a90952bc35a50e224a040fe8d786acd5c2761050a3701ef1cb974"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision1.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision1.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:37:47.342711Z",
+      "finished_at": "2026-07-24T00:37:47.400341Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:37:47.480346Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision1.candidate_generator",
+      "question_id": "Q3",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q3 results/raw/q3.json results/raw/q3.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "b072f30950d1c7243de92b29e9677772577cd149310475c27f7174e6dc5a8abd",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+      },
+      "output_files": [
+        "results/raw/q3.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.candidates.json": "03bb4ad253e876584fe8bda69eb9648bf2fd5c85d239ee78cbdc05bc0f8fb650"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified_revision1.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified_revision1.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:37:50.597877Z",
+      "finished_at": "2026-07-24T00:37:50.654581Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-24T00:37:50.728810Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision1",
+      "question_id": "Q3",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q3 results/raw/q3.quality.candidates.json results/raw/q3.json results/raw/q3.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q3.quality.candidates.json",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "d6d629e4f7cbacd8e6abd678283b790fb5ad6727afcb8c72f99e84287737838d",
+        "results/raw/q3.quality.candidates.json": "03bb4ad253e876584fe8bda69eb9648bf2fd5c85d239ee78cbdc05bc0f8fb650",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+      },
+      "output_files": [
+        "results/raw/q3.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.exact.json": "4baae7ff9029843b5b3035144fc82b2c54b7b76a962560a12432714e4c3bacfe"
+      },
+      "metrics": {
+        "duration_s": 6.403136776467861
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q3.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "4baae7ff9029843b5b3035144fc82b2c54b7b76a962560a12432714e4c3bacfe"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified_revision1.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified_revision1.stderr.log",
+      "started_at": "2026-07-24T00:37:50.907620Z",
+      "finished_at": "2026-07-24T00:37:51.857512Z",
+      "duration_seconds": 0.938,
+      "error": null,
+      "created_at": "2026-07-24T00:37:51.944986Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision1.search_auditor",
+      "question_id": "Q3",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q3 results/raw/q3.quality.candidates.json results/raw/q3.quality.exact.json results/raw/q3.json results/raw/q3.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q3.quality.candidates.json",
+        "results/raw/q3.quality.exact.json",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "a834ff90493a1dee3a135c8507a7b7c7947cf11f2ccab150511cdd76a37943bd",
+        "results/raw/q3.quality.candidates.json": "03bb4ad253e876584fe8bda69eb9648bf2fd5c85d239ee78cbdc05bc0f8fb650",
+        "results/raw/q3.quality.exact.json": "4baae7ff9029843b5b3035144fc82b2c54b7b76a962560a12432714e4c3bacfe",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+      },
+      "output_files": [
+        "results/raw/q3.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.audit.json": "104042a595e1de137060b26e6b5de0f5fab0aa3671ec9025b25831ded27eba52"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified_revision1.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified_revision1.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:37:52.093591Z",
+      "finished_at": "2026-07-24T00:37:52.163435Z",
+      "duration_seconds": 0.078,
+      "error": null,
+      "created_at": "2026-07-24T00:37:52.242672Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision1.candidate_generator",
+      "question_id": "Q4",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q4 results/raw/q4.json results/raw/q4.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "b072f30950d1c7243de92b29e9677772577cd149310475c27f7174e6dc5a8abd",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+      },
+      "output_files": [
+        "results/raw/q4.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.candidates.json": "f9319f639e8bd26628c4475e06a6b511b6804a6bc503574dc013fe942a0bed4f"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified_revision1.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified_revision1.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:37:54.536822Z",
+      "finished_at": "2026-07-24T00:37:54.592179Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-24T00:37:54.672502Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision1",
+      "question_id": "Q4",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q4 results/raw/q4.quality.candidates.json results/raw/q4.json results/raw/q4.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q4.quality.candidates.json",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "d6d629e4f7cbacd8e6abd678283b790fb5ad6727afcb8c72f99e84287737838d",
+        "results/raw/q4.quality.candidates.json": "f9319f639e8bd26628c4475e06a6b511b6804a6bc503574dc013fe942a0bed4f",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+      },
+      "output_files": [
+        "results/raw/q4.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.exact.json": "e8503f19990e846d1b2e344ceb7ad0f74ca3e0cb2edf6a31c7bc52b6dfbb097a"
+      },
+      "metrics": {
+        "duration_s": 11.491355079385027
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q4.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "e8503f19990e846d1b2e344ceb7ad0f74ca3e0cb2edf6a31c7bc52b6dfbb097a"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified_revision1.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified_revision1.stderr.log",
+      "started_at": "2026-07-24T00:37:54.833090Z",
+      "finished_at": "2026-07-24T00:37:56.961039Z",
+      "duration_seconds": 2.125,
+      "error": null,
+      "created_at": "2026-07-24T00:37:57.045152Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision1.search_auditor",
+      "question_id": "Q4",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q4 results/raw/q4.quality.candidates.json results/raw/q4.quality.exact.json results/raw/q4.json results/raw/q4.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q4.quality.candidates.json",
+        "results/raw/q4.quality.exact.json",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "a834ff90493a1dee3a135c8507a7b7c7947cf11f2ccab150511cdd76a37943bd",
+        "results/raw/q4.quality.candidates.json": "f9319f639e8bd26628c4475e06a6b511b6804a6bc503574dc013fe942a0bed4f",
+        "results/raw/q4.quality.exact.json": "e8503f19990e846d1b2e344ceb7ad0f74ca3e0cb2edf6a31c7bc52b6dfbb097a",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+      },
+      "output_files": [
+        "results/raw/q4.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.audit.json": "104042a595e1de137060b26e6b5de0f5fab0aa3671ec9025b25831ded27eba52"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified_revision1.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified_revision1.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:37:57.189813Z",
+      "finished_at": "2026-07-24T00:37:57.253480Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:37:57.347151Z"
+    },
+    {
+      "result_id": "q5_quality_verified_revision1.candidate_generator",
+      "question_id": "Q5",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q5 results/raw/q5.json results/raw/q5.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "b072f30950d1c7243de92b29e9677772577cd149310475c27f7174e6dc5a8abd",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_files": [
+        "results/raw/q5.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.quality.candidates.json": "aec2d1f6cece5a415420f3ac33bee751dd573b05ac8b5e19538c71284d6a84ae"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_quality_verified_revision1.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q5_quality_verified_revision1.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:37:59.583944Z",
+      "finished_at": "2026-07-24T00:37:59.644144Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:37:59.729439Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision2.candidate_generator",
+      "question_id": "Q1",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q1 results/raw/q1.json results/raw/q1.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "46e54f64603270835fc3fa929ec8c5ca4ce70cb26117daf412fcefb799a38bd8",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.candidates.json": "762c4b034caf21573e8308ffcfa2f330e558dfc0dc568261c92b61a600401cdd"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision2.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision2.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:42:45.170835Z",
+      "finished_at": "2026-07-24T00:42:45.234076Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:42:45.313897Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision2",
+      "question_id": "Q1",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.json results/raw/q1.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "b26ccddb0fdd6b80b7c2a477d456ca7f3393f62ea9c44c8867d84a5a3b5b2906",
+        "results/raw/q1.quality.candidates.json": "762c4b034caf21573e8308ffcfa2f330e558dfc0dc568261c92b61a600401cdd",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.exact.json": "e737f3f0e1fbe783a44105e1c92a0b347761b541aa864894ee39c85afca6ecb7"
+      },
+      "metrics": {
+        "duration_s": 1.391754150390625
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q1.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "e737f3f0e1fbe783a44105e1c92a0b347761b541aa864894ee39c85afca6ecb7"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision2.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision2.stderr.log",
+      "started_at": "2026-07-24T00:42:45.475781Z",
+      "finished_at": "2026-07-24T00:42:46.237611Z",
+      "duration_seconds": 0.765,
+      "error": null,
+      "created_at": "2026-07-24T00:42:46.331021Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision2.search_auditor",
+      "question_id": "Q1",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.quality.exact.json results/raw/q1.json results/raw/q1.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.quality.exact.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "ba488eec11db86c8062b2bfc313227685fc3e92fbc75aaf6a93638e1958a3dd0",
+        "results/raw/q1.quality.candidates.json": "762c4b034caf21573e8308ffcfa2f330e558dfc0dc568261c92b61a600401cdd",
+        "results/raw/q1.quality.exact.json": "e737f3f0e1fbe783a44105e1c92a0b347761b541aa864894ee39c85afca6ecb7",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.audit.json": "8905452f144a90952bc35a50e224a040fe8d786acd5c2761050a3701ef1cb974"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision2.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision2.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:42:46.478637Z",
+      "finished_at": "2026-07-24T00:42:46.539820Z",
+      "duration_seconds": 0.062,
+      "error": null,
+      "created_at": "2026-07-24T00:42:46.624912Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision2.candidate_generator",
+      "question_id": "Q2",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q2 results/raw/q2.json results/raw/q2.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "46e54f64603270835fc3fa929ec8c5ca4ce70cb26117daf412fcefb799a38bd8",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.candidates.json": "90790e78b9aa472850895c11f52ae0194a28764fbc4aabeedb1ad3fe43368f88"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision2.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision2.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:42:48.050982Z",
+      "finished_at": "2026-07-24T00:42:48.121532Z",
+      "duration_seconds": 0.062,
+      "error": null,
+      "created_at": "2026-07-24T00:42:48.243021Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision2",
+      "question_id": "Q2",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.json results/raw/q2.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "b26ccddb0fdd6b80b7c2a477d456ca7f3393f62ea9c44c8867d84a5a3b5b2906",
+        "results/raw/q2.quality.candidates.json": "90790e78b9aa472850895c11f52ae0194a28764fbc4aabeedb1ad3fe43368f88",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.exact.json": "f1ac97f89c54830ab2f40063cb083eb147b936f157af3607fc9025a5d5b30f62"
+      },
+      "metrics": {
+        "duration_s": 4.585723876953125
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q2.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "f1ac97f89c54830ab2f40063cb083eb147b936f157af3607fc9025a5d5b30f62"
+        }
+      },
+      "status": "superseded",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision2.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision2.stderr.log",
+      "started_at": "2026-07-24T00:42:48.442400Z",
+      "finished_at": "2026-07-24T00:42:49.394608Z",
+      "duration_seconds": 0.954,
+      "error": null,
+      "created_at": "2026-07-24T00:42:49.511930Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision2.search_auditor",
+      "question_id": "Q2",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.quality.exact.json results/raw/q2.json results/raw/q2.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.quality.exact.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "ba488eec11db86c8062b2bfc313227685fc3e92fbc75aaf6a93638e1958a3dd0",
+        "results/raw/q2.quality.candidates.json": "90790e78b9aa472850895c11f52ae0194a28764fbc4aabeedb1ad3fe43368f88",
+        "results/raw/q2.quality.exact.json": "f1ac97f89c54830ab2f40063cb083eb147b936f157af3607fc9025a5d5b30f62",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.audit.json": "8905452f144a90952bc35a50e224a040fe8d786acd5c2761050a3701ef1cb974"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision2.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision2.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:42:49.694395Z",
+      "finished_at": "2026-07-24T00:42:49.761167Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:42:49.868208Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision3.candidate_generator",
+      "question_id": "Q1",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q1 results/raw/q1.json results/raw/q1.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.candidates.json": "a02b85ea3043ed3682a2ef5a8ca2b59eed0d728f401e9cc3516f9d6f18b64e53"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision3.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision3.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:45:58.634548Z",
+      "finished_at": "2026-07-24T00:45:58.711744Z",
+      "duration_seconds": 0.078,
+      "error": null,
+      "created_at": "2026-07-24T00:45:58.797622Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision3",
+      "question_id": "Q1",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.json results/raw/q1.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76",
+        "results/raw/q1.quality.candidates.json": "a02b85ea3043ed3682a2ef5a8ca2b59eed0d728f401e9cc3516f9d6f18b64e53",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.exact.json": "ec9ee355658029d8bc70a770aa82796949839fc8c55ae09b03010a6764f781d5"
+      },
+      "metrics": {
+        "duration_s": 1.391754150390625
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q1.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "ec9ee355658029d8bc70a770aa82796949839fc8c55ae09b03010a6764f781d5"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision3.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision3.stderr.log",
+      "started_at": "2026-07-24T00:45:58.977190Z",
+      "finished_at": "2026-07-24T00:45:59.743170Z",
+      "duration_seconds": 0.765,
+      "error": null,
+      "created_at": "2026-07-24T00:45:59.838559Z"
+    },
+    {
+      "result_id": "q1_quality_verified_revision3.search_auditor",
+      "question_id": "Q1",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q1 results/raw/q1.quality.candidates.json results/raw/q1.quality.exact.json results/raw/q1.json results/raw/q1.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q1.quality.candidates.json",
+        "results/raw/q1.quality.exact.json",
+        "results/raw/q1.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae",
+        "results/raw/q1.quality.candidates.json": "a02b85ea3043ed3682a2ef5a8ca2b59eed0d728f401e9cc3516f9d6f18b64e53",
+        "results/raw/q1.quality.exact.json": "ec9ee355658029d8bc70a770aa82796949839fc8c55ae09b03010a6764f781d5",
+        "results/raw/q1.json": "6bfde27ef9c2f1a38d8f7a6dfd5e7c786793be5ac90815f6393d640de26c982c"
+      },
+      "output_files": [
+        "results/raw/q1.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q1.quality.audit.json": "b6926a751b0843d5394360d460992bf87ed44efc876564646b8e1d3963a366f3"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q1_quality_verified_revision3.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q1_quality_verified_revision3.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:45:59.999037Z",
+      "finished_at": "2026-07-24T00:46:00.071940Z",
+      "duration_seconds": 0.078,
+      "error": null,
+      "created_at": "2026-07-24T00:46:00.157817Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision3.candidate_generator",
+      "question_id": "Q2",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q2 results/raw/q2.json results/raw/q2.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.candidates.json": "46fb9bac3c76aa2fc9dc3df377ead0c12f1eb8e5359c5a46d323d73ad4c474cd"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision3.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision3.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:46:01.335810Z",
+      "finished_at": "2026-07-24T00:46:01.394194Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:46:01.476773Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision3",
+      "question_id": "Q2",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.json results/raw/q2.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76",
+        "results/raw/q2.quality.candidates.json": "46fb9bac3c76aa2fc9dc3df377ead0c12f1eb8e5359c5a46d323d73ad4c474cd",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.exact.json": "1da3cfee3dcefdce3c0724f77d1bd8a25088c1f8456f6cd77a3924c121e36f27"
+      },
+      "metrics": {
+        "duration_s": 4.585723876953125
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q2.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "1da3cfee3dcefdce3c0724f77d1bd8a25088c1f8456f6cd77a3924c121e36f27"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision3.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision3.stderr.log",
+      "started_at": "2026-07-24T00:46:01.643984Z",
+      "finished_at": "2026-07-24T00:46:02.459713Z",
+      "duration_seconds": 0.812,
+      "error": null,
+      "created_at": "2026-07-24T00:46:02.547516Z"
+    },
+    {
+      "result_id": "q2_quality_verified_revision3.search_auditor",
+      "question_id": "Q2",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q2 results/raw/q2.quality.candidates.json results/raw/q2.quality.exact.json results/raw/q2.json results/raw/q2.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.quality.exact.json",
+        "results/raw/q2.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae",
+        "results/raw/q2.quality.candidates.json": "46fb9bac3c76aa2fc9dc3df377ead0c12f1eb8e5359c5a46d323d73ad4c474cd",
+        "results/raw/q2.quality.exact.json": "1da3cfee3dcefdce3c0724f77d1bd8a25088c1f8456f6cd77a3924c121e36f27",
+        "results/raw/q2.json": "19bf5c7a3d7619cd7edfd165ecba0b856ec058598e26dc3804025f87584e0fcb"
+      },
+      "output_files": [
+        "results/raw/q2.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q2.quality.audit.json": "b6926a751b0843d5394360d460992bf87ed44efc876564646b8e1d3963a366f3"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q2_quality_verified_revision3.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q2_quality_verified_revision3.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:46:02.691016Z",
+      "finished_at": "2026-07-24T00:46:02.746903Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-24T00:46:02.828910Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision3.candidate_generator",
+      "question_id": "Q3",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q3 results/raw/q3.json results/raw/q3.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+      },
+      "output_files": [
+        "results/raw/q3.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.candidates.json": "808463cfee8347926fca37c8c5ac21d452014a72f520c4809ff07437e36260a4"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified_revision3.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified_revision3.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:46:07.028707Z",
+      "finished_at": "2026-07-24T00:46:07.097677Z",
+      "duration_seconds": 0.078,
+      "error": null,
+      "created_at": "2026-07-24T00:46:07.184865Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision3",
+      "question_id": "Q3",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q3 results/raw/q3.quality.candidates.json results/raw/q3.json results/raw/q3.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q3.quality.candidates.json",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76",
+        "results/raw/q3.quality.candidates.json": "808463cfee8347926fca37c8c5ac21d452014a72f520c4809ff07437e36260a4",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+      },
+      "output_files": [
+        "results/raw/q3.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.exact.json": "9053dc26fadbdf829cf255393bb0717cdf0bff2d1d0ed78f2ddab4b6c897bc2b"
+      },
+      "metrics": {
+        "duration_s": 6.403136776467861
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q3.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "9053dc26fadbdf829cf255393bb0717cdf0bff2d1d0ed78f2ddab4b6c897bc2b"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified_revision3.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified_revision3.stderr.log",
+      "started_at": "2026-07-24T00:46:07.361317Z",
+      "finished_at": "2026-07-24T00:46:08.411245Z",
+      "duration_seconds": 1.047,
+      "error": null,
+      "created_at": "2026-07-24T00:46:08.506210Z"
+    },
+    {
+      "result_id": "q3_quality_verified_revision3.search_auditor",
+      "question_id": "Q3",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q3 results/raw/q3.quality.candidates.json results/raw/q3.quality.exact.json results/raw/q3.json results/raw/q3.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q3.quality.candidates.json",
+        "results/raw/q3.quality.exact.json",
+        "results/raw/q3.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae",
+        "results/raw/q3.quality.candidates.json": "808463cfee8347926fca37c8c5ac21d452014a72f520c4809ff07437e36260a4",
+        "results/raw/q3.quality.exact.json": "9053dc26fadbdf829cf255393bb0717cdf0bff2d1d0ed78f2ddab4b6c897bc2b",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a"
+      },
+      "output_files": [
+        "results/raw/q3.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q3.quality.audit.json": "090d069b25d19a3236d7febaa38038f55279250b7abbecc7f9ff32f3c6458461"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q3_quality_verified_revision3.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q3_quality_verified_revision3.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:46:08.663410Z",
+      "finished_at": "2026-07-24T00:46:08.724135Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:46:08.813178Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision3.candidate_generator",
+      "question_id": "Q4",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q4 results/raw/q4.json results/raw/q4.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+      },
+      "output_files": [
+        "results/raw/q4.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.candidates.json": "9f600e4b2c1aa3b96b77424befed833d2f3634f30a63d992141f556e99027bf7"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified_revision3.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified_revision3.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:46:12.222321Z",
+      "finished_at": "2026-07-24T00:46:12.276171Z",
+      "duration_seconds": 0.047,
+      "error": null,
+      "created_at": "2026-07-24T00:46:12.354756Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision3",
+      "question_id": "Q4",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q4 results/raw/q4.quality.candidates.json results/raw/q4.json results/raw/q4.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q4.quality.candidates.json",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76",
+        "results/raw/q4.quality.candidates.json": "9f600e4b2c1aa3b96b77424befed833d2f3634f30a63d992141f556e99027bf7",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+      },
+      "output_files": [
+        "results/raw/q4.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.exact.json": "f16d862260b8f32b7ab9bede7d76cfd278ce6df12106b76078e898e6fbba22de"
+      },
+      "metrics": {
+        "duration_s": 11.491355079385027
+      },
+      "metric_sources": {
+        "duration_s": {
+          "file": "results/raw/q4.quality.exact.json",
+          "json_path": "metrics.duration_s",
+          "file_sha256": "f16d862260b8f32b7ab9bede7d76cfd278ce6df12106b76078e898e6fbba22de"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified_revision3.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified_revision3.stderr.log",
+      "started_at": "2026-07-24T00:46:12.520791Z",
+      "finished_at": "2026-07-24T00:46:14.899008Z",
+      "duration_seconds": 2.375,
+      "error": null,
+      "created_at": "2026-07-24T00:46:15.012614Z"
+    },
+    {
+      "result_id": "q4_quality_verified_revision3.search_auditor",
+      "question_id": "Q4",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q4 results/raw/q4.quality.candidates.json results/raw/q4.quality.exact.json results/raw/q4.json results/raw/q4.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q4.quality.candidates.json",
+        "results/raw/q4.quality.exact.json",
+        "results/raw/q4.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae",
+        "results/raw/q4.quality.candidates.json": "9f600e4b2c1aa3b96b77424befed833d2f3634f30a63d992141f556e99027bf7",
+        "results/raw/q4.quality.exact.json": "f16d862260b8f32b7ab9bede7d76cfd278ce6df12106b76078e898e6fbba22de",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9"
+      },
+      "output_files": [
+        "results/raw/q4.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q4.quality.audit.json": "090d069b25d19a3236d7febaa38038f55279250b7abbecc7f9ff32f3c6458461"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q4_quality_verified_revision3.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q4_quality_verified_revision3.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:46:15.190297Z",
+      "finished_at": "2026-07-24T00:46:15.257748Z",
+      "duration_seconds": 0.063,
+      "error": null,
+      "created_at": "2026-07-24T00:46:15.353543Z"
+    },
+    {
+      "result_id": "q5_quality_verified_revision3.candidate_generator",
+      "question_id": "Q5",
+      "kind": "adapter-candidate_generator",
+      "source_script": "code/quality_candidate_generator.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_candidate_generator.py Q5 results/raw/q5.json results/raw/q5.quality.candidates.json",
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/quality_candidate_generator.py": "06709223c3408e0784345fc41ab7d36e92442fd368314d8bed79b848dae97035",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_files": [
+        "results/raw/q5.quality.candidates.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.quality.candidates.json": "faecd8aa670ae93db62cc669bc25199c0a11d3c4a34448ede329a7c050366215"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_quality_verified_revision3.candidate_generator.stdout.log",
+      "stderr_path": "results/raw/q5_quality_verified_revision3.candidate_generator.stderr.log",
+      "started_at": "2026-07-24T00:46:18.665945Z",
+      "finished_at": "2026-07-24T00:46:18.758598Z",
+      "duration_seconds": 0.094,
+      "error": null,
+      "created_at": "2026-07-24T00:46:18.857693Z"
+    },
+    {
+      "result_id": "q5_quality_verified_revision3",
+      "question_id": "Q5",
+      "kind": "adapter-exact_scorer",
+      "source_script": "code/quality_exact_scorer.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_exact_scorer.py Q5 results/raw/q5.quality.candidates.json results/raw/q5.json results/raw/q5.quality.exact.json",
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q5.quality.candidates.json",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/model_core.py": "28aca99e81f668ed033d46d554409e54ab8f0211a8955b700fdadf0610582dde",
+        "code/quality_exact_scorer.py": "f1eb3dc283d54e68cb290e06c3c29adc48edf07e85779a0390c07a06e1db6a76",
+        "results/raw/q5.quality.candidates.json": "faecd8aa670ae93db62cc669bc25199c0a11d3c4a34448ede329a7c050366215",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_files": [
+        "results/raw/q5.quality.exact.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.quality.exact.json": "147bd91e6bb4fa5fe37474ac8963e7c3784cf2e107655328c9623522d4383a4c"
+      },
+      "metrics": {
+        "objective_missile_s": 30.552420185693407
+      },
+      "metric_sources": {
+        "objective_missile_s": {
+          "file": "results/raw/q5.quality.exact.json",
+          "json_path": "metrics.objective_missile_s",
+          "file_sha256": "147bd91e6bb4fa5fe37474ac8963e7c3784cf2e107655328c9623522d4383a4c"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_quality_verified_revision3.stdout.log",
+      "stderr_path": "results/raw/q5_quality_verified_revision3.stderr.log",
+      "started_at": "2026-07-24T00:46:19.048474Z",
+      "finished_at": "2026-07-24T00:48:01.170902Z",
+      "duration_seconds": 102.109,
+      "error": null,
+      "created_at": "2026-07-24T00:48:01.256568Z"
+    },
+    {
+      "result_id": "q5_quality_verified_revision3.search_auditor",
+      "question_id": "Q5",
+      "kind": "adapter-search_auditor",
+      "source_script": "code/quality_search_auditor.py",
+      "command": "\"C:\\Program Files\\Python312\\python.exe\" code/quality_search_auditor.py Q5 results/raw/q5.quality.candidates.json results/raw/q5.quality.exact.json results/raw/q5.json results/raw/q5.quality.audit.json",
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q5.quality.candidates.json",
+        "results/raw/q5.quality.exact.json",
+        "results/raw/q5.json"
+      ],
+      "input_hashes": {
+        "code/quality_search_auditor.py": "76c292d835d510495eaf42e235a87093cea0a9e2c655995fa88ceef4bb8f85ae",
+        "results/raw/q5.quality.candidates.json": "faecd8aa670ae93db62cc669bc25199c0a11d3c4a34448ede329a7c050366215",
+        "results/raw/q5.quality.exact.json": "147bd91e6bb4fa5fe37474ac8963e7c3784cf2e107655328c9623522d4383a4c",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5"
+      },
+      "output_files": [
+        "results/raw/q5.quality.audit.json"
+      ],
+      "output_hashes": {
+        "results/raw/q5.quality.audit.json": "e885efaf9fc2ab5c902fc8f6d52595a0806743ec4df14b462bcbef48cb25184f"
+      },
+      "metrics": {},
+      "metric_sources": {},
+      "status": "diagnostic",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/q5_quality_verified_revision3.search_auditor.stdout.log",
+      "stderr_path": "results/raw/q5_quality_verified_revision3.search_auditor.stderr.log",
+      "started_at": "2026-07-24T00:48:01.403408Z",
+      "finished_at": "2026-07-24T00:48:01.464253Z",
+      "duration_seconds": 0.062,
+      "error": null,
+      "created_at": "2026-07-24T00:48:01.547573Z"
+    },
+    {
+      "result_id": "submission_tables_r2",
+      "question_id": "ALL",
+      "kind": "submission",
+      "source_script": "code/fill_submission_tables.py",
+      "command": "python code/fill_submission_tables.py",
+      "input_files": [
+        "problem/attachments/附件/result1.xlsx",
+        "problem/attachments/附件/result2.xlsx",
+        "problem/attachments/附件/result3.xlsx",
+        "results/raw/q3.json",
+        "results/raw/q4.json",
+        "results/raw/q5.json",
+        "code/fill_submission_tables.py"
+      ],
+      "input_hashes": {
+        "problem/attachments/附件/result1.xlsx": "af04b16e6a4719628971bcf5a03d230c9da6738e67eebac9276d254fdd4df1a7",
+        "problem/attachments/附件/result2.xlsx": "c681d5e378538f71c77fca199a3ca8303a04dbcfc7bd95f870ae22f01ab69f91",
+        "problem/attachments/附件/result3.xlsx": "b648c82d63e459ba6e6b3711ae79875e373521cd543b45571c4d8ff1ad5ec54a",
+        "results/raw/q3.json": "202a703443d89ec7667e754038b24eaf8c72e2fbbfefce8e716685359b71044a",
+        "results/raw/q4.json": "e1e695db446b3e26b4fdff8a5a7526c32fa3fabd6ad6b277195b4486aedc80f9",
+        "results/raw/q5.json": "e227a6f2fb0c50ac5dc8e1eae5615271fb092e9d65728c8e3fc5fcb6bb1e1ec5",
+        "code/fill_submission_tables.py": "7f9a5199a562f088cac10afe4e194aa3389e319a2cc795034155edc2bf2a9420"
+      },
+      "output_files": [
+        "results/raw/submission_tables.json",
+        "submission/result1.xlsx",
+        "submission/result2.xlsx",
+        "submission/result3.xlsx"
+      ],
+      "output_hashes": {
+        "results/raw/submission_tables.json": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599",
+        "submission/result1.xlsx": "98e9077f91f5e3138298a5d8e562d265c219748872d7dd608141378a0463267d",
+        "submission/result2.xlsx": "c5e986ca3d0a55b42d045f5b488911bd5fcffb23600cf072e31135c872069c93",
+        "submission/result3.xlsx": "dd156e89566cf61cd8a1301f0cd8f238217f4461b3b5c9d71694a5db39a011c9"
+      },
+      "metrics": {
+        "result1_filled_actions": 3,
+        "result2_filled_actions": 3,
+        "result3_filled_actions": 14
+      },
+      "metric_sources": {
+        "result1_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result1_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        },
+        "result2_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result2_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        },
+        "result3_filled_actions": {
+          "file": "results/raw/submission_tables.json",
+          "json_path": "metrics.result3_filled_actions",
+          "file_sha256": "439ef0ba219d6b62dca7b993c97a2f1dfb6709791a359348b8c74b18a40c3599"
+        }
+      },
+      "status": "current",
+      "execution_mode": "production",
+      "execution_valid": true,
+      "exit_code": 0,
+      "stdout_path": "results/raw/submission_tables_r2.stdout.log",
+      "stderr_path": "results/raw/submission_tables_r2.stderr.log",
+      "started_at": "2026-07-24T00:49:52.866597Z",
+      "finished_at": "2026-07-24T00:49:53.563017Z",
+      "duration_seconds": 0.688,
+      "error": null,
+      "created_at": "2026-07-24T00:49:53.679908Z"
+    }
+  ]
+}

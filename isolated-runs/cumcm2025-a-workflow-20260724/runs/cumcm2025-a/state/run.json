@@ -1,0 +1,41 @@
+{
+  "schema_version": "3.0",
+  "run_id": "cumcm2025-a",
+  "workflow": "capability-first-v3",
+  "phase": "blocked",
+  "execution_mode": "production",
+  "revision": 5,
+  "competition": "2025年全国大学生数学建模竞赛",
+  "problem_id": "A",
+  "required_questions": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5"
+  ],
+  "current_question": null,
+  "completed_questions": [
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "Q5"
+  ],
+  "selected_route": "finite-cylinder-continuous-union-event-brent",
+  "fallback_route": "representative-point-proxy",
+  "artifacts": {
+    "statement": "problem/statement.pdf",
+    "workflow_outcome": "failed",
+    "failure_reason": "用户裁决：本次工作流执行失败"
+  },
+  "time_budget": {
+    "total_hours": null,
+    "remaining_hours": null
+  },
+  "token_budget": {
+    "soft_cap": null,
+    "used_estimate": null
+  },
+  "updated_at": "2026-07-24T02:31:25.051716Z"
+}

@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "method": {
+    "surface_grid": {
+      "n_theta": 180,
+      "n_z": 21,
+      "n_radial": 13,
+      "sample_count": 7742
+    },
+    "surface_cover_radius_upper_bound_m": 0.3162203648061001,
+    "certified_cloud_radius_m": 9.6837796351939,
+    "proof": "任意连续圆柱表面点距最近网格点不超过 rho；固定观察点时，线段集合的 Hausdorff 距离不超过端点位移，点到线段距离、对烟幕取 min、对目标取 max 均保持 1-Lipschitz。故以 10-rho 为半径得到连续覆盖下界，以 10 为半径的网格结果给出时长上界。",
+    "temporal_method": "event partition, grid bracketing, Brent root refinement",
+    "temporal_steps_s": [
+      0.08,
+      0.04,
+      0.02
+    ]
+  },
+  "questions": {
+    "Q1": {
+      "continuous_duration_lower_bound_missile_s": 1.3160860151495832,
+      "sampled_duration_upper_bound_missile_s": 1.3916453683084242,
+      "spatial_bound_width_missile_s": 0.07555935315884099,
+      "lower_durations_s": {
+        "M1": 1.3160860151495832
+      },
+      "upper_durations_s": {
+        "M1": 1.3916453683084242
+      },
+      "time_refinement_objective_missile_s": {
+        "0.08": 1.3916455832149026,
+        "0.04": 1.3916455831734833,
+        "0.02": 1.3916455831688896
+      },
+      "time_refinement_range_missile_s": 4.601297121098469e-11
+    },
+    "Q2": {
+      "continuous_duration_lower_bound_missile_s": 4.432780142019015,
+      "sampled_duration_upper_bound_missile_s": 4.585584380716308,
+      "spatial_bound_width_missile_s": 0.15280423869729276,
+      "lower_durations_s": {
+        "M1": 4.432780142019015
+      },
+      "upper_durations_s": {
+        "M1": 4.585584380716308
+      },
+      "time_refinement_objective_missile_s": {
+        "0.08": 4.585611193154861,
+        "0.04": 4.585611193169984,
+        "0.02": 4.585611193161883
+      },
+      "time_refinement_range_missile_s": 1.5123013952234032e-11
+    },
+    "Q3": {
+      "continuous_duration_lower_bound_missile_s": 6.402079433230469,
+      "sampled_duration_upper_bound_missile_s": 6.4031594063295545,
+      "spatial_bound_width_missile_s": 0.001079973099085585,
+      "lower_durations_s": {
+        "M1": 6.402079433230469
+      },
+      "upper_durations_s": {
+        "M1": 6.4031594063295545
+      },
+      "time_refinement_objective_missile_s": {
+        "0.08": 6.403159406364659,
+        "0.04": 6.4031594063295545,
+        "0.02": 6.4031594063392685
+      },
+      "time_refinement_range_missile_s": 3.510436386022775e-11
+    },
+    "Q4": {
+      "continuous_duration_lower_bound_missile_s": 11.007430351945246,
+      "sampled_duration_upper_bound_missile_s": 11.490683742092433,
+      "spatial_bound_width_missile_s": 0.48325339014718693,
+      "lower_durations_s": {
+        "M1": 11.007430351945246
+      },
+      "upper_durations_s": {
+        "M1": 11.490683742092433
+      },
+      "time_refinement_objective_missile_s": {
+        "0.08": 11.491346511205222,
+        "0.04": 11.491346511204792,
+        "0.02": 11.491346511220039
+      },
+      "time_refinement_range_missile_s": 1.524647075257235e-11
+    },
+    "Q5": {
+      "continuous_duration_lower_bound_missile_s": 29.641890890043275,
+      "sampled_duration_upper_bound_missile_s": 30.55163069028474,
+      "spatial_bound_width_missile_s": 0.9097398002414643,
+      "lower_durations_s": {
+        "M1": 13.830984943364568,
+        "M2": 8.475458256977452,
+        "M3": 7.335447689701255
+      },
+      "upper_durations_s": {
+        "M1": 14.155132071327476,
+        "M2": 8.778268192382486,
+        "M3": 7.618230426574778
+      },
+      "time_refinement_objective_missile_s": {
+        "0.08": 30.55279840342665,
+        "0.04": 30.552798403430803,
+        "0.02": 30.552798403386518
+      },
+      "time_refinement_range_missile_s": 4.4284576006248244e-11
+    }
+  },
+  "metrics": {
+    "surface_cover_radius_upper_bound_m": 0.3162203648061001,
+    "maximum_spatial_bound_width_missile_s": 0.9097398002414643,
+    "maximum_time_refinement_range_missile_s": 4.601297121098469e-11
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema_name": "candidate_generation",
+  "adapter_id": "cumcm2025a-independent-quality",
+  "adapter_version": "1.1",
+  "candidate_variables": [
+    "variant"
+  ],
+  "candidates": [
+    {
+      "id": "baseline",
+      "coordinates": {
+        "variant": 0.0
+      },
+      "parameters": {
+        "variant": 0.0
+      },
+      "proxy_value": 0.0,
+      "role": "baseline"
+    },
+    {
+      "id": "selected",
+      "coordinates": {
+        "variant": 1.0
+      },
+      "parameters": {
+        "variant": 1.0
+      },
+      "proxy_value": 4.585723876953125,
+      "role": "warm_start"
+    },
+    {
+      "id": "perturbed",
+      "coordinates": {
+        "variant": 2.0
+      },
+      "parameters": {
+        "variant": 2.0
+      },
+      "proxy_value": 3.8978652954101562,
+      "role": "exploration"
+    }
+  ],
+  "search_trace": [
+    {
+      "step": 0,
+      "candidate_id": "baseline",
+      "event": "baseline_or_local_challenge"
+    },
+    {
+      "step": 1,
+      "candidate_id": "selected",
+      "event": "baseline_or_local_challenge"
+    },
+    {
+      "step": 2,
+      "candidate_id": "perturbed",
+      "event": "baseline_or_local_challenge"
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.2",
+  "adapter_id": "cumcm2025a-independent-quality",
+  "adapter_version": "1.1",
+  "selection_contract": {
+    "objective": {
+      "metric": "duration_s",
+      "direction": "maximize",
+      "objective_version": "finite-cylinder-union-v2",
+      "scorer_version": "adaptive-lipschitz-time-v2",
+      "constraint_version": "flight-kinematics-v1",
+      "semantics": "union",
+      "fine_tolerance": 5e-05
+    },
+    "coverage": {
+      "candidate_variables": [
+        "variant"
+      ],
+      "groups": [
+        {
+          "id": "local_variants",
+          "variables": [
+            "variant"
+          ],
+          "metric": "occupied_bins",
+          "bins_per_variable": 3,
+          "bounds": {
+            "variant": [
+              0.0,
+              2.0
+            ]
+          },
+          "minimum_joint_coverage": 1.0
+        }
+      ]
+    },
+    "required_evidence": [
+      "finite-cylinder-exact-score",
+      "continuous-geometry-certificate"
+    ],
+    "required_prior_questions": [
+      "Q1"
+    ],
+    "verification_adapter": {
+      "adapter_id": "cumcm2025a-independent-quality",
+      "adapter_version": "1.1"
+    }
+  },
+  "stages": {
+    "candidate_generator": {
+      "implementation_file": "code/quality_candidate_generator.py",
+      "source_files": [
+        "code/quality_candidate_generator.py"
+      ],
+      "arguments": [
+        "Q2",
+        "results/raw/q2.json",
+        "results/raw/q2.quality.candidates.json"
+      ],
+      "input_files": [
+        "code/quality_candidate_generator.py",
+        "results/raw/q2.json"
+      ],
+      "output_file": "results/raw/q2.quality.candidates.json",
+      "artifact_files": []
+    },
+    "exact_scorer": {
+      "implementation_file": "code/quality_exact_scorer.py",
+      "source_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py"
+      ],
+      "arguments": [
+        "Q2",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.json",
+        "results/raw/q2.quality.exact.json"
+      ],
+      "input_files": [
+        "code/model_core.py",
+        "code/quality_exact_scorer.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.json"
+      ],
+      "output_file": "results/raw/q2.quality.exact.json",
+      "artifact_files": []
+    },
+    "search_auditor": {
+      "implementation_file": "code/quality_search_auditor.py",
+      "source_files": [
+        "code/quality_search_auditor.py"
+      ],
+      "arguments": [
+        "Q2",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.quality.exact.json",
+        "results/raw/q2.json",
+        "results/raw/q2.quality.audit.json"
+      ],
+      "input_files": [
+        "code/quality_search_auditor.py",
+        "results/raw/q2.quality.candidates.json",
+        "results/raw/q2.quality.exact.json",
+        "results/raw/q2.json"
+      ],
+      "output_file": "results/raw/q2.quality.audit.json",
+      "artifact_files": []
+    }
+  }
+}

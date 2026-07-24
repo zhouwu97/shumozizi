@@ -1,0 +1,378 @@
+{
+  "schema_version": "1.0",
+  "run_id": "cumcm2025-a",
+  "groups": [
+    {
+      "group": {
+        "question_id": "Q1",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v1",
+        "scorer_version": "event-brent-v1",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "1e-08",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q1_quality_verified",
+          "exact": 1.3916455831763876,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-23T19:39:22.117798Z"
+        }
+      ],
+      "best_result_id": "q1_quality_verified",
+      "best_exact": 1.3916455831763876
+    },
+    {
+      "group": {
+        "question_id": "Q2",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v1",
+        "scorer_version": "event-brent-v1",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "1e-08",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q2_quality_verified",
+          "exact": 4.585611193169984,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-23T19:39:25.395194Z"
+        }
+      ],
+      "best_result_id": "q2_quality_verified",
+      "best_exact": 4.585611193169984
+    },
+    {
+      "group": {
+        "question_id": "Q3",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v1",
+        "scorer_version": "event-brent-v1",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "1e-08",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q3_quality_verified",
+          "exact": 6.4031594063295545,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-23T19:39:28.224145Z"
+        }
+      ],
+      "best_result_id": "q3_quality_verified",
+      "best_exact": 6.4031594063295545
+    },
+    {
+      "group": {
+        "question_id": "Q4",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v1",
+        "scorer_version": "event-brent-v1",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "1e-08",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q4_quality_verified",
+          "exact": 11.491346511204792,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-23T19:39:30.954473Z"
+        }
+      ],
+      "best_result_id": "q4_quality_verified",
+      "best_exact": 11.491346511204792
+    },
+    {
+      "group": {
+        "question_id": "Q5",
+        "metric": "objective_missile_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v1",
+        "scorer_version": "event-brent-v1",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "1e-08",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q5_quality_verified",
+          "exact": 30.55279840342665,
+          "metric": "objective_missile_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-23T19:39:34.278178Z"
+        }
+      ],
+      "best_result_id": "q5_quality_verified",
+      "best_exact": 30.55279840342665
+    },
+    {
+      "group": {
+        "question_id": "Q1",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q1_quality_verified_revision1",
+          "exact": 1.391754150390625,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:37:45.611567Z"
+        },
+        {
+          "result_id": "q1_quality_verified_revision2",
+          "exact": 1.391754150390625,
+          "metric": "duration_s",
+          "accepted": false,
+          "decision": "no_objective_progress_above_lower_bound",
+          "recorded_at": "2026-07-24T00:42:47.542512Z"
+        }
+      ],
+      "best_result_id": "q1_quality_verified_revision1",
+      "best_exact": 1.391754150390625
+    },
+    {
+      "group": {
+        "question_id": "Q2",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q2_quality_verified_revision1",
+          "exact": 4.585723876953125,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:37:50.173129Z"
+        }
+      ],
+      "best_result_id": "q2_quality_verified_revision1",
+      "best_exact": 4.585723876953125
+    },
+    {
+      "group": {
+        "question_id": "Q3",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q3_quality_verified_revision1",
+          "exact": 6.403136776467861,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:37:54.142422Z"
+        }
+      ],
+      "best_result_id": "q3_quality_verified_revision1",
+      "best_exact": 6.403136776467861
+    },
+    {
+      "group": {
+        "question_id": "Q4",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.0"
+      },
+      "observations": [
+        {
+          "result_id": "q4_quality_verified_revision1",
+          "exact": 11.491355079385027,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:37:59.201050Z"
+        }
+      ],
+      "best_result_id": "q4_quality_verified_revision1",
+      "best_exact": 11.491355079385027
+    },
+    {
+      "group": {
+        "question_id": "Q1",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.1"
+      },
+      "observations": [
+        {
+          "result_id": "q1_quality_verified_revision3",
+          "exact": 1.391754150390625,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:46:00.904861Z"
+        }
+      ],
+      "best_result_id": "q1_quality_verified_revision3",
+      "best_exact": 1.391754150390625
+    },
+    {
+      "group": {
+        "question_id": "Q2",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.1"
+      },
+      "observations": [
+        {
+          "result_id": "q2_quality_verified_revision3",
+          "exact": 4.585723876953125,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:46:06.617720Z"
+        }
+      ],
+      "best_result_id": "q2_quality_verified_revision3",
+      "best_exact": 4.585723876953125
+    },
+    {
+      "group": {
+        "question_id": "Q3",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.1"
+      },
+      "observations": [
+        {
+          "result_id": "q3_quality_verified_revision3",
+          "exact": 6.403136776467861,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:46:11.830865Z"
+        }
+      ],
+      "best_result_id": "q3_quality_verified_revision3",
+      "best_exact": 6.403136776467861
+    },
+    {
+      "group": {
+        "question_id": "Q4",
+        "metric": "duration_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.1"
+      },
+      "observations": [
+        {
+          "result_id": "q4_quality_verified_revision3",
+          "exact": 11.491355079385027,
+          "metric": "duration_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:46:18.151191Z"
+        }
+      ],
+      "best_result_id": "q4_quality_verified_revision3",
+      "best_exact": 11.491355079385027
+    },
+    {
+      "group": {
+        "question_id": "Q5",
+        "metric": "objective_missile_s",
+        "direction": "maximize",
+        "objective_version": "finite-cylinder-union-v2",
+        "scorer_version": "adaptive-lipschitz-time-v2",
+        "constraint_version": "flight-kinematics-v1",
+        "semantics": "union",
+        "fine_tolerance": "5e-05",
+        "adapter_id": "cumcm2025a-independent-quality",
+        "adapter_version": "1.1"
+      },
+      "observations": [
+        {
+          "result_id": "q5_quality_verified_revision3",
+          "exact": 30.552420185693407,
+          "metric": "objective_missile_s",
+          "accepted": true,
+          "decision": "established_initial_lower_bound",
+          "recorded_at": "2026-07-24T00:48:03.948552Z"
+        }
+      ],
+      "best_result_id": "q5_quality_verified_revision3",
+      "best_exact": 30.552420185693407
+    }
+  ]
+}

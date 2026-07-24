@@ -92,7 +92,17 @@
               "then": {"not": {"required": ["allowed_action_count"]}}
             }
           ]
-        }
+        },
+        "distinct_aggregations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["single_entity", "sum_per_entity", "union_any", "intersection_all", "weighted", "multiobjective", "other"]}
+        },
+        "distinct_aggregation_count": {"type": "integer", "minimum": 1},
+        "changes_primary_result": {"type": "boolean"},
+        "changes_strategy": {"type": "boolean"},
+        "language_uniquely_resolves": {"type": "boolean"},
+        "user_decision_required": {"type": "boolean"}
       }
     }
   }

@@ -1,0 +1,315 @@
+{
+  "schema_name": "objective_semantics_assessment",
+  "schema_version": "1.1",
+  "run_id": "cumcm2025-a",
+  "source_scope": "problem_only",
+  "network_used": false,
+  "questions": [
+    {
+      "question_id": "Q1",
+      "interpretations": [
+        {
+          "objective_id": "q1.full_cylinder_duration",
+          "formula": "Let C={(x,y,z): x^2+(y-200)^2<=7^2, 0<=z<=10}, M_1(t)=M_1(0)*(1-300*t/||M_1(0)||), T_1=||M_1(0)||/300, and S_1(t)=B(c_1(t),10) for t in [tau_1,tau_1+20] and empty otherwise. Report H_1=measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_1(t)}), with the prescribed action tau_release=1.5 s, tau_1=5.1 s, speed=120 m/s and heading toward the origin.",
+          "unit": "s",
+          "aggregation": "single_entity",
+          "language_basis": [
+            "题面给出真目标为半径 7 m、高 10 m 的圆柱形固定目标，并要求给出对 M1 的有效遮蔽时长。",
+            "题面说明云团中心 10 m 范围内在起爆 20 s 内可提供有效遮蔽，云团以 3 m/s 下沉。",
+            "题面说明导弹直指以假目标为原点的位置；本合同将来袭过程截止于导弹抵达原点。"
+          ]
+        },
+        {
+          "objective_id": "q1.reference_point_duration",
+          "formula": "With p_c=(0,200,5), report measure({t in [0,T_1]: segment[M_1(t),p_c] intersects S_1(t)}).",
+          "unit": "s",
+          "aggregation": "single_entity",
+          "language_basis": [
+            "题面给出真目标下底面圆心坐标，但未直接给出把整个圆柱判为被遮蔽的几何谓词，因此可用代表点视线作为替代解释。"
+          ]
+        },
+        {
+          "objective_id": "q1.partial_target_duration",
+          "formula": "Report measure({t in [0,T_1]: there exists p in C such that segment[M_1(t),p] intersects S_1(t)}).",
+          "unit": "s",
+          "aggregation": "single_entity",
+          "language_basis": [
+            "若把目标任一局部视线被烟幕截获也称为遮蔽，则可形成该较宽松解释；题面没有显式写出整体或局部量词。"
+          ]
+        }
+      ],
+      "selected_objective_id": "q1.full_cylinder_duration",
+      "selection_basis": "declared_assumption",
+      "selection_confidence": "medium",
+      "materiality": "high",
+      "human_confirmation_required": false,
+      "diagnostic_objective_ids": [
+        "q1.reference_point_duration",
+        "q1.partial_target_duration"
+      ],
+      "ambiguity_note": "题面没有唯一规定整个有限圆柱、代表点或局部可见面对应的遮蔽量词，也没有逐字给出来袭过程的终点。本合同审慎采用有限圆柱全部视线均被球状烟幕截获，并只计至 M1 抵达原点；这是明确且可执行的假设，备选解释仅用于敏感性诊断，不作为未处置 P1。",
+      "decision_space": {
+        "action_cardinality": "not_applicable",
+        "language_basis": [
+          "问题 1 已固定无人机、速度、航向、投放时刻和投放后 3.6 s 起爆，只要求计算时长。"
+        ]
+      }
+    },
+    {
+      "question_id": "Q2",
+      "interpretations": [
+        {
+          "objective_id": "q2.max_full_cylinder_duration",
+          "formula": "Maximize H_1=measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_1(t)}) over one FY1 action (constant heading, speed in [70,140] m/s, release time and burst delay), where C is the finite true-target cylinder, S_1(t)=B(c_1(t),10) during the 20 s effective lifetime, and T_1=||M_1(0)||/300.",
+          "unit": "s",
+          "aggregation": "single_entity",
+          "language_basis": [
+            "问题 2 明确要求利用 FY1 投放 1 枚烟幕干扰弹实施对 M1 的干扰，并使遮蔽时间尽可能长。",
+            "总述要求设计飞行方向、飞行速度、投放点和起爆点；无人机速度为 70~140 m/s 且航向、速度确定后不再调整。",
+            "真目标被定义为有限圆柱，故本合同要求其整体视线被遮挡。"
+          ]
+        },
+        {
+          "objective_id": "q2.max_reference_point_duration",
+          "formula": "Maximize measure({t in [0,T_1]: segment[M_1(t),(0,200,5)] intersects S_1(t)}) over the same one-action feasible set.",
+          "unit": "s",
+          "aggregation": "single_entity",
+          "language_basis": [
+            "题面未显式给出有限圆柱整体遮挡判据，因此以目标代表点视线作为代理是一个可计算备选。"
+          ]
+        },
+        {
+          "objective_id": "q2.max_partial_target_duration",
+          "formula": "Maximize measure({t in [0,T_1]: there exists p in C such that segment[M_1(t),p] intersects S_1(t)}) over the same one-action feasible set.",
+          "unit": "s",
+          "aggregation": "single_entity",
+          "language_basis": [
+            "题面只使用有效遮蔽而没有明确整体或局部量词，因而局部遮蔽构成宽松备选。"
+          ]
+        }
+      ],
+      "selected_objective_id": "q2.max_full_cylinder_duration",
+      "selection_basis": "declared_assumption",
+      "selection_confidence": "medium",
+      "materiality": "high",
+      "human_confirmation_required": false,
+      "diagnostic_objective_ids": [
+        "q2.max_reference_point_duration",
+        "q2.max_partial_target_duration"
+      ],
+      "ambiguity_note": "有限圆柱的遮蔽量词和计时终点未被题面唯一形式化。本合同采用圆柱整体遮挡并截止 M1 抵达原点；该选择足以形成可执行优化合同，备选几何解释保留为诊断项。",
+      "decision_space": {
+        "action_cardinality": "fixed",
+        "allowed_action_count": 1,
+        "language_basis": [
+          "问题 2 明确写明 FY1 投放 1 枚烟幕干扰弹。"
+        ]
+      }
+    },
+    {
+      "question_id": "Q3",
+      "interpretations": [
+        {
+          "objective_id": "q3.spatial_union_time_measure",
+          "formula": "Maximize H_1=measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects union_{k=1..3} S_k(t)}) over three FY1 actions, where each S_k(t)=B(c_k(t),10) during its 20 s lifetime. For template row k report the independent one-shell duration h_1k=measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_k(t)}), not a marginal or overlap-counted contribution.",
+          "unit": "s",
+          "aggregation": "union_any",
+          "language_basis": [
+            "问题 3 要求 FY1 投放 3 枚烟幕干扰弹实施对 M1 的干扰。",
+            "总述要求多枚烟幕干扰弹对真目标的有效遮蔽时间尽可能长，并明确不同烟幕干扰弹的遮蔽可不连续。",
+            "result1.xlsx 对每枚烟幕干扰弹各列一行有效干扰时长 (s)，因此本合同将该列解释为该弹单独作用时长。"
+          ]
+        },
+        {
+          "objective_id": "q3.union_of_individually_full_intervals",
+          "formula": "Maximize measure(union_{k=1..3} {t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_k(t)}).",
+          "unit": "s",
+          "aggregation": "union_any",
+          "language_basis": [
+            "多枚烟幕的遮蔽可不连续可被理解为先分别判定每枚烟幕是否独立完全遮蔽，再对其有效时间区间取并集。"
+          ]
+        },
+        {
+          "objective_id": "q3.sum_per_shell_durations",
+          "formula": "Maximize sum_{k=1..3} measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_k(t)}).",
+          "unit": "s",
+          "aggregation": "sum_per_entity",
+          "language_basis": [
+            "模板逐弹列出有效干扰时长，可能诱导把三行时长直接相加，但该解释会重复计算重叠时段。"
+          ]
+        },
+        {
+          "objective_id": "q3.reference_point_union_duration",
+          "formula": "Maximize measure({t in [0,T_1]: segment[M_1(t),(0,200,5)] intersects union_{k=1..3} S_k(t)}).",
+          "unit": "s",
+          "aggregation": "union_any",
+          "language_basis": [
+            "若采用真目标代表点而非有限圆柱整体，则空间烟幕并集可按单条视线判定。"
+          ]
+        }
+      ],
+      "selected_objective_id": "q3.spatial_union_time_measure",
+      "selection_basis": "declared_assumption",
+      "selection_confidence": "medium",
+      "materiality": "high",
+      "human_confirmation_required": false,
+      "diagnostic_objective_ids": [
+        "q3.union_of_individually_full_intervals",
+        "q3.sum_per_shell_durations",
+        "q3.reference_point_union_duration"
+      ],
+      "ambiguity_note": "题面未唯一说明多烟幕是共同完成圆柱整体遮挡、仅合并各弹独立完全遮挡区间，还是逐弹时长求和。本合同先对同时有效的烟幕球取空间并集，再判定圆柱整体遮挡，最后对有效时刻取测度；重叠时间只计一次，允许不连续区间。模板逐弹时长仅作为单弹独立报告值，不改变总目标。计时截止 M1 抵达原点。",
+      "decision_space": {
+        "action_cardinality": "fixed",
+        "allowed_action_count": 3,
+        "language_basis": [
+          "问题 3 明确写明 FY1 投放 3 枚烟幕干扰弹；同一无人机任意两次投放至少间隔 1 s。"
+        ]
+      }
+    },
+    {
+      "question_id": "Q4",
+      "interpretations": [
+        {
+          "objective_id": "q4.spatial_union_time_measure",
+          "formula": "Maximize H_1=measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects union_{k in {FY1,FY2,FY3}} S_k(t)}) over one action from each listed UAV. For each result2.xlsx row k report the independent one-shell duration h_1k=measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_k(t)}).",
+          "unit": "s",
+          "aggregation": "union_any",
+          "language_basis": [
+            "问题 4 要求 FY1、FY2、FY3 各投放 1 枚烟幕干扰弹实施对 M1 的干扰。",
+            "总述要求多枚烟幕干扰弹的有效遮蔽时间尽可能长，并允许遮蔽不连续。",
+            "result2.xlsx 按无人机逐弹列有效干扰时长 (s)，故该列按单弹独立时长报告。"
+          ]
+        },
+        {
+          "objective_id": "q4.union_of_individually_full_intervals",
+          "formula": "Maximize measure(union_k {t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_k(t)}).",
+          "unit": "s",
+          "aggregation": "union_any",
+          "language_basis": [
+            "可不连续也可解释为对三枚烟幕各自独立有效区间取时间并集。"
+          ]
+        },
+        {
+          "objective_id": "q4.sum_per_shell_durations",
+          "formula": "Maximize sum_k measure({t in [0,T_1]: for every p in C, segment[M_1(t),p] intersects S_k(t)}).",
+          "unit": "s",
+          "aggregation": "sum_per_entity",
+          "language_basis": [
+            "模板逐行给出时长可能被解释为逐弹时长之和，但这会重复计算重叠时段。"
+          ]
+        },
+        {
+          "objective_id": "q4.reference_point_union_duration",
+          "formula": "Maximize measure({t in [0,T_1]: segment[M_1(t),(0,200,5)] intersects union_k S_k(t)}).",
+          "unit": "s",
+          "aggregation": "union_any",
+          "language_basis": [
+            "题面未给出圆柱整体的显式几何谓词，代表点视线是可计算备选。"
+          ]
+        }
+      ],
+      "selected_objective_id": "q4.spatial_union_time_measure",
+      "selection_basis": "declared_assumption",
+      "selection_confidence": "medium",
+      "materiality": "high",
+      "human_confirmation_required": false,
+      "diagnostic_objective_ids": [
+        "q4.union_of_individually_full_intervals",
+        "q4.sum_per_shell_durations",
+        "q4.reference_point_union_duration"
+      ],
+      "ambiguity_note": "多烟幕共同遮挡、独立区间合并和逐弹求和均有字面可能性，圆柱遮挡量词也未形式化。本合同采用三枚烟幕的空间并集共同遮挡有限圆柱，再对时间取并集测度；模板逐弹时长按单弹独立值报告，截止 M1 抵达原点。该合同可直接执行，备选仅作诊断。",
+      "decision_space": {
+        "action_cardinality": "fixed",
+        "allowed_action_count": 3,
+        "language_basis": [
+          "问题 4 明确要求 FY1、FY2、FY3 三架无人机各投放 1 枚，总动作数固定为 3。"
+        ]
+      }
+    },
+    {
+      "question_id": "Q5",
+      "interpretations": [
+        {
+          "objective_id": "q5.equal_sum_per_missile",
+          "formula": "For each m in {1,2,3}, let T_m=||M_m(0)||/300 and H_m=measure({t in [0,T_m]: for every p in C, segment[M_m(t),p] intersects union_{k active at t} S_k(t)}). Maximize H_total=H_1+H_2+H_3 with equal dimensionless weights and report (H_1,H_2,H_3). Every cloud is counted for every missile it actually geometrically obscures, independent of its primary template label. In each template row k labelled with primary missile a(k), report the independent one-shell duration h_a(k),k computed with S_k alone.",
+          "unit": "s",
+          "aggregation": "sum_per_entity",
+          "language_basis": [
+            "问题 5 要求对 M1、M2、M3 三枚来袭导弹实施干扰；总述要求有效遮蔽时间尽可能长。",
+            "题面没有给出三枚导弹的权重或优先级，因此本合同采用逐导弹时长等权求和并同时报告三个分量。",
+            "题面没有规定烟幕只能作用于预先指定的一枚导弹；物理上同一云团可按实际几何同时影响多条导弹至目标的视线。",
+            "result3.xlsx 逐弹提供有效干扰时长 (s) 与干扰的导弹编号，本合同将编号作为主要计划对象，时长列作为该弹对该主要对象的单弹独立时长。"
+          ]
+        },
+        {
+          "objective_id": "q5.global_clock_union",
+          "formula": "Maximize measure(union_{m=1..3} {t in [0,T_m]: for every p in C, segment[M_m(t),p] intersects union_k S_k(t)}).",
+          "unit": "s",
+          "aggregation": "union_any",
+          "language_basis": [
+            "把三枚导弹共享的时钟上任一导弹被干扰视为总体有效时段，可形成跨导弹时间并集解释，但会忽略同一时刻同时保护多枚导弹的额外价值。"
+          ]
+        },
+        {
+          "objective_id": "q5.simultaneous_all_missiles",
+          "formula": "Maximize measure(intersection_{m=1..3} {t in [0,T_m]: for every p in C, segment[M_m(t),p] intersects union_k S_k(t)}).",
+          "unit": "s",
+          "aggregation": "intersection_all",
+          "language_basis": [
+            "若把对三枚导弹的干扰理解为必须同时成立，则得到三者有效区间交集，但题面未使用同时或全部同时等限定语。"
+          ]
+        },
+        {
+          "objective_id": "q5.vector_per_missile",
+          "formula": "Maximize the vector (H_1,H_2,H_3) under Pareto order, without a scalar tie-break rule.",
+          "unit": "s per component",
+          "aggregation": "multiobjective",
+          "language_basis": [
+            "三枚导弹分别具有遮蔽时长，且题面没有显式给出跨导弹标量聚合方式，因此可视为多目标问题。"
+          ]
+        },
+        {
+          "objective_id": "q5.assignment_restricted_sum",
+          "formula": "Maximize sum_{m=1..3} measure({t in [0,T_m]: for every p in C, segment[M_m(t),p] intersects union_{k:a(k)=m} S_k(t)}), so a cloud contributes only to its assigned missile.",
+          "unit": "s",
+          "aggregation": "sum_per_entity",
+          "language_basis": [
+            "result3.xlsx 每枚烟幕只有一个干扰的导弹编号字段，可能被解释为排他分配；但题面未明确该字段限制实际物理作用。"
+          ]
+        },
+        {
+          "objective_id": "q5.weighted_priority_sum",
+          "formula": "Maximize sum_{m=1..3} w_m*H_m for positive dimensionless weights w_m that encode missile priorities.",
+          "unit": "s",
+          "aggregation": "weighted",
+          "language_basis": [
+            "若三枚导弹威胁等级不同可使用加权和，但题面没有提供任何优先级或权重。"
+          ]
+        }
+      ],
+      "selected_objective_id": "q5.equal_sum_per_missile",
+      "selection_basis": "declared_assumption",
+      "selection_confidence": "medium",
+      "materiality": "high",
+      "human_confirmation_required": false,
+      "diagnostic_objective_ids": [
+        "q5.global_clock_union",
+        "q5.simultaneous_all_missiles",
+        "q5.vector_per_missile",
+        "q5.assignment_restricted_sum",
+        "q5.weighted_priority_sum"
+      ],
+      "ambiguity_note": "题面未唯一规定跨三枚导弹是求和、时间并集、同步交集、多目标或加权，也未明确模板中的导弹编号是否排除同一烟幕对其他导弹的实际作用。本合同采用逐导弹有效时长等权求和并报告 H1、H2、H3；每枚导弹内部先对所有同时有效烟幕取空间并集，再计有效时间并集；同一烟幕可按实际几何影响多枚导弹；各导弹分别截止于其抵达原点。模板中的导弹编号仅表示主要计划对象，逐弹时长为该弹对主要对象的单弹独立时长。这些显式假设已形成可执行合同，备选解释不作为未处置 P1。",
+      "decision_space": {
+        "action_cardinality": "variable",
+        "allowed_action_count": 15,
+        "language_basis": [
+          "问题 5 规定 5 架无人机每架至多投放 3 枚，因此每架可投放 0~3 枚，总动作数可为 0~15，而不是恰好 15 枚。",
+          "同一无人机任意两次投放至少间隔 1 s；每架无人机的航向和速度一经确定不再调整。"
+        ]
+      }
+    }
+  ]
+}

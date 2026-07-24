@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "question": "Q3",
+  "search": {
+    "algorithm": "shared-path-differential-evolution",
+    "seed": 202503,
+    "evaluations": 10674,
+    "proxy_best_s": 6.403159406341727,
+    "initial_population_size": 96,
+    "baseline_proxy_s": 4.832487810565358
+  },
+  "result": {
+    "durations_s": {
+      "M1": 6.4031594063295545
+    },
+    "intervals_s": {
+      "M1": [
+        [
+          1.0,
+          7.4031594063295545
+        ]
+      ]
+    },
+    "objective_missile_s": 6.4031594063295545,
+    "min_duration_s": 6.4031594063295545,
+    "diagnostics": {
+      "M1": {
+        "duration_s": 6.4031594063295545,
+        "root_count": 2,
+        "function_evaluations": 1706,
+        "bracket_step_s": 0.04
+      }
+    },
+    "actions": [
+      {
+        "drone": "FY1",
+        "heading_deg": 6.4325262589218655,
+        "speed_mps": 125.28736323185103,
+        "release_time_s": 0.0,
+        "fuse_delay_s": 0.0,
+        "burst_time_s": 0.0,
+        "release_point_m": [
+          17800.0,
+          0.0,
+          1800.0
+        ],
+        "burst_point_m": [
+          17800.0,
+          0.0,
+          1800.0
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY1",
+        "heading_deg": 6.4325262589218655,
+        "speed_mps": 125.28736323185103,
+        "release_time_s": 1.0,
+        "fuse_delay_s": 0.0,
+        "burst_time_s": 1.0,
+        "release_point_m": [
+          17924.49861403055,
+          14.036327513349573,
+          1800.0
+        ],
+        "burst_point_m": [
+          17924.49861403055,
+          14.036327513349573,
+          1800.0
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY1",
+        "heading_deg": 6.4325262589218655,
+        "speed_mps": 125.28736323185103,
+        "release_time_s": 4.339086892067793,
+        "fuse_delay_s": 10.094852723855558,
+        "burst_time_s": 14.43393961592335,
+        "release_point_m": [
+          18340.210304220564,
+          60.90484472594566,
+          1800.0
+        ],
+        "burst_point_m": [
+          19597.005477183102,
+          202.5995037570113,
+          1300.6603475699635
+        ],
+        "assigned_missile": "M1"
+      }
+    ],
+    "target_semantics": "finite-cylinder-full-occlusion-by-spatial-union",
+    "target_sample_count": 1082,
+    "continuous_time_method": "event-partition-plus-brent-root-refinement",
+    "individual_durations_s": [
+      2.5560066796834278,
+      4.183031801432429,
+      0.0
+    ]
+  },
+  "metrics": {
+    "duration_s": 6.4031594063295545
+  }
+}

@@ -25,7 +25,8 @@ from shumozizi.core.io import (
 )
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.capabilities import require_capability_route
-from shumozizi.simple.state import read_simple_state, utc_now
+from shumozizi.simple.results import read_result_index
+from shumozizi.simple.state import read_simple_state, utc_now, update_simple_state
 
 REVIEW_ROOT = Path("review")
 SUMMARY_PATH = REVIEW_ROOT / "summary.json"
@@ -71,11 +72,29 @@ _RED_TEAM_KINDS = {
     "search-challenge",
     "property-test",
     "action-activation-challenge",
+    "fixed-action-utilization",
     "geometry-continuous-validation",
 }
 _SAFE_EVIDENCE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _REPORT_ARTIFACT_PATH = re.compile(r"review[\\/]red_team_artifacts[\\/][A-Za-z0-9._/\\-]+")
+
+# 科学审查包白名单：文件名不得包含这些标签片段
+_PACKET_LABEL_EXCLUDE = re.compile(
+    r"(quality|verified|accepted|best|final|paper_allowed|search_adequacy|"
+    r"competition_strength|qualified|strong|current|candidate_accepted)",
+    re.IGNORECASE,
+)
+
+
+def _packet_should_exclude(path: Path) -> bool:
+    """判断文件是否应被排除在科学审查包之外。
+
+    检查文件名是否含质量标签。
+    """
+    if _PACKET_LABEL_EXCLUDE.search(path.name):
+        return True
+    return False
 
 
 def _schema() -> dict[str, Any]:
@@ -978,6 +997,10 @@ def _copy_packet_tree(
             source,
             exclude_visualization_scripts=exclude_visualization_scripts,
         ):
+            # 科学审查包不得泄露质量标签：跳过文件名含 quality/verified 等
+            # 标签的文件，并跳过 JSON 字段含 accepted/paper_allowed 等的文件。
+            if source_relative == "results/raw" and _packet_should_exclude(item):
+                continue
             target = destination / item.relative_to(source)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(item, target)
@@ -1227,6 +1250,49 @@ def objective_semantics_review_required(run_dir: Path) -> bool:
     )
 
 
+# ── 聚合语义冲突对：在这两组中任取一对都会导致不同的优化方向与最终答案 ──
+_SEMANTIC_CONFLICT_PAIRS: tuple[tuple[str, str], ...] = (
+    ("sum_per_entity", "intersection_all"),
+    ("sum_per_entity", "union_any"),
+    ("multiobjective", "intersection_all"),
+    ("multiobjective", "sum_per_entity"),
+)
+
+
+def _derive_semantic_conflict_fields(question: dict[str, Any]) -> dict[str, Any]:
+    """从结构化 interpretations 推导语义冲突，不依赖自填的 selection_confidence。
+
+    Returns:
+        可合并回 question 的机器判定字段。
+    """
+    aggregations = sorted({
+        item["aggregation"]
+        for item in question["interpretations"]
+    })
+    distinct_count = len(aggregations)
+
+    # 任一对冲突聚合 → changes_primary_result = true
+    has_conflict = any(
+        (a in aggregations and b in aggregations)
+        for a, b in _SEMANTIC_CONFLICT_PAIRS
+    )
+    distinct = list(dict.fromkeys(aggregations))
+    language_resolves = question.get("selection_basis") == "language_evidence"
+    user_decision_required = (
+        distinct_count >= 2
+        and has_conflict
+        and not language_resolves
+    )
+    return {
+        "distinct_aggregations": distinct,
+        "distinct_aggregation_count": distinct_count,
+        "changes_primary_result": has_conflict,
+        "changes_strategy": has_conflict,
+        "language_uniquely_resolves": language_resolves,
+        "user_decision_required": user_decision_required,
+    }
+
+
 def _validate_objective_assessment(
     run_dir: Path, payload: dict[str, Any]
 ) -> dict[str, Any]:
@@ -1273,7 +1339,69 @@ def _validate_objective_assessment(
                 )
             if not question["human_confirmation_required"]:
                 raise ContractError(f"{question['question_id']} 的高影响歧义必须要求人工确认")
+
+        # ── 结构判定：当同一问题存在多个实质不同的聚合方式时，不能由 AI 自行填写
+        # selection_confidence 绕过。必须按题面语言和聚合语义机器判定是否需要用户裁决。 ──
+        machine = _derive_semantic_conflict_fields(question)
+        question.update(machine)
+        if machine["user_decision_required"]:
+            if question["selection_basis"] != "user_decision":
+                raise ContractError(
+                    f"{question['question_id']} 存在 {machine['distinct_aggregation_count']} "
+                    f"种实质不同的聚合语义（{', '.join(machine['distinct_aggregations'])}），"
+                    f"会改变最终结果 ({machine['changes_primary_result']})，"
+                    f"题面语言不能唯一排除 ({not machine['language_uniquely_resolves']})，"
+                    f"必须由真实用户裁决，不能用 selection_confidence="
+                    f"{question['selection_confidence']!r} 绕过"
+                )
+            if not question["human_confirmation_required"]:
+                raise ContractError(
+                    f"{question['question_id']} 的结构语义冲突要求 human_confirmation_required=true"
+                )
     return payload
+
+
+def _validate_question_reviews(
+    run_dir: Path, question_reviews: list[dict[str, Any]] | None
+) -> list[dict[str, Any]] | None:
+    """校验逐问审查结论覆盖全部必答问题，且每个结论自洽。
+
+    Returns:
+        规范化后的逐问审查列表；输入为 None 时返回 None（兼容旧调用）。
+    """
+    if question_reviews is None:
+        return None
+    if not isinstance(question_reviews, list):
+        raise ContractError("question_reviews 必须是列表")
+    state = read_simple_state(run_dir)
+    required = set(state["required_questions"])
+    covered = {item["question_id"] for item in question_reviews}
+    if covered != required:
+        missing = required - covered
+        extra = covered - required
+        parts = []
+        if missing:
+            parts.append("缺少必答问题: " + ", ".join(sorted(missing)))
+        if extra:
+            parts.append("含非必答问题: " + ", ".join(sorted(extra)))
+        raise ContractError("逐问审查必须覆盖全部必答问题且不引入无关问题: " + "; ".join(parts))
+    for item in question_reviews:
+        if item["verdict"] not in _VERDICTS:
+            raise ContractError(f"{item['question_id']} verdict 不合法: {item['verdict']}")
+        if item["competition_strength"] not in {"weak", "qualified", "strong", "unknown"}:
+            raise ContractError(
+                f"{item['question_id']} competition_strength 不合法: {item['competition_strength']}"
+            )
+    return [
+        {
+            "question_id": item["question_id"],
+            "verdict": item["verdict"],
+            "competition_strength": item["competition_strength"],
+            "evidence_ids": list(dict.fromkeys(item.get("evidence_ids", []))),
+            "blocking_findings": list(dict.fromkeys(item.get("blocking_findings", []))),
+        }
+        for item in question_reviews
+    ]
 
 
 def _selected_objectives_sha256(assessment: dict[str, Any]) -> str:
@@ -1286,12 +1414,20 @@ def _selected_objectives_sha256(assessment: dict[str, Any]) -> str:
 
 
 def _human_ambiguity_binding(run_dir: Path, assessment: dict[str, Any]) -> dict[str, str] | None:
-    """核验高影响歧义的人工原话与目标选择逐项一致。"""
+    """核验高影响歧义的人工原话与目标选择逐项一致。
+
+    触发条件现在包括两套机制：
+    1. 自填的高影响 + 显式 ambiguous（原有逻辑，保留兼容）；
+    2. 机器派生的语义冲突（user_decision_required=true），不再依赖 AI 自评。
+    """
     required = {
         question["question_id"]: question["selected_objective_id"]
         for question in assessment["questions"]
-        if question["materiality"] == "high"
-        and question["selection_confidence"] == "ambiguous"
+        if (
+            question["materiality"] == "high"
+            and question["selection_confidence"] == "ambiguous"
+        )
+        or question.get("user_decision_required", False)
     }
     if not required:
         return None
@@ -1331,6 +1467,35 @@ def _bound_review_file(run_dir: Path, relative: Path, *, suffix: str) -> dict[st
     return {"file": path_relative.as_posix(), "sha256": sha256_file(path)}
 
 
+def _stale_results_for_objective_change(
+    run_dir: Path, new_objectives_sha256: str
+) -> None:
+    """目标语义变化后标记所有旧生产结果为 stale。
+
+    不直接修改结果 JSON 内容（那可能触发额外的 Schema 校验），
+    而是将未绑定新目标哈希的 current 结果标记为 superseded。
+    """
+    try:
+        index = read_result_index(run_dir)
+    except (ContractError, OSError):
+        return
+    dirty = False
+    for item in index["results"]:
+        if item.get("execution_mode") != "production":
+            continue
+        if item.get("status") != "current":
+            continue
+        existing = item.get("objective_semantics_sha256")
+        if existing and existing == new_objectives_sha256:
+            continue
+        item["status"] = "superseded"
+        dirty = True
+    if dirty:
+        from shumozizi.core.io import atomic_json as _atomic
+
+        _atomic(run_dir / "results" / "index.json", index)
+
+
 def import_objective_semantics_review(
     run_dir: Path,
     *,
@@ -1359,6 +1524,9 @@ def import_objective_semantics_review(
     if not isinstance(assessment, dict):
         raise ContractError("独立目标语义评估必须是 JSON 对象")
     _validate_objective_assessment(run_dir, assessment)
+    # 将机器派生字段（distinct_aggregations 等）持久化回评估文件，
+    # 让下游消费者无需重复推导即可统一读取语义冲突判定。
+    atomic_json(assessment_path, assessment)
     if not reviewer_thread_id.strip():
         raise ContractError("目标语义预审必须记录新对话 thread_id")
     ambiguity_decisions = _human_ambiguity_binding(run_dir, assessment)
@@ -1392,6 +1560,13 @@ def import_objective_semantics_review(
         summary["updated_at"] = utc_now()
         _require_summary(summary)
         atomic_json(summary_path, summary)
+    # 使所有绑定旧目标语义的结果 stale，并标记质量/图/Excel 必须重跑。
+    _stale_results_for_objective_change(run_dir, _selected_objectives_sha256(assessment))
+    # 目标改变后状态强制回退到 analysis，不能在旧结果上直接产出论文。
+    try:
+        update_simple_state(run_dir, phase="analysis")
+    except ContractError:
+        pass  # 已完成运行不允许直接回退；由调用方负责新建修订运行。
     return receipt
 
 
@@ -1538,6 +1713,46 @@ def _require_competition_strength_evidence(
                 "动作激活挑战未覆盖题面声明的完整动作数量: "
                 + ", ".join(mismatched)
             )
+    # ── 固定多动作利用检查：删除每个必要动作，验证边际贡献是否正 ──
+    required_fixed = {
+        question["question_id"]: question["decision_space"]["allowed_action_count"]
+        for question in semantics.get("assessment", {}).get("questions", [])
+        if question.get("decision_space", {}).get("action_cardinality") == "fixed"
+        and (question["decision_space"].get("allowed_action_count") or 0) >= 2
+    }
+    if required_fixed:
+        verification = verify_red_team_artifacts(run_dir)
+        fixed_evidence = {
+            evidence["question_id"]: evidence
+            for kind, evidence in verification.get("semantic_evidence", [])
+            if kind == "fixed-action-utilization"
+        }
+        missing = sorted(set(required_fixed) - set(fixed_evidence))
+        if missing:
+            raise ContractError(
+                "固定多动作问题缺少 fixed-action-utilization 消融证据: "
+                + ", ".join(missing)
+            )
+        for question_id, required_count in required_fixed.items():
+            evidence = fixed_evidence[question_id]
+            gains = [float(item) for item in evidence.get("marginal_gains", [])]
+            if len(gains) != required_count:
+                raise ContractError(
+                    f"{question_id} fixed-action-utilization 消融动作数 "
+                    f"({len(gains)}) 与题面要求 ({required_count}) 不一致"
+                )
+            tolerance = float(evidence.get("tolerance", 1e-12))
+            zero_gain = [i + 1 for i, g in enumerate(gains) if g <= tolerance]
+            if evidence.get("all_required_actions_material") and zero_gain:
+                raise ContractError(
+                    f"{question_id} 声称 all_required_actions_material=true，"
+                    f"但第 {zero_gain} 枚动作边际贡献 ≤ {tolerance}"
+                )
+            if zero_gain:
+                raise ContractError(
+                    f"{question_id} 第 {zero_gain} 枚动作边际贡献 ≤ {tolerance}，"
+                    f"不能标记为 qualified/strong；需重搜或降级为 weak"
+            )
 
 
 def _review_report(run_dir: Path, relative: Path) -> dict[str, str]:
@@ -1567,8 +1782,14 @@ def import_scientific_review(
     affected_questions: list[str],
     reviewer_thread_id: str,
     report_file: Path = SCIENTIFIC_REPORT_PATH,
+    question_reviews: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """将新对话的自由科学审查报告绑定为可机读的放行摘要。"""
+    """将新对话的自由科学审查报告绑定为可机读的放行摘要。
+
+    Args:
+        question_reviews: 逐问细化结论，每项至少包含 question_id / verdict /
+            competition_strength。为 None 时回退到全局值（兼容旧调用）。
+    """
     if verdict not in _VERDICTS or highest_severity not in _SEVERITIES:
         raise ContractError("科学审查 verdict 或严重性不合法")
     if competition_strength not in {"weak", "qualified", "strong", "unknown"}:
@@ -1603,6 +1824,10 @@ def import_scientific_review(
         run_dir,
         semantics,
     )
+    # ── 逐问审查：校验并合并 per-question verdicts ──
+    validated_question_reviews = _validate_question_reviews(
+        run_dir, question_reviews
+    )
     semantics_binding = None
     if semantics.get("required"):
         semantics_receipt = run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH
@@ -1610,25 +1835,28 @@ def import_scientific_review(
             "file": relative_inside(run_dir, semantics_receipt).as_posix(),
             "sha256": sha256_file(semantics_receipt),
         }
-    summary = {
-        "schema_version": "1.5",
-        "run_id": run_dir.name,
-        "scientific_review": {
-            "verdict": verdict,
-            "highest_severity": highest_severity,
-            "competition_strength": competition_strength,
-            "full_rerun_required": full_rerun_required,
-            "affected_questions": list(dict.fromkeys(affected_questions)),
-            "packet": {
-                "manifest_file": packet["manifest_file"],
-                "manifest_sha256": packet["manifest_sha256"],
-            },
-            "report": report,
-            "artifacts": artifacts,
-            "objective_semantics": semantics_binding,
-            "reviewer": _reviewer_scientific(reviewer_thread_id),
-            "reviewed_at": utc_now(),
+    review = {
+        "verdict": verdict,
+        "highest_severity": highest_severity,
+        "competition_strength": competition_strength,
+        "full_rerun_required": full_rerun_required,
+        "affected_questions": list(dict.fromkeys(affected_questions)),
+        "packet": {
+            "manifest_file": packet["manifest_file"],
+            "manifest_sha256": packet["manifest_sha256"],
         },
+        "report": report,
+        "artifacts": artifacts,
+        "objective_semantics": semantics_binding,
+        "reviewer": _reviewer_scientific(reviewer_thread_id),
+        "reviewed_at": utc_now(),
+    }
+    if validated_question_reviews is not None:
+        review["question_reviews"] = validated_question_reviews
+    summary = {
+        "schema_version": "1.6",
+        "run_id": run_dir.name,
+        "scientific_review": review,
         # 新科学结论会改变论文可用性；旧盲审不能跨越该边界复用。
         "paper_blind_review": None,
         "final_audit": None,
@@ -1802,13 +2030,18 @@ def _review_current(
 
 
 def scientific_review_status(run_dir: Path) -> dict[str, Any]:
-    """返回科学红队是否仍可作为论文放行依据。"""
+    """返回科学红队是否仍可作为论文放行依据。
+
+    当逐问审查 (question_reviews) 存在时，全部必答问题 verdict=pass 才允许放行，
+    单问证据不能替其他问题背书。
+    """
     try:
         semantics = objective_semantics_review_status(run_dir)
         if not semantics["allowed"]:
             return {
                 "allowed": False,
                 "submission_ready": False,
+                "competition_strength": "unknown",
                 "reason": "目标语义预审未通过或已失效: " + semantics["reason"],
             }
         summary = read_review_summary(run_dir)
@@ -1821,21 +2054,47 @@ def scientific_review_status(run_dir: Path) -> dict[str, Any]:
             and review["highest_severity"] not in {"P0", "P1"}
             and not review["full_rerun_required"]
         )
+        question_reviews = review.get("question_reviews")
+        if question_reviews is not None and allowed:
+            # 逐问模式下，任一必答问题非 pass 即阻断
+            failed = [
+                item["question_id"]
+                for item in question_reviews
+                if item["verdict"] != "pass"
+            ]
+            if failed:
+                allowed = False
+                reason = "逐问审查未全部通过: " + ", ".join(failed)
         submission_ready = bool(
             allowed
             and review["competition_strength"] in {"qualified", "strong"}
             and evidence_assessment is not None
             and evidence_assessment["promotion_allowed"]
         )
+        if question_reviews is not None and submission_ready:
+            # 逐问模式下任一问题 competition_strength 不达标 → 不可提交
+            weak_questions = [
+                item["question_id"]
+                for item in question_reviews
+                if item["competition_strength"] not in {"qualified", "strong"}
+            ]
+            if weak_questions:
+                submission_ready = False
         return {
             "allowed": allowed,
             "submission_ready": submission_ready,
             "competition_strength": review["competition_strength"],
+            "question_reviews": question_reviews,
             "review": review,
             "reason": reason,
         }
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
-        return {"allowed": False, "submission_ready": False, "reason": str(exc)}
+        return {
+            "allowed": False,
+            "submission_ready": False,
+            "competition_strength": "unknown",
+            "reason": str(exc),
+        }
 
 
 def require_paper_generation_allowed(run_dir: Path) -> None:

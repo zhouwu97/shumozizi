@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "method": "adaptive-lipschitz-interval-classification",
+  "tolerance_s": 0.0001,
+  "cases": [
+    {
+      "name": "cell-centered-narrow-island",
+      "true_duration_s": 0.02,
+      "lower_bound_s": 0.017358398437499978,
+      "estimate_s": 0.019995117187500022,
+      "upper_bound_s": 0.022302246093749978,
+      "uncertain_cell_count": 90,
+      "passed": true
+    },
+    {
+      "name": "left-edge-narrow-island",
+      "true_duration_s": 0.02,
+      "lower_bound_s": 0.01275634765625,
+      "estimate_s": 0.01995849609375,
+      "upper_bound_s": 0.0252685546875,
+      "uncertain_cell_count": 205,
+      "passed": true
+    },
+    {
+      "name": "tangent-zero-duration",
+      "true_duration_s": 0.0,
+      "lower_bound_s": 0.0,
+      "estimate_s": 0.0,
+      "upper_bound_s": 0.0111083984375,
+      "uncertain_cell_count": 182,
+      "passed": true
+    },
+    {
+      "name": "left-endpoint-active",
+      "true_duration_s": 0.02,
+      "lower_bound_s": 0.01995849609375,
+      "estimate_s": 0.02001953125,
+      "upper_bound_s": 0.02001953125,
+      "uncertain_cell_count": 1,
+      "passed": true
+    },
+    {
+      "name": "right-endpoint-active",
+      "true_duration_s": 0.02,
+      "lower_bound_s": 0.01995849609375,
+      "estimate_s": 0.02001953125,
+      "upper_bound_s": 0.02001953125,
+      "uncertain_cell_count": 1,
+      "passed": true
+    }
+  ],
+  "metrics": {
+    "case_count": 5,
+    "passed_count": 5,
+    "maximum_bound_width_s": 0.01251220703125
+  }
+}

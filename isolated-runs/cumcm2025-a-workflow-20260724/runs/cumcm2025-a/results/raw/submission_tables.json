@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "tables": [
+    {
+      "file": "submission/result1.xlsx",
+      "filled_actions": 3
+    },
+    {
+      "file": "submission/result2.xlsx",
+      "filled_actions": 3
+    },
+    {
+      "file": "submission/result3.xlsx",
+      "filled_actions": 14,
+      "filled_rows": [
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "unused_rows": [
+        4
+      ]
+    }
+  ],
+  "semantics": {
+    "bomb_numbering": "per-drone chronological release order",
+    "individual_duration": "single bomb exact duration for assigned missile",
+    "unused_slot": "kept blank"
+  },
+  "metrics": {
+    "result1_filled_actions": 3,
+    "result2_filled_actions": 3,
+    "result3_filled_actions": 14
+  }
+}

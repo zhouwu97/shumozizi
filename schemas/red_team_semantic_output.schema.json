@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["kind", "evidence"],
   "properties": {
-    "kind": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test", "action-activation-challenge", "geometry-continuous-validation"]},
+    "kind": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test", "action-activation-challenge", "fixed-action-utilization", "geometry-continuous-validation"]},
     "evidence": {"type": "object"}
   },
   "allOf": [
@@ -33,6 +33,10 @@
     {
       "if": {"properties": {"kind": {"const": "action-activation-challenge"}}},
       "then": {"properties": {"evidence": {"$ref": "#/$defs/actionActivation"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "fixed-action-utilization"}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/fixedActionUtilization"}}}
     },
     {
       "if": {"properties": {"kind": {"const": "geometry-continuous-validation"}}},
@@ -204,6 +208,33 @@
         "incumbent_exact": {"type": "number"},
         "challenge_best_exact": {"type": "number"},
         "verdict": {"enum": ["incumbent_competitive", "incumbent_not_competitive", "inconclusive"]}
+      }
+    },
+    "fixedActionUtilization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question_id",
+        "required_action_count",
+        "full_objective",
+        "marginal_gains",
+        "tolerance",
+        "all_required_actions_material",
+        "verdict"
+      ],
+      "properties": {
+        "question_id": {"type": "string", "minLength": 1},
+        "required_action_count": {"type": "integer", "minimum": 1},
+        "full_objective": {"type": "number"},
+        "marginal_gains": {
+          "type": "array",
+          "items": {"type": "number"}
+        },
+        "tolerance": {"type": "number", "minimum": 0},
+        "all_required_actions_material": {"type": "boolean"},
+        "verdict": {
+          "enum": ["all_actions_material", "underutilized_required_action", "invalid"]
+        }
       }
     }
   }

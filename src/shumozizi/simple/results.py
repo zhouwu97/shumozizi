@@ -238,6 +238,7 @@ def register_result(
     execution_mode: str = "production",
     provisional: bool = False,
     error: str | None = None,
+    objective_semantics_sha256: str | None = None,
 ) -> dict[str, Any]:
     """登记一次执行，不把执行成功误写成科学结论。
 
@@ -326,6 +327,8 @@ def register_result(
         "error": error,
         "created_at": utc_now(),
     }
+    if objective_semantics_sha256:
+        entry["objective_semantics_sha256"] = objective_semantics_sha256
     if succeeded and execution_mode == "production" and not provisional:
         for existing in index["results"]:
             if (

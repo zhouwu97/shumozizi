@@ -1,0 +1,29 @@
+{
+  "schema_name": "exact_scores",
+  "adapter_id": "cumcm2025a-independent-quality",
+  "adapter_version": "1.0",
+  "candidate_scores": [
+    {
+      "candidate_id": "baseline",
+      "feasible": true,
+      "objective": 0.0,
+      "constraint_violations": []
+    },
+    {
+      "candidate_id": "selected",
+      "feasible": true,
+      "objective": 6.403136776467861,
+      "constraint_violations": []
+    },
+    {
+      "candidate_id": "perturbed",
+      "feasible": true,
+      "objective": 6.403106689453125,
+      "constraint_violations": []
+    }
+  ],
+  "selected_candidate_id": "selected",
+  "metrics": {
+    "duration_s": 6.403136776467861
+  }
+}

@@ -1,0 +1,837 @@
+{
+  "schema_version": "1.0",
+  "question": "Q5",
+  "search_contract": {
+    "allowed_action_count": 15,
+    "covered_action_counts": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "seeds": [
+      202505,
+      202506
+    ],
+    "exact_evaluation_budget_per_activation": 16,
+    "exact_scorer": "finite-cylinder-full-occlusion-by-spatial-union",
+    "challenge_design": "greedy insertion over unused drone-missile slots with exact local-delay variants",
+    "selection": "sum-duration then max-min; within 1e-8 s prefer fewer actions"
+  },
+  "action_count_coverage": {
+    "202505": [
+      {
+        "action_count": 0,
+        "objective_missile_s": 0.0,
+        "durations_s": {
+          "M1": 0.0,
+          "M2": 0.0,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": null,
+        "marginal_gain_missile_s": 0.0,
+        "exact_evaluations": 1
+      },
+      {
+        "action_count": 1,
+        "objective_missile_s": 4.1830318014324,
+        "durations_s": {
+          "M1": 4.1830318014324,
+          "M2": 0.0,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY1-M2",
+        "marginal_gain_missile_s": 4.1830318014324,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 2,
+        "objective_missile_s": 6.632548640662298,
+        "durations_s": {
+          "M1": 4.183031801432437,
+          "M2": 0.0,
+          "M3": 2.4495168392298616
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY5-M3",
+        "marginal_gain_missile_s": 2.449516839229898,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 3,
+        "objective_missile_s": 8.85267624552467,
+        "durations_s": {
+          "M1": 6.403159406317227,
+          "M2": 0.0,
+          "M3": 2.449516839207444
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY1-M1",
+        "marginal_gain_missile_s": 2.2201276048623715,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 4,
+        "objective_missile_s": 10.784068840377838,
+        "durations_s": {
+          "M1": 6.4031594063471715,
+          "M2": 1.9313925948232225,
+          "M3": 2.449516839207444
+        },
+        "min_duration_s": 1.9313925948232225,
+        "selected_slot": "FY2-M2",
+        "marginal_gain_missile_s": 1.9313925948531683,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 5,
+        "objective_missile_s": 12.712167728403788,
+        "durations_s": {
+          "M1": 8.33125829435538,
+          "M2": 1.9313925948232225,
+          "M3": 2.4495168392251863
+        },
+        "min_duration_s": 1.9313925948232225,
+        "selected_slot": "FY5-M1",
+        "marginal_gain_missile_s": 1.92809888802595,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 6,
+        "objective_missile_s": 15.15267471803659,
+        "durations_s": {
+          "M1": 8.33125829435538,
+          "M2": 1.9313925948232225,
+          "M3": 4.890023828857988
+        },
+        "min_duration_s": 1.9313925948232225,
+        "selected_slot": "FY3-M3",
+        "marginal_gain_missile_s": 2.4405069896328015,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 7,
+        "objective_missile_s": 17.06727065930118,
+        "durations_s": {
+          "M1": 10.245854235584096,
+          "M2": 1.9313925948276456,
+          "M3": 4.890023828889436
+        },
+        "min_duration_s": 1.9313925948276456,
+        "selected_slot": "FY2-M1",
+        "marginal_gain_missile_s": 1.91459594126459,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 8,
+        "objective_missile_s": 19.160164654600656,
+        "durations_s": {
+          "M1": 12.338748230914574,
+          "M2": 1.9313925948276456,
+          "M3": 4.890023828858439
+        },
+        "min_duration_s": 1.9313925948276456,
+        "selected_slot": "FY3-M1",
+        "marginal_gain_missile_s": 2.0928939952994767,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 9,
+        "objective_missile_s": 21.032911562323946,
+        "durations_s": {
+          "M1": 12.338748230914574,
+          "M2": 3.8041395025509352,
+          "M3": 4.890023828858439
+        },
+        "min_duration_s": 3.8041395025509352,
+        "selected_slot": "FY4-M2",
+        "marginal_gain_missile_s": 1.8727469077232897,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 10,
+        "objective_missile_s": 23.9664316466638,
+        "durations_s": {
+          "M1": 12.338748230914574,
+          "M2": 6.737659586890789,
+          "M3": 4.890023828858439
+        },
+        "min_duration_s": 4.890023828858439,
+        "selected_slot": "FY5-M2",
+        "marginal_gain_missile_s": 2.933520084339854,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 11,
+        "objective_missile_s": 26.37990968889755,
+        "durations_s": {
+          "M1": 12.338748230914574,
+          "M2": 9.15113762912691,
+          "M3": 4.890023828856066
+        },
+        "min_duration_s": 4.890023828856066,
+        "selected_slot": "FY3-M2",
+        "marginal_gain_missile_s": 2.4134780422337485,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 12,
+        "objective_missile_s": 28.250348574554422,
+        "durations_s": {
+          "M1": 14.209187116571755,
+          "M2": 9.151137629126303,
+          "M3": 4.890023828856362
+        },
+        "min_duration_s": 4.890023828856362,
+        "selected_slot": "FY4-M1",
+        "marginal_gain_missile_s": 1.870438885656874,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 13,
+        "objective_missile_s": 29.838906028063953,
+        "durations_s": {
+          "M1": 14.209187116571659,
+          "M2": 9.151137629126303,
+          "M3": 6.4785812823659885
+        },
+        "min_duration_s": 6.4785812823659885,
+        "selected_slot": "FY4-M3",
+        "marginal_gain_missile_s": 1.5885574535095301,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 14,
+        "objective_missile_s": 29.83890602807869,
+        "durations_s": {
+          "M1": 14.209187116571666,
+          "M2": 9.151137629128073,
+          "M3": 6.478581282378949
+        },
+        "min_duration_s": 6.478581282378949,
+        "selected_slot": "FY2-M3",
+        "marginal_gain_missile_s": 1.4736656339664478e-11,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 15,
+        "objective_missile_s": 29.838906028096076,
+        "durations_s": {
+          "M1": 14.209187116593315,
+          "M2": 9.151137629123813,
+          "M3": 6.478581282378949
+        },
+        "min_duration_s": 6.478581282378949,
+        "selected_slot": "FY1-M3",
+        "marginal_gain_missile_s": 1.738698074404965e-11,
+        "exact_evaluations": 16
+      }
+    ],
+    "202506": [
+      {
+        "action_count": 0,
+        "objective_missile_s": 0.0,
+        "durations_s": {
+          "M1": 0.0,
+          "M2": 0.0,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": null,
+        "marginal_gain_missile_s": 0.0,
+        "exact_evaluations": 1
+      },
+      {
+        "action_count": 1,
+        "objective_missile_s": 4.1830318014324,
+        "durations_s": {
+          "M1": 4.1830318014324,
+          "M2": 0.0,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY1-M2",
+        "marginal_gain_missile_s": 4.1830318014324,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 2,
+        "objective_missile_s": 6.403159406341709,
+        "durations_s": {
+          "M1": 6.403159406341709,
+          "M2": 0.0,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY1-M1",
+        "marginal_gain_missile_s": 2.220127604909309,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 3,
+        "objective_missile_s": 8.50556185502533,
+        "durations_s": {
+          "M1": 6.403159406341664,
+          "M2": 2.102402448683666,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY2-M2",
+        "marginal_gain_missile_s": 2.1024024486836215,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 4,
+        "objective_missile_s": 10.766523427902957,
+        "durations_s": {
+          "M1": 6.403159406341664,
+          "M2": 4.363364021561292,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY3-M2",
+        "marginal_gain_missile_s": 2.2609615728776262,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 5,
+        "objective_missile_s": 13.309099364736529,
+        "durations_s": {
+          "M1": 6.403159406341664,
+          "M2": 6.905939958394864,
+          "M3": 0.0
+        },
+        "min_duration_s": 0.0,
+        "selected_slot": "FY5-M2",
+        "marginal_gain_missile_s": 2.542575936833572,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 6,
+        "objective_missile_s": 16.533586094798093,
+        "durations_s": {
+          "M1": 6.403159406341664,
+          "M2": 6.905939958395143,
+          "M3": 3.224486730061285
+        },
+        "min_duration_s": 3.224486730061285,
+        "selected_slot": "FY5-M3",
+        "marginal_gain_missile_s": 3.224486730061564,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 7,
+        "objective_missile_s": 18.459167568924478,
+        "durations_s": {
+          "M1": 8.32874088046805,
+          "M2": 6.905939958395143,
+          "M3": 3.2244867300612867
+        },
+        "min_duration_s": 3.2244867300612867,
+        "selected_slot": "FY5-M1",
+        "marginal_gain_missile_s": 1.9255814741263855,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 8,
+        "objective_missile_s": 20.745808363787262,
+        "durations_s": {
+          "M1": 8.32874088046805,
+          "M2": 6.9059399583951,
+          "M3": 5.511127524924113
+        },
+        "min_duration_s": 5.511127524924113,
+        "selected_slot": "FY3-M3",
+        "marginal_gain_missile_s": 2.286640794862784,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 9,
+        "objective_missile_s": 22.667517187880904,
+        "durations_s": {
+          "M1": 10.250449704560506,
+          "M2": 6.905939958396287,
+          "M3": 5.511127524924113
+        },
+        "min_duration_s": 5.511127524924113,
+        "selected_slot": "FY2-M1",
+        "marginal_gain_missile_s": 1.921708824093642,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 10,
+        "objective_missile_s": 24.539965601002898,
+        "durations_s": {
+          "M1": 10.250449704560506,
+          "M2": 8.778388371518279,
+          "M3": 5.511127524924113
+        },
+        "min_duration_s": 5.511127524924113,
+        "selected_slot": "FY4-M2",
+        "marginal_gain_missile_s": 1.8724484131219938,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 11,
+        "objective_missile_s": 26.574770644707108,
+        "durations_s": {
+          "M1": 12.285254748264716,
+          "M2": 8.778388371518279,
+          "M3": 5.511127524924113
+        },
+        "min_duration_s": 5.511127524924113,
+        "selected_slot": "FY3-M1",
+        "marginal_gain_missile_s": 2.0348050437042104,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 12,
+        "objective_missile_s": 28.445381457155207,
+        "durations_s": {
+          "M1": 14.155865560712499,
+          "M2": 8.778388371518583,
+          "M3": 5.511127524924127
+        },
+        "min_duration_s": 5.511127524924127,
+        "selected_slot": "FY4-M1",
+        "marginal_gain_missile_s": 1.8706108124480991,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 13,
+        "objective_missile_s": 30.210364260065887,
+        "durations_s": {
+          "M1": 14.15586556071246,
+          "M2": 8.778388371518583,
+          "M3": 7.2761103278348465
+        },
+        "min_duration_s": 7.2761103278348465,
+        "selected_slot": "FY4-M3",
+        "marginal_gain_missile_s": 1.76498280291068,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 14,
+        "objective_missile_s": 30.55279840342665,
+        "durations_s": {
+          "M1": 14.155865560711604,
+          "M2": 8.778388371518583,
+          "M3": 7.618544471196465
+        },
+        "min_duration_s": 7.618544471196465,
+        "selected_slot": "FY2-M3",
+        "marginal_gain_missile_s": 0.3424341433607623,
+        "exact_evaluations": 16
+      },
+      {
+        "action_count": 15,
+        "objective_missile_s": 30.552798403427147,
+        "durations_s": {
+          "M1": 14.155865560711927,
+          "M2": 8.77838837151875,
+          "M3": 7.618544471196472
+        },
+        "min_duration_s": 7.618544471196472,
+        "selected_slot": "FY1-M3",
+        "marginal_gain_missile_s": 4.973799150320701e-13,
+        "exact_evaluations": 16
+      }
+    ]
+  },
+  "selected_seed": 202506,
+  "selected_action_count": 14,
+  "result": {
+    "durations_s": {
+      "M1": 14.155865560711604,
+      "M2": 8.778388371518583,
+      "M3": 7.618544471196465
+    },
+    "intervals_s": {
+      "M1": [
+        [
+          1.0,
+          7.403159406341664
+        ],
+        [
+          12.380957263835576,
+          14.302666087928312
+        ],
+        [
+          15.14773260723114,
+          17.018343419677787
+        ],
+        [
+          17.630939560533257,
+          19.556521034659603
+        ],
+        [
+          28.673482474578655,
+          30.708287518282866
+        ]
+      ],
+      "M2": [
+        [
+          9.138846838753857,
+          11.241249287437496
+        ],
+        [
+          12.590652502555109,
+          14.463100915677405
+        ],
+        [
+          20.57615776555093,
+          23.118733702384766
+        ],
+        [
+          29.87742006144539,
+          32.138381634324205
+        ]
+      ],
+      "M3": [
+        [
+          14.226282675304827,
+          17.793203548727746
+        ],
+        [
+          18.034213779815985,
+          19.799196582726704
+        ],
+        [
+          27.11590061896966,
+          29.402541413832488
+        ]
+      ]
+    },
+    "objective_missile_s": 30.55279840342665,
+    "min_duration_s": 7.618544471196465,
+    "diagnostics": {
+      "M1": {
+        "duration_s": 14.155865560711604,
+        "root_count": 10,
+        "function_evaluations": 1035,
+        "bracket_step_s": 0.08
+      },
+      "M2": {
+        "duration_s": 8.778388371518583,
+        "root_count": 8,
+        "function_evaluations": 954,
+        "bracket_step_s": 0.08
+      },
+      "M3": {
+        "duration_s": 7.618544471196465,
+        "root_count": 6,
+        "function_evaluations": 891,
+        "bracket_step_s": 0.08
+      }
+    },
+    "actions": [
+      {
+        "drone": "FY1",
+        "heading_deg": 6.4325262589218655,
+        "speed_mps": 125.28736323185103,
+        "release_time_s": 1.0,
+        "fuse_delay_s": 0.0,
+        "burst_time_s": 1.0,
+        "release_point_m": [
+          17924.49861403055,
+          14.036327513349573,
+          1800.0
+        ],
+        "burst_point_m": [
+          17924.49861403055,
+          14.036327513349573,
+          1800.0
+        ],
+        "assigned_missile": "M2"
+      },
+      {
+        "drone": "FY1",
+        "heading_deg": 6.4325262589218655,
+        "speed_mps": 125.28736323185103,
+        "release_time_s": 0.0,
+        "fuse_delay_s": 0.0,
+        "burst_time_s": 0.0,
+        "release_point_m": [
+          17800.0,
+          0.0,
+          1800.0
+        ],
+        "burst_point_m": [
+          17800.0,
+          0.0,
+          1800.0
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY2",
+        "heading_deg": 233.0,
+        "speed_mps": 135.0,
+        "release_time_s": 3.508961477812342,
+        "fuse_delay_s": 5.629885360941516,
+        "burst_time_s": 9.138846838753857,
+        "release_point_m": [
+          11714.914326043747,
+          1021.6785326581901,
+          1400.0
+        ],
+        "burst_point_m": [
+          11257.514131550564,
+          414.6879731478426,
+          1244.6915150310165
+        ],
+        "assigned_missile": "M2"
+      },
+      {
+        "drone": "FY3",
+        "heading_deg": 115.0,
+        "speed_mps": 120.0,
+        "release_time_s": 23.491841633701277,
+        "fuse_delay_s": 6.385578427744116,
+        "burst_time_s": 29.87742006144539,
+        "release_point_m": [
+          4808.630246841285,
+          -445.0993194653702,
+          700.0
+        ],
+        "burst_point_m": [
+          4484.79080020023,
+          249.37661499035858,
+          500.1995019013319
+        ],
+        "assigned_missile": "M2"
+      },
+      {
+        "drone": "FY5",
+        "heading_deg": 121.0,
+        "speed_mps": 135.0,
+        "release_time_s": 18.539810381546857,
+        "fuse_delay_s": 2.0363473840040722,
+        "burst_time_s": 20.57615776555093,
+        "release_point_m": [
+          11710.92438650524,
+          145.38209473773531,
+          1300.0
+        ],
+        "burst_point_m": [
+          11569.336867576987,
+          381.0232974469436,
+          1279.681117725133
+        ],
+        "assigned_missile": "M2"
+      },
+      {
+        "drone": "FY5",
+        "heading_deg": 121.0,
+        "speed_mps": 135.0,
+        "release_time_s": 11.561157526795041,
+        "fuse_delay_s": 2.3959701929757475,
+        "burst_time_s": 13.957127719770789,
+        "release_point_m": [
+          12196.151097295126,
+          -662.1707643182999,
+          1300.0
+        ],
+        "burst_point_m": [
+          12029.558954071292,
+          -384.9148784300751,
+          1271.8707014884217
+        ],
+        "assigned_missile": "M3"
+      },
+      {
+        "drone": "FY5",
+        "heading_deg": 121.0,
+        "speed_mps": 135.0,
+        "release_time_s": 12.64969051928259,
+        "fuse_delay_s": 4.981249041250667,
+        "burst_time_s": 17.630939560533257,
+        "release_point_m": [
+          12120.465245809999,
+          -536.2083545873745,
+          1300.0
+        ],
+        "burst_point_m": [
+          11774.118302034803,
+          40.20975771249118,
+          1178.4170741462926
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY3",
+        "heading_deg": 115.0,
+        "speed_mps": 120.0,
+        "release_time_s": 20.61202002431399,
+        "fuse_delay_s": 6.503880594655672,
+        "burst_time_s": 27.11590061896966,
+        "release_point_m": [
+          4954.678071163193,
+          -758.2998894490647,
+          700.0
+        ],
+        "burst_point_m": [
+          4624.839025785299,
+          -50.95777398190512,
+          492.72773233126077
+        ],
+        "assigned_missile": "M3"
+      },
+      {
+        "drone": "FY2",
+        "heading_deg": 233.0,
+        "speed_mps": 135.0,
+        "release_time_s": 4.569914707343915,
+        "fuse_delay_s": 7.811042556491661,
+        "burst_time_s": 12.380957263835576,
+        "release_point_m": [
+          11628.717151070587,
+          907.2910179717486,
+          1400.0
+        ],
+        "burst_point_m": [
+          10994.108778878737,
+          65.137263897597,
+          1101.0393094853134
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY4",
+        "heading_deg": 251.0,
+        "speed_mps": 135.0,
+        "release_time_s": 1.1282087349193155,
+        "fuse_delay_s": 11.462443767635794,
+        "burst_time_s": 12.590652502555109,
+        "release_point_m": [
+          10950.413307184534,
+          1855.9897873373516,
+          1800.0
+        ],
+        "burst_point_m": [
+          10446.619407679787,
+          392.8660642889463,
+          1156.200676081558
+        ],
+        "assigned_missile": "M2"
+      },
+      {
+        "drone": "FY3",
+        "heading_deg": 115.0,
+        "speed_mps": 120.0,
+        "release_time_s": 21.657622442493174,
+        "fuse_delay_s": 7.015860032085482,
+        "burst_time_s": 28.673482474578655,
+        "release_point_m": [
+          4901.6511899900615,
+          -644.5833758002468,
+          700.0
+        ],
+        "burst_point_m": [
+          4545.847521424939,
+          118.44005378034626,
+          458.81076924990896
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY4",
+        "heading_deg": 251.0,
+        "speed_mps": 135.0,
+        "release_time_s": 2.6535284623542594,
+        "fuse_delay_s": 12.49420414487688,
+        "burst_time_s": 15.14773260723114,
+        "release_point_m": [
+          10883.372910821092,
+          1661.290338974945,
+          1800.0
+        ],
+        "burst_point_m": [
+          10334.231387865191,
+          66.46755462295073,
+          1035.0848276520928
+        ],
+        "assigned_missile": "M1"
+      },
+      {
+        "drone": "FY4",
+        "heading_deg": 251.0,
+        "speed_mps": 135.0,
+        "release_time_s": 5.89892920007628,
+        "fuse_delay_s": 12.135284579739706,
+        "burst_time_s": 18.034213779815985,
+        "release_point_m": [
+          10740.732028452794,
+          1247.0311367996587,
+          1800.0
+        ],
+        "burst_point_m": [
+          10207.36563085363,
+          -301.9773568945998,
+          1078.4008540267853
+        ],
+        "assigned_missile": "M3"
+      },
+      {
+        "drone": "FY2",
+        "heading_deg": 233.0,
+        "speed_mps": 135.0,
+        "release_time_s": 8.52860562912726,
+        "fuse_delay_s": 7.413488222855953,
+        "burst_time_s": 15.942093851983213,
+        "release_point_m": [
+          11307.093195790032,
+          480.4816136076146,
+          1400.0
+        ],
+        "burst_point_m": [
+          10704.78413661584,
+          -318.8095043845574,
+          1130.6969426109226
+        ],
+        "assigned_missile": "M3"
+      }
+    ],
+    "target_semantics": "finite-cylinder-full-occlusion-by-spatial-union",
+    "target_sample_count": 1082,
+    "continuous_time_method": "event-partition-plus-brent-root-refinement",
+    "individual_assigned_duration_s": [
+      0.0,
+      2.5560066796820218,
+      2.1024024486836446,
+      2.2609615728776262,
+      2.5425759368338134,
+      3.2244867300613187,
+      1.9255814741261545,
+      2.2866407948628122,
+      1.9217088240869789,
+      1.8724484131227666,
+      2.034805043707653,
+      1.8706108124528615,
+      1.7649828029093584,
+      1.8511096967446363
+    ]
+  },
+  "metrics": {
+    "objective_missile_s": 30.55279840342665,
+    "min_duration_s": 7.618544471196465,
+    "action_count": 14,
+    "duration_M1_s": 14.155865560711604,
+    "duration_M2_s": 8.778388371518583,
+    "duration_M3_s": 7.618544471196465
+  }
+}

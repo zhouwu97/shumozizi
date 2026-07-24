@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "run_id": "cumcm2025-a",
+  "route_path": "state/capability-route.json",
+  "route_sha256": "7073ccde23a4a36d7f25c0591a708582bfab61587ea35cc7d5e42a8469f11e81",
+  "reader": {
+    "operation": "controlled_binary_read",
+    "asset_count": 4,
+    "total_bytes_read": 4905
+  },
+  "assets": [
+    {
+      "path": "knowledge/cards/structural-preflight.json",
+      "sha256": "2fc64c530c32fcf576ed3284532c231a86b99b29c51959bc6ad03317361d83bd",
+      "bytes_read": 1171
+    },
+    {
+      "path": "knowledge/model-selection-matrix.md",
+      "sha256": "299c70be9a9798136cb2efc6db4d7b40f30d7bf36976f626263b4da376c1fcf8",
+      "bytes_read": 1408
+    },
+    {
+      "path": "knowledge/cards/structured-optimization.json",
+      "sha256": "74c4db0a9b5e49bbca35c590571d67d948d9f860ca9e9d58cc2ef294b782fe8c",
+      "bytes_read": 1174
+    },
+    {
+      "path": "knowledge/cards/sparse-nonsmooth-search.json",
+      "sha256": "09eb3c4cc87fe62e16f52cc589b2411ad02f2de74f56a85cb14c51ec85442652",
+      "bytes_read": 1152
+    }
+  ],
+  "consumed_at": "2026-07-23T18:26:00.852340Z"
+}
