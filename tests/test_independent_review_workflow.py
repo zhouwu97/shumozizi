@@ -17,6 +17,7 @@ from shumozizi.simple.review import (
     completion_status,
     final_audit_status,
     import_final_audit,
+    import_objective_semantics_review,
     import_paper_blind_review,
     import_scientific_review,
     paper_blind_review_status,
@@ -73,20 +74,19 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "}), encoding='utf-8')\n",
                 encoding="utf-8",
             )
-            counterexample = artifact_root / "minimal_counterexample.py"
-            counterexample.write_text(
+            property_test = artifact_root / "minimal_property.py"
+            property_test.write_text(
                 "import json\n"
                 "import sys\n"
                 "from pathlib import Path\n"
                 "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
                 "assert (packet / 'source_snapshot').is_dir()\n"
-                "(outputs / 'counterexample.json').write_text(json.dumps({\n"
+                "(outputs / 'property.json').write_text(json.dumps({\n"
                 "    'claim_id': 'segment-intersection',\n"
-                "    'case': {'A': [0, 0, 0], 'B': [1, 0, 0], 'C': [2, 1, 0], 'radius': 0.5},\n"
-                "    'expected': False,\n"
-                "    'production_observed': True,\n"
-                "    'violated_invariant': 'closest point lies outside finite segment',\n"
-                "    'verdict': 'counterexample_found',\n"
+                "    'property': 'finite_segment_endpoint_cases',\n"
+                "    'cases': 12,\n"
+                "    'failures': 0,\n"
+                "    'verdict': 'pass',\n"
                 "}), encoding='utf-8')\n",
                 encoding="utf-8",
             )
@@ -100,11 +100,11 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             )
             receipt = run_red_team_evidence(
                 run_dir,
-                evidence_id="minimal-counterexample",
-                kind="counterexample",
+                evidence_id="minimal-property",
+                kind="property-test",
                 packet_manifest=manifest,
-                script_path="review/red_team_artifacts/minimal_counterexample.py",
-                output_paths=["counterexample.json"],
+                script_path="review/red_team_artifacts/minimal_property.py",
+                output_paths=["property.json"],
             )
             evidence_reference = "证据：`" + receipt["outputs"][0]["path"] + "`。\n"
         report.write_text(
@@ -306,6 +306,40 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     report_file=report.relative_to(run_dir),
                 )
 
+    def test_objective_semantics_reimport_revokes_all_downstream_reviews(self) -> None:
+        """目标语义重审必须撤销基于旧目标的科学审核和论文审核。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            statement = root / "statement.md"
+            statement.write_text("问题 Q5：求总有效作用时长。", encoding="utf-8")
+            run_dir = initialize_simple_run(
+                root,
+                "objective-reimport",
+                problem_path=statement,
+                required_questions=["Q5"],
+            )
+            self._prepare_scientific_phase(run_dir)
+            self._pass_scientific_review(run_dir)
+            semantics_manifest = next(
+                (run_dir / "review" / "packet" / "objective-semantics").glob(
+                    "*/manifest.json"
+                )
+            )
+
+            import_objective_semantics_review(
+                run_dir,
+                manifest_file=semantics_manifest.relative_to(run_dir).as_posix(),
+                verdict="pass",
+                highest_severity="none",
+                reviewer_thread_id="semantic-recheck-thread",
+            )
+
+            summary = load_json(run_dir / "review" / "summary.json")
+            self.assertEqual("revoked", summary["scientific_review"]["verdict"])
+            self.assertIsNone(summary["paper_blind_review"])
+            self.assertIsNone(summary["final_audit"])
+            self.assertFalse(scientific_review_status(run_dir)["allowed"])
+
     def test_manifest_paths_and_import_phases_cannot_be_swapped(self) -> None:
         """手写 manifest 越界或在错误阶段导入结论都不能改变流程放行。"""
         with tempfile.TemporaryDirectory() as temporary:
@@ -383,7 +417,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             manifest = load_json(run_dir / self._manifest_relative(packet))
             copied = {item["source"] for item in manifest["files"]}
             self.assertIn("paper/final.pdf", copied)
-            self.assertIn("qa/mechanical-qa.json", copied)
+            self.assertFalse(any(path.startswith("qa/") for path in copied))
+            self.assertFalse(any(path.startswith("results/") for path in copied))
             self.assertFalse(any(path.startswith("review/") for path in copied))
             self.assertTrue(completion_status(run_dir)["allowed"])
             update_simple_state(run_dir, phase="complete")
@@ -423,9 +458,47 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 report_file=report.relative_to(run_dir),
             )
             self.assertTrue(final_audit_status(run_dir)["allowed"])
-            (run_dir / "results" / "index.json").write_text("{}", encoding="utf-8")
+            (run_dir / "paper" / "submission" / "final.pdf").write_bytes(
+                b"%PDF-1.4\ntampered"
+            )
             self.assertFalse(final_audit_status(run_dir)["allowed"])
             self.assertFalse(completion_status(run_dir)["allowed"])
+
+    def test_blind_packet_contains_completed_task_attachments(self) -> None:
+        """盲审提交包必须使用已填写产物，而不是题面中的空白模板。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "completed-attachments")
+            self._prepare_scientific_phase(run_dir)
+            self._pass_scientific_review(run_dir)
+            self._enter_paper(run_dir)
+            (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nminimal")
+            template = run_dir / "problem" / "attachments" / "result1.xlsx"
+            template.parent.mkdir(parents=True, exist_ok=True)
+            template.write_bytes(b"")
+            completed = run_dir / "artifacts" / "result1.xlsx"
+            completed.parent.mkdir(parents=True, exist_ok=True)
+            completed.write_bytes(b"filled-result")
+            self._enter_paper_review(run_dir)
+
+            packet = build_review_packet(run_dir, kind="paper-blind")
+            packet_dir = (
+                run_dir
+                / "review"
+                / "packet"
+                / "paper-blind"
+                / str(packet["packet_id"])
+            )
+            submitted = packet_dir / "submission" / "attachments" / "result1.xlsx"
+            submission_manifest = load_json(packet_dir / "submission" / "manifest.json")
+
+            self.assertEqual(b"filled-result", submitted.read_bytes())
+            self.assertTrue(
+                any(
+                    item["role"] == "completed_problem_attachment"
+                    and item["source"] == "artifacts/result1.xlsx"
+                    for item in submission_manifest["files"]
+                )
+            )
 
     def test_paper_blind_review_cannot_reuse_the_scientific_review_thread(self) -> None:
         """两次独立审查必须绑定不同的新对话标识。"""

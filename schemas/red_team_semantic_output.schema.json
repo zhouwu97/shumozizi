@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["kind", "evidence"],
   "properties": {
-    "kind": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test"]},
+    "kind": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test", "action-activation-challenge", "geometry-continuous-validation"]},
     "evidence": {"type": "object"}
   },
   "allOf": [
@@ -29,6 +29,14 @@
     {
       "if": {"properties": {"kind": {"const": "property-test"}}},
       "then": {"properties": {"evidence": {"$ref": "#/$defs/property"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "action-activation-challenge"}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/actionActivation"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "geometry-continuous-validation"}}},
+      "then": {"properties": {"evidence": {"$ref": "#/$defs/geometryContinuous"}}}
     }
   ],
   "$defs": {
@@ -89,6 +97,113 @@
         "cases": {"type": "integer", "minimum": 1},
         "failures": {"type": "integer", "minimum": 0},
         "verdict": {"enum": ["pass", "fail"]}
+      }
+    },
+    "geometryContinuous": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "continuous_quantity", "sampled_approximation", "verification_method", "discretization_error_bound", "critical_cases", "verdict"],
+      "properties": {
+        "question_id": {"type": "string", "minLength": 1},
+        "continuous_quantity": {"type": "string", "minLength": 2},
+        "sampled_approximation": {"type": ["string", "null"], "minLength": 2},
+        "verification_method": {"enum": ["continuous_1d_optimization", "interval_verification", "root_isolation", "explicit_discretization_error"]},
+        "discretization_error_bound": {"type": ["number", "null"], "minimum": 0},
+        "critical_cases": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["left_endpoint", "right_endpoint", "tangent", "degenerate", "outside_segment"],
+          "properties": {
+            "left_endpoint": {"type": "boolean"},
+            "right_endpoint": {"type": "boolean"},
+            "tangent": {"type": "boolean"},
+            "degenerate": {"type": "boolean"},
+            "outside_segment": {"type": "boolean"}
+          }
+        },
+        "verdict": {"enum": ["pass", "fail"]}
+      }
+    },
+    "actionActivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question_id",
+        "allowed_action_count",
+        "incumbent_active_count",
+        "unused_actions_exist",
+        "discrete_activation_variables",
+        "variable_bounds_sha256",
+        "exact_scorer_sha256",
+        "objective_direction",
+        "improvement_tolerance",
+        "evaluation_budget",
+        "seeds",
+        "first_feasible_evaluation",
+        "feasible_rate",
+        "proxy_exact_max_error",
+        "best_so_far",
+        "coverage_method",
+        "coverage_details",
+        "rounds",
+        "consecutive_no_improvement_rounds",
+        "incumbent_exact",
+        "challenge_best_exact",
+        "verdict"
+      ],
+      "properties": {
+        "question_id": {"type": "string", "minLength": 1},
+        "allowed_action_count": {"type": "integer", "minimum": 1},
+        "incumbent_active_count": {"type": "integer", "minimum": 0},
+        "unused_actions_exist": {"type": "boolean"},
+        "discrete_activation_variables": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "variable_bounds_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "exact_scorer_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "objective_direction": {"enum": ["maximize", "minimize"]},
+        "improvement_tolerance": {"type": "number", "minimum": 0},
+        "evaluation_budget": {"type": "integer", "minimum": 1},
+        "seeds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {"type": "integer"}
+        },
+        "first_feasible_evaluation": {
+          "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+        },
+        "feasible_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "proxy_exact_max_error": {"type": "number", "minimum": 0},
+        "best_so_far": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "number"}
+        },
+        "coverage_method": {
+          "enum": ["structural_proof", "small_complete_enumeration", "insertion_local_optimization", "independent_full_count_search"]
+        },
+        "coverage_details": {"type": "object"},
+        "rounds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["active_count", "evaluation_count", "best_exact"],
+            "properties": {
+              "active_count": {"type": "integer", "minimum": 0},
+              "evaluation_count": {"type": "integer", "minimum": 1},
+              "best_exact": {"type": "number"}
+            }
+          }
+        },
+        "consecutive_no_improvement_rounds": {"type": "integer", "minimum": 0},
+        "incumbent_exact": {"type": "number"},
+        "challenge_best_exact": {"type": "number"},
+        "verdict": {"enum": ["incumbent_competitive", "incumbent_not_competitive", "inconclusive"]}
       }
     }
   }

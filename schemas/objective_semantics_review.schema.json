@@ -12,6 +12,7 @@
     "highest_severity",
     "packet",
     "assessment",
+    "selected_objectives_sha256",
     "report",
     "reviewer",
     "reviewed_at"
@@ -24,6 +25,8 @@
     "highest_severity": {"enum": ["none", "P0", "P1", "P2", "P3"]},
     "packet": {"$ref": "#/$defs/fileBinding"},
     "assessment": {"$ref": "#/$defs/fileBinding"},
+    "ambiguity_decisions": {"$ref": "#/$defs/fileBinding"},
+    "selected_objectives_sha256": {"$ref": "#/$defs/sha"},
     "report": {"$ref": "#/$defs/fileBinding"},
     "reviewer": {
       "type": "object",

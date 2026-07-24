@@ -55,6 +55,8 @@ python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
 - 检查 proxy、exact 和 oracle 是否共享同一数学定义，避免把共模一致性误报为验证；
 - 检查下游问题是否继承了未经充分挑战的搜索区域或题意解释。
 
+几何/运动题若要获得 `qualified/strong`，必须实际运行并登记 `kind=geometry-continuous-validation`：连续量和采样近似使用不同变量名，采用连续一维优化、区间验证、根隔离或显式离散化误差界，并逐一覆盖左/右临界端点、切线、退化和线段外反例。可变动作数量问题另须登记 `kind=action-activation-challenge`，完整挑战题面允许的动作数量；只复算当前三个动作不能放行 Q5。
+
 对涉及几何、优化或多实体的题，优先选择与题目相关的反例，而非只重复原求解器。高风险攻击菜单包括：有限线段与无限直线混淆、端点落入球体、烟幕/区间重叠重复计数、把“至多”误写为“恰好”、量纲不一致、数据或未来信息泄漏、proxy 与 exact 排序反转、高维联合覆盖被投影伪造、两个 oracle 共享同一判定语义，以及下游继承前题的弱搜索区域。命中任一项时，报告其是否污染候选、exact、oracle、图表和论文。
 
 将自由报告写入 `runs/<run-id>/review/SCIENTIFIC_RED_TEAM.md`。报告至少给出独立重建、已执行攻击及证据、每个 P0/P1 的最小复现和污染范围、可支持的结论与未证明边界。只有没有未解决 P0/P1、无需全量重跑且审查者认为证据可支撑继续时，才能建议 `pass`。
@@ -103,4 +105,4 @@ PDF 或提交材料变更会撤销盲审。盲审通过后进入 `verify`，由 
 python scripts/review/build_review_packet.py runs/<run-id> --kind final-audit
 ```
 
-第三个新审核对话只读该包，不读取前两轮报告或求解上下文。它综合核对最终 PDF、提交表、结果、图表、报告和机械 QA 的一致性、完整性、可读性及提交要求；发现问题时给出严重性、位置和应回退的生产阶段，不直接修改文件。报告写入 `review/FINAL_SUBMISSION_REVIEW.md`，再以 `--kind final-audit` 导入。只有三轮审核使用不同对话、全部有效且科学强度为 `qualified` 或 `strong` 时才能进入 `complete`。
+第三个新审核对话只读该包，不读取前两轮报告或求解上下文。它必须按数学建模竞赛论文标准自由判断题意、模型、推导、算法、结果、图表、源码可复现性、边界和提交规范；不得把预设清单逐项勾选或“表格全通过”当作科学结论。最终 PDF 必须直接包含完整源码附录，不能只给路径。发现问题时给出严重性、位置和应回退的生产阶段，不直接修改文件。报告写入 `review/FINAL_SUBMISSION_REVIEW.md`，再以 `--kind final-audit` 导入。审查发现问题后只允许一次集中修订并重新独立审核；第二次仍未通过则停止，不循环自我修补。只有三轮审核使用不同对话、全部有效且科学强度为 `qualified` 或 `strong` 时才能进入 `complete`。

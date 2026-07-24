@@ -16,9 +16,11 @@ from jsonschema import Draft202012Validator, FormatChecker
 from shumozizi.core.io import (
     ContractError,
     atomic_json,
+    json_bytes,
     load_json,
     relative_inside,
     resolve_inside,
+    sha256_bytes,
     sha256_file,
 )
 from shumozizi.core.repo_root import resolve_repo_root
@@ -30,6 +32,7 @@ SUMMARY_PATH = REVIEW_ROOT / "summary.json"
 OBJECTIVE_SEMANTICS_REPORT_PATH = REVIEW_ROOT / "OBJECTIVE_SEMANTICS_REVIEW.md"
 OBJECTIVE_SEMANTICS_ASSESSMENT_PATH = REVIEW_ROOT / "OBJECTIVE_SEMANTICS.json"
 OBJECTIVE_SEMANTICS_RECEIPT_PATH = REVIEW_ROOT / "objective-semantics.json"
+AMBIGUITY_DECISIONS_PATH = Path("state/ambiguity-decisions.json")
 SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
 FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
@@ -38,15 +41,7 @@ _PACKET_ROOTS = {
     "objective-semantics": ("problem",),
     "scientific": ("problem", "code", "results/raw"),
     "paper-blind": ("problem", "paper/final.pdf", "paper/submission"),
-    "final-audit": (
-        "problem",
-        "paper/final.pdf",
-        "paper/submission",
-        "results",
-        "figures",
-        "reports",
-        "qa/mechanical-qa.json",
-    ),
+    "final-audit": ("problem", "paper/final.pdf", "paper/submission"),
 }
 _PACKET_DESTINATIONS = {
     "problem": "problem",
@@ -63,17 +58,7 @@ _REQUIRED_PACKET_ROOTS = {
     "objective-semantics": frozenset(("problem",)),
     "scientific": frozenset(("problem", "code", "results/raw")),
     "paper-blind": frozenset(("problem", "paper/final.pdf", "paper/submission")),
-    "final-audit": frozenset(
-        (
-            "problem",
-            "paper/final.pdf",
-            "paper/submission",
-            "results",
-            "figures",
-            "reports",
-            "qa/mechanical-qa.json",
-        )
-    ),
+    "final-audit": frozenset(("problem", "paper/final.pdf", "paper/submission")),
 }
 _SEVERITIES = {"none", "P0", "P1", "P2", "P3"}
 _VERDICTS = {"pass", "fail", "needs_rework", "revoked"}
@@ -85,8 +70,11 @@ _RED_TEAM_KINDS = {
     "alternative-formula",
     "search-challenge",
     "property-test",
+    "action-activation-challenge",
+    "geometry-continuous-validation",
 }
 _SAFE_EVIDENCE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+_SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _REPORT_ARTIFACT_PATH = re.compile(r"review[\\/]red_team_artifacts[\\/][A-Za-z0-9._/\\-]+")
 
 
@@ -216,7 +204,155 @@ def _require_red_team_semantic_output(kind: str, path: Path) -> dict[str, Any]:
         passed = evidence["failures"] == 0
         if (evidence["verdict"] == "pass") != passed:
             raise ContractError("红队语义输出的 property failures 与 verdict 不一致")
+    elif kind == "action-activation-challenge":
+        _validate_action_activation_evidence(evidence)
+    elif kind == "geometry-continuous-validation":
+        _validate_geometry_continuous_evidence(evidence)
     return evidence
+
+
+def _validate_geometry_continuous_evidence(evidence: dict[str, Any]) -> None:
+    """拒绝用内部随机采样冒充连续几何边界证明。"""
+    sampled = evidence["sampled_approximation"]
+    if sampled is not None and sampled == evidence["continuous_quantity"]:
+        raise ContractError("连续几何量与采样近似必须使用不同变量名")
+    if evidence["verification_method"] == "explicit_discretization_error" and evidence[
+        "discretization_error_bound"
+    ] is None:
+        raise ContractError("显式离散化验证必须给出 discretization_error_bound")
+    covered = all(evidence["critical_cases"].values())
+    expected = "pass" if covered else "fail"
+    if evidence["verdict"] != expected:
+        raise ContractError("连续几何验证 verdict 与临界边界覆盖不一致")
+
+
+def _validate_action_activation_evidence(evidence: dict[str, Any]) -> None:
+    """复算可变动作数量挑战的覆盖充分性与 incumbent 结论。"""
+    allowed = evidence["allowed_action_count"]
+    active = evidence["incumbent_active_count"]
+    unused = active < allowed
+    if evidence["unused_actions_exist"] != unused:
+        raise ContractError("动作激活挑战的 unused_actions_exist 与动作数量不一致")
+    direction = evidence["objective_direction"]
+    tolerance = float(evidence["improvement_tolerance"])
+    trace = [float(value) for value in evidence["best_so_far"]]
+    monotone = all(
+        current >= previous - tolerance
+        if direction == "maximize"
+        else current <= previous + tolerance
+        for previous, current in zip(trace, trace[1:], strict=False)
+    )
+    if not monotone:
+        raise ContractError("动作激活挑战的 best_so_far 未按目标方向单调更新")
+    challenge_best = float(evidence["challenge_best_exact"])
+    if not math.isclose(trace[-1], challenge_best, rel_tol=0.0, abs_tol=tolerance):
+        raise ContractError("动作激活挑战的 best_so_far 末值与 challenge_best_exact 不一致")
+    rounds = evidence["rounds"]
+    if sum(item["evaluation_count"] for item in rounds) > evidence["evaluation_budget"]:
+        raise ContractError("动作激活挑战轮次消耗超过冻结评价预算")
+    if any(item["active_count"] > allowed for item in rounds):
+        raise ContractError("动作激活挑战轮次使用了题面不允许的动作数量")
+    if evidence["first_feasible_evaluation"] is not None and (
+        evidence["first_feasible_evaluation"] > evidence["evaluation_budget"]
+    ):
+        raise ContractError("动作激活挑战首次可行位置超过评价预算")
+
+    incumbent = float(evidence["incumbent_exact"])
+    improved = (
+        challenge_best > incumbent + tolerance
+        if direction == "maximize"
+        else challenge_best < incumbent - tolerance
+    )
+    method = evidence["coverage_method"]
+    details = evidence["coverage_details"]
+    sufficient = not unused
+    if unused and method == "structural_proof":
+        sufficient = bool(_SHA256.fullmatch(str(details.get("proof_sha256", ""))))
+    elif unused and method == "small_complete_enumeration":
+        enumerated = details.get("enumerated_configurations")
+        total = details.get("total_configurations")
+        sufficient = (
+            isinstance(enumerated, int)
+            and not isinstance(enumerated, bool)
+            and isinstance(total, int)
+            and not isinstance(total, bool)
+            and total > 0
+            and enumerated == total
+        )
+    elif unused and method == "insertion_local_optimization":
+        required_rounds = min(2, allowed - active)
+        covered = {item["active_count"] for item in rounds if item["evaluation_count"] > 0}
+        required_counts = set(range(active + 1, active + required_rounds + 1))
+        sufficient = (
+            required_counts <= covered
+            and evidence["consecutive_no_improvement_rounds"] >= required_rounds
+        )
+    elif unused and method == "independent_full_count_search":
+        covered = set(details.get("covered_action_counts", []))
+        sufficient = set(range(active + 1, allowed + 1)) <= covered
+
+    expected_verdict = (
+        "incumbent_not_competitive"
+        if improved
+        else "incumbent_competitive"
+        if sufficient
+        else "inconclusive"
+    )
+    if evidence["verdict"] != expected_verdict:
+        raise ContractError(
+            "动作激活挑战 verdict 与 exact 改善及搜索空间覆盖结论不一致"
+        )
+
+
+def _summarize_evidence_verdicts(
+    evidence_items: list[tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    """聚合红队证据的科学结论，生成不可被人工标签覆盖的门禁。
+
+    Args:
+        evidence_items: ``(证据类型, 语义输出)`` 列表。
+
+    Returns:
+        是否允许科学通过、是否允许提升竞赛强度及对应原因。
+    """
+    blocking_reasons: list[str] = []
+    promotion_blockers: list[str] = []
+    for kind, evidence in evidence_items:
+        verdict = evidence.get("verdict")
+        if kind in {"independent-recompute", "alternative-formula"}:
+            if verdict == "inconsistent":
+                blocking_reasons.append(f"{kind}:inconsistent")
+        elif kind == "counterexample":
+            if verdict == "counterexample_found":
+                blocking_reasons.append(f"{kind}:counterexample_found")
+        elif kind == "small-enumeration":
+            mismatches = evidence.get("mismatches", 0)
+            if isinstance(mismatches, int) and mismatches > 0:
+                blocking_reasons.append(f"{kind}:mismatches={mismatches}")
+        elif kind == "property-test":
+            failures = evidence.get("failures", 0)
+            if verdict == "fail" or (isinstance(failures, int) and failures > 0):
+                blocking_reasons.append(f"{kind}:failures={failures}")
+        elif kind == "search-challenge" and verdict in {
+            "incumbent_not_competitive",
+            "inconclusive",
+        }:
+            promotion_blockers.append(f"{kind}:{verdict}")
+        elif kind == "action-activation-challenge":
+            if verdict == "incumbent_not_competitive":
+                blocking_reasons.append(f"{kind}:{verdict}")
+            elif verdict == "inconclusive":
+                promotion_blockers.append(f"{kind}:{verdict}")
+        elif kind == "geometry-continuous-validation" and verdict == "fail":
+            blocking_reasons.append(f"{kind}:fail")
+    if blocking_reasons:
+        promotion_blockers.extend(blocking_reasons)
+    return {
+        "pass_allowed": not blocking_reasons,
+        "promotion_allowed": not promotion_blockers,
+        "blocking_reasons": list(dict.fromkeys(blocking_reasons)),
+        "promotion_blockers": list(dict.fromkeys(promotion_blockers)),
+    }
 
 
 def _red_team_root(run_dir: Path) -> Path:
@@ -497,6 +633,7 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
     receipts: list[dict[str, str]] = []
     evidence_files: dict[str, dict[str, str]] = {}
     evidence_kinds: set[str] = set()
+    semantic_evidence: list[tuple[str, dict[str, Any]]] = []
     receipt_paths = sorted((_red_team_root(root) / "executions").glob("*/receipt.json"))
     if not receipt_paths:
         return {
@@ -505,6 +642,7 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
             "receipts": [],
             "files": {},
             "kinds": [],
+            "semantic_evidence": [],
         }
     for receipt_path in receipt_paths:
         try:
@@ -556,7 +694,8 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
                 for item in receipt["outputs"]
             ):
                 raise ContractError("红队语义输出未列入登记输出")
-            _require_red_team_semantic_output(receipt["kind"], semantic_output)
+            evidence = _require_red_team_semantic_output(receipt["kind"], semantic_output)
+            semantic_evidence.append((receipt["kind"], evidence))
             for item in (
                 receipt["script"],
                 *receipt["inputs"],
@@ -578,7 +717,16 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
         "receipts": receipts,
         "files": evidence_files,
         "kinds": sorted(evidence_kinds),
+        "semantic_evidence": semantic_evidence,
     }
+
+
+def _verified_evidence_assessment(run_dir: Path) -> dict[str, Any]:
+    """复验执行收据并聚合其科学结论。"""
+    verification = verify_red_team_artifacts(run_dir)
+    if not verification["valid"]:
+        raise ContractError("红队执行证据无效: " + "；".join(verification["errors"]))
+    return _summarize_evidence_verdicts(verification["semantic_evidence"])
 
 
 def _bind_red_team_artifacts(run_dir: Path, report: dict[str, str]) -> dict[str, Any]:
@@ -684,6 +832,122 @@ def _packet_identifier(kind: str, state_revision: int) -> str:
     return f"{kind}-r{state_revision}-{stamp}"
 
 
+def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
+    """物化评委实际可见的 PDF 与题定提交文件。
+
+    ``problem/attachments`` 保存只读原始附件，其中可能包含空白结果模板；真正
+    填写后的文件必须由求解阶段写入 ``artifacts/``，再由本函数复制到标准提交
+    目录。这样盲审不会把空模板误当成最终答案。
+
+    Args:
+        run_dir: 当前 v3 运行目录。
+
+    Returns:
+        写入 ``paper/submission/manifest.json`` 的提交清单。
+
+    Raises:
+        ContractError: PDF 缺失、产物为空或提交目录含未登记文件。
+    """
+    root = run_dir.resolve()
+    pdf = root / "paper" / "final.pdf"
+    if not pdf.is_file() or pdf.stat().st_size == 0:
+        raise ContractError("标准提交包需要非空 paper/final.pdf")
+    submission_dir = root / "paper" / "submission"
+    submission_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = submission_dir / "manifest.json"
+    previous_files: set[str] = set()
+    previous: dict[str, Any] | None = None
+    if manifest_path.is_file():
+        previous = load_json(manifest_path)
+        if not isinstance(previous, dict) or previous.get("schema_version") != "1.0":
+            raise ContractError("paper/submission 含未知提交清单，拒绝覆盖")
+        previous_files = {
+            item["submission"]
+            for item in previous.get("files", [])
+            if isinstance(item, dict) and isinstance(item.get("submission"), str)
+        }
+    existing = {
+        path.relative_to(submission_dir).as_posix()
+        for path in submission_dir.rglob("*")
+        if path.is_file() and path != manifest_path
+    }
+    unmanaged = existing - previous_files
+    if unmanaged:
+        raise ContractError(
+            "paper/submission 含未登记文件，不能猜测其提交角色: "
+            + ", ".join(sorted(unmanaged))
+        )
+
+    sources: list[tuple[Path, str, str]] = [(pdf, "final.pdf", "final_pdf")]
+    artifacts_dir = root / "artifacts"
+    attachment_names = {
+        path.name.casefold()
+        for path in (root / "problem" / "attachments").rglob("*")
+        if path.is_file()
+    }
+    if artifacts_dir.is_dir():
+        for source in sorted(path for path in artifacts_dir.rglob("*") if path.is_file()):
+            if source.stat().st_size == 0:
+                raise ContractError(
+                    "标准提交包拒绝空产物: " + relative_inside(root, source).as_posix()
+                )
+            relative = source.relative_to(artifacts_dir).as_posix()
+            role = (
+                "completed_problem_attachment"
+                if source.name.casefold() in attachment_names
+                else "submission_attachment"
+            )
+            sources.append((source, f"attachments/{relative}", role))
+
+    expected_files = [
+        {
+            "source": relative_inside(root, source).as_posix(),
+            "submission": destination,
+            "role": role,
+            "sha256": sha256_file(source),
+        }
+        for source, destination, role in sources
+    ]
+    if previous is not None and previous.get("files") == expected_files:
+        destinations_current = all(
+            (submission_dir / item["submission"]).is_file()
+            and sha256_file(submission_dir / item["submission"]) == item["sha256"]
+            for item in expected_files
+        )
+        if destinations_current:
+            return previous
+
+    current_destinations = {destination for _, destination, _ in sources}
+    for stale in previous_files - current_destinations:
+        stale_path = _safe_packet_path(submission_dir, stale, must_exist=False)
+        if stale_path.is_file():
+            stale_path.unlink()
+
+    files: list[dict[str, str]] = []
+    for source, destination_relative, role in sources:
+        destination = _safe_packet_path(
+            submission_dir, destination_relative, must_exist=False
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        files.append(
+            {
+                "source": relative_inside(root, source).as_posix(),
+                "submission": destination_relative,
+                "role": role,
+                "sha256": sha256_file(destination),
+            }
+        )
+    manifest = {
+        "schema_version": "1.0",
+        "run_id": root.name,
+        "files": files,
+        "created_at": utc_now(),
+    }
+    atomic_json(manifest_path, manifest)
+    return manifest
+
+
 def _copy_packet_tree(
     run_dir: Path,
     packet_dir: Path,
@@ -764,8 +1028,18 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
         run_dir / "paper" / "final.pdf"
     ).is_file():
         raise ContractError(f"{kind} 审查包需要已编译的 paper/final.pdf")
+    if kind in {"paper-blind", "final-audit"}:
+        materialize_submission_package(run_dir)
     if kind == "final-audit":
         require_final_review_allowed(run_dir)
+
+    missing_roots = [
+        relative
+        for relative in sorted(_REQUIRED_PACKET_ROOTS[kind])
+        if _source_root(run_dir, relative) is None
+    ]
+    if missing_roots:
+        raise ContractError("审查包缺少必需输入根: " + ", ".join(missing_roots))
 
     packet_id = _packet_identifier(kind, state["revision"])
     packet_dir = run_dir / REVIEW_ROOT / "packet" / kind / packet_id
@@ -992,7 +1266,55 @@ def _validate_objective_assessment(
                 raise ContractError(
                     f"{question['question_id']} 仍有歧义时必须记录用户裁决或显式建模假设"
                 )
+        if question["materiality"] == "high" and question["selection_confidence"] == "ambiguous":
+            if question["selection_basis"] != "user_decision":
+                raise ContractError(
+                    f"{question['question_id']} 的高影响歧义必须由真实用户裁决，不能用建模假设自行放行"
+                )
+            if not question["human_confirmation_required"]:
+                raise ContractError(f"{question['question_id']} 的高影响歧义必须要求人工确认")
     return payload
+
+
+def _selected_objectives_sha256(assessment: dict[str, Any]) -> str:
+    """稳定绑定逐问主目标，避免只改选择字段却复用旧人工裁决。"""
+    selected = {
+        question["question_id"]: question["selected_objective_id"]
+        for question in assessment["questions"]
+    }
+    return sha256_bytes(json_bytes(selected))
+
+
+def _human_ambiguity_binding(run_dir: Path, assessment: dict[str, Any]) -> dict[str, str] | None:
+    """核验高影响歧义的人工原话与目标选择逐项一致。"""
+    required = {
+        question["question_id"]: question["selected_objective_id"]
+        for question in assessment["questions"]
+        if question["materiality"] == "high"
+        and question["selection_confidence"] == "ambiguous"
+    }
+    if not required:
+        return None
+    path = _safe_run_path(run_dir, AMBIGUITY_DECISIONS_PATH.as_posix())
+    decisions = load_json(path)
+    _validate_document(decisions, "ambiguity_decisions", "高影响歧义人工裁决")
+    if decisions["run_id"] != run_dir.name:
+        raise ContractError("高影响歧义人工裁决 run_id 不匹配")
+    by_question = {item["question_id"]: item for item in decisions["decisions"]}
+    missing = sorted(set(required) - set(by_question))
+    if missing:
+        raise ContractError("高影响歧义缺少人工裁决: " + ", ".join(missing))
+    mismatched = sorted(
+        question_id
+        for question_id, selected in required.items()
+        if by_question[question_id]["selected_objective_id"] != selected
+    )
+    if mismatched:
+        raise ContractError("人工裁决与选定主目标不一致: " + ", ".join(mismatched))
+    return {
+        "file": relative_inside(run_dir, path).as_posix(),
+        "sha256": sha256_file(path),
+    }
 
 
 def _bound_review_file(run_dir: Path, relative: Path, *, suffix: str) -> dict[str, str]:
@@ -1024,8 +1346,8 @@ def import_objective_semantics_review(
         raise ContractError("目标语义预审 verdict 或严重性不合法")
     if verdict == "pass" and highest_severity in {"P0", "P1"}:
         raise ContractError("目标语义预审含 P0/P1 时不能导入为 pass")
-    if read_simple_state(run_dir)["phase"] != "analysis":
-        raise ContractError("目标语义预审只能在 analysis 阶段导入")
+    if read_simple_state(run_dir)["phase"] == "complete":
+        raise ContractError("已完成运行不能覆盖目标语义预审；请新建修订运行")
     manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
     if manifest["packet_kind"] != "objective-semantics":
         raise ContractError("目标语义预审必须绑定 objective-semantics 审查包")
@@ -1039,6 +1361,7 @@ def import_objective_semantics_review(
     _validate_objective_assessment(run_dir, assessment)
     if not reviewer_thread_id.strip():
         raise ContractError("目标语义预审必须记录新对话 thread_id")
+    ambiguity_decisions = _human_ambiguity_binding(run_dir, assessment)
     receipt = {
         "schema_name": "objective_semantics_review",
         "schema_version": "1.0",
@@ -1050,12 +1373,25 @@ def import_objective_semantics_review(
             "sha256": sha256_file(manifest_path),
         },
         "assessment": _bound_review_file(run_dir, assessment_file, suffix=".json"),
+        "selected_objectives_sha256": _selected_objectives_sha256(assessment),
         "report": _review_report(run_dir, report_file),
         "reviewer": {"thread_id": reviewer_thread_id},
         "reviewed_at": utc_now(),
     }
+    if ambiguity_decisions is not None:
+        receipt["ambiguity_decisions"] = ambiguity_decisions
     _validate_document(receipt, "objective_semantics_review", "目标语义预审收据")
     atomic_json(run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH, receipt)
+    summary_path = run_dir / SUMMARY_PATH
+    if summary_path.is_file():
+        # 目标函数或聚合口径一旦重审，旧实验、论文和终审结论都失去共同前提。
+        summary = read_review_summary(run_dir)
+        summary["scientific_review"]["verdict"] = "revoked"
+        summary["paper_blind_review"] = None
+        summary["final_audit"] = None
+        summary["updated_at"] = utc_now()
+        _require_summary(summary)
+        atomic_json(summary_path, summary)
     return receipt
 
 
@@ -1082,6 +1418,11 @@ def objective_semantics_review_status(run_dir: Path) -> dict[str, Any]:
         if not isinstance(assessment, dict):
             raise ContractError("独立目标语义评估必须是 JSON 对象")
         _validate_objective_assessment(run_dir, assessment)
+        if _selected_objectives_sha256(assessment) != receipt["selected_objectives_sha256"]:
+            raise ContractError("逐问选定目标已变化")
+        ambiguity_decisions = _human_ambiguity_binding(run_dir, assessment)
+        if ambiguity_decisions != receipt.get("ambiguity_decisions"):
+            raise ContractError("高影响歧义人工裁决已变化或缺失")
         report_path = _safe_run_path(run_dir, receipt["report"]["file"])
         if sha256_file(report_path) != receipt["report"]["sha256"]:
             raise ContractError("目标语义预审报告已变化")
@@ -1138,7 +1479,11 @@ def _reviewer_final(thread_id: str) -> dict[str, Any]:
 
 
 def _require_competition_strength_evidence(
-    competition_strength: str, artifacts: dict[str, Any]
+    competition_strength: str,
+    artifacts: dict[str, Any],
+    evidence_assessment: dict[str, Any],
+    run_dir: Path,
+    semantics: dict[str, Any],
 ) -> None:
     """阻止 CLI 仅靠一个标签把科学结果抬成可竞赛提交。"""
     if competition_strength not in {"qualified", "strong"}:
@@ -1152,6 +1497,47 @@ def _require_competition_strength_evidence(
         raise ContractError(
             "qualified/strong 需要至少一项独立复算或替代公式，且需要一项反例、枚举、挑战或性质测试的真实收据"
         )
+    if not evidence_assessment["promotion_allowed"]:
+        raise ContractError(
+            "qualified/strong 与红队证据结论冲突: "
+            + "；".join(evidence_assessment["promotion_blockers"])
+        )
+    route = require_capability_route(run_dir)
+    if "geometry_kinematics" in route["problem_families"] and (
+        "geometry-continuous-validation" not in kinds
+    ):
+        raise ContractError(
+            "几何/运动题的 qualified/strong 需要 geometry-continuous-validation，"
+            "随机内部采样不能替代连续边界证明"
+        )
+    required_actions = {
+        question["question_id"]: question["decision_space"]["allowed_action_count"]
+        for question in semantics.get("assessment", {}).get("questions", [])
+        if question.get("decision_space", {}).get("action_cardinality") == "variable"
+    }
+    if required_actions:
+        verification = verify_red_team_artifacts(run_dir)
+        action_evidence = {
+            evidence["question_id"]: evidence
+            for kind, evidence in verification.get("semantic_evidence", [])
+            if kind == "action-activation-challenge"
+        }
+        missing = sorted(set(required_actions) - set(action_evidence))
+        if missing:
+            raise ContractError(
+                "可变动作数量问题缺少 action-activation-challenge: "
+                + ", ".join(missing)
+            )
+        mismatched = sorted(
+            question_id
+            for question_id, allowed_count in required_actions.items()
+            if action_evidence[question_id]["allowed_action_count"] != allowed_count
+        )
+        if mismatched:
+            raise ContractError(
+                "动作激活挑战未覆盖题面声明的完整动作数量: "
+                + ", ".join(mismatched)
+            )
 
 
 def _review_report(run_dir: Path, relative: Path) -> dict[str, str]:
@@ -1204,9 +1590,28 @@ def import_scientific_review(
         raise ContractError("科学审查包已失效: " + "；".join(packet["errors"]))
     report = _review_report(run_dir, report_file)
     artifacts = _bind_red_team_artifacts(run_dir, report)
-    _require_competition_strength_evidence(competition_strength, artifacts)
+    evidence_assessment = _verified_evidence_assessment(run_dir)
+    if verdict == "pass" and not evidence_assessment["pass_allowed"]:
+        raise ContractError(
+            "科学审查 pass 与红队负面证据冲突: "
+            + "；".join(evidence_assessment["blocking_reasons"])
+        )
+    _require_competition_strength_evidence(
+        competition_strength,
+        artifacts,
+        evidence_assessment,
+        run_dir,
+        semantics,
+    )
+    semantics_binding = None
+    if semantics.get("required"):
+        semantics_receipt = run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH
+        semantics_binding = {
+            "file": relative_inside(run_dir, semantics_receipt).as_posix(),
+            "sha256": sha256_file(semantics_receipt),
+        }
     summary = {
-        "schema_version": "1.3",
+        "schema_version": "1.5",
         "run_id": run_dir.name,
         "scientific_review": {
             "verdict": verdict,
@@ -1220,6 +1625,7 @@ def import_scientific_review(
             },
             "report": report,
             "artifacts": artifacts,
+            "objective_semantics": semantics_binding,
             "reviewer": _reviewer_scientific(reviewer_thread_id),
             "reviewed_at": utc_now(),
         },
@@ -1275,7 +1681,7 @@ def import_paper_blind_review(
     if semantics.get("required"):
         used_threads.add(semantics["review"]["reviewer"]["thread_id"])
     if reviewer_thread_id in used_threads:
-        raise ContractError("PDF 盲审必须使用不同于目标语义预审和科学红队的新对话")
+        raise ContractError("PDF 盲审必须使用不同于科学红队、目标语义预审的新对话")
     summary["schema_version"] = "1.4"
     summary["paper_blind_review"] = {
         "verdict": verdict,
@@ -1377,6 +1783,21 @@ def _review_current(
             return False, str(exc)
         if artifacts != review["artifacts"]:
             return False, "红队证据收据或报告引用已变化"
+        evidence_assessment = _verified_evidence_assessment(run_dir)
+        if not evidence_assessment["pass_allowed"]:
+            return False, "红队出现负面科学证据: " + "；".join(
+                evidence_assessment["blocking_reasons"]
+            )
+        semantics = objective_semantics_review_status(run_dir)
+        binding = review.get("objective_semantics")
+        if semantics.get("required"):
+            receipt_path = run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH
+            if not isinstance(binding, dict) or binding.get("sha256") != sha256_file(
+                receipt_path
+            ):
+                return False, "科学审查绑定的目标语义版本已变化"
+        elif binding is not None:
+            return False, "科学审查绑定了当前运行不需要的目标语义收据"
     return True, ""
 
 
@@ -1393,13 +1814,19 @@ def scientific_review_status(run_dir: Path) -> dict[str, Any]:
         summary = read_review_summary(run_dir)
         review = summary["scientific_review"]
         current, reason = _review_current(run_dir, review, expected_kind="scientific")
+        evidence_assessment = _verified_evidence_assessment(run_dir) if current else None
         allowed = bool(
             current
             and review["verdict"] == "pass"
             and review["highest_severity"] not in {"P0", "P1"}
             and not review["full_rerun_required"]
         )
-        submission_ready = allowed and review["competition_strength"] in {"qualified", "strong"}
+        submission_ready = bool(
+            allowed
+            and review["competition_strength"] in {"qualified", "strong"}
+            and evidence_assessment is not None
+            and evidence_assessment["promotion_allowed"]
+        )
         return {
             "allowed": allowed,
             "submission_ready": submission_ready,

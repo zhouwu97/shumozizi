@@ -30,6 +30,8 @@ def main() -> int:
             "alternative-formula",
             "search-challenge",
             "property-test",
+            "action-activation-challenge",
+            "geometry-continuous-validation",
         ),
         required=True,
     )

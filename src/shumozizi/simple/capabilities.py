@@ -23,8 +23,8 @@ KNOWLEDGE_CONSUMPTION_PATH = Path("state/knowledge-consumption.json")
 _ORACLE_FAMILIES = {"geometry_kinematics", "mechanism_dynamics"}
 _SUPPORTED_ENGINES = ("python", "matlab", "octave")
 _ENGINE_SUFFIXES = {"python": ".py", "matlab": ".m", "octave": ".m"}
-_PROBE_TIMEOUT_SECONDS = 12
-_PROBE_CACHE: dict[tuple[str, ...], dict[str, Any]] = {}
+_PROBE_TIMEOUT_SECONDS = {"python": 12, "octave": 20, "matlab": 60}
+_PROBE_CACHE: dict[tuple[int, str, ...], dict[str, Any]] = {}
 _CURRENT_ROUTE_SCHEMA_VERSION = "1.2"
 _ALLOWED_SHARED_ORACLE_UTILITIES = {
     "code/shared/__init__.py",
@@ -63,9 +63,9 @@ def _digest_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
 
 
-def _run_probe(command: list[str]) -> dict[str, Any]:
+def _run_probe(command: list[str], *, timeout_seconds: int) -> dict[str, Any]:
     """运行受控工具探测，并把失败显式保留为不可用状态。"""
-    cache_key = tuple(command)
+    cache_key = (timeout_seconds, *command)
     cached = _PROBE_CACHE.get(cache_key)
     if cached is not None:
         return dict(cached)
@@ -76,7 +76,7 @@ def _run_probe(command: list[str]) -> dict[str, Any]:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=_PROBE_TIMEOUT_SECONDS,
+            timeout=timeout_seconds,
             check=False,
         )
         stdout, stderr = completed.stdout, completed.stderr
@@ -117,7 +117,11 @@ def _engine_probe_command(engine: str, command: str) -> list[str]:
     if engine == "python":
         return [command, "--version"]
     if engine == "matlab":
-        return [command, "-batch", "disp(version)"]
+        return [
+            command,
+            "-batch",
+            "disp(version); assert(exist('fmincon','file') || exist('fmincon','builtin')); disp('fmincon available')",
+        ]
     if engine == "octave":
         return [command, "--quiet", "--no-gui", "--eval", "disp(version)"]
     raise ContractError(f"不支持的工具引擎: {engine}")
@@ -149,7 +153,10 @@ def detect_local_tooling() -> dict[str, Any]:
                 }
             )
             continue
-        probe = _run_probe(_engine_probe_command(engine, command))
+        probe = _run_probe(
+            _engine_probe_command(engine, command),
+            timeout_seconds=_PROBE_TIMEOUT_SECONDS[engine],
+        )
         engines.append(
             {
                 "engine": engine,

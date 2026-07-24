@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "run_id", "scientific_review", "paper_blind_review", "updated_at"],
   "properties": {
-    "schema_version": {"enum": ["1.0", "1.1", "1.2", "1.3", "1.4"]},
+    "schema_version": {"enum": ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "scientific_review": {"$ref": "#/$defs/scientificReview"},
     "paper_blind_review": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/paperBlindReview"}]},
@@ -64,6 +64,26 @@
           }
         }
       }
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.5"}}},
+      "then": {
+        "required": ["final_audit"],
+        "properties": {
+          "scientific_review": {
+            "required": ["artifacts", "objective_semantics"],
+            "properties": {
+              "artifacts": {"required": ["receipts", "report_citations", "evidence_kinds"]}
+            }
+          },
+          "paper_blind_review": {
+            "oneOf": [
+              {"type": "null"},
+              {"$ref": "#/$defs/paperBlindReviewV14"}
+            ]
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -107,7 +127,7 @@
         "evidence_kinds": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test"]}
+          "items": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test", "action-activation-challenge", "geometry-continuous-validation"]}
         }
       }
     },
@@ -158,6 +178,9 @@
         "packet": {"$ref": "#/$defs/packet"},
         "report": {"$ref": "#/$defs/report"},
         "artifacts": {"$ref": "#/$defs/redTeamArtifacts"},
+        "objective_semantics": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/report"}]
+        },
         "reviewer": {"oneOf": [{"$ref": "#/$defs/scientificIsolation"}, {"$ref": "#/$defs/reviewerReference"}]},
         "reviewed_at": {"type": "string", "format": "date-time"}
       }

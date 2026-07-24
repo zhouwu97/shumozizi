@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.simple.adapters import run_verification_protocol
+from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.review import (
     build_review_packet,
     import_scientific_review,
@@ -404,6 +405,39 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         script_path="review/red_team_artifacts/synthetic-property.py",
         output_paths=["property.json"],
     )
+    if "geometry_kinematics" in require_capability_route(run_dir)["problem_families"]:
+        geometry = artifact_root / "synthetic-geometry-continuous.py"
+        geometry.write_text(
+            "import json\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+            "assert (packet / 'problem').is_dir()\n"
+            "(outputs / 'geometry.json').write_text(json.dumps({\n"
+            "    'question_id': 'Q1',\n"
+            "    'continuous_quantity': 'minimum_margin_continuous',\n"
+            "    'sampled_approximation': 'minimum_margin_grid',\n"
+            "    'verification_method': 'root_isolation',\n"
+            "    'discretization_error_bound': None,\n"
+            "    'critical_cases': {\n"
+            "        'left_endpoint': True,\n"
+            "        'right_endpoint': True,\n"
+            "        'tangent': True,\n"
+            "        'degenerate': True,\n"
+            "        'outside_segment': True,\n"
+            "    },\n"
+            "    'verdict': 'pass',\n"
+            "}), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        run_red_team_evidence(
+            run_dir,
+            evidence_id="synthetic-geometry-continuous",
+            kind="geometry-continuous-validation",
+            packet_manifest=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+            script_path="review/red_team_artifacts/synthetic-geometry-continuous.py",
+            output_paths=["geometry.json"],
+        )
     report = run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
     report.write_text(
         "# 合成科学红队报告\n\n"

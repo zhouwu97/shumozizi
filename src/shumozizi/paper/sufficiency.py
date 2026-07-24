@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import re
+import shutil
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from pypdf import PdfReader
 
-from shumozizi.core.io import ContractError, atomic_json, load_json, relative_inside
+from shumozizi.core.io import ContractError, atomic_json, load_json, relative_inside, sha256_file
 from shumozizi.core.schema import require_valid
+from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state, utc_now
+from shumozizi.simple.visualization import require_visualization_complete
 
 PAPER_CONTENT_BLUEPRINT_SCHEMA = "paper_content_blueprint"
 PAPER_SUFFICIENCY_REPORT_SCHEMA = "paper_sufficiency_report"
@@ -42,6 +45,38 @@ ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "conclusion": re.compile(r"结论|\bconclusion\b", re.IGNORECASE),
     "references": re.compile(r"参考文献|\breferences\b", re.IGNORECASE),
+    # 逐问论证合同：这些模式只确认论文是否显式承担了相应论证义务，
+    # 数学结论本身仍由 scientific review 和 paper blind review 判断。
+    "chosen_objective": re.compile(
+        r"目标解释|目标函数|优化目标|选定目标|objective\s*(?:semantics|function)", re.IGNORECASE
+    ),
+    "model_choice_rationale": re.compile(
+        r"模型选择理由|选模理由|为何采用|选择该模型|model\s*(?:choice|rationale)", re.IGNORECASE
+    ),
+    "core_proof_obligations": re.compile(
+        r"证明义务|关键证明|正确性条件|不变量|边界条件|proof\s*obligation", re.IGNORECASE
+    ),
+    "production_result_refs": re.compile(
+        r"生产结果|当前结果|结果依据|实验收据|sealed\s*result|result[_ -]?id", re.IGNORECASE
+    ),
+    "comparison_route": re.compile(
+        r"基线|替代路线|备选方法|对比方法|路线比较|comparison|alternative\s*route", re.IGNORECASE
+    ),
+    "evidence_interpretation": re.compile(
+        r"证据解释|结果解释|说明原因|意味着|表明|evidence\s*interpretation", re.IGNORECASE
+    ),
+    "unproved_boundary": re.compile(
+        r"未证明|未证|适用边界|局限|不外推|尚未验证|unproved|limitation|boundary", re.IGNORECASE
+    ),
+    "source_code_appendix": re.compile(
+        r"源码附录|程序源码|完整源码|source\s*code\s*appendix", re.IGNORECASE
+    ),
+    "matlab_proof_figure_explanation": re.compile(
+        r"(?=[\s\S]*(?:MATLAB|Octave))"
+        r"(?=[\s\S]*(?:图|figure)\s*\d+)"
+        r"(?=[\s\S]*(?:证明|验证|临界|边界|收敛|误差|proof|validation|critical|boundary|convergence|error))",
+        re.IGNORECASE,
+    ),
 }
 FIGURE_PATTERN = re.compile(r"(?:图|figure)\s*\d+", re.IGNORECASE)
 TABLE_PATTERN = re.compile(r"(?:表|table)\s*\d+", re.IGNORECASE)
@@ -62,6 +97,18 @@ QUANTITATIVE_PATTERN = re.compile(
 SENTENCE_PATTERN = re.compile(r"[。！？；.!?;]")
 MIN_QUESTION_TEXT_CHARACTERS = 120
 MIN_QUESTION_SENTENCES = 3
+_HIGH_RISK_FAMILIES = {"geometry_kinematics", "optimization"}
+_MATLAB_ENGINES = {"matlab", "octave"}
+_GEOMETRY_EVIDENCE_MODES = {"spatial_3d", "orthographic_geometry", "planar_geometry"}
+_OPTIMIZATION_EVIDENCE_MODES = {
+    "heuristic_trace",
+    "proxy_calibration",
+    "local_landscape",
+    "bound_gap",
+    "residual_certificate",
+    "enumeration_coverage",
+    "analytic_derivation",
+}
 
 
 def _run_output_path(run_dir: Path, path: Path | None, default: Path, label: str) -> Path:
@@ -100,15 +147,171 @@ def _question_sections(
         "draft_allowed": draft_allowed,
         "evidence_result_ids": result_ids,
         "required_elements": [
+            "chosen_objective",
+            "model_choice_rationale",
+            "core_proof_obligations",
+            "production_result_refs",
+            "comparison_route",
+            "evidence_interpretation",
+            "unproved_boundary",
             "direct_answer",
-            "model_algorithm",
-            "key_results",
-            "verification_boundary",
         ],
+        "argument_contract": {
+            "chosen_objective": f"{question_id} 的主目标及聚合口径必须与目标语义收据一致。",
+            "model_choice_rationale": "说明模型为何匹配题意、约束和可验证性。",
+            "core_proof_obligations": [
+                "列出本问必须满足的约束、边界或正确性条件。"
+            ],
+            "production_result_refs": list(result_ids),
+            "comparison_route": "说明至少一条基线或替代路线及比较口径。",
+            "evidence_interpretation": "解释当前生产结果支持了什么结论，以及不能支持什么结论。",
+            "unproved_boundary": "明确尚未证明、未覆盖或不可外推的边界。",
+            "direct_answer": f"直接回答题目要求的 {question_id} 输出，并给出单位。",
+        },
     }
     if blocked_reason is not None:
         section["blocked_reason"] = blocked_reason
     return section
+
+
+def _materialize_source_code_appendix(run_dir: Path) -> list[dict[str, str]]:
+    """复制完整 Python/MATLAB 源码，供论文生成器逐文件原文收录。"""
+    code_root = run_dir / "code"
+    if not code_root.is_dir():
+        return []
+    bindings: list[dict[str, str]] = []
+    for source in sorted(
+        path for path in code_root.rglob("*") if path.is_file() and path.suffix.casefold() in {".py", ".m"}
+    ):
+        try:
+            source_text = source.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ContractError(f"源码必须是可直接收录的 UTF-8 文本: {source}") from exc
+        if not source_text.strip():
+            raise ContractError(f"源码文件为空，不能收录到论文附录: {source}")
+        relative_source = relative_inside(run_dir, source)
+        appendix = run_dir / "paper" / "source_appendix" / source.relative_to(code_root)
+        appendix.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, appendix)
+        bindings.append(
+            {
+                "source_path": relative_source.as_posix(),
+                "appendix_path": relative_inside(run_dir, appendix).as_posix(),
+                "sha256": sha256_file(appendix),
+                "source_text": source_text,
+            }
+        )
+    return bindings
+
+
+def _matlab_required_families(run_dir: Path) -> set[str]:
+    """返回当前路由中必须由 MATLAB/Octave 图证明的高风险题型。"""
+    if not (run_dir / "state" / "capability-route.json").is_file():
+        # 兼容仅测试论文文本结构的旧合成运行；正式 paper 阶段由状态机保证路由存在。
+        return set()
+    route = require_capability_route(run_dir)
+    toolchain = route["toolchain"]
+    selected_engines = {
+        toolchain.get("production_engine"),
+        toolchain.get("independent_engine"),
+    }
+    if not selected_engines.intersection(_MATLAB_ENGINES):
+        return set()
+    return set(route["problem_families"]).intersection(_HIGH_RISK_FAMILIES)
+
+
+def _proof_kinds(contract: Mapping[str, Any]) -> set[str]:
+    """根据 Figure Contract 的证据角色判断它承担哪类证明义务。"""
+    roles = set(contract.get("evidence_roles", []))
+    modes = set(contract.get("evidence_modes", []))
+    kinds: set[str] = set()
+    if "model_structure" in roles and modes.intersection(_GEOMETRY_EVIDENCE_MODES):
+        kinds.add("geometry")
+    if roles.intersection({"solver_process", "optimality_evidence"}) and modes.intersection(
+        _OPTIMIZATION_EVIDENCE_MODES
+    ):
+        kinds.add("optimization")
+    return kinds
+
+
+def _materialize_matlab_proof_figures(
+    run_dir: Path,
+    *,
+    required_questions: set[str],
+) -> list[dict[str, Any]]:
+    """冻结 MATLAB/Octave 证明图的脚本、PNG 与真实执行收据。"""
+    required_families = _matlab_required_families(run_dir)
+    if not required_families:
+        return []
+    plan = require_visualization_complete(run_dir)
+    bindings: list[dict[str, Any]] = []
+    covered: set[str] = set()
+    for contract in plan["contracts"]:
+        if contract.get("status") != "complete" or contract.get("question_id") not in required_questions:
+            continue
+        kinds = _proof_kinds(contract)
+        needed_kinds = kinds.intersection(
+            {"geometry" if item == "geometry_kinematics" else item for item in required_families}
+        )
+        if not needed_kinds:
+            continue
+        reference = contract.get("render_receipt")
+        if not isinstance(reference, Mapping):
+            continue
+        receipt_path_value = reference.get("path")
+        receipt_hash = reference.get("sha256")
+        if not isinstance(receipt_path_value, str) or not isinstance(receipt_hash, str):
+            continue
+        receipt_path = run_dir / receipt_path_value
+        if not receipt_path.is_file() or sha256_file(receipt_path) != receipt_hash:
+            continue
+        receipt = load_json(receipt_path)
+        if receipt.get("engine") not in _MATLAB_ENGINES:
+            continue
+        script = receipt.get("script", {})
+        script_path = script.get("path") if isinstance(script, Mapping) else None
+        script_hash = script.get("sha256") if isinstance(script, Mapping) else None
+        if (
+            not isinstance(script_path, str)
+            or not script_path.startswith("code/matlab/")
+            or not script_path.casefold().endswith(".m")
+            or not isinstance(script_hash, str)
+        ):
+            continue
+        outputs = [
+            item
+            for item in receipt.get("outputs", [])
+            if isinstance(item, Mapping)
+            and isinstance(item.get("path"), str)
+            and item["path"].casefold().endswith(".png")
+            and isinstance(item.get("sha256"), str)
+        ]
+        if not outputs:
+            continue
+        for kind in sorted(needed_kinds):
+            bindings.append(
+                {
+                    "proof_kind": kind,
+                    "figure_id": contract["figure_id"],
+                    "question_id": contract["question_id"],
+                    "scientific_question": contract["scientific_question"],
+                    "receipt_path": receipt_path_value,
+                    "receipt_sha256": receipt_hash,
+                    "script_path": script_path,
+                    "script_sha256": script_hash,
+                    "output_paths": [item["path"] for item in outputs],
+                    "output_sha256s": [item["sha256"] for item in outputs],
+                }
+            )
+            covered.add(kind)
+    expected = {"geometry" if item == "geometry_kinematics" else item for item in required_families}
+    missing = sorted(expected - covered)
+    if missing:
+        raise ContractError(
+            "MATLAB/Octave 已用于高风险路线，但缺少由实际 .m 脚本生成并登记的证明图: "
+            + ", ".join(missing)
+        )
+    return bindings
 
 
 def build_content_blueprint(
@@ -169,6 +372,15 @@ def build_content_blueprint(
             )
         )
     global_result_ids = list(dict.fromkeys(all_valid_result_ids))
+    source_code_appendix = _materialize_source_code_appendix(root)
+    matlab_proof_figures = _materialize_matlab_proof_figures(
+        root,
+        required_questions=set(state["required_questions"]),
+    )
+    matlab_figure_questions = {item["question_id"] for item in matlab_proof_figures}
+    for section in question_sections:
+        if section["question_id"] in matlab_figure_questions:
+            section["required_elements"].append("matlab_proof_figure_explanation")
 
     def global_section(
         section_id: str,
@@ -231,6 +443,14 @@ def build_content_blueprint(
             blocked_reason=None if all_questions_ready else result_dependent_reason,
         ),
         global_section("references", ["references"]),
+        global_section(
+            "source_code_appendix",
+            ["source_code_appendix"],
+            draft_allowed=bool(source_code_appendix),
+            blocked_reason=None
+            if source_code_appendix
+            else "缺少可直接收录到论文附录的 Python/MATLAB 完整源码",
+        ),
         {
             "section_id": "appendix",
             "kind": "appendix",
@@ -248,6 +468,8 @@ def build_content_blueprint(
         "execution_mode": "production",
         "required_questions": list(state["required_questions"]),
         "data_processing_applicable": data_processing_applicable,
+        "source_code_appendix": source_code_appendix,
+        "matlab_proof_figures": matlab_proof_figures,
         "sections": sections,
         "generated_at": utc_now(),
     }
@@ -323,6 +545,17 @@ def _element_detected(element: str, text: str) -> bool:
     if pattern is None:
         return False
     return pattern.search(text) is not None
+
+
+def _source_code_present(source_text: str, pdf_text: str) -> bool:
+    """逐行确认完整源码文本进入 PDF，容忍排版插入的空白和行号。"""
+
+    def compact(value: str) -> str:
+        return re.sub(r"\s+", "", value)
+
+    document = compact(pdf_text)
+    source_lines = [compact(line) for line in source_text.splitlines() if compact(line)]
+    return bool(source_lines) and all(line in document for line in source_lines)
 
 
 def _densities(text: str, page_count: int) -> dict[str, int | float]:
@@ -446,6 +679,13 @@ def assess_paper_sufficiency(
             )
         elif section["required"] and missing:
             hard_failures.append(f"section:{section['section_id']}: 缺少 {', '.join(missing)}")
+    source_bindings = document.get("source_code_appendix", [])
+    for binding in source_bindings:
+        filename = Path(binding["appendix_path"]).name
+        if filename not in text:
+            hard_failures.append(f"source-code:{filename}: PDF 源码附录未出现该源码文件")
+        elif not _source_code_present(binding["source_text"], text):
+            hard_failures.append(f"source-code:{filename}: PDF 仅有文件名或不完整片段，未收录完整源码文本")
     for question_id in document["required_questions"]:
         section = by_question.get(question_id)
         if section is None:
@@ -557,6 +797,25 @@ def verify_content_blueprint(
         blueprint = load_json(path)
         require_valid(blueprint, PAPER_CONTENT_BLUEPRINT_SCHEMA)
         state = _require_production_state(root)
+        source_bindings = blueprint.get("source_code_appendix")
+        if not source_bindings:
+            errors.append("内容蓝图缺少必须直接收录到论文的完整 Python/MATLAB 源码")
+        else:
+            for binding in source_bindings:
+                source = root / binding["source_path"]
+                appendix = root / binding["appendix_path"]
+                if not source.is_file() or not appendix.is_file():
+                    errors.append(f"源码附录文件缺失: {binding['source_path']}")
+                elif sha256_file(source) != binding["sha256"] or sha256_file(appendix) != binding["sha256"]:
+                    errors.append(f"源码附录与当前源码不一致: {binding['source_path']}")
+                elif source.read_text(encoding="utf-8") != binding["source_text"]:
+                    errors.append(f"源码附录蓝图未冻结完整源码文本: {binding['source_path']}")
+        current_matlab_figures = _materialize_matlab_proof_figures(
+            root,
+            required_questions=set(state["required_questions"]),
+        )
+        if blueprint.get("matlab_proof_figures", []) != current_matlab_figures:
+            errors.append("MATLAB/Octave 证明图蓝图与当前真实渲染收据不一致")
         if blueprint["run_id"] != state["run_id"]:
             errors.append("内容蓝图 run_id 与运行目录不一致")
         if blueprint["state_revision"] > state["revision"]:

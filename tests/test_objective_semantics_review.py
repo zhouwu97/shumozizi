@@ -53,8 +53,15 @@ def _assessment(run_id: str, *, ambiguous: bool = False) -> dict:
                 "selected_objective_id": "sum_per_missile",
                 "selection_basis": "language_evidence",
                 "selection_confidence": "ambiguous" if ambiguous else "high",
+                "materiality": "high" if ambiguous else "low",
+                "human_confirmation_required": ambiguous,
                 "diagnostic_objective_ids": ["union_any", "intersection_all"],
                 "ambiguity_note": "同时可能描述动作安排，而非三重交集" if ambiguous else "",
+                "decision_space": {
+                    "action_cardinality": "variable",
+                    "allowed_action_count": 15,
+                    "language_basis": ["题面允许每个平台投放至多三枚。"],
+                },
             }
         ],
     }
@@ -140,3 +147,46 @@ def test_passed_semantics_review_is_hash_bound_and_required_for_route(tmp_path: 
     assert not objective_semantics_review_status(run_dir)["allowed"]
     with pytest.raises(ContractError, match="目标语义预审"):
         update_simple_state(run_dir, phase="capability_route")
+
+
+def test_high_materiality_ambiguity_requires_hash_bound_human_decision(tmp_path: Path) -> None:
+    """高影响目标歧义必须绑定用户原话，裁决漂移后立即失效。"""
+    run_dir = _prepare_run(tmp_path)
+    packet = build_review_packet(run_dir, kind="objective-semantics")
+    assessment = _assessment(run_dir.name, ambiguous=True)
+    assessment["questions"][0]["selection_basis"] = "user_decision"
+    atomic_json(run_dir / "review" / "OBJECTIVE_SEMANTICS.json", assessment)
+    atomic_json(
+        run_dir / "state" / "ambiguity-decisions.json",
+        {
+            "schema_name": "ambiguity_decisions",
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "decisions": [
+                {
+                    "question_id": "Q5",
+                    "selected_objective_id": "sum_per_missile",
+                    "confirmed": True,
+                    "raw_user_response": "按逐目标有效时长求和作为主目标。",
+                }
+            ],
+            "confirmed_at": "2026-07-24T00:00:00Z",
+        },
+    )
+    (run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md").write_text(
+        "# 目标语义预审\n\n保留备选解释，并绑定了用户对主目标的明确裁决。\n",
+        encoding="utf-8",
+    )
+    receipt = import_objective_semantics_review(
+        run_dir,
+        manifest_file=_manifest_relative(packet),
+        verdict="pass",
+        highest_severity="none",
+        reviewer_thread_id="objective-human-review-thread",
+    )
+
+    assert "ambiguity_decisions" in receipt
+    decisions = load_json(run_dir / "state" / "ambiguity-decisions.json")
+    decisions["decisions"][0]["raw_user_response"] = "改为并集口径。"
+    atomic_json(run_dir / "state" / "ambiguity-decisions.json", decisions)
+    assert not objective_semantics_review_status(run_dir)["allowed"]

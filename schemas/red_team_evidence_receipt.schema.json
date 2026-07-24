@@ -10,7 +10,7 @@
     "schema_version": {"enum": ["1.0", "1.1", "1.2"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "evidence_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
-    "kind": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test"]},
+    "kind": {"enum": ["independent-recompute", "counterexample", "small-enumeration", "alternative-formula", "search-challenge", "property-test", "action-activation-challenge", "geometry-continuous-validation"]},
     "engine": {"enum": ["python", "matlab", "octave"]},
     "packet": {"$ref": "#/$defs/packet"},
     "command": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},

@@ -49,8 +49,14 @@ def prepare_minimal_capability_route(run_dir: Path) -> None:
                     "selected_objective_id": "synthetic_objective",
                     "selection_basis": "language_evidence",
                     "selection_confidence": "high",
+                    "materiality": "low",
+                    "human_confirmation_required": False,
                     "diagnostic_objective_ids": [],
                     "ambiguity_note": "",
+                    "decision_space": {
+                        "action_cardinality": "not_applicable",
+                        "language_basis": ["测试问题没有可变数量动作。"],
+                    },
                 }
             )
         atomic_json(

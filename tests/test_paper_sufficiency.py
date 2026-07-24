@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from shumozizi.core.io import atomic_json
+import pytest
+
+from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.paper.sufficiency import assess_paper_sufficiency, build_content_blueprint
 
 
@@ -256,3 +258,193 @@ def test_question_section_needs_its_own_current_production_result(
 
     assert not q1["draft_allowed"]
     assert "本问" in q1["blocked_reason"]
+
+
+def test_blueprint_materializes_full_python_and_matlab_source(tmp_path: Path, monkeypatch) -> None:
+    """论文蓝图必须冻结实际源码文本副本，而不是只登记路径。"""
+    run_dir = tmp_path / "source-appendix"
+    _write_production_state(run_dir, ["Q1"])
+    (run_dir / "code").mkdir(parents=True)
+    (run_dir / "code" / "solve.py").write_text("print('solve')\n", encoding="utf-8")
+    (run_dir / "code" / "proof.m").write_text("disp('proof');\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.quality_allows_paper",
+        lambda _run_dir, result_id: result_id == "Q1-R1",
+    )
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.read_result_index",
+        lambda _run_dir: {"results": [{"result_id": "Q1-R1", "question_id": "Q1"}]},
+    )
+
+    blueprint = build_content_blueprint(
+        run_dir,
+        evidence_by_question={"Q1": ["Q1-R1"]},
+    )
+
+    assert {item["source_path"] for item in blueprint["source_code_appendix"]} == {
+        "code/proof.m",
+        "code/solve.py",
+    }
+    for item in blueprint["source_code_appendix"]:
+        assert (run_dir / item["appendix_path"]).read_bytes() == (
+            run_dir / item["source_path"]
+        ).read_bytes()
+        assert item["source_text"] == (run_dir / item["source_path"]).read_text(encoding="utf-8")
+
+
+def _matlab_proof_plan(run_dir: Path) -> dict:
+    """生成只供论文蓝图测试使用的 MATLAB 真实渲染绑定。"""
+    script = run_dir / "code" / "matlab" / "geometry_proof.m"
+    output = run_dir / "figures" / "geometry-proof.png"
+    receipt_path = run_dir / "figures" / "receipts" / "geometry-proof" / "receipt.json"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("plot(0:1, 0:1);\n", encoding="utf-8")
+    output.write_bytes(b"test-png")
+    atomic_json(
+        receipt_path,
+        {
+            "engine": "matlab",
+            "script": {"path": "code/matlab/geometry_proof.m", "sha256": sha256_file(script)},
+            "outputs": [
+                {"path": "figures/geometry-proof.png", "sha256": sha256_file(output)}
+            ],
+        },
+    )
+    return {
+        "contracts": [
+            {
+                "figure_id": "geometry-proof",
+                "question_id": "Q1",
+                "status": "complete",
+                "scientific_question": "临界端点和连续时间边界是否支持当前几何结论。",
+                "evidence_roles": ["model_structure"],
+                "evidence_modes": ["orthographic_geometry"],
+                "render_receipt": {
+                    "path": "figures/receipts/geometry-proof/receipt.json",
+                    "sha256": sha256_file(receipt_path),
+                },
+            }
+        ]
+    }
+
+
+def _enable_matlab_geometry_route(run_dir: Path, monkeypatch, plan: dict) -> None:
+    """让合成运行声明 MATLAB 几何路线并返回指定图表计划。"""
+    atomic_json(run_dir / "state" / "capability-route.json", {})
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.require_capability_route",
+        lambda _run_dir: {
+            "problem_families": ["geometry_kinematics"],
+            "toolchain": {
+                "production_engine": "python",
+                "independent_engine": "matlab",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.require_visualization_complete",
+        lambda _run_dir: plan,
+    )
+
+
+def test_matlab_high_risk_route_requires_real_proof_figure(tmp_path: Path, monkeypatch) -> None:
+    """MATLAB 高风险路线缺少实际 .m 证明图时不能建立论文蓝图。"""
+    run_dir = tmp_path / "matlab-proof-missing"
+    _write_production_state(run_dir, ["Q1"])
+    (run_dir / "code").mkdir(parents=True)
+    (run_dir / "code" / "solve.py").write_text("print('solve')\n", encoding="utf-8")
+    _enable_matlab_geometry_route(run_dir, monkeypatch, {"contracts": []})
+    monkeypatch.setattr("shumozizi.paper.sufficiency.quality_allows_paper", lambda *_: True)
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.read_result_index",
+        lambda _run_dir: {"results": [{"result_id": "Q1-R1", "question_id": "Q1"}]},
+    )
+
+    with pytest.raises(ContractError, match=r"实际 \.m 脚本生成.*证明图"):
+        build_content_blueprint(run_dir, evidence_by_question={"Q1": ["Q1-R1"]})
+
+
+def test_matlab_proof_figure_must_be_explained_in_question_body(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """MATLAB 图已生成但正文未说明验证命题时，PDF 充分性仍应阻断。"""
+    run_dir = tmp_path / "matlab-proof-unexplained"
+    _write_production_state(run_dir, ["Q1"])
+    (run_dir / "code").mkdir(parents=True)
+    (run_dir / "code" / "solve.py").write_text("print('solve')\n", encoding="utf-8")
+    plan = _matlab_proof_plan(run_dir)
+    _enable_matlab_geometry_route(run_dir, monkeypatch, plan)
+    monkeypatch.setattr("shumozizi.paper.sufficiency.quality_allows_paper", lambda *_: True)
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.read_result_index",
+        lambda _run_dir: {"results": [{"result_id": "Q1-R1", "question_id": "Q1"}]},
+    )
+    blueprint = build_content_blueprint(
+        run_dir,
+        evidence_by_question={"Q1": ["Q1-R1"]},
+    )
+
+    assert blueprint["matlab_proof_figures"][0]["script_path"].endswith(".m")
+    assert blueprint["matlab_proof_figures"][0]["output_paths"] == [
+        "figures/geometry-proof.png"
+    ]
+    report = assess_paper_sufficiency(
+        blueprint,
+        pdf_text="""
+        摘要
+        问题重述与假设
+        共享模型
+        Q1
+        目标函数：采用连续有效遮蔽时长作为选定目标。
+        模型选择理由：该几何模型能够保持有限线段和球体边界，不把无限直线当作目标。
+        证明义务：必须检查左右临界端点、切线和退化情形，且满足全部硬约束。
+        生产结果 Q1-R1：当前结果为 12.3 s，使用独立实现复算并给出误差边界。
+        路线比较：与离散采样基线相比，连续根隔离避免遗漏短区间。
+        证据解释：结果表明候选在当前参数下可行，因此支持本问结论，但不代表全局最优。
+        适用边界：尚未证明不同目标半径下仍保持该排序，不能外推。
+        直接答案：本问持续时间为 12.3 s，单位为秒。
+        全局稳健性：已说明当前验证边界。
+        结论
+        参考文献
+        源码附录
+        solve.py
+        geometry_proof.m
+        """,
+        page_count=8,
+    )
+
+    assert report["status"] == "blocked"
+    assert any("matlab_proof_figure_explanation" in item for item in report["hard_failures"])
+    assert any("未收录完整源码文本" in item for item in report["hard_failures"])
+
+    complete_report = assess_paper_sufficiency(
+        blueprint,
+        pdf_text="""
+        摘要
+        问题重述与假设
+        共享模型
+        Q1
+        目标函数：采用连续有效遮蔽时长作为选定目标。
+        模型选择理由：该几何模型能够保持有限线段和球体边界，不把无限直线当作目标。
+        证明义务：必须检查左右临界端点、切线和退化情形，且满足全部硬约束。
+        生产结果 Q1-R1：当前结果为 12.3 s，使用独立实现复算并给出误差边界。
+        路线比较：与离散采样基线相比，连续根隔离避免遗漏短区间。
+        证据解释：MATLAB 图 1 验证了临界端点和连续边界，因此支持当前几何命题；
+        该图不能证明不同题面参数下仍成立。
+        适用边界：尚未证明不同目标半径下仍保持该排序，不能外推。
+        直接答案：本问持续时间为 12.3 s，单位为秒。
+        全局稳健性：已说明当前验证边界。
+        结论
+        参考文献
+        源码附录
+        solve.py
+        print('solve')
+        geometry_proof.m
+        plot(0:1, 0:1);
+        """,
+        page_count=8,
+    )
+
+    assert complete_report["status"] == "pass"

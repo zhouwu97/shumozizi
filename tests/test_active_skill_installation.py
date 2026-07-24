@@ -54,13 +54,23 @@ def test_workflow_routes_problem_families_to_imported_skills() -> None:
                 "phase": "visualization",
                 "condition": "spatial_structure_affects_conclusion",
             },
+            {
+                "skill": "mathmodel-matlab",
+                "phase": "experiment",
+                "condition": "high_risk_geometry_and_matlab_available",
+            },
         ],
         "optimization": [
             {
                 "skill": "mathmodel-optimizer-benchmark",
                 "phase": "experiment",
                 "condition": "always",
-            }
+            },
+            {
+                "skill": "mathmodel-matlab",
+                "phase": "experiment",
+                "condition": "independent_optimization_challenge_and_matlab_available",
+            },
         ],
     }
     assert "按题型选择并调用匹配的主动 Skill" in workflow_text

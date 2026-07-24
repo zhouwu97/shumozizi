@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/ambiguity_decisions.schema.json",
+  "title": "Human Ambiguity Decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "decisions", "confirmed_at"],
+  "properties": {
+    "schema_name": {"const": "ambiguity_decisions"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_id", "selected_objective_id", "confirmed", "raw_user_response"],
+        "properties": {
+          "question_id": {"type": "string", "minLength": 1},
+          "selected_objective_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "confirmed": {"const": true},
+          "raw_user_response": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "confirmed_at": {"type": "string", "format": "date-time"}
+  }
+}

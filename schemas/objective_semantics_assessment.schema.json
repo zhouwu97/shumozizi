@@ -7,7 +7,7 @@
   "required": ["schema_name", "schema_version", "run_id", "source_scope", "network_used", "questions"],
   "properties": {
     "schema_name": {"const": "objective_semantics_assessment"},
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"enum": ["1.0", "1.1"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "source_scope": {"const": "problem_only"},
     "network_used": {"const": false},
@@ -45,8 +45,11 @@
         "selected_objective_id",
         "selection_basis",
         "selection_confidence",
+        "materiality",
+        "human_confirmation_required",
         "diagnostic_objective_ids",
-        "ambiguity_note"
+        "ambiguity_note",
+        "decision_space"
       ],
       "properties": {
         "question_id": {"type": "string", "minLength": 1},
@@ -58,12 +61,38 @@
         "selected_objective_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
         "selection_basis": {"enum": ["language_evidence", "user_decision", "declared_assumption"]},
         "selection_confidence": {"enum": ["high", "medium", "ambiguous"]},
+        "materiality": {"enum": ["low", "medium", "high"]},
+        "human_confirmation_required": {"type": "boolean"},
         "diagnostic_objective_ids": {
           "type": "array",
           "uniqueItems": true,
           "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
         },
-        "ambiguity_note": {"type": "string"}
+        "ambiguity_note": {"type": "string"},
+        "decision_space": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action_cardinality", "language_basis"],
+          "properties": {
+            "action_cardinality": {"enum": ["not_applicable", "fixed", "variable"]},
+            "allowed_action_count": {"type": "integer", "minimum": 1},
+            "language_basis": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": "string", "minLength": 2}
+            }
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"action_cardinality": {"enum": ["fixed", "variable"]}}},
+              "then": {"required": ["allowed_action_count"]}
+            },
+            {
+              "if": {"properties": {"action_cardinality": {"const": "not_applicable"}}},
+              "then": {"not": {"required": ["allowed_action_count"]}}
+            }
+          ]
+        }
       }
     }
   }
