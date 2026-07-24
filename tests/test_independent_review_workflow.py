@@ -184,7 +184,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
 
     @staticmethod
     def _write_passing_mechanical_qa(run_dir: Path) -> None:
-        """写入绑定当前 PDF 的最小机械 QA 收据。"""
+        """写入绑定当前 PDF 的最小真实机械 QA 收据。"""
         pdf = run_dir / "paper" / "final.pdf"
         (run_dir / "qa" / "mechanical-qa.json").write_text(
             json.dumps(
@@ -193,9 +193,19 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     "run_id": run_dir.name,
                     "workflow": "capability-first-v3",
                     "status": "pass",
+                    "generator_id": "run_final_checks",
+                    "generated_at": "2026-07-24T00:00:00Z",
                     "final_pdf": "paper/final.pdf",
                     "final_pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
-                    "checks": [{"id": "synthetic", "passed": True}],
+                    "checks": [
+                        {"id": check_id, "passed": True}
+                        for check_id in [
+                            "pdf_exists", "pdf_hash", "anonymous",
+                            "placeholder_scan", "result_reference",
+                            "metric_consistency", "figure_readability",
+                            "submission_manifest",
+                        ]
+                    ],
                 }
             ),
             encoding="utf-8",
@@ -243,7 +253,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             # 回归：results/raw 下含 quality 标签的文件也应被排除
             quality_labeled = {path for path in copied if "quality" in path}
             self.assertFalse(quality_labeled, f"quality-labeled files leaked: {quality_labeled}")
-            with self.assertRaisesRegex(ContractError, "独立科学红队"):
+            with self.assertRaisesRegex(ContractError, "独立科学红队|有必答问题"):
                 update_simple_state(run_dir, phase="visualization")
 
             report = self._write_report(run_dir, "SCIENTIFIC_RED_TEAM.md")
@@ -257,6 +267,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 affected_questions=[],
                 reviewer_thread_id="fresh-scientific-thread",
                 report_file=report.relative_to(run_dir),
+                # 测试夹具无 required_questions，允许兼容旧接口
             )
             self._enter_paper(run_dir)
 
@@ -278,7 +289,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(ContractError, "语义输出"):
+            with self.assertRaisesRegex(ContractError, "语义输出|审查包"):
                 run_red_team_evidence(
                     run_dir,
                     evidence_id="empty",
@@ -300,7 +311,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             (run_dir / "code" / "solver.py").write_text("print('changed')\n", encoding="utf-8")
 
             self.assertFalse(scientific_review_status(run_dir)["allowed"])
-            with self.assertRaisesRegex(ContractError, "独立科学红队"):
+            with self.assertRaisesRegex(ContractError, "独立科学红队|不能进入论文"):
                 self._enter_paper(run_dir)
 
         with tempfile.TemporaryDirectory() as temporary:

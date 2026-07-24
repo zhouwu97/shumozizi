@@ -3,16 +3,61 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, relative_inside, resolve_inside
+from shumozizi.core.io import ContractError, relative_inside, resolve_inside, sha256_file
 from shumozizi.simple.results import json_path_value, register_result, safe_result_id
 from shumozizi.simple.source_closure import python_source_closure
 from shumozizi.simple.state import read_simple_state, utc_now
+
+
+def _output_snapshot(run_dir: Path, paths: list[str]) -> dict[str, dict[str, Any]]:
+    """保存运行前的输出文件状态，用于运行后检测新鲜度。
+
+    Returns:
+        路径到 ``{exists, sha256, size, mtime_ns}`` 的映射。
+    """
+    snap: dict[str, dict[str, Any]] = {}
+    for path in paths:
+        full = run_dir / path
+        try:
+            stat = full.stat()
+            snap[path] = {
+                "exists": True,
+                "sha256": sha256_file(full),
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            }
+        except (OSError, ValueError):
+            snap[path] = {"exists": False}
+    return snap
+
+
+def _verify_output_freshness(
+    run_dir: Path,
+    paths: list[str],
+    before: dict[str, dict[str, Any]],
+) -> list[str]:
+    """返回未发生变化的输出路径列表（非新鲜输出）。
+
+    文件不存在/新增/内容变化都视为新鲜。
+    """
+    stale: list[str] = []
+    for path in paths:
+        before_state = before.get(path, {})
+        full = run_dir / path
+        try:
+            after_sha = sha256_file(full)
+        except (OSError, ValueError):
+            after_sha = None
+        if before_state.get("exists") and after_sha == before_state.get("sha256"):
+            stale.append(path)
+    return stale
 
 
 def _parse_command(command: str) -> list[str]:
@@ -175,6 +220,12 @@ def execute_simple_experiment(
         existing = [item for item in normalized_outputs if (root / item).exists()]
         if existing:
             raise ContractError(f"要求新鲜输出，但预期文件已存在: {', '.join(existing)}")
+    # 生产模式默认要求输出文件被实际更新（不信任旧文件存在+退出码0）
+    output_snapshot = _output_snapshot(root, normalized_outputs)
+    enforce_fresh = (
+        require_fresh_outputs
+        or str(state.get("execution_mode")) == "production"
+    )
     explicit_inputs = input_files or []
     source_script = _source_script(root, arguments)
     source_inputs = python_source_closure(root, source_script) if source_script else []
@@ -224,6 +275,12 @@ def execute_simple_experiment(
     if missing and error is None:
         error = f"缺少预期输出: {', '.join(missing)}"
         exit_code = exit_code or 1
+    # 生产模式下验证输出新鲜度
+    if enforce_fresh and error is None:
+        stale = _verify_output_freshness(root, normalized_outputs, output_snapshot)
+        if stale:
+            error = f"生产模式要求输出被实际更新，但以下文件未变化: {', '.join(stale)}"
+            exit_code = exit_code or 1
     metrics: dict[str, Any] = {}
     metric_sources: dict[str, dict[str, str]] = {}
     if error is None:

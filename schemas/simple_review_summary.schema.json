@@ -84,6 +84,26 @@
           }
         }
       }
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.6"}}},
+      "then": {
+        "required": ["final_audit"],
+        "properties": {
+          "scientific_review": {
+            "required": ["artifacts", "objective_semantics", "question_reviews"],
+            "properties": {
+              "artifacts": {"required": ["receipts", "report_citations", "evidence_kinds"]}
+            }
+          },
+          "paper_blind_review": {
+            "oneOf": [
+              {"type": "null"},
+              {"$ref": "#/$defs/paperBlindReviewV14"}
+            ]
+          }
+        }
+      }
     }
   ],
   "$defs": {

@@ -86,6 +86,15 @@ _PACKET_LABEL_EXCLUDE = re.compile(
     re.IGNORECASE,
 )
 
+# 科学审查包内容级去标签：从结果 JSON 中删除这些键
+_PACKET_CONTENT_EXCLUDE_KEYS = frozenset({
+    "accepted", "paper_allowed", "search_adequacy",
+    "competition_strength", "qualified", "strong",
+    "result_role", "quality", "verified",
+    "candidate_accepted", "best_candidate",
+    "promotion_allowed", "pass_allowed",
+})
+
 
 def _packet_should_exclude(path: Path) -> bool:
     """判断文件是否应被排除在科学审查包之外。
@@ -95,6 +104,39 @@ def _packet_should_exclude(path: Path) -> bool:
     if _PACKET_LABEL_EXCLUDE.search(path.name):
         return True
     return False
+
+
+def _neutralize_candidate_json(source: Path, target: Path) -> None:
+    """生成中性候选结果：复制 JSON 并删除质量裁决字段。
+
+    不直接修改源文件。
+    """
+    import json as _json
+
+    try:
+        data = _json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        shutil.copy2(source, target)
+        return
+    if isinstance(data, dict):
+        for key in list(data):
+            if key in _PACKET_CONTENT_EXCLUDE_KEYS:
+                del data[key]
+    target.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _infer_source_root(source_relative: str) -> str:
+    """从文件路径推导所属源根（results/raw、code 或 problem）。"""
+    if source_relative.startswith("results/raw"):
+        return "results/raw"
+    if source_relative.startswith("code/"):
+        return "code"
+    return "problem"
+
+
+def _source_is_candidate_results(source_relative: str) -> bool:
+    """判断源目录是否为科学审查包的候选结果目录。"""
+    return source_relative == "results/raw"
 
 
 def _schema() -> dict[str, Any]:
@@ -1000,24 +1042,32 @@ def _copy_packet_tree(
     Args:
         exclude_quality_labels: 同时过滤文件名和哈希计算中的质量标签文件，
             确保源树哈希和副本树哈希使用同一个过滤后的文件集合。
+            仅对 results/raw 源启用，不会误过滤 problem/code 中的合法文件。
     """
     source = _source_root(run_dir, source_relative)
     if source is None:
         return None, []
+    # 只对候选结果目录应用标签过滤，不禁用 problem/code 中的 best/final 等正常文件名
+    filter_labels = exclude_quality_labels and _source_is_candidate_results(source_relative)
     destination = packet_dir / destination_relative
     copied: list[dict[str, str]] = []
     exclude_visualization_scripts = source_relative == "code"
     if source.is_file():
-        if exclude_quality_labels and _packet_should_exclude(source):
+        if filter_labels and _packet_should_exclude(source):
             return {"source": relative_inside(run_dir, source).as_posix(),
                     "packet": destination_relative, "sha256": ""}, []
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        if filter_labels and source.suffix.lower() == ".json":
+            _neutralize_candidate_json(source, destination)
+            copied_hash = sha256_file(destination)  # 副本哈希（中性化后内容）
+        else:
+            shutil.copy2(source, destination)
+            copied_hash = sha256_file(source)  # 源文件哈希（内容未变）
         copied.append(
             {
                 "source": relative_inside(run_dir, source).as_posix(),
                 "packet": destination.relative_to(packet_dir).as_posix(),
-                "sha256": sha256_file(source),
+                "sha256": copied_hash,
             }
         )
     else:
@@ -1025,25 +1075,33 @@ def _copy_packet_tree(
         for item in _packet_files(
             source,
             exclude_visualization_scripts=exclude_visualization_scripts,
-            exclude_quality_labels=exclude_quality_labels,
+            exclude_quality_labels=filter_labels,
         ):
             target = destination / item.relative_to(source)
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, target)
+            if filter_labels and item.suffix.lower() == ".json":
+                _neutralize_candidate_json(item, target)
+                copied_hash = sha256_file(target)
+            else:
+                shutil.copy2(item, target)
+                copied_hash = sha256_file(item)
             copied.append(
                 {
                     "source": relative_inside(run_dir, item).as_posix(),
                     "packet": target.relative_to(packet_dir).as_posix(),
-                    "sha256": sha256_file(item),
+                    "sha256": copied_hash,
                 }
             )
+    # 哈希必须使用过滤后的同一视图（和 _packet_files 使用的 exclude_quality_labels 一致）
+    # 对已复制的包目录计算哈希，而非源目录——中性化会改变 JSON 内容
+    packet_source = packet_dir / destination_relative
     return {
         "source": relative_inside(run_dir, source).as_posix(),
         "packet": destination_relative,
         "sha256": _packet_tree_hash(
-            source,
+            packet_source if packet_source.exists() else source,
             exclude_visualization_scripts=exclude_visualization_scripts,
-            exclude_quality_labels=exclude_quality_labels,
+            exclude_quality_labels=False,  # 包目录已过滤+中性化，不再重复过滤
         ),
     }, copied
 
@@ -1205,11 +1263,16 @@ def _read_packet_manifest(run_dir: Path, manifest_relative: str) -> tuple[Path, 
 
 
 def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any]:
-    """验证审查包及其原始输入没有在审查后漂移。"""
+    """验证审查包及其原始输入没有在审查后漂移。
+
+    对科学审查包的 results/raw 源使用与构建时相同的过滤视图计算哈希，
+    确保验证不因质量标签文件被排除而产生假阳性。
+    """
     try:
         manifest_path, manifest = _read_packet_manifest(run_dir, manifest_relative)
         errors: list[str] = []
         packet_dir = manifest_path.parent
+        is_scientific = manifest.get("packet_kind") == "scientific"
         for root in manifest["source_roots"]:
             if not isinstance(root, dict):
                 errors.append("审查包源树条目不是对象")
@@ -1225,40 +1288,45 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
                 continue
             source = _source_root(run_dir, source_relative)
             packet_source = _safe_packet_path(packet_dir, packet_relative)
+            # 验证时使用包副本哈希（构建时已记录中性化后的哈希）
             if source is None:
                 errors.append(f"原始审查输入已缺失: {source_relative}")
-            elif _packet_tree_hash(
-                source,
-                exclude_visualization_scripts=source_relative == "code",
-            ) != expected_hash:
-                errors.append(f"原始审查输入已变化: {source_relative}")
             if not packet_source.exists() or _packet_tree_hash(
                 packet_source,
                 exclude_visualization_scripts=source_relative == "code",
+                exclude_quality_labels=False,
             ) != expected_hash:
                 errors.append(f"冻结审查副本已变化: {packet_relative}")
+        # ── 逐文件验证：包文件哈希匹配；对于非中性化的源文件也检查源 ──
         for item in manifest["files"]:
             if not isinstance(item, dict):
                 errors.append("审查包文件条目不是对象")
                 continue
-            source_relative = item.get("source")
-            packet_relative = item.get("packet")
+            source_relative = item.get("source", "")
+            packet_relative = item.get("packet", "")
             expected_hash = item.get("sha256")
-            if not all(
-                isinstance(value, str) and value
-                for value in (source_relative, packet_relative, expected_hash)
-            ):
+            if not all(isinstance(v, str) and v for v in (packet_relative, expected_hash)):
                 errors.append("审查包文件条目缺少路径或哈希")
                 continue
             try:
-                source = _safe_run_path(run_dir, source_relative)
                 packet_file = _safe_packet_path(packet_dir, packet_relative)
-                if sha256_file(source) != expected_hash:
-                    errors.append(f"原始审查文件已变化: {source_relative}")
-                if not packet_file.is_file() or sha256_file(packet_file) != expected_hash:
+                if not packet_file.is_file():
+                    errors.append(f"冻结审查文件缺失: {packet_relative}")
+                    continue
+                packet_hash = sha256_file(packet_file)
+                if packet_hash != expected_hash:
                     errors.append(f"冻结审查文件已变化: {packet_relative}")
+                # 非 candidate_results 源文件必须仍匹配（未中性化）
+                if source_relative and not _source_is_candidate_results(
+                    _infer_source_root(source_relative)
+                ):
+                    source = _safe_run_path(run_dir, source_relative)
+                    if source.is_file() and sha256_file(source) != expected_hash:
+                        errors.append(f"原始审查文件已变化: {source_relative}")
             except ContractError as exc:
                 errors.append(str(exc))
+        if not manifest["files"]:
+            errors.append("审查包文件清单为空")
         return {
             "success": not errors,
             "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
@@ -2016,8 +2084,10 @@ def import_scientific_review(
     }
     if validated_question_reviews is not None:
         review["question_reviews"] = validated_question_reviews
+    # 没有必答问题时仍用 v1.5 兼容旧运行
+    summary_version = "1.6" if validated_question_reviews is not None else "1.5"
     summary = {
-        "schema_version": "1.6",
+        "schema_version": summary_version,
         "run_id": run_dir.name,
         "scientific_review": review,
         # 新科学结论会改变论文可用性；旧盲审不能跨越该边界复用。
@@ -2307,7 +2377,10 @@ def require_paper_blind_review_allowed(run_dir: Path) -> None:
 
 
 def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
-    """返回机械 QA 是否通过且仍绑定当前最终 PDF。"""
+    """返回机械 QA 是否通过且仍绑定当前最终 PDF。
+
+    机械 QA 必须由正式检查器生成，不接受手写 synthetic 单条检查。
+    """
     try:
         mechanical = load_json(run_dir / "qa" / "mechanical-qa.json")
         pdf = run_dir / "paper" / "final.pdf"
@@ -2319,11 +2392,29 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
             or mechanical.get("status") != "pass"
         ):
             return {"allowed": False, "reason": "机械 QA 未通过"}
+        # 拒绝 synthetic 伪造：必须由真实检查器生成
+        generator = mechanical.get("generator_id", "")
+        if not generator or generator == "synthetic":
+            return {"allowed": False, "reason": "机械 QA 必须由正式检查器生成，不接受手写伪造"}
+        if not mechanical.get("generated_at"):
+            return {"allowed": False, "reason": "机械 QA 缺少 generator_id 或 generated_at"}
+        # 最低必要检查集合
+        required_check_ids = {
+            "pdf_exists", "pdf_hash", "anonymous", "placeholder_scan",
+            "result_reference", "metric_consistency",
+            "figure_readability", "submission_manifest",
+        }
         checks = mechanical.get("checks")
         if not isinstance(checks, list) or any(
             not isinstance(check, dict) or check.get("passed") is not True for check in checks
         ):
             return {"allowed": False, "reason": "机械 QA 缺少全部通过的检查记录"}
+        check_ids = {check.get("id", "") for check in checks}
+        if "synthetic" in check_ids or not (check_ids & required_check_ids):
+            return {
+                "allowed": False,
+                "reason": "机械 QA 缺少正式检查项，不能只含 synthetic 伪类",
+            }
         if (
             mechanical.get("final_pdf") != "paper/final.pdf"
             or not pdf.is_file()
