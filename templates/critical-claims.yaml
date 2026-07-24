@@ -1,0 +1,127 @@
+# 关键主张账本
+#
+# 每问只登记 1-3 个核心主张和 0-5 个辅助主张，每个主张注明需要什么证据。
+# 不登记每个坐标、每个输入常量、每个脚本输出。
+#
+# 格式说明：
+#   claim_id: 唯一标识符
+#   statement: 一句话描述该主张
+#   evidence_needed: 需要的证据类型列表
+#     - exact_recompute: 独立 exact 重算
+#     - deletion_ablation: 逐动作删除消融
+#     - alternative_formula: 不同公式独立验证
+#     - multiseed_benchmark: 多种子同预算对比
+#     - baseline_comparison: 与简单 baseline 对比
+#     - interval_union_check: 时间区间并集验证
+#     - sensitivity_analysis: 敏感度分析
+#     - independent_matlab: 独立 MATLAB 验证
+#     - continuous_geometry: 连续几何边界证明
+#     - action_challenge: 动作数/动作空间挑战
+#   blocking_if_fails: 如果该证据不成立，是否阻断 paper_allowed
+
+questions:
+  Q1:
+    primary_claims:
+      - claim_id: q1-duration
+        statement: FY1 单弹在固定策略下的有效遮蔽时间为 1.392 s
+        evidence_needed:
+          - exact_recompute
+          - continuous_geometry
+        blocking_if_fails: true
+
+    supporting_claims:
+      - claim_id: q1-geometry
+        statement: 有限线段到球最小距离公式在端点/切触/退化/线段外四类临界情况正确
+        evidence_needed:
+          - alternative_formula
+          - independent_matlab
+        blocking_if_fails: true
+
+  Q2:
+    primary_claims:
+      - claim_id: q2-duration
+        statement: FY1 单弹最优投放策略使有效遮蔽时间达到约 4.586 s
+        evidence_needed:
+          - exact_recompute
+          - multiseed_benchmark
+        blocking_if_fails: true
+
+    supporting_claims:
+      - claim_id: q2-search
+        statement: 当前解在代理+exact 两层搜索中优于 baseline 且多种子稳定
+        evidence_needed:
+          - baseline_comparison
+          - multiseed_benchmark
+        blocking_if_fails: false
+
+      - claim_id: q2-parameter-mechanism
+        statement: 航向和延时参数的当前最优结构可用局部景观解释
+        evidence_needed:
+          - sensitivity_analysis
+        blocking_if_fails: false
+
+  Q3:
+    primary_claims:
+      - claim_id: q3-duration
+        statement: 三枚烟幕联合后的有效遮蔽时间为约 6.403 s
+        evidence_needed:
+          - exact_recompute
+          - interval_union_check
+        blocking_if_fails: true
+
+      - claim_id: q3-action-utilization
+        statement: 三枚烟幕均对最终目标具有实质贡献
+        evidence_needed:
+          - deletion_ablation
+        blocking_if_fails: true
+
+  Q4:
+    primary_claims:
+      - claim_id: q4-duration
+        statement: 三架无人机联合多烟幕有效遮蔽时间为约 11.491 s
+        evidence_needed:
+          - exact_recompute
+          - deletion_ablation
+        blocking_if_fails: true
+
+    supporting_claims:
+      - claim_id: q4-multi-uav
+        statement: 三架无人机的烟幕各自产生正边际贡献且区间分离自然
+        evidence_needed:
+          - deletion_ablation
+        blocking_if_fails: false
+
+  Q5:
+    primary_claims:
+      - claim_id: q5-sum-duration
+        statement: 在逐导弹时长求和目标下，14 动作方案累计约 30.553 导弹·s
+        evidence_needed:
+          - exact_recompute
+          - independent_matlab
+        blocking_if_fails: true
+
+      - claim_id: q5-objective-semantics
+        statement: 题意允许多种聚合口径，当前主目标为求和，已记录用户裁决
+        evidence_needed:
+          - exact_recompute
+        blocking_if_fails: true
+
+    supporting_claims:
+      - claim_id: q5-action-count
+        statement: 0-15 动作数全部覆盖，14 与 15 不可区分
+        evidence_needed:
+          - action_challenge
+        blocking_if_fails: false
+
+      - claim_id: q5-within-count-search
+        statement: 在 14 动作空间内的连续参数搜索具有竞争力
+        evidence_needed:
+          - multiseed_benchmark
+          - alternative_formula
+        blocking_if_fails: false
+
+      - claim_id: q5-all-metrics
+        statement: 三弹同时遮蔽约 0.076 s，并集约 23.489 s，并已与求和口径一并报告
+        evidence_needed:
+          - exact_recompute
+        blocking_if_fails: false
