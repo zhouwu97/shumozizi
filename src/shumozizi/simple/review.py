@@ -3744,7 +3744,10 @@ def record_paper_blind_review_skip(run_dir: Path, reason: str) -> Path:
 
 
 def _competition_paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
-    """返回 v3.1 PDF 盲评或其显式跳过说明是否有效。"""
+    """返回 v3.1 PDF 盲评或其跳过说明是否允许继续机械 QA。
+
+    跳过说明只保留无法开展盲评时的可追溯性，不能作为 ``complete`` 放行依据。
+    """
     try:
         summary = read_review_summary(run_dir)
         review = summary.get("paper_blind_review")
@@ -3786,7 +3789,7 @@ def paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
 
 
 def require_paper_blind_review_allowed(run_dir: Path) -> None:
-    """要求当前 PDF 已经由新的盲审对话放行。"""
+    """要求当前 PDF 已通过盲审，或已记录可继续机械 QA 的跳过原因。"""
     status = paper_blind_review_status(run_dir)
     if not status["allowed"]:
         raise ContractError("不能进入机械终检：独立 PDF 盲审未通过或已失效: " + status["reason"])
@@ -3822,7 +3825,9 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
             "placeholders", "result-references", "numeric-consistency",
             "current-result-files", "current-figure-files", "contact-sheet",
         }
-        if not _competition_first_run(run_dir):
+        if _competition_first_run(run_dir):
+            required_check_ids.add("scientific-challenge-release")
+        else:
             required_check_ids |= {
                 "scientific-review-release", "competition-submission-release",
                 "visualization-contract",
@@ -3935,11 +3940,37 @@ def competition_submission_status(run_dir: Path) -> dict[str, Any]:
 
 
 def completion_status(run_dir: Path) -> dict[str, Any]:
-    """组合三轮独立审核与机械 QA，形成唯一的 complete 放行结论。"""
+    """组合当前审核、事实产物与机械 QA，形成唯一的 complete 放行结论。"""
     if _competition_first_run(run_dir):
+        scientific = _competition_scientific_review_status(run_dir)
+        if not scientific["allowed"]:
+            return {
+                "allowed": False,
+                "reason": "科学挑战未通过或已因生产事实变化而失效: "
+                + scientific["reason"],
+                "scientific_valid": False,
+                "competition_strength": scientific.get("competition_strength", "unknown"),
+                "submission_ready": False,
+                "status": "scientific_challenge_unavailable",
+            }
         paper = _competition_paper_blind_review_status(run_dir)
         if not paper["allowed"]:
             return {"allowed": False, "reason": paper["reason"]}
+        if paper.get("skipped") is True:
+            execution_mode = read_simple_state(run_dir)["execution_mode"]
+            if execution_mode == "production":
+                reason = "生产运行虽已记录 PDF 盲评跳过原因，但未完成独立盲评，不能标记 complete"
+            else:
+                reason = "探索运行已记录 PDF 盲评跳过原因，只能维持 unreviewed，不能标记 complete"
+            return {
+                "allowed": False,
+                "reason": reason,
+                "scientific_valid": True,
+                "competition_strength": scientific.get("competition_strength", "unknown"),
+                "submission_ready": False,
+                "status": "unreviewed",
+                "completion_status": "unreviewed",
+            }
         mechanical = mechanical_qa_status(run_dir)
         if not mechanical["allowed"]:
             return {"allowed": False, "reason": mechanical["reason"]}
@@ -3956,9 +3987,10 @@ def completion_status(run_dir: Path) -> dict[str, Any]:
             "allowed": True,
             "reason": "",
             "scientific_valid": True,
-            "competition_strength": "unknown",
+            "competition_strength": scientific.get("competition_strength", "unknown"),
             "submission_ready": True,
             "status": "submission_ready",
+            "completion_status": "complete",
         }
     review = final_audit_status(run_dir)
     if not review["allowed"]:

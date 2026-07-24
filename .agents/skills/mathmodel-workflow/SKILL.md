@@ -13,6 +13,6 @@ description: 以 Competition-First v3.1 完成整道数学建模赛题的分析�
 4. 结束实验后进行一次自由科学挑战；必要时只允许一个专项追问。负面证据先级联失效，再决定回退。
 5. 图表与洞察嵌入实验和论文：图在 `figures/current/`，洞察写入 `INSIGHTS.md`。
 6. 论文围绕 strongest question、真实规律和最多三项贡献组织。每个必答问题必须在 answer map 有当前结果和直接答案位置。
-7. PDF 盲评采用相对竞争力评价，随后执行机械 QA。不要创建 coverage 或 final audit。
+7. PDF 盲评采用相对竞争力评价，随后执行机械 QA。无法盲评时的跳过说明只允许继续 QA，状态必须为 `unreviewed`，不能进入 `complete` 或 `submission_ready`；标记完成前重新验证科学挑战仍绑定当前生产事实。不要创建 coverage 或 final audit。
 
 旧 v3.0 运行可查看和更新，运行时会在首次显式更新时记录阶段迁移。不要把 legacy 审核合同重新接入新运行。

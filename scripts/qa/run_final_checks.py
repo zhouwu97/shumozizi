@@ -138,7 +138,19 @@ def run_final_checks(
             "payload": {"phase": state["phase"]},
         }
     )
-    if not competition_first:
+    if competition_first:
+        scientific_challenge = scientific_review_status(root)
+        checks.append(
+            _check(
+                "scientific-challenge-release",
+                {
+                    "success": scientific_challenge["allowed"],
+                    "reason": scientific_challenge["reason"],
+                },
+                "自由科学挑战仍绑定当前生产结果、审查包和真实任务回执",
+            )
+        )
+    else:
         scientific_review = scientific_review_status(root)
         checks.append(
             _check(

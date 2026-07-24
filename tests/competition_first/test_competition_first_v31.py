@@ -7,11 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError, atomic_json
+from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.paper.readiness import (
     build_argument_map_from_current_artifacts,
     check_paper_readiness,
 )
+from shumozizi.simple import review as review_module
 from shumozizi.simple.competition import (
     validate_next_experiments,
     validate_route_competition,
@@ -23,12 +24,14 @@ from shumozizi.simple.objective_semantics import (
     objective_semantics_review_required,
 )
 from shumozizi.simple.results import register_result
+from shumozizi.simple.review import mechanical_qa_status, record_paper_blind_review_skip
 from shumozizi.simple.review_focus import (
     record_scientific_challenge_evidence,
     verify_scientific_challenge_evidence,
     write_focused_followup,
 )
 from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
+from tests.quality_protocol_helpers import record_passing_scientific_review
 
 
 def _run_dir(tmp_path: Path, run_id: str = "competition-first") -> Path:
@@ -36,23 +39,28 @@ def _run_dir(tmp_path: Path, run_id: str = "competition-first") -> Path:
     return initialize_simple_run(tmp_path, run_id, required_questions=["Q1"])
 
 
-def _register_current_result(run_dir: Path) -> None:
+def _register_current_result(
+    run_dir: Path,
+    *,
+    result_id: str = "q1_primary",
+    objective: float = 1.0,
+) -> None:
     """登记一个可供 answer map 使用的真实当前结果。"""
     source = run_dir / "code" / "q1.py"
     output = run_dir / "results" / "raw" / "q1.json"
     source.write_text("print('ok')\n", encoding="utf-8")
-    output.write_text(json.dumps({"metrics": {"objective": 1.0}}), encoding="utf-8")
+    output.write_text(json.dumps({"metrics": {"objective": objective}}), encoding="utf-8")
     now = utc_now()
     register_result(
         run_dir,
-        result_id="q1_primary",
+        result_id=result_id,
         question_id="Q1",
         kind="primary",
         command="python code/q1.py",
         source_script="code/q1.py",
         input_files=["code/q1.py"],
         output_files=["results/raw/q1.json"],
-        metrics={"objective": 1.0},
+        metrics={"objective": objective},
         metric_sources={
             "objective": {
                 "file": "results/raw/q1.json",
@@ -209,3 +217,113 @@ def test_scientific_followup_is_limited_to_one(tmp_path: Path) -> None:
 
     with pytest.raises(ContractError, match="最多允许一个"):
         write_focused_followup(run_dir, "# 第二次追问\n\n这不应被允许，因为同一轮已经存在专项追问。")
+
+
+def test_production_blind_review_skip_does_not_allow_complete(tmp_path: Path) -> None:
+    """生产运行的盲评跳过只能继续 QA，不能伪装成 complete。"""
+    run_dir = _run_dir(tmp_path)
+    _register_current_result(run_dir)
+    record_passing_scientific_review(run_dir)
+    record_paper_blind_review_skip(run_dir, "独立盲评服务当前不可用，已记录故障编号和恢复后的补审计划。")
+
+    status = review_module.completion_status(run_dir)
+
+    assert not status["allowed"]
+    assert status["status"] == "unreviewed"
+    assert status["completion_status"] == "unreviewed"
+    assert not status["submission_ready"]
+    assert "生产运行" in status["reason"]
+
+
+def test_exploration_blind_review_skip_is_explicitly_unreviewed(tmp_path: Path) -> None:
+    """探索运行也不能把盲评跳过标记为 submission_ready。"""
+    run_dir = _run_dir(tmp_path)
+    _register_current_result(run_dir)
+    record_passing_scientific_review(run_dir)
+    update_simple_state(run_dir, execution_mode="exploration")
+    record_paper_blind_review_skip(run_dir, "探索性试验尚未具备独立盲评条件，后续将重新执行完整评审。")
+
+    status = review_module.completion_status(run_dir)
+
+    assert not status["allowed"]
+    assert status["status"] == "unreviewed"
+    assert status["completion_status"] == "unreviewed"
+    assert not status["submission_ready"]
+    assert "探索运行" in status["reason"]
+
+
+def test_completion_rechecks_scientific_challenge_currentness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """最终放行必须先重新读取科学挑战，而不是复用进入论文时的旧结论。"""
+    run_dir = _run_dir(tmp_path)
+    observed: list[Path] = []
+
+    def stale_challenge(path: Path) -> dict[str, object]:
+        observed.append(path)
+        return {"allowed": False, "reason": "科学挑战包已失效", "competition_strength": "unknown"}
+
+    monkeypatch.setattr(review_module, "_competition_scientific_review_status", stale_challenge)
+
+    status = review_module.completion_status(run_dir)
+
+    assert observed == [run_dir]
+    assert not status["allowed"]
+    assert status["status"] == "scientific_challenge_unavailable"
+    assert "科学挑战包已失效" in status["reason"]
+
+
+def test_result_change_after_scientific_challenge_blocks_completion(tmp_path: Path) -> None:
+    """替换 current production 结果后，必须重新完成科学挑战。"""
+    run_dir = _run_dir(tmp_path)
+    _register_current_result(run_dir)
+    record_passing_scientific_review(run_dir)
+    assert review_module._competition_scientific_review_status(run_dir)["allowed"]
+
+    _register_current_result(run_dir, result_id="q1_replacement", objective=2.0)
+
+    status = review_module.completion_status(run_dir)
+
+    assert not status["allowed"]
+    assert status["status"] == "scientific_challenge_unavailable"
+    assert "科学挑战" in status["reason"]
+
+
+def test_mechanical_qa_requires_scientific_challenge_release(tmp_path: Path) -> None:
+    """v3.1 机械 QA 不能遗漏当前科学挑战的放行检查。"""
+    run_dir = _run_dir(tmp_path)
+    pdf = run_dir / "paper" / "final.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nfixture\n")
+    check_ids = {
+        "state-phase",
+        "paper-template-manifest",
+        "paper-compile-receipt",
+        "paper-blind-review-release",
+        "pdf",
+        "paper-structure-signals",
+        "placeholders",
+        "result-references",
+        "numeric-consistency",
+        "current-result-files",
+        "current-figure-files",
+        "contact-sheet",
+    }
+    atomic_json(
+        run_dir / "qa" / "mechanical-qa.json",
+        {
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "workflow": "competition-first-v3.1",
+            "status": "pass",
+            "generator_id": "shumozizi.qa.run_final_checks",
+            "generated_at": "2026-07-25T00:00:00Z",
+            "final_pdf": "paper/final.pdf",
+            "final_pdf_sha256": sha256_file(pdf),
+            "checks": [{"id": check_id, "passed": True} for check_id in check_ids],
+        },
+    )
+
+    status = mechanical_qa_status(run_dir)
+
+    assert not status["allowed"]
+    assert "scientific-challenge-release" in status["reason"]

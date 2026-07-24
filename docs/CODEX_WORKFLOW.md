@@ -6,7 +6,7 @@
 analysis -> experiment -> paper -> paper_review -> verify -> complete
 ```
 
-进入 `experiment` 前，仅当 `analysis/objective-ambiguities.json` 表明存在未解决的高影响歧义时，才要求目标语义审查。进入 `paper` 前必须有每个必答问题的 current production 答案、没有已知负面证据、有效模板和一次有效科学挑战。进入 `verify` 前必须有 PDF、有效 PDF 盲评或明确跳过原因、没有 P0/P1。进入 `complete` 前必须通过机械 QA，当前结果、图表和 PDF 都没有漂移。
+进入 `experiment` 前，仅当 `analysis/objective-ambiguities.json` 表明存在未解决的高影响歧义时，才要求目标语义审查。进入 `paper` 前必须有每个必答问题的 current production 答案、没有已知负面证据、有效模板和一次有效科学挑战。进入 `verify` 前必须有 PDF、有效 PDF 盲评或明确跳过原因、没有 P0/P1；跳过盲评只能继续机械 QA，状态为 `unreviewed`。进入 `complete` 前必须重新验证科学挑战、通过真实 PDF 盲评和机械 QA，且当前结果、图表和 PDF 都没有漂移。
 
 旧 v3.0 状态按内存映射读取，更新时生成 `state/migrations.json`，不改写历史审核产物。
 

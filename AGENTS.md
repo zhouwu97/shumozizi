@@ -42,7 +42,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 实验结束做一次自由科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。允许的专项追问最多一个，写入 `review/FOCUSED_FOLLOWUP.md`。不得创建默认 `required_risks`、coverage declaration、逐风险 follow-up 或 final audit。
 
-PDF 盲评写入 `review/PAPER_BLIND_REVIEW.md`，要给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因。
+PDF 盲评写入 `review/PAPER_BLIND_REVIEW.md`，要给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
 
 ## 图表与论文
 
@@ -50,7 +50,7 @@ PDF 盲评写入 `review/PAPER_BLIND_REVIEW.md`，要给出相对普通参赛论
 - 图必须由当前数据和当前脚本实际生成，PNG/PDF 可读，并在结果变化后失效。
 - 论文只硬性要求每个必答问题在 `analysis/answer_map.json` 或 `paper/answer-map.json` 有直接答案位置和当前结果。运行时会自动生成 `paper/generated/argument_map.json`。
 - `paper/STORYBOARD.md` 和 `paper/CONTRIBUTION_BRIEF.md` 是提高质量的软产物；贡献最多三项，不能把常规方法组合包装为创新。
-- 小的正文文字改动只需重新编译和机械 QA；影响结论或图表的改动需重新盲评；代码、数据、目标或主要结果改动需回到实验和科学挑战。
+- 小的正文文字改动只需重新编译和机械 QA；影响结论或图表的改动需重新盲评；代码、数据、目标或主要结果改动需回到实验和科学挑战。标记 `complete` 前必须重新验证科学挑战仍绑定当前生产事实。
 
 ## 工程约束
 
