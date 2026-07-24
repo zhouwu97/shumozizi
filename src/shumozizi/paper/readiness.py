@@ -58,12 +58,15 @@ def _current_production_results(run_dir: Path) -> dict[str, dict[str, Any]]:
     """返回所有可作为论文事实的 current production 结果。"""
     index = read_result_index(run_dir)
     allowed: dict[str, dict[str, Any]] = {}
+    competition_first = read_simple_state(run_dir).get("schema_version") == "3.1"
     for result in index["results"]:
         if result.get("status") != "current":
             continue
         if result.get("execution_mode") != "production":
             continue
-        if not quality_allows_paper(run_dir, result["result_id"]):
+        if competition_first and result.get("execution_valid") is not True:
+            continue
+        if not competition_first and not quality_allows_paper(run_dir, result["result_id"]):
             continue
         allowed[result["result_id"]] = result
     return allowed
@@ -147,8 +150,132 @@ def _current_figure_ids(run_dir: Path) -> tuple[set[str], str | None]:
     return set(verification.get("checked_figure_ids", [])), None
 
 
+def _competition_answer_map(run_dir: Path) -> dict[str, Any] | None:
+    """读取 v3.1 的逐问直接答案映射，兼容最终归档到 paper/ 的路径。"""
+    for relative in (Path("paper/answer-map.json"), Path("analysis/answer_map.json")):
+        path = run_dir / relative
+        if not path.is_file():
+            continue
+        try:
+            payload = load_json(path)
+        except (OSError, ValueError):
+            return None
+        if payload.get("run_id") not in {None, run_dir.name}:
+            return None
+        answers = payload.get("answers", payload)
+        return answers if isinstance(answers, dict) else None
+    return None
+
+
+def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
+    """从当前答案、结果和图表自动生成后台论证映射。
+
+    Args:
+        run_dir: 当前 Competition-First 运行目录。
+
+    Returns:
+        已写入 ``paper/generated/argument_map.json`` 的映射。
+
+    Raises:
+        ContractError: 缺少必答问题的答案映射或引用了非当前结果。
+    """
+    answers = _competition_answer_map(run_dir)
+    if answers is None:
+        raise ContractError("缺少 analysis/answer_map.json 或 paper/answer-map.json")
+    required = _question_ids_from_state(run_dir)
+    results = _current_production_results(run_dir)
+    claims: list[dict[str, Any]] = []
+    for question_id in required:
+        item = answers.get(question_id)
+        if not isinstance(item, dict):
+            raise ContractError(f"answer_map 缺少 {question_id}")
+        result_ids = item.get("result_ids")
+        location = item.get("direct_answer_location")
+        if not isinstance(result_ids, list) or not result_ids:
+            raise ContractError(f"{question_id} 未绑定 result_ids")
+        stale = [result_id for result_id in result_ids if result_id not in results]
+        if stale:
+            raise ContractError(f"{question_id} 引用了非 current production 结果: {', '.join(stale)}")
+        if not isinstance(location, str) or not location.strip():
+            raise ContractError(f"{question_id} 缺少 direct_answer_location")
+        claims.append(
+            {
+                "question_id": question_id,
+                "result_ids": result_ids,
+                "direct_answer_location": location,
+                "figure_ids": list(item.get("figure_ids", [])),
+            }
+        )
+    document = {
+        "schema_version": "3.1",
+        "run_id": run_dir.name,
+        "status": "current",
+        "accepted_results_digest": sha256_bytes(json_bytes([results[key] for key in sorted(results)])),
+        "figure_index_sha256": sha256_file(run_dir / "figures" / "index.json"),
+        "claims": claims,
+    }
+    from shumozizi.core.io import atomic_json
+
+    atomic_json(run_dir / "paper" / "generated" / "argument_map.json", document)
+    return document
+
+
+def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]]:
+    """执行 v3.1 最小论文硬门和可选竞争力警告。"""
+    errors: list[str] = []
+    warnings: list[str] = []
+    answers = _competition_answer_map(run_dir)
+    if answers is None:
+        return ["缺少 paper/answer-map.json 或 analysis/answer_map.json"], warnings
+    required = _question_ids_from_state(run_dir)
+    results = _current_production_results(run_dir)
+    for question_id in required:
+        item = answers.get(question_id)
+        if not isinstance(item, dict):
+            errors.append(f"必答问题 {question_id} 没有直接答案映射")
+            continue
+        result_ids = item.get("result_ids")
+        location = item.get("direct_answer_location")
+        if not isinstance(result_ids, list) or not result_ids:
+            errors.append(f"必答问题 {question_id} 没有绑定 current 结果")
+        else:
+            stale = [result_id for result_id in result_ids if result_id not in results]
+            if stale:
+                errors.append(f"必答问题 {question_id} 引用了非 current 或不可写入论文的结果: {', '.join(stale)}")
+        if not isinstance(location, str) or not location.strip():
+            errors.append(f"必答问题 {question_id} 缺少直接答案位置")
+        for figure_id in item.get("figure_ids", []):
+            if not isinstance(figure_id, str):
+                errors.append(f"{question_id} 的 figure_ids 含非法值")
+    try:
+        generated = build_argument_map_from_current_artifacts(run_dir)
+        figure_ids = {
+            figure_id
+            for claim in generated["claims"]
+            for figure_id in claim["figure_ids"]
+            if figure_id
+        }
+        if figure_ids:
+            current, figure_error = _current_figure_ids(run_dir)
+            if figure_error:
+                errors.append(figure_error)
+            else:
+                missing = sorted(figure_ids - current)
+                if missing:
+                    errors.append("答案映射引用了不存在或失效图表: " + ", ".join(missing))
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        errors.append(str(exc))
+    if not (run_dir / "paper" / "STORYBOARD.md").is_file():
+        warnings.append("缺少 paper/STORYBOARD.md；建议先明确最强问题、篇幅与核心图表。")
+    if not (run_dir / "paper" / "CONTRIBUTION_BRIEF.md").is_file():
+        warnings.append("缺少 paper/CONTRIBUTION_BRIEF.md；这不阻断普通问题的正确回答。")
+    return errors, warnings
+
+
 def _validate_readiness(run_dir: Path) -> list[str]:
     """执行所有轻量检查，返回阻断原因列表。"""
+    if read_simple_state(run_dir).get("schema_version") == "3.1":
+        return _validate_competition_readiness(run_dir)[0]
     errors: list[str] = []
 
     # 1. 论证大纲：生产模式只接受结构化 argument_map.json，并按 schema 校验
@@ -280,9 +407,13 @@ def check_paper_readiness(run_dir: Path) -> dict[str, Any]:
     """返回就绪检查结果，不抛出异常。"""
     run_dir = run_dir.resolve()
     errors = _validate_readiness(run_dir)
+    warnings: list[str] = []
+    if read_simple_state(run_dir).get("schema_version") == "3.1":
+        _, warnings = _validate_competition_readiness(run_dir)
     return {
         "ready": not errors,
         "errors": errors,
+        "warnings": warnings,
         "run_dir": str(run_dir),
     }
 

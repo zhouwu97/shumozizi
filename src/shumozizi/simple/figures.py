@@ -21,7 +21,7 @@ from shumozizi.core.io import (
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import utc_now
+from shumozizi.simple.state import is_competition_first_state, read_simple_state, utc_now
 
 INDEX_PATH = Path("figures/index.json")
 
@@ -69,6 +69,177 @@ def _file_record(run_dir: Path, relative: str) -> dict[str, str]:
     return {"path": relative_inside(run_dir, path).as_posix(), "sha256": sha256_file(path)}
 
 
+def _competition_first_run(run_dir: Path) -> bool:
+    """判断当前运行是否使用 v3.1 简化图表协议。"""
+    return is_competition_first_state(read_simple_state(run_dir))
+
+
+def _register_competition_figure(
+    run_dir: Path,
+    *,
+    figure_id: str,
+    template_id: str,
+    result_id: str,
+    input_result: str,
+    reference_template: str,
+    renderer_script: str,
+    outputs: list[str],
+    text_boxes: str,
+    figure_stage: str,
+    scientific_question: str | None,
+    expected_takeaway: str | None,
+    cannot_prove: str | None,
+) -> dict[str, Any]:
+    """登记由问题和 takeaway 驱动的 v3.1 图表。"""
+    if figure_stage not in {"current", "evidence", "publication"}:
+        raise ContractError("v3.1 figure_stage 必须为 current、evidence 或 publication")
+    index = read_figure_index(run_dir)
+    source_result = next(
+        (item for item in read_result_index(run_dir)["results"] if item["result_id"] == result_id), None
+    )
+    if source_result is None or source_result.get("status") != "current" or not source_result.get("execution_valid"):
+        raise ContractError("图表只能绑定 current 且 execution_valid=true 的真实结果")
+    input_record = _file_record(run_dir, input_result)
+    if input_record["path"] not in source_result["output_hashes"]:
+        raise ContractError("图表输入必须是所绑定结果的已登记输出")
+    if input_record["sha256"] != source_result["output_hashes"][input_record["path"]]:
+        raise ContractError("图表输入哈希与所绑定结果不一致")
+    output_records = [_file_record(run_dir, item) for item in outputs]
+    suffixes = {Path(item["path"]).suffix.lower() for item in output_records}
+    if not output_records or not suffixes <= {".png", ".pdf", ".svg"} or not suffixes & {".png", ".pdf"}:
+        raise ContractError("v3.1 图表至少需要可读 PNG 或 PDF 输出")
+    expected_prefix = "figures/current/"
+    if any(not item["path"].startswith(expected_prefix) for item in output_records):
+        raise ContractError("v3.1 图输出必须位于 figures/current/")
+    entry = {
+        "figure_id": figure_id,
+        "template_id": template_id,
+        "result_id": result_id,
+        "input_result": input_record,
+        "renderer_script": _file_record(run_dir, renderer_script),
+        "outputs": output_records,
+        "status": "current",
+        "question_id": source_result["question_id"],
+        "figure_stage": "current",
+        "source": [input_record["path"]],
+        "question": scientific_question or f"{source_result['question_id']} 的当前结果回答什么问题？",
+        "takeaway": expected_takeaway or "该图呈现当前结果中可直接核对的结构差异。",
+        "limitations": cannot_prove or "图表不能单独证明模型正确性或因果关系。",
+        "source_result_ids": [result_id],
+        "source_result_sha256s": {result_id: sha256_bytes(json_bytes(source_result))},
+        "objective_semantics_sha256": source_result["objective_semantics_sha256"],
+        "paper_allowed": True,
+        "demo": False,
+        "created_at": utc_now(),
+    }
+    for existing in index["figures"]:
+        if existing["figure_id"] == figure_id and existing["status"] == "current":
+            existing["status"] = "superseded"
+    index["figures"].append(entry)
+    require_figure_index(index)
+    atomic_json(run_dir / INDEX_PATH, index)
+    return entry
+
+
+def register_insight_figure(
+    run_dir: Path,
+    *,
+    figure_id: str,
+    result_id: str,
+    input_result: str,
+    renderer_script: str,
+    outputs: list[str],
+    question: str,
+    takeaway: str,
+    limitations: str | None = None,
+    template_id: str = "custom",
+) -> dict[str, Any]:
+    """登记仅包含来源、问题和 takeaway 的 v3.1 图表。
+
+    Args:
+        run_dir: 当前运行目录。
+        figure_id: 图表标识。
+        result_id: 真实来源结果。
+        input_result: 图表读取的结果文件。
+        renderer_script: 实际执行的绘图脚本。
+        outputs: 已生成的 PNG/PDF/SVG 输出。
+        question: 图表回答的问题。
+        takeaway: 读者应一眼看到的结论。
+        limitations: 可选的论证边界。
+        template_id: 绘图实现类型，仅用于追溯。
+
+    Returns:
+        当前图表索引条目。
+    """
+    if not _competition_first_run(run_dir):
+        raise ContractError("register_insight_figure 仅适用于 Competition-First v3.1")
+    return _register_competition_figure(
+        run_dir,
+        figure_id=figure_id,
+        template_id=template_id,
+        result_id=result_id,
+        input_result=input_result,
+        reference_template=renderer_script,
+        renderer_script=renderer_script,
+        outputs=outputs,
+        text_boxes=renderer_script,
+        figure_stage="current",
+        scientific_question=question,
+        expected_takeaway=takeaway,
+        cannot_prove=limitations,
+    )
+
+
+def _verify_competition_figures(run_dir: Path) -> dict[str, Any]:
+    """复验 v3.1 当前图的来源、哈希和基本可读性。"""
+    index = read_figure_index(run_dir)
+    results = {item["result_id"]: item for item in read_result_index(run_dir)["results"]}
+    errors: list[dict[str, str]] = []
+    checked: list[str] = []
+    for figure in index["figures"]:
+        if figure.get("status") != "current":
+            continue
+        figure_id = str(figure.get("figure_id", "<unknown>"))
+        checked.append(figure_id)
+        if figure.get("demo") or not figure.get("paper_allowed"):
+            errors.append({"figure_id": figure_id, "message": "演示图或未允许图不能进入论文"})
+        result = results.get(figure.get("result_id"))
+        if result is None or result.get("status") != "current" or not result.get("execution_valid"):
+            errors.append({"figure_id": figure_id, "message": "源结果已被替代或不再有效"})
+            continue
+        expected = sha256_bytes(json_bytes(result))
+        if figure.get("source_result_sha256s", {}).get(result["result_id"]) != expected:
+            errors.append({"figure_id": figure_id, "message": "源结果变化后图表需要重新生成"})
+        input_record = figure.get("input_result", {})
+        if input_record.get("path") not in result.get("output_hashes", {}):
+            errors.append({"figure_id": figure_id, "message": "图表输入不属于源结果输出"})
+        elif input_record.get("sha256") != result["output_hashes"][input_record["path"]]:
+            errors.append({"figure_id": figure_id, "message": "图表输入哈希已漂移"})
+        for record in [input_record, figure.get("renderer_script", {})]:
+            issue = _verify_recorded_file(run_dir, record, "图表来源")
+            if issue:
+                errors.append({"figure_id": figure_id, "message": issue})
+        for output in figure.get("outputs", []):
+            issue = _verify_recorded_file(run_dir, output, "图表输出")
+            if issue:
+                errors.append({"figure_id": figure_id, "message": issue})
+                continue
+            path = resolve_inside(run_dir, output["path"], must_exist=True)
+            if path.stat().st_size == 0:
+                errors.append({"figure_id": figure_id, "message": "图表输出为空"})
+            elif path.suffix.lower() == ".png":
+                try:
+                    from PIL import Image
+
+                    with Image.open(path) as image:
+                        image.verify()
+                except (OSError, ValueError) as exc:
+                    errors.append({"figure_id": figure_id, "message": f"PNG 不可读: {exc}"})
+            elif path.suffix.lower() == ".pdf" and not path.read_bytes().startswith(b"%PDF"):
+                errors.append({"figure_id": figure_id, "message": "PDF 图表不是有效 PDF 文件头"})
+    return {"success": not errors, "checked_figure_ids": checked, "errors": errors}
+
+
 def register_figure(
     run_dir: Path,
     *,
@@ -105,6 +276,22 @@ def register_figure(
     Raises:
         ContractError: 任一文件、结果或 ID 不满足协议。
     """
+    if _competition_first_run(run_dir):
+        return _register_competition_figure(
+            run_dir,
+            figure_id=figure_id,
+            template_id=template_id,
+            result_id=result_id,
+            input_result=input_result,
+            reference_template=reference_template,
+            renderer_script=renderer_script,
+            outputs=outputs,
+            text_boxes=text_boxes,
+            figure_stage=figure_stage,
+            scientific_question=scientific_question,
+            expected_takeaway=expected_takeaway,
+            cannot_prove=cannot_prove,
+        )
     if not figure_id.replace("-", "").replace("_", "").replace(".", "").isalnum():
         raise ContractError(f"figure_id 不合法: {figure_id}")
     index = read_figure_index(run_dir)
@@ -188,6 +375,8 @@ def verify_current_figure_files(
     Returns:
         检查过的图表、错误明细和总体成功状态。
     """
+    if _competition_first_run(run_dir):
+        return _verify_competition_figures(run_dir)
     index = read_figure_index(run_dir)
     results = read_result_index(run_dir)
     result_map = {item["result_id"]: item for item in results["results"]}

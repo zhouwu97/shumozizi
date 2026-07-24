@@ -41,7 +41,7 @@ def main() -> int:
         total_hours=args.total_hours,
         token_soft_cap=args.token_soft_cap,
     )
-    print(json.dumps({"run_id": run_dir.name, "run_dir": str(run_dir), "run_schema_version": "3.0"}, ensure_ascii=False))
+    print(json.dumps({"run_id": run_dir.name, "run_dir": str(run_dir), "run_schema_version": "3.1"}, ensure_ascii=False))
     return 0
 
 

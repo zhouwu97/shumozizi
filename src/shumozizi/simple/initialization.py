@@ -1,4 +1,4 @@
-"""初始化不依赖 legacy-v2 的 Capability-First v3 运行目录。"""
+"""初始化 Competition-First v3.1 运行目录。"""
 
 from __future__ import annotations
 
@@ -18,18 +18,14 @@ SIMPLE_DIRECTORIES = (
     "results/raw",
     "results/evidence",
     "analysis",
-    "figures/evidence",
-    "figures/publication",
+    "figures/current",
     "paper/sections",
     "paper/submission",
     "review/red_team_artifacts",
-    "review/coverage",
     "review/tasks",
-    "review/followups",
     "review/packet/objective-semantics",
     "review/packet/scientific",
     "review/packet/paper-blind",
-    "review/packet/final-audit",
     "qa",
 )
 
@@ -144,9 +140,9 @@ def initialize_simple_run(
     artifacts = _copy_problem(problem_path, run_dir) if problem_path else {}
     now = utc_now()
     state: dict[str, Any] = {
-        "schema_version": "3.0",
+        "schema_version": "3.1",
         "run_id": identifier,
-        "workflow": "capability-first-v3",
+        "workflow": "competition-first-v3.1",
         "phase": "analysis",
         "execution_mode": "production",
         "revision": 0,
@@ -174,12 +170,12 @@ def initialize_simple_run(
     )
     atomic_json(
         run_dir / "figures" / "index.json",
-        {"schema_version": "1.1", "run_id": identifier, "figures": []},
+        {"schema_version": "1.2", "run_id": identifier, "figures": []},
     )
     (run_dir / "state" / "DECISIONS.md").write_text(
         "# 决策记录\n\n"
         "## 题意解释\n- 待补充。\n\n"
-        "## 路线选择\n- 主路线：待确定。\n- fallback：待确定。\n- 放弃路线及原因：待确定。\n",
+        "## 路线选择\n- 先完成 baseline 与区分性 probe。\n- 主路线：待确定。\n- fallback：待确定。\n- 放弃路线及原因：待确定。\n",
         encoding="utf-8",
         newline="\n",
     )

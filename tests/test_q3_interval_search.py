@@ -30,6 +30,10 @@ def load_run_module(name: str):
     return module
 
 
+@unittest.skipUnless(
+    (RUN_CODE / "q3_interval_search.py").is_file(),
+    "需要本地 cumcm-2025-a-v3-001 运行产物",
+)
 class Q3IntervalSearchTests(unittest.TestCase):
     """覆盖 Q3 的三弹协同变量和覆盖证据。"""
 

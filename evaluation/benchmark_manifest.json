@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "status": "planned",
+  "comparison": {
+    "baseline_workflow": "main-v3",
+    "candidate_workflow": "competition-first-v3.1",
+    "fixed_conditions": ["model_version", "token_budget", "wall_clock_budget", "compute", "local_knowledge", "human_interventions", "template"]
+  },
+  "required_categories": ["optimization", "forecasting_or_statistics", "evaluation", "network", "mechanism", "geometry", "data", "no_data", "multi_question", "single_hard_question"],
+  "tasks": []
+}

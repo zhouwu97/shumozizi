@@ -11,7 +11,12 @@ from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.critical_claims import read_critical_claims
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
+from shumozizi.simple.state import (
+    is_competition_first_state,
+    read_simple_state,
+    update_simple_state,
+    utc_now,
+)
 
 CONSEQUENCES_PATH = Path("review/evidence-consequences.json")
 
@@ -56,8 +61,6 @@ def apply_independent_evidence_consequences(
     run_dir: Path, records: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     """先执行所有负面证据后果，再允许上层检查审核 verdict。"""
-    claim_document = read_critical_claims(run_dir)
-    claims = {item["claim_id"]: item for item in claim_document["claims"]}
     negative = [
         (record, _negative_event(record["kind"], record["semantic_output"]))
         for record in records
@@ -66,14 +69,32 @@ def apply_independent_evidence_consequences(
     if not negative:
         return []
 
-    previous_phase = read_simple_state(run_dir)["phase"]
+    state = read_simple_state(run_dir)
+    previous_phase = state["phase"]
+    claims_path = run_dir / "analysis" / "critical_claims.json"
+    if claims_path.is_file():
+        claim_document = read_critical_claims(run_dir)
+    elif is_competition_first_state(state):
+        # v3.1 只将答案映射用于防漏问，不能再要求每问都有关键主张合同。
+        claim_document = None
+    else:
+        claim_document = read_critical_claims(run_dir)
+    claims = {
+        item["claim_id"]: item
+        for item in (claim_document or {}).get("claims", [])
+    }
     index = read_result_index(run_dir)
     figure_path = run_dir / "figures" / "index.json"
     figures = load_json(figure_path) if figure_path.is_file() else {"figures": []}
     quality_path = run_dir / "results" / "quality.json"
     quality = load_json(quality_path) if quality_path.is_file() else {"assessments": []}
-    argument_path = run_dir / "paper" / "argument_map.json"
-    argument_map = load_json(argument_path) if argument_path.is_file() else None
+    argument_paths = [
+        run_dir / "paper" / "generated" / "argument_map.json",
+        run_dir / "paper" / "argument_map.json",
+    ]
+    argument_maps = [
+        (path, load_json(path)) for path in argument_paths if path.is_file()
+    ]
     events: list[dict[str, Any]] = []
 
     try:
@@ -98,13 +119,14 @@ def apply_independent_evidence_consequences(
                 if claim["question_id"] in affected
                 or set(claim.get("result_ids", [])) & set(invalidated_results)
             )
-            claim_document["invalidated_claims"] = sorted(
-                set(claim_document.get("invalidated_claims", []))
-                | set(invalidated_claims)
-            )
-            claim_document["invalidation_reason"] = (
-                f"independent_evidence:{event_name}"
-            )
+            if claim_document is not None:
+                claim_document["invalidated_claims"] = sorted(
+                    set(claim_document.get("invalidated_claims", []))
+                    | set(invalidated_claims)
+                )
+                claim_document["invalidation_reason"] = (
+                    f"independent_evidence:{event_name}"
+                )
             for assessment in quality.get("assessments", []):
                 if assessment.get("result_id") in invalidated_results:
                     assessment["result_role"] = "candidate"
@@ -117,7 +139,7 @@ def apply_independent_evidence_consequences(
                     figure["status"] = "superseded"
                     figure["superseded_reason"] = f"independent_evidence:{event_name}"
                     invalidated_figures.append(figure["figure_id"])
-            if argument_map is not None:
+            for _, argument_map in argument_maps:
                 argument_map["status"] = "superseded"
                 argument_map["superseded_reason"] = f"independent_evidence:{event_name}"
             events.append({
@@ -135,12 +157,13 @@ def apply_independent_evidence_consequences(
                 "created_at": utc_now(),
             })
         atomic_json(run_dir / "results" / "index.json", index)
-        atomic_json(run_dir / "analysis" / "critical_claims.json", claim_document)
+        if claim_document is not None:
+            atomic_json(claims_path, claim_document)
         if quality_path.is_file():
             atomic_json(quality_path, quality)
         if figure_path.is_file():
             atomic_json(figure_path, figures)
-        if argument_map is not None:
+        for argument_path, argument_map in argument_maps:
             atomic_json(argument_path, argument_map)
         compile_path = run_dir / "paper" / "compile-receipt.json"
         if compile_path.is_file():

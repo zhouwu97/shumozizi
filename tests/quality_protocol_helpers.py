@@ -20,11 +20,13 @@ from shumozizi.simple.method_profile import (
 from shumozizi.simple.objective_semantics import objective_semantics_digest
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.review import (
+    SCIENTIFIC_CHALLENGE_REPORT_PATH,
     build_review_packet,
     generate_required_review_risks,
     import_scientific_review,
     run_red_team_evidence,
 )
+from shumozizi.simple.review_focus import record_scientific_challenge_evidence
 from shumozizi.simple.review_tasks import create_review_task_receipt
 from shumozizi.simple.state import read_simple_state, update_simple_state
 
@@ -508,14 +510,18 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
     复现和反例攻击。
     """
     state = read_simple_state(run_dir)
-    if state["phase"] == "analysis":
+    competition_first = state["schema_version"] == "3.1"
+    if state["phase"] == "analysis" and competition_first:
+        update_simple_state(run_dir, phase="experiment")
+    elif state["phase"] == "analysis":
         from tests.capability_flow_helpers import prepare_minimal_capability_route
 
         prepare_minimal_capability_route(run_dir)
-    if read_simple_state(run_dir)["phase"] == "experiment":
+    if read_simple_state(run_dir)["phase"] == "experiment" and not competition_first:
         _ensure_scientific_review_contracts(run_dir)
         update_simple_state(run_dir, phase="scientific_review")
-    if read_simple_state(run_dir)["phase"] != "scientific_review":
+    allowed_phase = "experiment" if competition_first else "scientific_review"
+    if read_simple_state(run_dir)["phase"] != allowed_phase:
         raise ValueError("测试科学审查只能从 analysis 或 experiment 开始")
     review_questions = list(read_simple_state(run_dir).get("required_questions") or ["Q1"])
     first_question = review_questions[0]
@@ -628,7 +634,10 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
             script_path=property_extra.relative_to(run_dir).as_posix(),
             output_paths=[f"property-{index}.json"],
         )
-    if "geometry_kinematics" in require_capability_route(run_dir)["problem_families"]:
+    if (
+        not competition_first
+        and "geometry_kinematics" in require_capability_route(run_dir)["problem_families"]
+    ):
         geometry = artifact_root / "synthetic-geometry-continuous.py"
         geometry.write_text(
             "import json\n"
@@ -661,10 +670,11 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
             script_path="review/red_team_artifacts/synthetic-geometry-continuous.py",
             output_paths=["geometry.json"],
         )
-    report = run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
+    report_path = SCIENTIFIC_CHALLENGE_REPORT_PATH if competition_first else Path("review/SCIENTIFIC_RED_TEAM.md")
+    report = run_dir / report_path
     report.write_text(
-        "# 合成科学红队报告\n\n## 动态风险覆盖\n\n"
-        "已绑定独立公式、反例和污染范围。证据：`"
+        "# 合成科学挑战报告\n\n## 实际攻击\n\n"
+        "已绑定独立复算、性质攻击和当前结果。证据：`"
         + challenge_receipt["outputs"][0]["path"]
         + "`。\n",
         encoding="utf-8",
@@ -684,11 +694,25 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         input_bindings={"packet": packet_binding},
         report_file=report.relative_to(run_dir).as_posix(),
     )
-    _write_passing_scientific_coverage(
-        run_dir,
-        report_file=report.relative_to(run_dir).as_posix(),
-        parent_task_id="scientific-open",
-    )
+    if competition_first:
+        result_ids = [
+            item["result_id"]
+            for item in read_result_index(run_dir)["results"]
+            if item.get("status") == "current"
+            and item.get("execution_mode") == "production"
+            and item.get("execution_valid") is True
+        ]
+        record_scientific_challenge_evidence(
+            run_dir,
+            result_ids=result_ids,
+            attack_description="独立复算和性质测试攻击当前目标值及其不变量。",
+        )
+    else:
+        _write_passing_scientific_coverage(
+            run_dir,
+            report_file=report.relative_to(run_dir).as_posix(),
+            parent_task_id="scientific-open",
+        )
     state = read_simple_state(run_dir)
     return import_scientific_review(
         run_dir,
@@ -700,6 +724,7 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         affected_questions=[],
         reviewer_thread_id="synthetic-fresh-review-thread",
         task_receipt_file=open_task.relative_to(run_dir).as_posix(),
+        report_file=report_path,
         question_reviews=(
             [
                 {

@@ -239,6 +239,7 @@
         "packet": {"$ref": "#/$defs/packet"},
         "report": {"$ref": "#/$defs/report"},
         "task_receipt": {"$ref": "#/$defs/taskReceipt"},
+        "challenge_evidence": {"type": "object"},
         "artifacts": {"$ref": "#/$defs/redTeamArtifacts"},
         "objective_semantics": {
           "oneOf": [{"type": "null"}, {"$ref": "#/$defs/report"}]

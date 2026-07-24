@@ -1,44 +1,29 @@
-# shumozizi：可验证的数学建模工作台
+# shumozizi：Competition-First v3.1 数学建模工作台
 
-shumozizi 是面向 Codex 桌面版的数学建模工作台，帮助参赛者和模型在有限时间内理解题目、比较路线、真实执行实验、生成证据图，并以 LaTeX 为默认路径写出逐问直接回答的论文。核心价值是把数学推导、数值实验和论文论证组织成可复验的连续工作，而不是增加状态、Schema 或审核任务。
+shumozizi 帮助参赛者在有限时间内完成题意分析、路线竞争、真实实验、洞察提炼和论文交付。它的主目标是提高路线质量、实验价值和论文的题目特定性，而不是增加 Schema、审核任务或哈希绑定数量。
 
-它不是一个已经被证明能稳定解出陌生赛题的全自动求解器，也不承诺竞赛奖项。运行记录、哈希、独立源码和机械 QA 能证明程序执行过、产物没有漂移，并提高错误的可见性；它们不能单独证明题意理解正确、数学模型成立、搜索达到全局最优或论文具有竞赛竞争力。
+它不是已被证明能稳定赢得数学建模竞赛的全自动求解器。真实执行、结果追溯、独立挑战和机械 QA 能减少伪造与产物漂移，不能单独证明题意理解、数学模型、全局最优或获奖概率。任何竞争力提升结论都必须来自 held-out A/B 和匿名论文盲评。
 
-## 当前定位与能力边界
-
-当前版本适合作为**证据约束下的人机协作建模工作台**：Codex 负责结构分析、路线生成、编码、实验和图表；专业 `$research-writing-skill` 负责论证提纲和正文展开，`$mathmodel-paper` 负责数模证据、LaTeX 与交付；运行时负责冻结事实与阻断伪验证，独立新对话负责目标语义预审、科学红队和 PDF 盲审。参赛者仍需对题意解释、关键假设和最终提交负责。
-
-已经由自动化测试覆盖的能力包括：
-
-- 真实命令执行、结果替换与来源绑定；
-- 能力路由、工具探测、知识消费和独立 oracle 的结构约束；
-- 科学审查包与 PDF 盲审包的隔离、失效和状态门；
-- 真实图表渲染回执、PNG 可读性和图表输入/结果漂移检查；
-- LaTeX 优先的模板选择、受控编译回执、逐问覆盖和机械终检；
-- 将协议字段下沉到运行时，使主对话优先用于题意、推导、路线和结果。
-
-尚未完成的能力证明包括：
-
-- 陌生完整赛题从题面到答案的 held-out 端到端真值基准；
-- 隐藏标签科学错误集上的真实独立 reviewer 指标；
-- 发现错误、修复、重跑并重新命中独立真值的闭环基准；
-- 路线创新相对强基线的跨题 A/B，以及完整 LaTeX 论文的多人盲评。
-
-在这些基准完成前，应把“工作流已完成”理解为证据链和交付链完整，而不是数学正确性或获奖水平已被自动认证。
-
-## v3 架构
+## 主链
 
 ```text
-求解与写作层：理解题目、建模、实验、作图、写作
-             ↓
-运行证据层：命令、日志、输出、哈希、随机种子、独立实现
-             ↓
-独立审查层：只读题面的目标语义预审 → 科学红队 → PDF 盲审
-             ↓
-机械交付层：编译、路径、占位符、匿名、PDF QA
+analysis -> experiment -> paper -> paper_review -> verify -> complete
 ```
 
-局部证据层只证明程序运行过且受控实现彼此一致；它不能排除共享的错误数学语义。正式题面进入能力路由前，先由只读题面且禁止联网的新 Codex 对话逐问区分求和、并集、交集等目标口径。实验结束后再由另一个新对话基于冻结审查包重建问题、做反例和独立挑战，科学红队通过才可写论文。PDF 生成后必须再由另一新对话盲审，机械 QA 只复验提交与追溯。
+`blocked` 只表示真实生产错误或已验证的负面证据，绝不因为缺少方法画像、主张清单、覆盖声明、图表合同或手工 argument map 而进入该状态。
+
+旧 v3.0 运行可只读打开。读取时会把旧阶段映射为 v3.1 内存状态；第一次显式更新才写入 `state/migrations.json`，原始阶段保存在 `legacy_phase`，历史审核产物仍可查看。
+
+## 工作原则
+
+- 先提高答案上限，再验证安全底线。
+- 每题至少建立一个 baseline 和一条数学结构不同的竞争或反证路线；仅更换遗传算法、粒子群或差分进化不算新路线。
+- 首先运行能改变路线选择的区分性 probe。没有可能改变路线、模型、主要结论、机制解释或论文贡献的实验，只记录为低优先级建议。
+- 生产结果必须由执行器真实运行。`current` 结果、输入输出哈希和指标来源仍是论文数字与图表的唯一事实来源。
+- 已发现的反例、独立复算冲突、不可行解、性质测试失败和 incumbent 不具竞争力仍会级联失效结果、图表和论文。
+- 目标语义审查只在存在两个以上合理解释、会改变主要结果且题面和用户裁决都无法排除时触发。
+- 每轮只做一次自由科学挑战，必要时最多一个专项追问；不再创建默认 coverage、逐风险 follow-up 或 final audit。
+- 论文围绕最强问题、结果规律和最多三项真实贡献组织，允许不同问题使用不同篇幅。
 
 ## 快速开始
 
@@ -49,110 +34,83 @@ python -m pip install -e .[test]
 python scripts/doctor.py
 ```
 
-创建一个 v3 运行：
+创建 v3.1 运行：
 
 ```powershell
 python scripts/codex/init_run.py problems/2026-A `
-  --workflow capability-first-v3 --run-id 2026-A-001 `
+  --workflow competition-first-v3.1 --run-id 2026-A-001 `
   --competition cumcm --question Q1 --question Q2 --question Q3
 ```
 
-运行目录是：
-
-```text
-runs/<run-id>/
-├── problem/                 # 题面与附件副本
-├── state/run.json           # 最小进度状态
-├── state/DECISIONS.md       # 路线与关键判断
-├── reports/                 # 分析、结果和验证报告
-├── code/                    # 可执行代码
-├── results/index.json       # 执行事实与 current/superseded 结果
-├── figures/
-├── paper/                   # 源文件、章节与 final.pdf
-├── review/                  # 冻结审查包、独立报告与摘要
-└── qa/                      # 机械 QA、联系表和最终审查
-```
-
-在 Codex 中，仅当用户明确要求完成整题、实验和论文时调用 `$mathmodel-workflow`。局部任务直接用 `$mathmodel-solve`、`$mathmodel-experiment`、`$mathmodel-paper` 或 `$mathmodel-final-check`。
-
-## 实际执行和结果追溯
-
-每一个要进入论文或影响路线的运行必须经过执行器：
+每个影响路线或论文的实验都必须使用执行器登记：
 
 ```powershell
 python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
-  --question Q2 --kind primary --result-id q2_primary `
-  --command "python code/q2.py" `
-  --expect results/raw/q2.json `
-  --input problem/attachments/data.xlsx `
-  --metrics-from results/raw/q2.json
+  --question Q1 --kind baseline --result-id q1_baseline `
+  --command "python code/q1.py" --expect results/raw/q1.json `
+  --metrics-from results/raw/q1.json
 ```
 
-脚本必须将可引用指标写入 JSON 输出，例如 `{"metrics": {"objective": 123.45}}`。执行器固定 `shell=False`，从输出自动提取指标、记录 JSON 路径、文件哈希、命令、退出码、stdout/stderr、源脚本和执行时间；不接受手填数值。新结果会将同问同类型旧结果标记为 `superseded`；只有仍为 `current` 且 `execution_valid=true` 的结果才可作为论文事实候选。
-
-## 主动 Skill
-
-- `mathmodel-workflow`：完整赛题的连续执行与断点恢复；
-- `mathmodel-solve`：题意、数据、候选路线、probe、主路线与 fallback；
-- `mathmodel-capability-router`：在实验前冻结能力、工具、独立 oracle 与本地知识资产；
-- `mathmodel-experiment`：代码、真实运行、按题型验证、保存搜索轨迹、几何事件和真实绘图数据；
-- `mathmodel-matlab`：检测 MATLAB/Octave，提供独立公式实现、优化挑战和三维证据图；
-- `mathmodel-visual`：在科学红队通过后，按题型生成模型图、搜索诊断图和结果图；
-- `mathmodel-paper`：调用已安装的 `$research-writing-skill` 建立论证提纲和正文，再以 LaTeX 将真实结果、图表和验证组织为完整论文；
-- `mathmodel-red-team`：必须在三个互不相同的新 Codex 对话中执行科学红队、PDF 盲审和最终交付审核；
-- `mathmodel-final-check`：独立盲审后的机械 QA、追溯复验和最终审核包准备；
-- `mathmodel-learn-paper`：离线论文学习。
-- `mathmodel-geometry-oracle`：以分离源码和不同公式复核有限线段、球体与遮挡几何；
-- `mathmodel-geometry-visual`：用真实结果生成三维场景、正交投影和临界事件图；
-- `mathmodel-optimizer-benchmark`：在统一 exact scorer、预算和种子下公平比较优化路线。
-
-默认生产任务不为每问创建审核，也不要求固定实验族。能力路由、题型必需的视觉证据和竞赛模板清单是生产主链的交付前置条件，不是对答案的评分或限制思考；它们只确保所需能力资产、真实图表证据和写作模板实际被使用。
-
-完整主链为：
-
-```text
-analysis -> objective-semantics review -> capability_route -> experiment -> scientific_review
--> visualization -> paper -> paper_review -> verify -> final_review -> complete
-```
-
-几何/运动或机理题的能力路由必须指定独立 oracle；若本机存在 MATLAB 或 Octave，可将其作为 Python 生产求解器之外的公式实现、优化挑战或三维图工具。工具探测、路由和图表合同分别由 `scripts/capabilities/detect_tools.py`、`scripts/capabilities/record_route.py`、`scripts/figures/record_visualization.py` 记录。进入论文前使用 `scripts/paper/select_template.py --materialize` 从完整 `skills/5writing` 模板库选择并实例化与比赛、语言、引擎匹配的模板；未识别比赛不会静默回退。
-
-## 独立审查边界
-
-实验完成后将状态推进到 `scientific_review`，由协调任务创建科学包并新建 Codex 对话：
+进入论文前，选择真实可用的模板并实例化：
 
 ```powershell
-python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
+python scripts/paper/select_template.py runs/2026-A-001 `
+  --language zh --engine auto --reason "比赛与语言匹配。" --materialize
 ```
 
-协调任务必须实际使用 Codex `create_thread` 新建审核任务并用 `wait_threads` 等待，不能在求解任务内自审，也不能 `fork_thread` 继承求解历史。实验前的目标语义预审只读题面；后续科学红队初始只读科学包，不能访问求解上下文、质量日志、历史 run、网络或公开同题答案。PDF 生成后由第三个新审核任务只看题面、附件和 PDF；机械 QA 后，第四个新审核任务只读 `--kind final-audit` 冻结包。目标语义预审与三轮后续审核的任务 ID 必须全部不同，终审通过后才能 `complete`；环境不能新建任务时必须阻断。任一被冻结的输入、代码、结果、图表、报告、提交物、QA 或 PDF 漂移都会撤销对应结论。
-
-## 机械终检
-
-论文编译为 `paper/final.pdf` 后运行：
+论文编译和机械检查：
 
 ```powershell
+python scripts/paper/compile_paper.py runs/2026-A-001
 python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 ```
 
-该命令生成：
+## 运行产物
 
-- `qa/paper-structure-signals.json`：逐问章节、直接答案、当前 production 结果，以及 120 字符、3 个句子、技术内容和解释词等最低非空壳信号；状态只使用 `signals_present` 或 `missing_required_signals`；
-- `qa/mechanical-qa.json`：PDF、空白/稀疏页、正文主字号、裁切、文字重叠、结构信号报告、占位符、失效结果引用、current 结果哈希、输出指标来源和关键数字检查；
-- `qa/contact-sheet.png`：便于人工快速查看的 PDF 联系表；
-- `reports/VERIFY_REPORT.md`：简短可定位的验证摘要。
+```text
+runs/<run-id>/
+├── analysis/
+│   ├── ROUTE_COMPETITION.md
+│   ├── NEXT_EXPERIMENTS.md
+│   ├── INSIGHTS.md
+│   ├── answer_map.json
+│   └── method_facts.json             # 可选建议，不是门禁
+├── results/                          # 真实执行与 current/superseded 结果
+├── figures/current/                  # 当前数据与脚本产生的图
+├── paper/
+│   ├── STORYBOARD.md                 # 可选叙事规划
+│   ├── CONTRIBUTION_BRIEF.md         # 最多三项贡献，可选
+│   ├── answer-map.json               # 可替代 analysis/answer_map.json
+│   ├── generated/argument_map.json   # 后台自动生成
+│   └── final.pdf
+├── review/
+│   ├── SCIENTIFIC_CHALLENGE.md
+│   ├── FOCUSED_FOLLOWUP.md           # 最多一个，仅在需要时
+│   └── PAPER_BLIND_REVIEW.md
+└── qa/mechanical-qa.json
+```
 
-`paper_structure_signal_report` 固定声明 `assesses_mathematical_correctness=false`、`assesses_argument_quality=false` 和 `independent_pdf_review_required=true`。`mechanical_gate_passed=true` 只表示最低机械信号齐全，不能证明模型合理、推导有效、结果解释正确或论文具有说服力，也不能绕过开放 PDF 盲审、动态风险覆盖和专项追问闭环。盲审或 additional findings 中存在 P0/P1，或任意 finding 声明 `disposition=blocking` 时必须阻断。
+`ROUTE_COMPETITION.md` 记录 baseline、竞争路线、区分性 probe、主路线、fallback 和切换条件；`NEXT_EXPERIMENTS.md` 只保留能改变决定的实验；`INSIGHTS.md` 区分观察、证据、机制、验证和边界，允许诚实写出尚未发现稳定规律。
 
-独立科学红队报告写入 `review/SCIENTIFIC_RED_TEAM.md`，PDF 盲审报告写入 `review/PAPER_BLIND_REVIEW.md`，最终交付审核写入 `review/FINAL_SUBMISSION_REVIEW.md`。三者必须来自不同的新 Codex 对话，不得读取公开同题答案、历史 run、质量日志或同一求解上下文。图表和表格编号检查仅对 caption 运行且暂为 warning，以避免正文引用误报。
+`answer_map.json` 是编译前的必要事实：每个必答问题必须有至少一个当前生产结果和直接答案位置。`STORYBOARD.md`、`CONTRIBUTION_BRIEF.md` 和 `method_facts.json` 用于提高写作质量与验证针对性，缺失只产生警告。
 
-## 按需知识库
+## 审查与交付
 
-`knowledge/` 中保存问题拆解、模型选择、Cookbook、验证、论文写作和 Figure Contract。它们都带来源说明，只作为候选与检查菜单；每阶段最多读取一到两个相关文件，不能替代当前题的路线比较或 probe。`vendor/` 选择性保存 Nature 绘图、SymPy、pymoo、论文结构审查和数模 references/code-templates/playbooks，不自动发现外部总控 Skill。`skills/mathmodel-figure-templates/` 保留 11 套可运行科研绘图脚本；它不是主动流程 Skill。v3 已为其中 4 套提供真实结果适配器，调用说明和 JSON 数据格式见 [V3_FIGURE_TEMPLATE_ADAPTER.md](docs/V3_FIGURE_TEMPLATE_ADAPTER.md)。
+科学挑战只回答六个问题：独立重建目标/变量/约束、三处最大风险、对最大风险的实际攻击、最薄弱问题、当前竞争力上限、最可能改变结论的下一实验。它必须绑定冻结输入、报告和真实任务回执，但不以覆盖率清单放行。
 
-## legacy-v2
+PDF 盲评必须给出与普通参赛论文相比的优势、最可记住之处、最薄弱章节、模型/结果/图表/写作档次、最可能提升一个奖项层级的修改和 P0/P1 判断。无法创建独立盲评时必须写明跳过原因，不能静默跳过。
 
-旧的审核生命周期工作流被冻结在 `legacy/review-v2/`，其中包含原有审核 Skill 与历史文档。v3 是当前推荐的生产工作流，不导入旧审核模块，也不会创建旧审核文件；`legacy-v2` 初始化仅作为兼容入口保留。对外宣称稳定的陌生赛题求解、纠错或竞赛论文能力前，仍须完成上述 held-out 真值、纠错和盲评基准。
+完成前仍检查 PDF、匿名、占位符、乱码、裁切、空白页、当前结果和当前图表漂移。P0/P1、真实负面证据或失效的事实产物始终阻断 `complete`。
+
+## Skill
+
+主动 Skill 只有六个：`mathmodel-workflow`、`mathmodel-solve`、`mathmodel-experiment`、`mathmodel-visual`、`mathmodel-paper`、`mathmodel-red-team`。
+
+`mathmodel-matlab`、`mathmodel-geometry-oracle`、`mathmodel-geometry-visual`、`mathmodel-optimizer-benchmark` 和 `mathmodel-learn-paper` 是按需工具。`mathmodel-capability-router` 保留给旧运行和按需能力探测；`mathmodel-final-check` 是机械执行器，不承担独立思考。
+
+## 评测边界
+
+`evaluation/` 提供 3 题烟雾、held-out 清单、pairwise 匿名顺序、错误注入和过程指标工具。当前仓库不声称已完成 12--16 题 A/B，也不声称流程已证明提高竞赛竞争力。只有在固定模型、时间、Token、算力、资料和人工干预的真实对照完成后，才可报告胜率、致命错误发现率和协议维护成本变化。
 
 ## 开发验证
 
@@ -161,6 +119,4 @@ python -m pytest
 python -m ruff check src scripts tools tests
 ```
 
-CI 将核心运行时、模板矩阵、真实 LaTeX、真实 Typst、科研图模板和 legacy 回归分开执行。`audit_protocol_burden.py` 只检查主动 Skill 的文档风格，不能衡量推导深度或证明科学正确性；后者必须依赖隐藏错误注入、陌生题 held-out、反例发现率、强基线比较和修复后重新命中独立真值。任何未完成或超时的分片均记为状态未知，不能写成“基本通过”。
-
-第三方来源、许可证和吸收边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+`legacy/review-v2/` 和 v3.0 协议只用于兼容与归档；新功能不得重新把它们接回 v3.1 生产主链。

@@ -1,89 +1,35 @@
-# Capability-First v3 Codex 工作流
+# Competition-First v3.1 工作流
 
-完整赛题按题型调用仓库主动 Skill，但仍是一条连续生产链，不为每问增加审批或固定算法配方：
+## 阶段与恢复
 
 ```text
-结构预检（按需使用知识卡）
-→ 路线比较与低成本 oracle
-→ 新对话只读题面的目标语义预审
-→ candidate generator
-→ exact scorer
-→ search auditor
-→ production 放行
-→ 真实实验、图表与按需验证
-→ 论文写作与编译
-→ 论文前科学红队 + PDF 盲审
-→ 机械 QA + 最终交付审核
-→ 发现问题后回到对应生产阶段修复、重编译并重审
+analysis -> experiment -> paper -> paper_review -> verify -> complete
 ```
 
-`state/run.json` 用于断点恢复，`DECISIONS.md` 保存题意解释、路线、失败原因和下一步，`results/index.json` 保存运行事实与文件哈希。它们都不裁定数学正确性或模型优劣。默认最多两个用户决策点：题意或必做输出存在重大歧义时，以及最终提交确认时。普通修代码、参数调整、求解器调整或 fallback 切换不需要重新批准。
+进入 `experiment` 前，仅当 `analysis/objective-ambiguities.json` 表明存在未解决的高影响歧义时，才要求目标语义审查。进入 `paper` 前必须有每个必答问题的 current production 答案、没有已知负面证据、有效模板和一次有效科学挑战。进入 `verify` 前必须有 PDF、有效 PDF 盲评或明确跳过原因、没有 P0/P1。进入 `complete` 前必须通过机械 QA，当前结果、图表和 PDF 都没有漂移。
 
-目标语义预审和三轮后续审核都不是求解任务内的角色扮演。协调任务必须通过 Codex `create_thread` 分别新建目标语义预审、科学红队、PDF 盲审和最终交付审核任务，用 `wait_threads` 等待，并将实际返回的 `threadId` 绑定到报告。四个任务互不相同，不得使用 `fork_thread`。目标语义预审只读题面、禁止联网和公开同题答案；其余审核只读各自冻结包、只写报告。发现问题后由协调任务修复，再新建任务复审；不能创建新任务时流程阻断。
+旧 v3.0 状态按内存映射读取，更新时生成 `state/migrations.json`，不改写历史审核产物。
 
-## 目标语义先于能力路由
+## 分析
 
-正式题面从 `analysis` 进入 `capability_route` 前，必须完成一次只读题面的独立目标语义预审。每问至少记录候选目标公式、单位、聚合方式、题面语言依据、选定主目标和仅作诊断的备选口径。对多实体时间问题，必须显式区分逐实体时长求和、至少一个实体成立的时间并集和全部实体同时成立的时间交集。生产实现与 oracle 使用同一错误目标时，即使数值一致也不构成题意验证；歧义未消除时必须记录用户裁决或显式假设。
+先写 `analysis/ROUTE_COMPETITION.md`：问题结构、baseline、每条候选路线的数学差异、最低成本 probe、主路线、fallback 和切换条件。至少一个 baseline 与一个数学结构不同的竞争或反证路线是硬要求；第三条路线只在有高潜力方向时增加。
 
-## 三段式执行协议
+再写 `analysis/NEXT_EXPERIMENTS.md`。每个实验必须说明要改变的决定、成本、成功/失败后的动作和优先级。不能改变路线、模型、主要结论、机制、贡献或反证当前结果的实验不应占用比赛预算。
 
-搜索型问题必须先写题目合同。合同不是通用验证器，也不规定求解算法；它声明题目语义所需的目标与方向、硬约束、坐标与容差、共同/实体/交互变量组、覆盖度量、校准与挑战可比标准、依赖关系，以及三个 adapter 的标识和受控边界。
+## 实验与洞察
 
-| 角色 | adapter 作者负责 | generic runtime 负责 |
-| --- | --- | --- |
-| candidate generator | 产生原始 candidate pool、参数坐标、代理值、配置和完整 search trace | 执行受控来源，登记输入输出、命令和 hash |
-| exact scorer | 独立读取候选，按题意重算硬约束、可行性和 exact objective | 绑定 scorer 的 source/input/output/command provenance，拒绝漂移 |
-| search auditor | 从原始 pool/trace、合同和 scorer 输出重算覆盖、校准、挑战独立性和选择影响 | 校验 adapter 版本、路径边界、允许命令和来源链 |
+所有生产实验通过执行器登记。`method_facts.json` 自动推断随机、proxy、时间切分、连续几何、启发式和下游依赖等事实，无法判断时写 `unknown`，只产生针对性建议。
 
-adapter 作者必须把数学判断写在 scorer/auditor 中，而不是让 generator 用自己的 `feasibility`、`exact_recomputed`、`search_adequacy` 或 `problem_effectiveness` 布尔字段自证。generic runtime 只执行合同明确允许的本地来源、相对路径和命令，并复验 source/input/output hash、版本与路径；输入变更、输出漂移、版本不一致、路径越界或不受控任意命令都会被拒绝。它不声称能验证任意题目的数学正确性。
+在写论文前维护 `analysis/INSIGHTS.md`。每项洞察写观察、真实证据、可能机制、验证、论文价值和不能推出的边界。没有稳定规律时明确写出，不得为了文件制造阈值、因果或反直觉结论。
 
-原始 candidate pool 与 trace 必须供 auditor 读取。auditor 按合同中声明的共同、实体和交互变量组，直接从原生坐标重算至少一种明确覆盖度量。高维候选的平均值、首元素、低维投影或写在 JSON 中的 `joint_coverage` 摘要不能充当联合覆盖。代理校准应衡量决策影响，例如 top-k recall、局部改善方向、边界/高价值区域误差及对筛选的影响；只有足以反转选择结论的灾难性错误阻断。
+## 图表与论文
 
-## 搜索与 registry
+图表默认写入 `figures/current/`，每张图登记 `source`、`question`、`takeaway` 和可选 `limitations`。删除图后论文不会失去信息时，删除该图。不得默认要求每问图、3D、收敛图、多种子图、敏感性图或重复 evidence/publication 图。
 
-baseline 可以作为显式标记的 warm start 进入 pool。它不计作挑战成果：auditor 仍需证明合同要求数量的独立新候选、独立覆盖与实际评估的新区域。verified candidate registry 按问题、目标、评分器、约束与语义版本分组；只有语义一致、经独立 scorer/auditor 证实的有效改善才可替换 current verified incumbent。弱、较差、legacy 或不可审计候选永远不能覆盖它。
+论文先写 `paper/STORYBOARD.md` 和至多三项的 `paper/CONTRIBUTION_BRIEF.md`。这两者是警告项。硬门只有：每个必答问题存在 `answer_map` 直接答案映射、引用 current 生产结果、引用的图有效、没有负面证据、模板和正文可编译、源码策略符合比赛要求。`paper/generated/argument_map.json` 自动生成，禁止要求人工维护哈希地图。摘要最后写。
 
-| 挑战结果 | 解释与 registry 行为 |
-| --- | --- |
-| 独立且严格改善 | 经过 scorer 与合同检查后可成为替换候选 |
-| 独立、覆盖充分、达到预登记可比标准但未改善 | 保留 incumbent，并增加稳定性证据 |
-| 覆盖充分但较差 | 无信息或较弱搜索族；不覆盖 incumbent |
-| scorer 或模型语义被发现错误 | 回到分析/精确评分，可能推翻 incumbent；challenger 不自动升级 |
-| 独立性、覆盖或可比性不足 | diagnostic，不影响已验证 incumbent |
+## 审查与重跑
 
-正常退出只说明执行完成，不能替代上述审计。并集或重叠目标在代理、校准、exact 与选择中使用 union/marginal-gain 语义。
+科学挑战只进行一次自由攻击，报告六项固定问题。只有 P0/P1、需要确认的决定性实验或无法判断是否继续时才建立一个 `FOCUSED_FOLLOWUP.md`。PDF 盲评采用相对评价，不能只写 pass/fail。机械 QA 只检查交付，不重定义数学正确性。
 
-## 探索与生产
-
-| 模式 | 允许 | 禁止 |
-| --- | --- | --- |
-| `exploration` | 基于未 accepted 的上游诊断候选研究后续问题、共享结构或反向诊断 | 写入 accepted/current registry、论文、图表、提交或正式下游结论 |
-| `production` | 使用合同依赖的 prior accepted/current 结果推进正式下游和论文 | 以 exploration 文件、重命名或自报质量字段绕过前序质量门 |
-
-探索记录必须保留 diagnostic scope。生产下游按合同中的实际依赖检查 prior accepted/current，而不是按题号机械放行。
-
-## 轻量论文参考接口
-
-只有 production 结果冻结后，`mathmodel-paper` 才可按需读取 1-2 张已登记的离线论文卡，用于章节组织、模型解释表达、验证叙事或 Figure Contract。它不调用或合并 `mathmodel-learn-paper`，后者仍是离线学习能力，不修改当前运行状态也不进入比赛生产主链。
-
-论文卡不是 citation、evidence 或 Claim-Evidence 输入。不得迁移卡或原论文中的数值、结论、代码、原公式段或实验结果；当前论文的事实和结论只能来自本次 production accepted/current 结果及其独立证据链。
-
-使用 `register_paper_references()` 在 `paper/paper_references.json` 登记卡 ID 与有效 production 结果 ID，再通过 `writing_reference_cards()` 按需取得已复验的卡路径和允许用途。索引只能是受控仓库的 `knowledge/indexes/papers.json`，卡只能位于 `knowledge/cards/papers/`；收据只保存索引、卡和来源哈希，不保存卡正文。复验会拒绝生产结果、索引路径/哈希、卡身份或来源哈希的漂移。
-
-## 贡献与五问论文
-
-论文维护一个 contribution ledger，每项都要写明问题/章节、类型、题目特定内容、当前运行证据和限制。允许的类型仅为结构、模型、算法、实证或表达贡献。通用 Skill、质量协议、adapter、既有算法的直接调用和普通图表都不是数学创新；证据只支持工程实现或方法组合时，论文必须如实这样表述，不夸称新模型或新算法。若声明题目数学创新，还必须把机制差异、可检验预测、带指标/方向的对照改善和单组件消融绑定到当前 production accepted/current 证据：可用角色独立的结果，或在同组只有一个 incumbent 时用该 primary exact scorer 的两个受控 sidecar；对照和消融不能共用同一结果/sidecar 自证。它是可审计的证据角色合同，不是自动创新评分，也不要求每题有创新。
-
-论文生产由两个 Skill 分工完成：`$research-writing-skill` 先建立 argument outline、安排段落修辞并展开“主张 → 证据 → 解释/机制 → 限制”，`$mathmodel-paper` 再约束逐问证据、图表、LaTeX 模板、编译和交付。专业写作 Skill 不得发明数字或引用，数模 Skill 也不得跳过它直接用标题、表格和结论句拼稿。
-
-Q1-Q5 每问都必须有可定位的直接答案，不能只藏在总表、图注或前一问。每问最少包含：题目要求和采用解释、模型选择理由、变量/数据/假设、核心模型或公式、实际求解、当前运行结果、结果意味着什么、验证和限制、直接答案；只有合同明确依赖时才说明前序消费关系。每个实验簇给出 takeaway，公式、图、表和引用必须服务于本问主张。`qa/paper-structure-signals.json` 会机械阻断缺问、空章节、缺直接答案、缺当前 production 结果，以及明显不满足 120 字符、3 个句子或技术内容等最低非空壳信号的问答段；解释词缺失只产生警告。检查器不会通过扩充关键词来模拟数学理解。PDF 主字号异常偏大也会阻断，稀疏内容页进入盲审警告。
-
-`paper_structure_signal_report` 的新生产状态只允许 `signals_present` 或 `missing_required_signals`，并固定声明 `mechanical_gate_passed`、`assesses_mathematical_correctness=false`、`assesses_argument_quality=false` 和 `independent_pdf_review_required=true`。旧 `paper_sufficiency_report` 只允许读取历史运行，新生产不得继续写入。即使 `mechanical_gate_passed=true`，没有有效开放 PDF 盲审、独立 coverage task、当前报告与 required risks 哈希绑定以及 closed follow-up，也不能进入最终放行；盲审和 additional findings 中的 P0/P1 或任意 `disposition=blocking` 必须阻断。模型合理性、推导有效性、结果解释和论文说服力只由独立 PDF 盲审裁决。
-
-`reports/VERIFY_REPORT.md` 只提供 PDF 内容异常和覆盖定位；页数、公式、图、表或引用密度单独异常仅为 warning。结构信号、开放 PDF 盲审及动态查漏均有效且机械 QA 通过后，才能进入 `final_review`，建立 `final-audit` 包，由第三个新审核对话按数学建模竞赛论文标准自由判断最终 PDF、提交材料和源码附录；它只能看到题面、最终 PDF 和提交文件，不得依赖内部结果或前轮结论，也不得按固定表格打勾代替判断。报告写入 `review/FINAL_SUBMISSION_REVIEW.md`。任何交付物修订都要回到对应生产阶段修复、重编译并重新执行受影响的盲审、动态查漏、机械 QA 和终审；审查后只允许一次集中修订，二次仍不通过就停止。
-
-## 迁移与边界
-
-历史记录和旧质量布尔字段一律迁移为 `diagnostic/unverified`；只有在当前题目合同下补齐独立 generator、scorer、auditor 产物及 provenance 后，才可能成为 accepted。文件 hash、正常退出、恢复 baseline、机械 QA 或一次挑战均不能单独证明模型解决了题目。
-
-该协议只能提高证据分层、可复验性和错误可见性。数学正确性和竞争力仍须依靠结构推导、低成本 oracle、真实实验、强基线与反例。生产任务不得按问题或 finding 拆分审核；只执行一次论文前科学红队、一次 PDF 盲审和一次最终交付审核。任一轮发现 P0/P1 必须修复并重新运行受影响的后续链，不能用标签或旧报告放行。
+正文小改：重新编译和机械 QA。解释、图表、主要结论改动：重新编译、PDF 盲评和机械 QA。代码、数据、目标或主要结果改动：回到实验、科学挑战、PDF 盲评和机械 QA。

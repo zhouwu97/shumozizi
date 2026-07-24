@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "status": "planned",
+  "cases": [
+    {"id": "objective-semantics", "expected_signal": "objective ambiguity or semantic conflict"},
+    {"id": "temporal-leakage", "expected_signal": "future information leakage"},
+    {"id": "infeasible-solution", "expected_signal": "feasibility_failed"},
+    {"id": "proxy-exact-reversal", "expected_signal": "ranking reversal"},
+    {"id": "continuous-sampling", "expected_signal": "continuous boundary error"},
+    {"id": "downstream-inheritance", "expected_signal": "shared dependency invalidation"},
+    {"id": "stale-figure", "expected_signal": "figure source drift"},
+    {"id": "pdf-result-conflict", "expected_signal": "numeric consistency failure"}
+  ]
+}

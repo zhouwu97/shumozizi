@@ -1,4 +1,4 @@
-"""Schema v2 运行初始化命令行薄入口。"""
+"""初始化 legacy-v2 或 Competition-First v3.1 运行的命令行入口。"""
 
 from __future__ import annotations
 
@@ -22,9 +22,12 @@ def main() -> int:
     parser.add_argument("--run-id")
     parser.add_argument(
         "--workflow",
-        choices=("legacy-v2", "capability-first-v3"),
+        choices=("legacy-v2", "capability-first-v3", "competition-first-v3.1"),
         default="legacy-v2",
-        help="legacy-v2 保持兼容；capability-first-v3 使用独立轻量运行时",
+        help=(
+            "competition-first-v3.1 使用当前主链；legacy-v2 保持兼容；"
+            "capability-first-v3 是兼容别名"
+        ),
     )
     parser.add_argument(
         "--mode", choices=("competition", "training", "audit"), default="competition"
@@ -38,7 +41,7 @@ def main() -> int:
     parser.add_argument("--repo-root")
     args = parser.parse_args()
     repo_root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
-    if args.workflow == "capability-first-v3":
+    if args.workflow in {"capability-first-v3", "competition-first-v3.1"}:
         if args.problem_path:
             problem = Path(args.problem_path)
             if not problem.is_absolute():
@@ -57,7 +60,7 @@ def main() -> int:
             total_hours=args.total_hours,
             token_soft_cap=args.token_soft_cap,
         )
-        version = "3.0"
+        version = "3.1"
     else:
         if not args.problem_path:
             parser.error("legacy-v2 必须提供 problem_path")
