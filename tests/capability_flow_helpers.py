@@ -4,18 +4,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from shumozizi.core.io import atomic_json
+from shumozizi.core.io import atomic_json, sha256_file
 from shumozizi.paper.templates import materialize_selected_template, select_paper_template
 from shumozizi.simple.capabilities import (
     record_knowledge_consumption,
     write_capability_route,
     write_local_tooling,
 )
+from shumozizi.simple.critical_claims import read_critical_claims
+from shumozizi.simple.results import read_result_index
 from shumozizi.simple.review import (
     build_review_packet,
     import_objective_semantics_review,
     objective_semantics_review_required,
 )
+from shumozizi.simple.review_tasks import create_review_task_receipt
 from shumozizi.simple.state import read_simple_state, update_simple_state
 from shumozizi.simple.visualization import (
     new_visualization_plan,
@@ -24,9 +27,12 @@ from shumozizi.simple.visualization import (
 )
 
 
-def prepare_minimal_capability_route(run_dir: Path) -> None:
-    """登记无需独立 oracle 的最小本地能力路由并进入实验阶段。"""
+def prepare_objective_semantics_review(run_dir: Path) -> None:
+    """在需要时完成绑定当前题面包的独立目标语义预审。"""
     state = read_simple_state(run_dir)
+    if not state["required_questions"]:
+        update_simple_state(run_dir, required_questions=["Q1"])
+        state = read_simple_state(run_dir)
     if state["phase"] == "analysis" and objective_semantics_review_required(run_dir):
         build_review_packet(run_dir, kind="objective-semantics")
         manifest = next(
@@ -47,10 +53,17 @@ def prepare_minimal_capability_route(run_dir: Path) -> None:
                         }
                     ],
                     "selected_objective_id": "synthetic_objective",
-                    "selection_basis": "language_evidence",
+                    "selection_basis": "declared_assumption",
                     "selection_confidence": "high",
+                    "materiality": "low",
+                    "human_confirmation_required": False,
                     "diagnostic_objective_ids": [],
                     "ambiguity_note": "",
+                    "language_evidence_ref": {},
+                    "decision_space": {
+                        "action_cardinality": "not_applicable",
+                        "language_basis": ["测试问题没有可变数量动作。"],
+                    },
                 }
             )
         atomic_json(
@@ -68,13 +81,35 @@ def prepare_minimal_capability_route(run_dir: Path) -> None:
             "# 独立目标语义预审\n\n测试夹具仅依据题面重建目标，并确认无额外聚合歧义。\n",
             encoding="utf-8",
         )
+        manifest_file = manifest.relative_to(run_dir).as_posix()
+        packet_binding = {
+            "manifest_file": manifest_file,
+            "manifest_sha256": sha256_file(manifest),
+        }
+        task_receipt = create_review_task_receipt(
+            run_dir,
+            task_id="objective-semantics",
+            task_type="objective_semantics",
+            thread_id=f"semantic-{run_dir.name}",
+            model_id="fixture-model",
+            prompt_sha256="3" * 64,
+            input_bindings={"packet": packet_binding},
+            report_file="review/OBJECTIVE_SEMANTICS_REVIEW.md",
+        )
         import_objective_semantics_review(
             run_dir,
-            manifest_file=manifest.relative_to(run_dir).as_posix(),
+            manifest_file=manifest_file,
             verdict="pass",
             highest_severity="none",
             reviewer_thread_id=f"semantic-{run_dir.name}",
+            task_receipt_file=task_receipt.relative_to(run_dir).as_posix(),
         )
+
+
+def prepare_minimal_capability_route(run_dir: Path) -> None:
+    """登记无需独立 oracle 的最小本地能力路由并进入实验阶段。"""
+    prepare_objective_semantics_review(run_dir)
+    state = read_simple_state(run_dir)
     if state["phase"] in {"analysis", "blocked"}:
         update_simple_state(run_dir, phase="capability_route")
     write_local_tooling(run_dir)
@@ -108,15 +143,23 @@ def prepare_minimal_visualization(run_dir: Path) -> None:
         update_simple_state(run_dir, phase="visualization")
     script = run_dir / "code" / "figures" / "workflow_visual.py"
     script.parent.mkdir(parents=True, exist_ok=True)
-    script.write_text(
-        "from PIL import Image\n"
-        "from pathlib import Path\n"
-        "import sys\n"
-        "Path(sys.argv[1]).parent.mkdir(parents=True, exist_ok=True)\n"
-        "Image.new('RGB', (320, 240), color=(48, 98, 148)).save(sys.argv[1])\n",
-        encoding="utf-8",
+    if not script.is_file():
+        script.write_text(
+            "from PIL import Image\n"
+            "from pathlib import Path\n"
+            "import sys\n"
+            "Path(sys.argv[1]).parent.mkdir(parents=True, exist_ok=True)\n"
+            "Image.new('RGB', (320, 240), color=(48, 98, 148)).save(sys.argv[1])\n",
+            encoding="utf-8",
+        )
+    result = next(
+        item
+        for item in read_result_index(run_dir)["results"]
+        if item.get("status") == "current"
+        and item.get("execution_mode") == "production"
     )
-    output = run_dir / "figures" / "workflow-roadmap.png"
+    claim = read_critical_claims(run_dir)["claims"][0]
+    output = run_dir / "figures" / "publication" / "workflow-roadmap.png"
     receipt = run_figure_render(
         run_dir,
         figure_id="workflow-roadmap",
@@ -132,8 +175,13 @@ def prepare_minimal_visualization(run_dir: Path) -> None:
         [
             {
                 "figure_id": "workflow-roadmap",
-                "question_id": "shared",
+                "question_id": claim["question_id"],
+                "claim_ids": [claim["claim_id"]],
+                "figure_stage": "publication",
                 "scientific_question": "当前运行的模型、执行和交付证据如何衔接。",
+                "expected_takeaway": "当前生产结果、关键主张和交付证据形成可定位的同问链条。",
+                "cannot_prove": "该流程图不能证明模型正确、数值最优或论文论证具有说服力。",
+                "source_result_ids": [result["result_id"]],
                 "conclusion_impact": "context",
                 "why_needed": "最小夹具只需说明证据在分析、实验和交付之间的衔接。",
                 "evidence_roles": ["method_overview"],

@@ -1,50 +1,87 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/zhouwu97/shumozizi/schemas/argument_map.schema.json",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schema_name", "schema_version", "run_id", "run_config_lock_sha256",
-    "paper_index_sha256", "task_fingerprint_sha256", "pattern_transfer_plan_sha256",
-    "route_lock_sha256", "accepted_results_digest", "claim_evidence_digest", "claims"
+  "oneOf": [
+    {"$ref": "#/$defs/legacy"},
+    {"$ref": "#/$defs/current"}
   ],
-  "properties": {
-    "schema_name": {"const": "argument_map"},
-    "schema_version": {"const": "2.0"},
-    "run_id": {"type": "string"},
-    "run_config_lock_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "paper_index_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "task_fingerprint_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "pattern_transfer_plan_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "route_lock_sha256": {"type": "string"},
-    "accepted_results_digest": {"type": "string"},
-    "claim_evidence_digest": {"type": "string"},
-    "claims": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "claim_id", "question_id", "claim", "motivation", "baseline_limitation",
-          "model_support", "result_ids", "comparison_evidence", "validation_evidence",
-          "figure_ids", "boundary", "outcome", "paper_location"
-        ],
-        "properties": {
-          "claim_id": {"type": "string"},
-          "question_id": {"type": "string"},
-          "claim": {"type": "string"},
-          "motivation": {"type": "string"},
-          "baseline_limitation": {"type": "string"},
-          "model_support": {"type": "string"},
-          "result_ids": {"type": "array", "items": {"type": "string"}},
-          "comparison_evidence": {"type": "array", "items": {"type": "string"}},
-          "validation_evidence": {"type": "array", "items": {"type": "string"}},
-          "figure_ids": {"type": "array", "items": {"type": "string"}},
-          "boundary": {"type": "string"},
-          "outcome": {"enum": ["supported", "partially_supported", "rejected", "inconclusive", "stale"]},
-          "paper_location": {"type": "string"}
-        }
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "question_id", "claim", "motivation", "baseline_limitation", "model_support", "result_ids", "comparison_evidence", "validation_evidence", "figure_ids", "boundary", "outcome", "paper_location"],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "question_id": {"type": "string", "minLength": 1},
+        "claim": {"type": "string", "minLength": 1},
+        "motivation": {"type": "string"},
+        "baseline_limitation": {"type": "string"},
+        "model_support": {"type": "string"},
+        "result_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "comparison_evidence": {"type": "array", "items": {"type": "string"}},
+        "validation_evidence": {"type": "array", "items": {"type": "string"}},
+        "figure_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "boundary": {"type": "string"},
+        "outcome": {"enum": ["supported", "partially_supported", "rejected", "inconclusive", "stale", "superseded"]},
+        "paper_location": {"type": "string"}
       }
+    },
+    "currentClaim": {
+      "allOf": [
+        {"$ref": "#/$defs/claim"},
+        {"properties": {"outcome": {"enum": ["supported", "partially_supported", "rejected", "inconclusive", "superseded"]}, "result_ids": {"minItems": 1}}}
+      ]
+    },
+    "legacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_name", "schema_version", "run_id", "run_config_lock_sha256", "paper_index_sha256", "task_fingerprint_sha256", "pattern_transfer_plan_sha256", "route_lock_sha256", "accepted_results_digest", "claim_evidence_digest", "claims"],
+      "properties": {
+        "schema_name": {"const": "argument_map"},
+        "schema_version": {"const": "2.0"},
+        "run_id": {"type": "string"},
+        "run_config_lock_sha256": {"$ref": "#/$defs/sha"},
+        "paper_index_sha256": {"$ref": "#/$defs/sha"},
+        "task_fingerprint_sha256": {"$ref": "#/$defs/sha"},
+        "pattern_transfer_plan_sha256": {"$ref": "#/$defs/sha"},
+        "route_lock_sha256": {"type": "string"},
+        "accepted_results_digest": {"type": "string"},
+        "claim_evidence_digest": {"type": "string"},
+        "status": {"enum": ["current", "superseded"]},
+        "superseded_reason": {"type": "string", "minLength": 1},
+        "claims": {"type": "array", "items": {"$ref": "#/$defs/claim"}}
+      }
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_name", "schema_version", "run_id", "capability_route_sha256", "method_profile_sha256", "critical_claims_sha256", "objective_semantics_digest", "accepted_results_digest", "claim_evidence_digest", "figure_index_sha256", "status", "claims"],
+      "properties": {
+        "schema_name": {"const": "argument_map"},
+        "schema_version": {"const": "3.0"},
+        "run_id": {"type": "string", "minLength": 1},
+        "capability_route_sha256": {"$ref": "#/$defs/sha"},
+        "method_profile_sha256": {"$ref": "#/$defs/sha"},
+        "critical_claims_sha256": {"$ref": "#/$defs/sha"},
+        "objective_semantics_digest": {"$ref": "#/$defs/sha"},
+        "accepted_results_digest": {"$ref": "#/$defs/sha"},
+        "claim_evidence_digest": {"$ref": "#/$defs/sha"},
+        "figure_index_sha256": {"$ref": "#/$defs/sha"},
+        "status": {"enum": ["current", "superseded"]},
+        "superseded_reason": {"type": "string", "minLength": 1},
+        "claims": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/currentClaim"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "superseded"}}, "required": ["status"]},
+          "then": {"required": ["superseded_reason"]}
+        },
+        {
+          "if": {"properties": {"status": {"const": "current"}}, "required": ["status"]},
+          "then": {"not": {"required": ["superseded_reason"]}}
+        }
+      ]
     }
   }
 }

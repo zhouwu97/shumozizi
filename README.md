@@ -137,9 +137,12 @@ python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 
 该命令生成：
 
-- `qa/mechanical-qa.json`：PDF、空白/稀疏页、正文主字号、裁切、文字重叠、逐问论证充分性、占位符、失效结果引用、current 结果哈希、输出指标来源和关键数字检查；
+- `qa/paper-structure-signals.json`：逐问章节、直接答案、当前 production 结果，以及 120 字符、3 个句子、技术内容和解释词等最低非空壳信号；状态只使用 `signals_present` 或 `missing_required_signals`；
+- `qa/mechanical-qa.json`：PDF、空白/稀疏页、正文主字号、裁切、文字重叠、结构信号报告、占位符、失效结果引用、current 结果哈希、输出指标来源和关键数字检查；
 - `qa/contact-sheet.png`：便于人工快速查看的 PDF 联系表；
 - `reports/VERIFY_REPORT.md`：简短可定位的验证摘要。
+
+`paper_structure_signal_report` 固定声明 `assesses_mathematical_correctness=false`、`assesses_argument_quality=false` 和 `independent_pdf_review_required=true`。`mechanical_gate_passed=true` 只表示最低机械信号齐全，不能证明模型合理、推导有效、结果解释正确或论文具有说服力，也不能绕过开放 PDF 盲审、动态风险覆盖和专项追问闭环。盲审或 additional findings 中存在 P0/P1，或任意 finding 声明 `disposition=blocking` 时必须阻断。
 
 独立科学红队报告写入 `review/SCIENTIFIC_RED_TEAM.md`，PDF 盲审报告写入 `review/PAPER_BLIND_REVIEW.md`，最终交付审核写入 `review/FINAL_SUBMISSION_REVIEW.md`。三者必须来自不同的新 Codex 对话，不得读取公开同题答案、历史 run、质量日志或同一求解上下文。图表和表格编号检查仅对 caption 运行且暂为 warning，以避免正文引用误报。
 

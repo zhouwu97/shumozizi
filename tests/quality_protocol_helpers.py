@@ -3,16 +3,29 @@
 from __future__ import annotations
 
 import json
+import sys
 from itertools import product
 from pathlib import Path
 from typing import Any
 
+from shumozizi.core.io import atomic_json, sha256_file
 from shumozizi.simple.adapters import run_verification_protocol
+from shumozizi.simple.capabilities import require_capability_route
+from shumozizi.simple.critical_claims import CRITICAL_CLAIMS_PATH
+from shumozizi.simple.execution import execute_simple_experiment
+from shumozizi.simple.method_profile import (
+    METHOD_PROFILE_PATH,
+    build_method_profile_bindings,
+)
+from shumozizi.simple.objective_semantics import objective_semantics_digest
+from shumozizi.simple.results import read_result_index
 from shumozizi.simple.review import (
     build_review_packet,
+    generate_required_review_risks,
     import_scientific_review,
     run_red_team_evidence,
 )
+from shumozizi.simple.review_tasks import create_review_task_receipt
 from shumozizi.simple.state import read_simple_state, update_simple_state
 
 
@@ -335,6 +348,159 @@ def adapter_backed_assessment(
     }
 
 
+def _ensure_scientific_review_contracts(run_dir: Path) -> None:
+    """为通过路径生成真实实验后的方法画像和高价值主张。"""
+    state = read_simple_state(run_dir)
+    required_questions = list(state.get("required_questions") or ["Q1"])
+    current = {
+        item["question_id"]: item
+        for item in read_result_index(run_dir)["results"]
+        if item.get("status") == "current"
+        and item.get("execution_mode") == "production"
+        and item.get("execution_valid") is True
+        and item.get("kind") != "independent-oracle"
+    }
+    missing = [question_id for question_id in required_questions if question_id not in current]
+    if missing:
+        script = run_dir / "code" / "review_fixture_result.py"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(
+            "import json\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "question_id, output = sys.argv[1:3]\n"
+            "Path(output).parent.mkdir(parents=True, exist_ok=True)\n"
+            "Path(output).write_text(json.dumps({'metrics': {'objective': 1.0}, "
+            "'question_id': question_id}), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        for question_id in missing:
+            output = f"results/raw/review-fixture-{question_id}.json"
+            execute_simple_experiment(
+                run_dir,
+                result_id=f"review-fixture-{question_id}",
+                question_id=question_id,
+                kind="baseline",
+                command=(
+                    f'"{sys.executable}" code/review_fixture_result.py '
+                    f'"{question_id}" "{output}"'
+                ),
+                expected_outputs=[output],
+                metrics_from=output,
+            )
+        current = {
+            item["question_id"]: item
+            for item in read_result_index(run_dir)["results"]
+            if item.get("status") == "current"
+            and item.get("execution_mode") == "production"
+            and item.get("execution_valid") is True
+            and item.get("kind") != "independent-oracle"
+        }
+
+    route = require_capability_route(run_dir)
+    atomic_json(
+        run_dir / METHOD_PROFILE_PATH,
+        {
+            "schema_name": "simple_method_profile",
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "bindings": build_method_profile_bindings(run_dir),
+            "questions": [
+                {
+                    "question_id": question_id,
+                    "model_families": ["other"],
+                    "other_model_family": "synthetic_test_fixture",
+                    "production_engine": route["toolchain"]["production_engine"],
+                }
+                for question_id in required_questions
+            ],
+            "generated_at": "2026-07-20T00:00:00Z",
+        },
+    )
+    atomic_json(
+        run_dir / CRITICAL_CLAIMS_PATH,
+        {
+            "schema_name": "simple_critical_claims",
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "bindings": {
+                "method_profile_sha256": sha256_file(run_dir / METHOD_PROFILE_PATH),
+                "objective_semantics_sha256": objective_semantics_digest(run_dir),
+                "result_index_sha256": sha256_file(run_dir / "results" / "index.json"),
+            },
+            "claims": [
+                {
+                    "claim_id": f"fixture-{index + 1}",
+                    "question_id": question_id,
+                    "statement": f"{question_id} 的当前生产结果满足测试工作流的主要输出要求。",
+                    "claim_type": "model_validity",
+                    "importance": "primary",
+                    "result_ids": [current[question_id]["result_id"]],
+                    "evidence_needed": ["independent_review"],
+                    "blocking_if_fails": True,
+                }
+                for index, question_id in enumerate(required_questions)
+            ],
+            "generated_at": "2026-07-20T00:00:00Z",
+        },
+    )
+
+
+def _write_passing_scientific_coverage(
+    run_dir: Path,
+    *,
+    report_file: str,
+    parent_task_id: str,
+) -> str:
+    """写入覆盖当前动态风险且绑定独立 coverage 任务的声明。"""
+    risks = generate_required_review_risks(run_dir, scope="scientific")
+    risks_path = run_dir / "review" / "required_risks.json"
+    declaration_path = run_dir / "review" / "coverage" / "scientific.json"
+    receipt_relative = "review/tasks/scientific-coverage/receipt.json"
+    atomic_json(
+        declaration_path,
+        {
+            "schema_name": "red_team_coverage_declaration",
+            "schema_version": "3.0",
+            "run_id": run_dir.name,
+            "review_file": report_file,
+            "report_sha256": sha256_file(run_dir / report_file),
+            "required_risks_file": "review/required_risks.json",
+            "required_risks_sha256": sha256_file(risks_path),
+            "coverage_task_receipt": receipt_relative,
+            "covered_risks": [
+                {
+                    "risk_id": risk_id,
+                    "conclusion": "sufficient",
+                    "evidence_location": f"{report_file}#动态风险覆盖",
+                }
+                for risk_id in sorted(risks)
+            ],
+            "follow_ups": [],
+            "additional_findings": [],
+            "generated_at": "2026-07-20T00:00:00Z",
+        },
+    )
+    coverage_inputs = {
+        "report": {"file": report_file, "sha256": sha256_file(run_dir / report_file)},
+        "required_risks": {
+            "file": "review/required_risks.json",
+            "sha256": sha256_file(risks_path),
+        },
+    }
+    return create_review_task_receipt(
+        run_dir,
+        task_id="scientific-coverage",
+        task_type="coverage_extract",
+        thread_id="synthetic-coverage-thread",
+        model_id="fixture-model",
+        prompt_sha256="2" * 64,
+        input_bindings=coverage_inputs,
+        report_file=declaration_path.relative_to(run_dir).as_posix(),
+        parent_task_id=parent_task_id,
+    ).relative_to(run_dir).as_posix()
+
+
 def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
     """为运行时协议测试绑定隔离且未漂移的科学红队报告。
 
@@ -347,9 +513,12 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
 
         prepare_minimal_capability_route(run_dir)
     if read_simple_state(run_dir)["phase"] == "experiment":
+        _ensure_scientific_review_contracts(run_dir)
         update_simple_state(run_dir, phase="scientific_review")
     if read_simple_state(run_dir)["phase"] != "scientific_review":
         raise ValueError("测试科学审查只能从 analysis 或 experiment 开始")
+    review_questions = list(read_simple_state(run_dir).get("required_questions") or ["Q1"])
+    first_question = review_questions[0]
     packet = build_review_packet(run_dir, kind="scientific")
     artifact_root = run_dir / "review" / "red_team_artifacts"
     recompute = artifact_root / "synthetic_recompute.py"
@@ -361,6 +530,7 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         "assert (packet / 'problem').is_dir()\n"
         "(outputs / 'recompute.json').write_text(\n"
         "    json.dumps({\n"
+        f"        'question_id': {first_question!r},\n"
         "        'claim_id': 'synthetic-objective',\n"
         "        'method': 'independent_fixture_oracle',\n"
         "        'cases': 2,\n"
@@ -388,6 +558,7 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
         "assert (packet / 'candidate_results').is_dir()\n"
         "(outputs / 'property.json').write_text(json.dumps({\n"
+        f"    'question_id': {first_question!r},\n"
         "    'claim_id': 'synthetic-invariant',\n"
         "    'property': 'translation_invariance',\n"
         "    'cases': 2,\n"
@@ -404,23 +575,142 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         script_path="review/red_team_artifacts/synthetic-property.py",
         output_paths=["property.json"],
     )
+    for index, question_id in enumerate(review_questions[1:], start=2):
+        recompute_extra = artifact_root / f"synthetic-recompute-{index}.py"
+        recompute_extra.write_text(
+            "import json\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+            "assert (packet / 'problem').is_dir()\n"
+            f"(outputs / 'recompute-{index}.json').write_text(json.dumps({{\n"
+            f"    'question_id': {question_id!r},\n"
+            f"    'claim_id': 'synthetic-objective-{index}',\n"
+            "    'method': 'independent_fixture_oracle',\n"
+            "    'cases': 2,\n"
+            "    'production_value': 1.0,\n"
+            "    'independent_value': 1.0,\n"
+            "    'absolute_difference': 0.0,\n"
+            "    'verdict': 'consistent',\n"
+            "}), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        run_red_team_evidence(
+            run_dir,
+            evidence_id=f"synthetic-recompute-{index}",
+            kind="independent-recompute",
+            packet_manifest=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+            script_path=recompute_extra.relative_to(run_dir).as_posix(),
+            output_paths=[f"recompute-{index}.json"],
+        )
+        property_extra = artifact_root / f"synthetic-property-{index}.py"
+        property_extra.write_text(
+            "import json\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+            "assert (packet / 'candidate_results').is_dir()\n"
+            f"(outputs / 'property-{index}.json').write_text(json.dumps({{\n"
+            f"    'question_id': {question_id!r},\n"
+            f"    'claim_id': 'synthetic-invariant-{index}',\n"
+            "    'property': 'translation_invariance',\n"
+            "    'cases': 2,\n"
+            "    'failures': 0,\n"
+            "    'verdict': 'pass',\n"
+            "}), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        challenge_receipt = run_red_team_evidence(
+            run_dir,
+            evidence_id=f"synthetic-property-{index}",
+            kind="property-test",
+            packet_manifest=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+            script_path=property_extra.relative_to(run_dir).as_posix(),
+            output_paths=[f"property-{index}.json"],
+        )
+    if "geometry_kinematics" in require_capability_route(run_dir)["problem_families"]:
+        geometry = artifact_root / "synthetic-geometry-continuous.py"
+        geometry.write_text(
+            "import json\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "packet, outputs = (Path(value) for value in sys.argv[1:3])\n"
+            "assert (packet / 'problem').is_dir()\n"
+            "(outputs / 'geometry.json').write_text(json.dumps({\n"
+            "    'question_id': 'Q1',\n"
+            "    'continuous_quantity': 'minimum_margin_continuous',\n"
+            "    'sampled_approximation': 'minimum_margin_grid',\n"
+            "    'verification_method': 'root_isolation',\n"
+            "    'discretization_error_bound': None,\n"
+            "    'critical_cases': {\n"
+            "        'left_endpoint': True,\n"
+            "        'right_endpoint': True,\n"
+            "        'tangent': True,\n"
+            "        'degenerate': True,\n"
+            "        'outside_segment': True,\n"
+            "    },\n"
+            "    'verdict': 'pass',\n"
+            "}), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        run_red_team_evidence(
+            run_dir,
+            evidence_id="synthetic-geometry-continuous",
+            kind="geometry-continuous-validation",
+            packet_manifest=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+            script_path="review/red_team_artifacts/synthetic-geometry-continuous.py",
+            output_paths=["geometry.json"],
+        )
     report = run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
     report.write_text(
-        "# 合成科学红队报告\n\n"
+        "# 合成科学红队报告\n\n## 动态风险覆盖\n\n"
         "已绑定独立公式、反例和污染范围。证据：`"
         + challenge_receipt["outputs"][0]["path"]
         + "`。\n",
         encoding="utf-8",
     )
+    manifest_file = f"review/packet/scientific/{packet['packet_id']}/manifest.json"
+    packet_binding = {
+        "manifest_file": manifest_file,
+        "manifest_sha256": sha256_file(run_dir / manifest_file),
+    }
+    open_task = create_review_task_receipt(
+        run_dir,
+        task_id="scientific-open",
+        task_type="scientific_open",
+        thread_id="synthetic-fresh-review-thread",
+        model_id="fixture-model",
+        prompt_sha256="1" * 64,
+        input_bindings={"packet": packet_binding},
+        report_file=report.relative_to(run_dir).as_posix(),
+    )
+    _write_passing_scientific_coverage(
+        run_dir,
+        report_file=report.relative_to(run_dir).as_posix(),
+        parent_task_id="scientific-open",
+    )
+    state = read_simple_state(run_dir)
     return import_scientific_review(
         run_dir,
-        manifest_file=f"review/packet/scientific/{packet['packet_id']}/manifest.json",
+        manifest_file=manifest_file,
         verdict="pass",
         highest_severity="none",
         competition_strength="qualified",
         full_rerun_required=False,
         affected_questions=[],
         reviewer_thread_id="synthetic-fresh-review-thread",
+        task_receipt_file=open_task.relative_to(run_dir).as_posix(),
+        question_reviews=(
+            [
+                {
+                    "question_id": question_id,
+                    "verdict": "pass",
+                    "competition_strength": "qualified",
+                }
+                for question_id in state.get("required_questions", [])
+            ]
+            or None
+        ),
     )
 
 

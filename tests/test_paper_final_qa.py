@@ -34,8 +34,12 @@ def test_final_qa_blocks_invalid_written_paper_receipts(
     monkeypatch.setattr(final_checks, "audit_pdf", lambda *_args, **_kwargs: _passing_check())
     monkeypatch.setattr(
         final_checks,
-        "run_paper_sufficiency_check",
-        lambda *_args, **_kwargs: {"status": "pass", "warnings": []},
+        "run_paper_structure_signal_check",
+        lambda *_args, **_kwargs: {
+            "status": "signals_present",
+            "mechanical_gate_passed": True,
+            "warnings": [],
+        },
     )
     monkeypatch.setattr(final_checks, "check_placeholders", lambda *_args: {"success": True})
     monkeypatch.setattr(final_checks, "check_result_references", lambda *_args: {"success": True})

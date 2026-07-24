@@ -9,7 +9,9 @@ from pathlib import Path
 import pytest
 
 import shumozizi.paper.compiler as paper_compiler
+import shumozizi.paper.readiness as paper_readiness
 import shumozizi.paper.templates as paper_templates
+import shumozizi.simple.review as simple_review
 from scripts.qa.check_placeholders import check_placeholders
 from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.paper.compiler import compile_paper, verify_paper_compile_receipt
@@ -113,6 +115,12 @@ def _set_engines(monkeypatch: pytest.MonkeyPatch, latex: bool, typst: bool) -> N
             "fake-typst" if typst else None,
         ),
     )
+
+
+def _isolate_compiler_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """隔离编译回执测试，工作流门由独立审核 E2E 单独覆盖。"""
+    monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
+    monkeypatch.setattr(paper_readiness, "require_paper_readiness", lambda _run: None)
 
 
 def test_auto_template_selection_prefers_latex_and_records_fallback(
@@ -278,6 +286,7 @@ def test_typst_compile_receipt_rejects_tampering_and_ignores_bibliography_output
 ) -> None:
     """真实 Typst 编译、回执复验和生成副产物排除必须同时工作。"""
     _set_engines(monkeypatch, latex=False, typst=True)
+    _isolate_compiler_receipt(monkeypatch)
     run_dir = _new_run(tmp_path, "typst-compile", questions=["Q1", "Q2"])
     select_paper_template(
         run_dir,
@@ -308,6 +317,7 @@ def test_latex_compile_receipt_uses_selected_latex_entrypoint(
 ) -> None:
     """LaTeX 主路径必须实际执行 main.tex 并冻结与 Typst 不同的 PDF 回执。"""
     _set_engines(monkeypatch, latex=True, typst=True)
+    _isolate_compiler_receipt(monkeypatch)
     run_dir = _new_run(tmp_path, "latex-compile", questions=["Q1", "Q2"])
     select_paper_template(
         run_dir,
@@ -357,6 +367,7 @@ def test_real_latex_cumcm_template_compiles_and_verifies_receipt(
 ) -> None:
     """真实 LaTeX 工具链必须能编译 CUMCM 动态问题模板并复验回执。"""
     _set_engines(monkeypatch, latex=True, typst=False)
+    _isolate_compiler_receipt(monkeypatch)
     run_dir = _new_run(tmp_path, "real-latex-cumcm", questions=["Q1", "Q2"])
     select_paper_template(
         run_dir,
@@ -393,6 +404,7 @@ def test_compile_receipt_binds_manifest_and_pdf(
 ) -> None:
     """模板清单和最终 PDF 任何一个变化都必须撤销编译回执。"""
     _set_engines(monkeypatch, latex=False, typst=True)
+    _isolate_compiler_receipt(monkeypatch)
     run_dir = _new_run(tmp_path, f"compile-{tamper_target}")
     select_paper_template(
         run_dir,

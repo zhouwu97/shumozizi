@@ -18,9 +18,9 @@ from .references import (
     writing_reference_cards,
 )
 from .sufficiency import (
-    assess_paper_sufficiency,
+    assess_paper_structure_signals,
     build_content_blueprint,
-    run_paper_sufficiency_check,
+    run_paper_structure_signal_check,
     verify_content_blueprint,
 )
 
@@ -34,9 +34,9 @@ __all__ = [
     "build_contribution_ledger",
     "require_math_innovation_allowed",
     "verify_contribution_ledger",
-    "assess_paper_sufficiency",
+    "assess_paper_structure_signals",
     "build_content_blueprint",
-    "run_paper_sufficiency_check",
+    "run_paper_structure_signal_check",
     "verify_content_blueprint",
     "verify_figure_receipts",
     "verify_paper_build_receipt",

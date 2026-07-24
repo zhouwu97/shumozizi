@@ -27,6 +27,11 @@
       "items": {"type": "string", "minLength": 1}
     },
     "data_processing_applicable": {"type": "boolean"},
+    "source_code_appendix": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/source_file"}
+    },
     "sections": {
       "type": "array",
       "minItems": 1,
@@ -35,6 +40,17 @@
     "generated_at": {"type": "string", "format": "date-time"}
   },
   "$defs": {
+    "source_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_path", "appendix_path", "sha256", "source_text"],
+      "properties": {
+        "source_path": {"type": "string", "pattern": "^code/.+\\.(py|m)$"},
+        "appendix_path": {"type": "string", "pattern": "^paper/source_appendix/.+\\.(py|m)$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_text": {"type": "string", "minLength": 1}
+      }
+    },
     "section": {
       "type": "object",
       "additionalProperties": false,
@@ -62,7 +78,40 @@
           "uniqueItems": true,
           "items": {"type": "string", "minLength": 1}
         },
+        "argument_contract": {
+          "$ref": "#/$defs/argument_contract"
+        },
         "blocked_reason": {"type": "string", "minLength": 2}
+      }
+    },
+    "argument_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chosen_objective",
+        "model_choice_rationale",
+        "core_proof_obligations",
+        "production_result_refs",
+        "comparison_route",
+        "evidence_interpretation",
+        "unproved_boundary",
+        "direct_answer"
+      ],
+      "properties": {
+        "chosen_objective": {"type": "string", "minLength": 10},
+        "model_choice_rationale": {"type": "string", "minLength": 10},
+        "core_proof_obligations": {
+          "type": "array", "minItems": 1,
+          "items": {"type": "string", "minLength": 3}
+        },
+        "production_result_refs": {
+          "type": "array", "minItems": 0, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
+        },
+        "comparison_route": {"type": "string", "minLength": 10},
+        "evidence_interpretation": {"type": "string", "minLength": 10},
+        "unproved_boundary": {"type": "string", "minLength": 10},
+        "direct_answer": {"type": "string", "minLength": 10}
       }
     }
   }

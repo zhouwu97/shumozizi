@@ -1,0 +1,34 @@
+# 关键主张账本（通用模板）
+#
+# 每问只登记 1-3 个核心主张和 0-5 个辅助主张。
+# 不登记每个坐标、每个输入常量、每个脚本输出。
+#
+# 格式：
+#   claim_id: 唯一标识符
+#   statement: 一句话描述该主张
+#   evidence_needed: 需要的证据类型列表
+#     - exact_recompute: 独立 exact 重算
+#     - deletion_ablation: 逐动作删除消融
+#     - alternative_formula: 不同公式独立验证
+#     - multiseed_benchmark: 多种子同预算对比
+#     - baseline_comparison: 与简单 baseline 对比
+#     - interval_union_check: 时间区间并集验证
+#     - sensitivity_analysis: 敏感度分析
+#     - independent_matlab: 独立 MATLAB 验证
+#     - continuous_geometry: 连续几何边界证明
+#     - action_challenge: 动作数/动作空间挑战
+#   blocking_if_fails: 如果该证据不成立，是否阻断 paper_allowed (true/false)
+
+questions:
+  # 由 mathmodel-solve 在实际运行时填充，不要直接复制示例文件
+  <QUESTION_ID>:
+    primary_claims:
+      - claim_id: "<ID>"
+        statement: "<一句话主张>"
+        evidence_needed: []
+        blocking_if_fails: true
+
+# 烟幕题(CUMCM 2025A)的完整示例见:
+# examples/cumcm2025A/critical-claims.example.yaml
+# ⚠ 该示例含旧运行的具体数值和主张，仅作为失败回归参考，
+# 不得自动复制到新运行目录。

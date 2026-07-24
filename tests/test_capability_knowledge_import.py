@@ -66,6 +66,7 @@ def test_import_keeps_explicit_production_capabilities_and_review_boundary() -> 
         "mathmodel-optimizer-benchmark",
         "mathmodel-paper",
         "mathmodel-red-team",
+        "mathmodel-research-writing",
         "mathmodel-solve",
         "mathmodel-visual",
         "mathmodel-workflow",

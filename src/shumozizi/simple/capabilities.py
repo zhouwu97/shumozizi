@@ -6,6 +6,7 @@ import hashlib
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -23,8 +24,8 @@ KNOWLEDGE_CONSUMPTION_PATH = Path("state/knowledge-consumption.json")
 _ORACLE_FAMILIES = {"geometry_kinematics", "mechanism_dynamics"}
 _SUPPORTED_ENGINES = ("python", "matlab", "octave")
 _ENGINE_SUFFIXES = {"python": ".py", "matlab": ".m", "octave": ".m"}
-_PROBE_TIMEOUT_SECONDS = 12
-_PROBE_CACHE: dict[tuple[str, ...], dict[str, Any]] = {}
+_PROBE_TIMEOUT_SECONDS = {"python": 12, "octave": 20, "matlab": 60}
+_PROBE_CACHE: dict[tuple[int, str, ...], dict[str, Any]] = {}
 _CURRENT_ROUTE_SCHEMA_VERSION = "1.2"
 _ALLOWED_SHARED_ORACLE_UTILITIES = {
     "code/shared/__init__.py",
@@ -63,51 +64,44 @@ def _digest_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
 
 
-def _run_probe(command: list[str]) -> dict[str, Any]:
+def _run_probe(command: list[str], *, timeout_seconds: int) -> dict[str, Any]:
     """运行受控工具探测，并把失败显式保留为不可用状态。"""
-    cache_key = tuple(command)
+    cache_key = (timeout_seconds, *command)
     cached = _PROBE_CACHE.get(cache_key)
     if cached is not None:
         return dict(cached)
-    try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=_PROBE_TIMEOUT_SECONDS,
-            check=False,
-        )
-        stdout, stderr = completed.stdout, completed.stderr
-        result = {
-            "command": command,
-            "exit_code": completed.returncode,
-            "timed_out": False,
-            "stdout_sha256": _digest_text(stdout),
-            "stderr_sha256": _digest_text(stderr),
-            "summary": (stdout or stderr).strip()[:500],
-        }
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        timed_out = isinstance(exc, subprocess.TimeoutExpired)
-        stdout = (
-            exc.stdout.decode("utf-8", errors="replace")
-            if isinstance(getattr(exc, "stdout", None), bytes)
-            else (getattr(exc, "stdout", None) or "")
-        )
-        stderr = (
-            exc.stderr.decode("utf-8", errors="replace")
-            if isinstance(getattr(exc, "stderr", None), bytes)
-            else (getattr(exc, "stderr", None) or str(exc))
-        )
-        result = {
-            "command": command,
-            "exit_code": None,
-            "timed_out": timed_out,
-            "stdout_sha256": _digest_text(stdout),
-            "stderr_sha256": _digest_text(stderr),
-            "summary": stderr.strip()[:500],
-        }
+    # MATLAB 等启动器会生成继承标准句柄的子进程。Windows 上若使用 PIPE，
+    # 父进程超时退出后读取线程仍可能等待子进程关闭句柄，因此用临时文件承载输出。
+    with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+        try:
+            completed = subprocess.run(
+                command,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                timeout=timeout_seconds,
+                check=False,
+            )
+            exit_code = completed.returncode
+            timed_out = False
+            failure_detail = ""
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            exit_code = None
+            timed_out = isinstance(exc, subprocess.TimeoutExpired)
+            failure_detail = str(exc)
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        stdout = stdout_file.read().decode("utf-8", errors="replace")
+        stderr = stderr_file.read().decode("utf-8", errors="replace")
+    if failure_detail and not stderr:
+        stderr = failure_detail
+    result = {
+        "command": command,
+        "exit_code": exit_code,
+        "timed_out": timed_out,
+        "stdout_sha256": _digest_text(stdout),
+        "stderr_sha256": _digest_text(stderr),
+        "summary": (stdout or stderr).strip()[:500],
+    }
     _PROBE_CACHE[cache_key] = dict(result)
     return result
 
@@ -117,7 +111,11 @@ def _engine_probe_command(engine: str, command: str) -> list[str]:
     if engine == "python":
         return [command, "--version"]
     if engine == "matlab":
-        return [command, "-batch", "disp(version)"]
+        return [
+            command,
+            "-batch",
+            "disp(version); assert(exist('fmincon','file') || exist('fmincon','builtin')); disp('fmincon available')",
+        ]
     if engine == "octave":
         return [command, "--quiet", "--no-gui", "--eval", "disp(version)"]
     raise ContractError(f"不支持的工具引擎: {engine}")
@@ -149,7 +147,10 @@ def detect_local_tooling() -> dict[str, Any]:
                 }
             )
             continue
-        probe = _run_probe(_engine_probe_command(engine, command))
+        probe = _run_probe(
+            _engine_probe_command(engine, command),
+            timeout_seconds=_PROBE_TIMEOUT_SECONDS[engine],
+        )
         engines.append(
             {
                 "engine": engine,

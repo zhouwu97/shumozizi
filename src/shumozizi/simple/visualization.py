@@ -21,12 +21,15 @@ from shumozizi.core.io import (
 )
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.capabilities import require_capability_route
+from shumozizi.simple.critical_claims import read_critical_claims
 from shumozizi.simple.quality import quality_allows_paper
+from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state, utc_now
 from tools.qa.figqa import audit_figure
 
 PLAN_PATH = Path("state/visualization-plan.json")
-_CURRENT_VISUALIZATION_SCHEMA_VERSION = "1.3"
+_CURRENT_VISUALIZATION_SCHEMA_VERSION = "1.4"
+_RECEIPT_VISUALIZATION_SCHEMA_VERSIONS = {"1.3", "1.4"}
 _FIGURE_RECEIPTS_DIRECTORY = Path("figures/receipts")
 _SAFE_FIGURE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _RENDER_ENGINES = {"python", "matlab", "octave"}
@@ -414,6 +417,9 @@ def _verify_render_receipt(run_dir: Path, contract: dict[str, Any]) -> None:
         output_relative = relative_inside(run_dir, output).as_posix()
         if not output_relative.startswith("figures/") or output_relative.startswith("figures/receipts/"):
             raise ContractError("图表渲染输出位于 figures/ 目录外")
+        figure_stage = contract.get("figure_stage")
+        if figure_stage and not output_relative.startswith(f"figures/{figure_stage}/"):
+            raise ContractError(f"{figure_stage} 图输出必须位于 figures/{figure_stage}/")
         if output.suffix.casefold() == ".png":
             png_seen = True
             audit = audit_figure(output)
@@ -450,12 +456,12 @@ def _freeze_complete_contract(
     run_dir: Path, contract: dict[str, Any], *, schema_version: str
 ) -> None:
     """在写入时冻结完成图的输入、脚本和输出，阻止手填过期哈希。"""
-    if schema_version == _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+    if schema_version in _RECEIPT_VISUALIZATION_SCHEMA_VERSIONS:
         _freeze_current_complete_contract(run_dir, contract)
         return
     outputs = contract.get("outputs", [])
     if contract["status"] != "complete":
-        if schema_version == _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+        if schema_version in _RECEIPT_VISUALIZATION_SCHEMA_VERSIONS:
             supplied = sorted(_LEAN_COMPLETION_FIELDS & set(contract))
             if supplied:
                 raise ContractError(
@@ -503,7 +509,7 @@ def _require_frozen_complete_contract(
     run_dir: Path, contract: dict[str, Any], *, schema_version: str
 ) -> None:
     """复验完成图的输入、脚本与输出仍对应登记时的同一份证据。"""
-    if schema_version == _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+    if schema_version in _RECEIPT_VISUALIZATION_SCHEMA_VERSIONS:
         if contract["status"] == "complete":
             _verify_render_receipt(run_dir, contract)
         return
@@ -556,7 +562,7 @@ def _require_lean_contract(contract: dict[str, Any], *, schema_version: str) -> 
         "replacement_for",
     }
     supplied = sorted(legacy_narrative & set(contract))
-    if schema_version == _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+    if schema_version in _RECEIPT_VISUALIZATION_SCHEMA_VERSIONS:
         supplied.extend(sorted(_LEAN_COMPLETION_FIELDS & set(contract)))
     if supplied:
         raise ContractError(
@@ -578,19 +584,72 @@ def _require_semantics(run_dir: Path, payload: dict[str, Any], *, final: bool) -
     if len(figure_ids) != len(set(figure_ids)):
         raise ContractError("图表叙事计划存在重复 figure_id")
     role_to_contracts: dict[str, list[dict[str, Any]]] = {}
+    current_results = {
+        item["result_id"]: item
+        for item in read_result_index(run_dir)["results"]
+        if item.get("status") == "current" and item.get("execution_valid") is True
+    }
+    paper_result_ids = {
+        result_id
+        for contract in contracts
+        for result_id in (
+            contract.get("source_result_ids", [])
+            if contract.get("figure_stage") == "publication"
+            else contract.get("result_ids", [])
+            if contract.get("evidence_scope") == "production_result"
+            else []
+        )
+    }
+    paper_eligibility = {
+        result_id: quality_allows_paper(run_dir, result_id)
+        for result_id in paper_result_ids
+    }
+    critical_claims = None
+    if payload["schema_version"] == _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+        claims_path = run_dir / "analysis" / "critical_claims.json"
+        if claims_path.is_file():
+            critical_claims = {
+                item["claim_id"]: item
+                for item in read_critical_claims(run_dir).get("claims", [])
+            }
     for contract in contracts:
-        if payload["schema_version"] in {"1.2", _CURRENT_VISUALIZATION_SCHEMA_VERSION}:
+        if payload["schema_version"] in {"1.2", *(_RECEIPT_VISUALIZATION_SCHEMA_VERSIONS)}:
             _require_lean_contract(contract, schema_version=payload["schema_version"])
         if payload["schema_version"] == "1.0":
             role_to_contracts.setdefault(contract["role"], []).append(contract)
         _require_frozen_complete_contract(
             run_dir, contract, schema_version=payload["schema_version"]
         )
+        if payload["schema_version"] == _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+            question_id = contract["question_id"]
+            result_ids = contract["source_result_ids"]
+            for result_id in result_ids:
+                result = current_results.get(result_id)
+                if result is None:
+                    raise ContractError(f"图示引用了非 current 结果: {result_id}")
+                if result.get("question_id") != question_id and not (
+                    result.get("dependency_scope") in {"shared", "global"}
+                    and question_id in result.get("affected_question_ids", [])
+                ):
+                    raise ContractError(f"图示 {contract['figure_id']} 不能跨问题引用 {result_id}")
+                if contract["figure_stage"] == "publication" and not paper_eligibility.get(
+                    result_id, False
+                ):
+                    raise ContractError(f"publication 图引用了未放行结果: {result_id}")
+            if contract["figure_stage"] == "publication":
+                if critical_claims is None:
+                    raise ContractError("publication 图缺少当前 critical_claims")
+                for claim_id in contract["claim_ids"]:
+                    claim = critical_claims.get(claim_id)
+                    if claim is None or claim.get("question_id") != question_id:
+                        raise ContractError(
+                            f"publication 图绑定了不存在或跨问题的主张: {claim_id}"
+                        )
         requires_artifacts = (
-            payload["schema_version"] != _CURRENT_VISUALIZATION_SCHEMA_VERSION
+            payload["schema_version"] not in _RECEIPT_VISUALIZATION_SCHEMA_VERSIONS
             or contract["status"] == "complete"
         )
-        if requires_artifacts and payload["schema_version"] != _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+        if requires_artifacts and payload["schema_version"] not in _RECEIPT_VISUALIZATION_SCHEMA_VERSIONS:
             for source in contract["source_paths"]:
                 source_path = resolve_inside(run_dir, source, must_exist=True)
                 if not source_path.is_file():
@@ -602,7 +661,11 @@ def _require_semantics(run_dir: Path, payload: dict[str, Any], *, final: bool) -
                 result_ids = contract.get("result_ids", [])
                 if not result_ids:
                     raise ContractError("production_result 图示必须声明 result_ids")
-                unavailable = [result_id for result_id in result_ids if not quality_allows_paper(run_dir, result_id)]
+                unavailable = [
+                    result_id
+                    for result_id in result_ids
+                    if not paper_eligibility.get(result_id, False)
+                ]
                 if unavailable:
                     raise ContractError("图示引用了未放行生产结果: " + ", ".join(unavailable))
             elif contract.get("result_ids"):
@@ -624,11 +687,11 @@ def _require_semantics(run_dir: Path, payload: dict[str, Any], *, final: bool) -
             ):
                 raise ContractError("豁免图示的替代图未覆盖相同证据问题")
         if (
-            payload["schema_version"] in {"1.1", "1.2", _CURRENT_VISUALIZATION_SCHEMA_VERSION}
+            payload["schema_version"] in {"1.1", "1.2", *(_RECEIPT_VISUALIZATION_SCHEMA_VERSIONS)}
             and contract["status"] == "complete"
         ):
             mode = set(contract["evidence_modes"])
-            if payload["schema_version"] == _CURRENT_VISUALIZATION_SCHEMA_VERSION:
+            if payload["schema_version"] in _RECEIPT_VISUALIZATION_SCHEMA_VERSIONS:
                 _, receipt = _read_render_receipt(
                     run_dir, contract, require_frozen_hash=True
                 )
@@ -710,7 +773,11 @@ def read_visualization_plan(run_dir: Path) -> dict[str, Any]:
 
 def require_visualization_complete(run_dir: Path) -> dict[str, Any]:
     """确保写论文前所有题型必需的视觉证据都已完成。"""
-    payload = read_visualization_plan(run_dir)
+    plan_path = run_dir / PLAN_PATH
+    if not plan_path.is_file():
+        raise ContractError("缺少图表叙事计划 state/visualization-plan.json")
+    payload = load_json(plan_path)
+    _require_schema(payload)
     _require_semantics(run_dir, payload, final=True)
     return payload
 

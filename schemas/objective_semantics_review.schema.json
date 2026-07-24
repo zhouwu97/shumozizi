@@ -12,19 +12,29 @@
     "highest_severity",
     "packet",
     "assessment",
+    "selected_objectives_sha256",
+    "question_bindings",
     "report",
     "reviewer",
     "reviewed_at"
   ],
   "properties": {
     "schema_name": {"const": "objective_semantics_review"},
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"enum": ["1.0", "1.1"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "verdict": {"enum": ["pass", "fail", "needs_rework", "revoked"]},
     "highest_severity": {"enum": ["none", "P0", "P1", "P2", "P3"]},
     "packet": {"$ref": "#/$defs/fileBinding"},
     "assessment": {"$ref": "#/$defs/fileBinding"},
+    "ambiguity_decisions": {"$ref": "#/$defs/fileBinding"},
+    "selected_objectives_sha256": {"$ref": "#/$defs/sha"},
+    "question_bindings": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/sha"}
+    },
     "report": {"$ref": "#/$defs/fileBinding"},
+    "task_receipt": {"$ref": "#/$defs/taskBinding"},
     "reviewer": {
       "type": "object",
       "additionalProperties": false,
@@ -33,6 +43,12 @@
     },
     "reviewed_at": {"type": "string", "format": "date-time"}
   },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}},
+      "then": {"required": ["task_receipt"]}
+    }
+  ],
   "$defs": {
     "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "fileBinding": {
@@ -42,6 +58,16 @@
       "properties": {
         "file": {"type": "string", "minLength": 1},
         "sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "taskBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256", "task_id"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha"},
+        "task_id": {"type": "string", "minLength": 1}
       }
     }
   }

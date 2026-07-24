@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -66,12 +67,39 @@ def _claim_value(run_dir: Path, claim: dict[str, Any]) -> tuple[Any, str]:
     return value, unit
 
 
+def _validate_precision_policy(evidence_map: dict[str, Any]) -> None:
+    """阻止展示精度超过模型、离散化和独立复算共同支持的精度。"""
+    if evidence_map["schema_version"] == "2.0":
+        return
+    policy = evidence_map["precision_policy"]
+    component_errors = (
+        policy["model_error"],
+        policy["discretization_error"],
+        policy["independent_validation_difference"],
+    )
+    uncertainty = policy["combined_uncertainty"]
+    if uncertainty < max(component_errors):
+        raise ContractError("combined_uncertainty 不能小于任一模型、离散化或独立复算误差")
+    for claim in evidence_map["claims"]:
+        scaled_uncertainty = uncertainty * abs(claim["display"].get("scale", 1))
+        if scaled_uncertainty == 0:
+            continue
+        maximum_decimals = max(0, math.ceil(-math.log10(scaled_uncertainty)))
+        requested = claim["display"]["decimals"]
+        if requested > maximum_decimals:
+            raise ContractError(
+                f"{claim['claim_id']} 请求 {requested} 位小数，但综合不确定度 "
+                f"{scaled_uncertainty:g} 最多支持 {maximum_decimals} 位"
+            )
+
+
 def generate_paper_evidence(run_dir: Path) -> dict[str, str]:
     """生成论文唯一允许调用的 Typst evidence macro 数据。"""
     evidence_map = load_json(run_dir / "paper" / "evidence_map.json")
     require_valid(evidence_map, "evidence_map")
     if evidence_map["run_id"] != run_dir.name:
         raise ContractError("evidence_map.run_id 与运行目录不一致")
+    _validate_precision_policy(evidence_map)
     rendered: dict[str, str] = {}
     for claim in evidence_map["claims"]:
         value, unit = _claim_value(run_dir, claim)

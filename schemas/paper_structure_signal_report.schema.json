@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_structure_signal_report.schema.json",
+  "title": "Paper Structure And Minimum Content Signal Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "status", "mechanical_gate_passed", "assesses_mathematical_correctness", "assesses_argument_quality", "independent_pdf_review_required", "page_count", "densities", "section_coverage", "question_coverage", "missing_required_signals", "evidence_blockers", "warnings", "generated_at"],
+  "properties": {
+    "schema_name": {"const": "paper_structure_signal_report"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["signals_present", "missing_required_signals"]},
+    "mechanical_gate_passed": {"type": "boolean"},
+    "assesses_mathematical_correctness": {"const": false},
+    "assesses_argument_quality": {"const": false},
+    "independent_pdf_review_required": {"const": true},
+    "page_count": {"type": "integer", "minimum": 0},
+    "densities": {"$ref": "#/$defs/densities"},
+    "section_coverage": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/sectionCoverage"}
+    },
+    "question_coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_id", "heading_detected", "elements", "content_signals", "structure_signals_complete"],
+        "properties": {
+          "question_id": {"type": "string", "minLength": 1},
+          "heading_detected": {"type": "boolean"},
+          "elements": {"type": "object", "additionalProperties": {"type": "boolean"}},
+          "content_signals": {"$ref": "#/$defs/contentSignals"},
+          "structure_signals_complete": {"type": "boolean"}
+        }
+      }
+    },
+    "missing_required_signals": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "evidence_blockers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "warnings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "signals_present"}}},
+      "then": {
+        "properties": {
+          "mechanical_gate_passed": {"const": true},
+          "missing_required_signals": {"maxItems": 0},
+          "evidence_blockers": {"maxItems": 0}
+        }
+      },
+      "else": {
+        "properties": {"mechanical_gate_passed": {"const": false}},
+        "anyOf": [
+          {"properties": {"missing_required_signals": {"minItems": 1}}},
+          {"properties": {"evidence_blockers": {"minItems": 1}}}
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "densities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text_characters", "formulas", "figures", "tables", "citations", "formulas_per_page", "figures_per_page", "tables_per_page", "citations_per_page"],
+      "properties": {
+        "text_characters": {"type": "integer", "minimum": 0},
+        "formulas": {"type": "integer", "minimum": 0},
+        "figures": {"type": "integer", "minimum": 0},
+        "tables": {"type": "integer", "minimum": 0},
+        "citations": {"type": "integer", "minimum": 0},
+        "formulas_per_page": {"type": "number", "minimum": 0},
+        "figures_per_page": {"type": "number", "minimum": 0},
+        "tables_per_page": {"type": "number", "minimum": 0},
+        "citations_per_page": {"type": "number", "minimum": 0}
+      }
+    },
+    "sectionCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section_id", "required", "draft_allowed", "detected", "missing_elements"],
+      "properties": {
+        "section_id": {"type": "string", "minLength": 1},
+        "required": {"type": "boolean"},
+        "draft_allowed": {"type": "boolean"},
+        "detected": {"type": "boolean"},
+        "missing_elements": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "contentSignals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text_characters", "sentence_count", "minimum_body_signal", "technical_content_signal", "explanation_marker_present"],
+      "properties": {
+        "text_characters": {"type": "integer", "minimum": 0},
+        "sentence_count": {"type": "integer", "minimum": 0},
+        "minimum_body_signal": {"type": "boolean"},
+        "technical_content_signal": {"type": "boolean"},
+        "explanation_marker_present": {"type": "boolean"}
+      }
+    }
+  }
+}

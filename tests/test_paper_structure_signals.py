@@ -1,11 +1,16 @@
-"""验证论文内容充分性蓝图和 PDF 异常短文检查。"""
+"""验证论文内容蓝图和 PDF 结构信号检查的能力边界。"""
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 from shumozizi.core.io import atomic_json
-from shumozizi.paper.sufficiency import assess_paper_sufficiency, build_content_blueprint
+from shumozizi.core.schema import validate_document
+from shumozizi.paper.sufficiency import (
+    assess_paper_structure_signals,
+    build_content_blueprint,
+)
 
 
 def _write_production_state(run_dir: Path, questions: list[str]) -> None:
@@ -20,7 +25,7 @@ def _write_production_state(run_dir: Path, questions: list[str]) -> None:
             "execution_mode": "production",
             "revision": 3,
             "competition": "synthetic",
-            "problem_id": "paper-sufficiency",
+            "problem_id": "paper-structure-signals",
             "required_questions": questions,
             "current_question": questions[-1],
             "completed_questions": questions,
@@ -118,7 +123,7 @@ def _blueprint(question_ids: list[str]) -> dict:
 
 def test_five_question_paper_with_only_abstract_and_results_table_is_blocked() -> None:
     """摘要和结果表不能替代五个必答问题的直接回答与验证。"""
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(["Q1", "Q2", "Q3", "Q4", "Q5"]),
         pdf_text="""
         摘要
@@ -128,8 +133,9 @@ def test_five_question_paper_with_only_abstract_and_results_table_is_blocked() -
         page_count=1,
     )
 
-    assert report["status"] == "blocked"
-    assert any("question:Q1" in item for item in report["hard_failures"])
+    assert report["status"] == "missing_required_signals"
+    assert not report["mechanical_gate_passed"]
+    assert any("question:Q1" in item for item in report["missing_required_signals"])
     assert any("异常短" in item for item in report["warnings"])
 
 
@@ -146,7 +152,7 @@ def test_complete_short_paper_is_not_blocked_by_page_count_alone() -> None:
         )
         for number in range(1, 6)
     )
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(["Q1", "Q2", "Q3", "Q4", "Q5"]),
         pdf_text=f"""
         摘要
@@ -160,9 +166,13 @@ def test_complete_short_paper_is_not_blocked_by_page_count_alone() -> None:
         page_count=1,
     )
 
-    assert report["status"] == "pass"
+    assert report["status"] == "signals_present"
+    assert report["mechanical_gate_passed"]
     assert report["page_count"] == 1
-    assert not report["hard_failures"]
+    assert not report["missing_required_signals"]
+    assert report["assesses_mathematical_correctness"] is False
+    assert report["assesses_argument_quality"] is False
+    assert report["independent_pdf_review_required"] is True
 
 
 def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None:
@@ -181,7 +191,7 @@ def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None
         )
         for question_id in question_ids
     )
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(question_ids),
         pdf_text=f"""
         摘要
@@ -197,13 +207,13 @@ def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None
         page_count=2,
     )
 
-    assert report["status"] == "pass"
-    assert all(item["complete"] for item in report["question_coverage"])
+    assert report["status"] == "signals_present"
+    assert all(item["structure_signals_complete"] for item in report["question_coverage"])
 
 
 def test_question_labels_without_argument_are_blocked() -> None:
     """标题、标签和结论口号齐全也不能替代逐问论证。"""
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(["Q1"]),
         pdf_text="""
         摘要
@@ -219,10 +229,10 @@ def test_question_labels_without_argument_are_blocked() -> None:
     )
 
     coverage = report["question_coverage"][0]
-    assert report["status"] == "blocked"
-    assert not coverage["argumentation"]["substantive_body"]
-    assert not coverage["argumentation"]["derivation_or_quantitative_evidence"]
-    assert not coverage["argumentation"]["explanation_present"]
+    assert report["status"] == "missing_required_signals"
+    assert not coverage["content_signals"]["minimum_body_signal"]
+    assert not coverage["content_signals"]["technical_content_signal"]
+    assert not coverage["content_signals"]["explanation_marker_present"]
 
 
 def test_question_section_needs_its_own_current_production_result(
@@ -256,3 +266,90 @@ def test_question_section_needs_its_own_current_production_result(
 
     assert not q1["draft_allowed"]
     assert "本问" in q1["blocked_reason"]
+
+
+def test_blueprint_materializes_full_python_and_matlab_source(tmp_path: Path, monkeypatch) -> None:
+    """论文蓝图必须冻结实际源码文本副本，而不是只登记路径。"""
+    run_dir = tmp_path / "source-appendix"
+    _write_production_state(run_dir, ["Q1"])
+    (run_dir / "code").mkdir(parents=True)
+    (run_dir / "code" / "solve.py").write_text("print('solve')\n", encoding="utf-8")
+    (run_dir / "code" / "proof.m").write_text("disp('proof');\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.quality_allows_paper",
+        lambda _run_dir, result_id: result_id == "Q1-R1",
+    )
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.read_result_index",
+        lambda _run_dir: {"results": [{"result_id": "Q1-R1", "question_id": "Q1"}]},
+    )
+
+    blueprint = build_content_blueprint(
+        run_dir,
+        evidence_by_question={"Q1": ["Q1-R1"]},
+    )
+
+    assert {item["source_path"] for item in blueprint["source_code_appendix"]} == {
+        "code/proof.m",
+        "code/solve.py",
+    }
+    for item in blueprint["source_code_appendix"]:
+        assert (run_dir / item["appendix_path"]).read_bytes() == (
+            run_dir / item["source_path"]
+        ).read_bytes()
+        assert item["source_text"] == (run_dir / item["source_path"]).read_text(encoding="utf-8")
+
+
+def test_keyword_stuffing_can_only_satisfy_mechanical_signals() -> None:
+    """关键词堆砌即使命中结构信号，也不能产生论证质量结论或跳过盲审。"""
+    report = assess_paper_structure_signals(
+        _blueprint(["Q1"]),
+        pdf_text="""
+        摘要
+        问题重述与假设
+        共享模型
+        Q1
+        直接答案：目标函数为 12.3 s。模型与算法、关键结果和验证与边界全部存在。
+        模型选择理由、证明义务、生产结果、基线、因此、表明、局限只是重复标签；
+        目标函数、模型选择理由、证明义务、生产结果、基线、因此、表明、局限继续重复。
+        这些词超过一百二十个字符并出现三个句子标记，但文本不保证任何数学结论正确。
+        全局稳健性：已说明。
+        结论
+        参考文献
+        """,
+        page_count=2,
+    )
+
+    assert report["status"] == "signals_present"
+    assert report["mechanical_gate_passed"] is True
+    assert report["assesses_mathematical_correctness"] is False
+    assert report["assesses_argument_quality"] is False
+    assert report["independent_pdf_review_required"] is True
+    assert "argument_quality_passed" not in report
+
+
+def test_structure_signal_schema_rejects_forged_gate_consistency() -> None:
+    """Schema 必须拒绝通过状态、门禁布尔值和阻断事实互相矛盾的报告。"""
+    report = assess_paper_structure_signals(
+        _blueprint(["Q1"]),
+        pdf_text="""
+        摘要 问题重述与假设 共享模型 Q1
+        直接答案：结果为 12.3 s。模型与算法采用精确评分。关键结果见表 1。
+        该结果用于当前问题，因此包含最低解释标记。验证与边界说明不能外推；
+        当前 production 结果还包含约束余量、单位和误差记录，用来确认这里不是空章节。
+        第二句话补足最低正文信号并重复说明当前结果仅适用于题面参数。
+        第三句话补足最低正文信号并明确不同参数仍然需要重新验证。
+        全局稳健性：已说明。结论 参考文献
+        """,
+        page_count=2,
+    )
+    assert not validate_document(report, "paper_structure_signal_report")
+    assert report["status"] == "signals_present"
+
+    forged_boolean = deepcopy(report)
+    forged_boolean["mechanical_gate_passed"] = False
+    assert validate_document(forged_boolean, "paper_structure_signal_report")
+
+    forged_blocker = deepcopy(report)
+    forged_blocker["evidence_blockers"] = ["当前证据已失效"]
+    assert validate_document(forged_blocker, "paper_structure_signal_report")

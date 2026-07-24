@@ -8,7 +8,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import ContractError, atomic_json, json_bytes, load_json, sha256_bytes
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.adapters import verify_verification_protocol
 from shumozizi.simple.results import read_result_index, require_result_index
@@ -103,12 +103,21 @@ def _result_mode(result: dict[str, Any]) -> str:
     return str(result.get("execution_mode", "production"))
 
 
+def _result_digest(result: dict[str, Any]) -> str:
+    """计算质量记录实际绑定的完整结果条目摘要。"""
+    return sha256_bytes(json_bytes(result))
+
+
 def _legacy_record(
     result: dict[str, Any], *, result_role: str, reasons: list[str]
 ) -> dict[str, Any]:
     """把没有独立收据的请求降级为不可放行诊断。"""
     return {
         "result_id": result["result_id"],
+        "result_sha256": _result_digest(result),
+        "objective_semantics_sha256": result.get(
+            "objective_semantics_sha256", "0" * 64
+        ),
         "execution_mode": _result_mode(result),
         "execution_valid": bool(result["execution_valid"]),
         "feasibility_valid": False,
@@ -243,11 +252,16 @@ def _accepted_record(
             run_dir, result_id=result_id, selection_contract=contract
         )
         validation_reasons.append(str(selection["decision"]))
+        # 候选注册会更新结果的 current/superseded 状态；质量记录必须绑定更新后的
+        # 最终条目，否则新写入的 result_sha256 会在创建瞬间失效。
+        result = _result_map(run_dir)[result_id]
     else:
         retain_verified_incumbents(run_dir, result_id)
     paper_allowed = bool(base_eligible and selection and selection["accepted"])
     return {
         "result_id": result_id,
+        "result_sha256": _result_digest(result),
+        "objective_semantics_sha256": result["objective_semantics_sha256"],
         "execution_mode": "production",
         "execution_valid": bool(result["execution_valid"]),
         "feasibility_valid": bool(verified["feasibility_valid"]),
@@ -370,6 +384,9 @@ def _quality_allows_local_facts(run_dir: Path, result_id: str) -> bool:
             and _result_mode(result) == "production"
             and result["execution_valid"]
             and assessment
+            and assessment["result_sha256"] == _result_digest(result)
+            and assessment["objective_semantics_sha256"]
+            == result.get("objective_semantics_sha256")
             and assessment["execution_mode"] == "production"
             and assessment["paper_allowed"]
             and assessment["result_role"] == "accepted"

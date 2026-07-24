@@ -25,6 +25,7 @@ from shumozizi.simple.capabilities import (
 )
 from shumozizi.simple.execution import execute_simple_experiment
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.quality import assess_result_quality
 from shumozizi.simple.state import read_simple_state, update_simple_state
 from shumozizi.simple.visualization import (
     new_visualization_plan,
@@ -32,7 +33,13 @@ from shumozizi.simple.visualization import (
     run_figure_render,
     write_visualization_plan,
 )
-from tests.quality_protocol_helpers import record_passing_scientific_review
+from tests.capability_flow_helpers import prepare_objective_semantics_review
+from tests.quality_protocol_helpers import (
+    _ensure_scientific_review_contracts,
+    adapter_backed_assessment,
+    record_passing_scientific_review,
+    run_synthetic_verification_protocol,
+)
 
 
 class CapabilityRoutingVisualizationTests(unittest.TestCase):
@@ -125,6 +132,11 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
     @staticmethod
     def _enter_experiment(run_dir: Path, families: list[str]) -> None:
         """登记受控路由并进入实验阶段。"""
+        problem = run_dir / "problem" / "statement.md"
+        if not problem.is_file():
+            problem.parent.mkdir(parents=True, exist_ok=True)
+            problem.write_text("最小测试题面要求回答 Q1 和 Q2。", encoding="utf-8")
+        prepare_objective_semantics_review(run_dir)
         update_simple_state(run_dir, phase="capability_route")
         write_local_tooling(run_dir)
         write_capability_route(run_dir, CapabilityRoutingVisualizationTests._route_payload(run_dir, families))
@@ -134,12 +146,26 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
     @staticmethod
     def _enter_visualization(run_dir: Path) -> None:
         """通过隔离科学审查后进入可视化阶段。"""
-        (run_dir / "problem" / "statement.md").write_text("最小题面", encoding="utf-8")
+        problem = run_dir / "problem" / "statement.md"
+        if not problem.is_file():
+            problem.write_text("最小测试题面要求回答 Q1 和 Q2。", encoding="utf-8")
         (run_dir / "code" / "solver.py").write_text("print('solver')\n", encoding="utf-8")
         (run_dir / "results" / "raw" / "candidate.json").write_text(
             json.dumps({"objective": 1.0}), encoding="utf-8"
         )
         CapabilityRoutingVisualizationTests._record_independent_oracle(run_dir)
+        for index, question_id in enumerate(["Q1", "Q2"], start=1):
+            protocol = run_synthetic_verification_protocol(
+                run_dir,
+                result_id=f"figure-q{index}",
+                question_id=question_id,
+                objective=float(index),
+            )
+            assess_result_quality(
+                run_dir,
+                result_id=f"figure-q{index}",
+                assessment=adapter_backed_assessment(protocol),
+            )
         record_passing_scientific_review(run_dir)
         update_simple_state(run_dir, phase="visualization")
 
@@ -158,7 +184,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         execute_simple_experiment(
             run_dir,
             result_id="oracle-production",
-            question_id="shared",
+            question_id="Q1",
             kind="primary",
             command=f'"{sys.executable}" code/production_solver.py',
             expected_outputs=["results/raw/production_solver.json"],
@@ -186,7 +212,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         execute_simple_experiment(
             run_dir,
             result_id="independent-oracle",
-            question_id="shared",
+            question_id="Q1",
             kind="independent-oracle",
             command=f'"{sys.executable}" code/independent_oracle.py',
             expected_outputs=["results/raw/independent_oracle.json"],
@@ -216,8 +242,9 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
             "method_roadmap",
         ]
         contracts: list[dict[str, object]] = []
+        result_ids = ["figure-q1"]
         for role in roles:
-            output = run_dir / "figures" / f"{role}.png"
+            output = run_dir / "figures" / "publication" / f"{role}.png"
             evidence_roles = {
                 "spatial_scene": ["model_structure"],
                 "geometric_boundary": ["model_structure"],
@@ -251,8 +278,13 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
             contracts.append(
                 {
                     "figure_id": role,
-                    "question_id": "shared",
+                    "question_id": "Q1",
+                    "claim_ids": ["fixture-1"],
+                    "figure_stage": "publication",
                     "scientific_question": f"{role} 对当前模型或求解结论提供什么证据。",
+                    "expected_takeaway": "读者可据此识别当前模型结构、搜索行为或证据边界。",
+                    "cannot_prove": "该图不能独立证明数学正确性、全局最优性或论证质量。",
+                    "source_result_ids": result_ids,
                     "conclusion_impact": "supporting",
                     "why_needed": "该图直接支撑当前题的模型边界或求解充分性判断。",
                     "evidence_roles": evidence_roles,
@@ -286,6 +318,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
             update_simple_state(run_dir, phase="scientific_review")
 
         self._record_independent_oracle(run_dir)
+        _ensure_scientific_review_contracts(run_dir)
         self.assertEqual(
             "scientific_review",
             update_simple_state(run_dir, phase="scientific_review")["phase"],
@@ -295,15 +328,39 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         """同一源码换为 oracle 标签不能伪造独立实现。"""
         run_dir = initialize_simple_run(self.root, "shared-oracle-source")
         self._enter_experiment(run_dir, ["geometry_kinematics"])
-        self._record_independent_oracle(run_dir)
+        script = run_dir / "code" / "shared_solver.py"
+        script.write_text(
+            "import json\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "payload = {'metrics': {'objective': 1.0}, 'oracle_semantics': {\n"
+            "    'schema_name': 'independent_oracle_semantics',\n"
+            "    'schema_version': '1.0',\n"
+            "    'formulation': 'quadratic_segment_sphere_intersection',\n"
+            "    'production_formulation': 'clipped_projection_distance',\n"
+            "    'boundary_cases': ['endpoint', 'tangent', 'degenerate'],\n"
+            "    'all_cases_compared': True,\n"
+            "}}\n"
+            "Path(sys.argv[1]).write_text(json.dumps(payload), encoding='utf-8')\n",
+            encoding="utf-8",
+        )
         execute_simple_experiment(
             run_dir,
             result_id="primary-shared-source",
-            question_id="shared",
+            question_id="Q1",
             kind="primary",
-            command=f'"{sys.executable}" code/independent_oracle.py',
-            expected_outputs=["results/raw/independent_oracle.json"],
-            metrics_from="results/raw/independent_oracle.json",
+            command=f'"{sys.executable}" code/shared_solver.py results/raw/shared-primary.json',
+            expected_outputs=["results/raw/shared-primary.json"],
+            metrics_from="results/raw/shared-primary.json",
+        )
+        execute_simple_experiment(
+            run_dir,
+            result_id="oracle-shared-source",
+            question_id="Q1",
+            kind="independent-oracle",
+            command=f'"{sys.executable}" code/shared_solver.py results/raw/shared-oracle.json',
+            expected_outputs=["results/raw/shared-oracle.json"],
+            metrics_from="results/raw/shared-oracle.json",
         )
 
         with self.assertRaisesRegex(ContractError, "未与生产求解复用"):
@@ -354,7 +411,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         production_result = execute_simple_experiment(
             run_dir,
             result_id="production",
-            question_id="shared",
+            question_id="Q1",
             kind="primary",
             command=f'"{sys.executable}" code/production.py',
             expected_outputs=["results/raw/production.json"],
@@ -363,7 +420,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         execute_simple_experiment(
             run_dir,
             result_id="oracle",
-            question_id="shared",
+            question_id="Q1",
             kind="independent-oracle",
             command=f'"{sys.executable}" code/oracle.py',
             expected_outputs=["results/raw/oracle.json"],
@@ -390,7 +447,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         execute_simple_experiment(
             run_dir,
             result_id="production",
-            question_id="shared",
+            question_id="Q1",
             kind="primary",
             command=f'"{sys.executable}" code/production.py',
             expected_outputs=["results/raw/production.json"],
@@ -418,7 +475,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
         execute_simple_experiment(
             run_dir,
             result_id="oracle",
-            question_id="shared",
+            question_id="Q1",
             kind="independent-oracle",
             command=f'"{sys.executable}" code/oracle.py',
             expected_outputs=["results/raw/oracle.json"],
@@ -550,6 +607,7 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
             required_questions=["Q1", "Q2"],
         )
         self._enter_experiment(run_dir, ["geometry_kinematics", "optimization"])
+        self._record_independent_oracle(run_dir)
         script = run_dir / "code" / "figures" / "non_image.py"
         script.parent.mkdir(parents=True, exist_ok=True)
         script.write_text(
@@ -565,16 +623,21 @@ class CapabilityRoutingVisualizationTests(unittest.TestCase):
             rendering_mode="3d",
             script_path="code/figures/non_image.py",
             input_paths=["state/DECISIONS.md"],
-            output_paths=["figures/invalid-image.png"],
-            arguments=["figures/invalid-image.png"],
+            output_paths=["figures/evidence/invalid-image.png"],
+            arguments=["figures/evidence/invalid-image.png"],
         )
         plan = new_visualization_plan(
             run_dir,
             [
                 {
                     "figure_id": "invalid-image",
-                    "question_id": "shared",
+                    "question_id": "Q1",
+                    "claim_ids": [],
+                    "figure_stage": "evidence",
                     "scientific_question": "图表文件是否确实可作为可读取的空间证据。",
+                    "expected_takeaway": "可读取的渲染文件至少能承载后续独立视觉检查。",
+                    "cannot_prove": "文件可读性不能证明图中数学对象或科学结论正确。",
+                    "source_result_ids": ["oracle-production"],
                     "conclusion_impact": "supporting",
                     "why_needed": "不可读取的图片不能承担模型边界说明。",
                     "evidence_roles": ["model_structure"],

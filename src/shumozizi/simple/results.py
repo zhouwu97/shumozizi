@@ -238,6 +238,9 @@ def register_result(
     execution_mode: str = "production",
     provisional: bool = False,
     error: str | None = None,
+    objective_semantics_sha256: str | None = None,
+    dependency_scope: str = "question",
+    affected_question_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """登记一次执行，不把执行成功误写成科学结论。
 
@@ -326,6 +329,19 @@ def register_result(
         "error": error,
         "created_at": utc_now(),
     }
+    if execution_mode == "production" and not objective_semantics_sha256:
+        raise ContractError("production 结果必须绑定 objective_semantics_sha256")
+    if dependency_scope not in {"question", "shared", "global"}:
+        raise ContractError("dependency_scope 必须为 question、shared 或 global")
+    affected = list(dict.fromkeys(affected_question_ids or [question_id]))
+    if question_id not in affected:
+        raise ContractError("affected_question_ids 必须包含结果所属 question_id")
+    if dependency_scope == "question" and affected != [question_id]:
+        raise ContractError("question 依赖范围只能影响结果所属问题")
+    if objective_semantics_sha256:
+        entry["objective_semantics_sha256"] = objective_semantics_sha256
+    entry["dependency_scope"] = dependency_scope
+    entry["affected_question_ids"] = affected
     if succeeded and execution_mode == "production" and not provisional:
         for existing in index["results"]:
             if (

@@ -99,6 +99,15 @@ class CapabilityFirstV3Tests(unittest.TestCase):
             expected_outputs=["results/raw/q1.json"],
             metrics_from="results/raw/q1.json",
         )
+        script.write_text(
+            "from pathlib import Path\n"
+            "import json\n"
+            "Path('results/raw/q1.json').write_text(\n"
+            "    json.dumps({'metrics': {'objective': 3.0}}),\n"
+            "    encoding='utf-8',\n"
+            ")\n",
+            encoding="utf-8",
+        )
         second = execute_simple_experiment(
             run_dir,
             result_id="q1_primary_b",
@@ -410,6 +419,7 @@ class CapabilityFirstV3Tests(unittest.TestCase):
                 "mathmodel-visual",
                 "mathmodel-matlab",
                 "mathmodel-paper",
+                "mathmodel-research-writing",
                 "mathmodel-red-team",
                 "mathmodel-final-check",
                 "mathmodel-learn-paper",
