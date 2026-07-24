@@ -87,9 +87,11 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["result_id", "execution_mode", "execution_valid", "feasibility_valid", "exact_recomputed", "search_adequacy", "problem_effectiveness", "result_role", "paper_allowed", "verification", "selection_contract", "reasons", "assessed_at"],
+            "required": ["result_id", "result_sha256", "objective_semantics_sha256", "execution_mode", "execution_valid", "feasibility_valid", "exact_recomputed", "search_adequacy", "problem_effectiveness", "result_role", "paper_allowed", "verification", "selection_contract", "reasons", "assessed_at"],
             "properties": {
               "result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+              "result_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "objective_semantics_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
               "execution_mode": {"enum": ["production", "exploration"]},
               "execution_valid": {"type": "boolean"},
               "feasibility_valid": {"type": "boolean"},

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import subprocess
 import time
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError, relative_inside, resolve_inside, sha256_file
+from shumozizi.simple.objective_semantics import objective_semantics_for_question
 from shumozizi.simple.results import json_path_value, register_result, safe_result_id
 from shumozizi.simple.source_closure import python_source_closure
 from shumozizi.simple.state import read_simple_state, utc_now
@@ -317,6 +317,9 @@ def execute_simple_experiment(
             execution_mode=str(state["execution_mode"]),
             provisional=provisional,
             error=error,
+            objective_semantics_sha256=objective_semantics_for_question(root, question_id),
+            dependency_scope="question",
+            affected_question_ids=[question_id],
         )
     except ContractError as exc:
         error = error or str(exc)

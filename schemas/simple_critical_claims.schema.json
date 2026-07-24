@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_critical_claims.schema.json",
+  "title": "Capability-First v3 Critical Claims",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "bindings", "claims", "generated_at"],
+  "properties": {
+    "schema_name": {"const": "simple_critical_claims"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method_profile_sha256", "objective_semantics_sha256", "result_index_sha256"],
+      "properties": {
+        "method_profile_sha256": {"$ref": "#/$defs/sha"},
+        "objective_semantics_sha256": {"$ref": "#/$defs/sha"},
+        "result_index_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/claim"}
+    },
+    "invalidated_claims": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "invalidation_reason": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "question_id", "statement", "claim_type", "importance", "result_ids", "evidence_needed", "blocking_if_fails"],
+      "properties": {
+        "claim_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "question_id": {"type": "string", "minLength": 1},
+        "statement": {"type": "string", "minLength": 8},
+        "claim_type": {
+          "enum": ["objective_semantics", "model_validity", "result_correctness", "global_optimality", "comparative_superiority", "robustness", "all_actions_material", "generalization", "mechanism_explanation", "parameter_insensitivity", "other"]
+        },
+        "custom_type": {"type": "string", "minLength": 1},
+        "importance": {"enum": ["primary", "supporting"]},
+        "result_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
+        },
+        "evidence_needed": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "blocking_if_fails": {"type": "boolean"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"claim_type": {"const": "other"}}},
+          "then": {"required": ["custom_type"]}
+        }
+      ]
+    }
+  }
+}

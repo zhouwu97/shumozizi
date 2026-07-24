@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/simple_method_profile.schema.json",
+  "title": "Capability-First v3 Method Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "bindings", "questions", "generated_at"],
+  "properties": {
+    "schema_name": {"const": "simple_method_profile"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability_route_sha256", "result_index_sha256", "objective_semantics_sha256"],
+      "properties": {
+        "capability_route_sha256": {"$ref": "#/$defs/sha"},
+        "result_index_sha256": {"$ref": "#/$defs/sha"},
+        "objective_semantics_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/question"}
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "declaredBoolean": {
+      "oneOf": [
+        {"type": "boolean"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "basis"],
+          "properties": {
+            "value": {"type": "boolean"},
+            "basis": {"const": "declared"},
+            "reason": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "solverProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stochastic": {"$ref": "#/$defs/declaredBoolean"},
+        "local_search": {"$ref": "#/$defs/declaredBoolean"},
+        "exhaustive": {"$ref": "#/$defs/declaredBoolean"},
+        "exact_within_declared_space": {"$ref": "#/$defs/declaredBoolean"},
+        "uses_proxy_objective": {"$ref": "#/$defs/declaredBoolean"},
+        "variable_dimension": {"$ref": "#/$defs/declaredBoolean"},
+        "discrete_decisions": {"$ref": "#/$defs/declaredBoolean"}
+      }
+    },
+    "dataProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "time_ordered": {"$ref": "#/$defs/declaredBoolean"},
+        "repeated_measurements": {"$ref": "#/$defs/declaredBoolean"},
+        "feature_selection_used": {"$ref": "#/$defs/declaredBoolean"},
+        "class_imbalance": {"$ref": "#/$defs/declaredBoolean"}
+      }
+    },
+    "mathematicalProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "continuous_geometry": {"$ref": "#/$defs/declaredBoolean"},
+        "finite_segment_logic": {"$ref": "#/$defs/declaredBoolean"},
+        "coordinate_transform": {"$ref": "#/$defs/declaredBoolean"},
+        "critical_event_detection": {"$ref": "#/$defs/declaredBoolean"},
+        "differential_equation": {"$ref": "#/$defs/declaredBoolean"},
+        "conservation_law": {"$ref": "#/$defs/declaredBoolean"},
+        "network_structure": {"$ref": "#/$defs/declaredBoolean"},
+        "ranking_weights": {"$ref": "#/$defs/declaredBoolean"}
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "model_families"],
+      "properties": {
+        "question_id": {"type": "string", "minLength": 1},
+        "model_families": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["linear_programming", "integer_programming", "dynamic_programming", "nonlinear_optimization", "heuristic_optimization", "statistical_prediction", "machine_learning", "time_series", "differential_equation", "simulation", "network_model", "ranking_evaluation", "geometry_kinematics", "analytical", "other"]
+          }
+        },
+        "other_model_family": {"type": "string", "minLength": 1},
+        "production_engine": {"enum": ["python", "matlab", "octave", "r", "julia", "other"]},
+        "solver_properties": {"$ref": "#/$defs/solverProperties"},
+        "data_properties": {"$ref": "#/$defs/dataProperties"},
+        "mathematical_properties": {"$ref": "#/$defs/mathematicalProperties"},
+        "independent_validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "strategy"],
+          "properties": {
+            "required": {"type": "boolean"},
+            "strategy": {"type": "string", "minLength": 1},
+            "preferred_engines": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"model_families": {"contains": {"const": "other"}}}},
+          "then": {"required": ["other_model_family"]}
+        }
+      ]
+    }
+  }
+}

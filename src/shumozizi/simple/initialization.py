@@ -16,10 +16,16 @@ SIMPLE_DIRECTORIES = (
     "reports",
     "code",
     "results/raw",
-    "figures",
+    "results/evidence",
+    "analysis",
+    "figures/evidence",
+    "figures/publication",
     "paper/sections",
     "paper/submission",
     "review/red_team_artifacts",
+    "review/coverage",
+    "review/tasks",
+    "review/followups",
     "review/packet/objective-semantics",
     "review/packet/scientific",
     "review/packet/paper-blind",
@@ -168,7 +174,7 @@ def initialize_simple_run(
     )
     atomic_json(
         run_dir / "figures" / "index.json",
-        {"schema_version": "1.0", "run_id": identifier, "figures": []},
+        {"schema_version": "1.1", "run_id": identifier, "figures": []},
     )
     (run_dir / "state" / "DECISIONS.md").write_text(
         "# 决策记录\n\n"

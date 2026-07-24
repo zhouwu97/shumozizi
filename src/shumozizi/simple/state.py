@@ -177,8 +177,12 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             require_objective_semantics_review(run_dir)
         if next_phase == "scientific_review":
             from shumozizi.simple.capabilities import require_independent_oracle_execution
+            from shumozizi.simple.critical_claims import require_critical_claims
+            from shumozizi.simple.method_profile import require_method_profile
 
             require_independent_oracle_execution(run_dir)
+            require_method_profile(run_dir)
+            require_critical_claims(run_dir)
         # 科学审查结论不写入运行状态，但状态机必须在交付边界消费其可重放摘要。
         if next_phase == "visualization":
             from shumozizi.simple.review import require_paper_generation_allowed

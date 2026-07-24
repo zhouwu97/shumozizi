@@ -41,6 +41,13 @@
           "status": {"enum": ["current", "superseded", "failed", "diagnostic"]},
           "execution_mode": {"enum": ["production", "exploration"]},
           "objective_semantics_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "dependency_scope": {"enum": ["question", "shared", "global"]},
+          "affected_question_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
           "execution_valid": {"type": "boolean"},
           "exit_code": {"type": "integer"},
           "stdout_path": {"type": "string", "minLength": 1},
@@ -50,7 +57,13 @@
           "duration_seconds": {"type": "number", "minimum": 0},
           "error": {"type": ["string", "null"]},
           "created_at": {"type": "string", "format": "date-time"}
-        }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"execution_mode": {"const": "production"}}, "required": ["execution_mode"]},
+            "then": {"required": ["objective_semantics_sha256", "dependency_scope", "affected_question_ids"]}
+          }
+        ]
       }
     }
   }
