@@ -12,16 +12,14 @@ from pypdf import PdfReader
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, relative_inside, sha256_file
 from shumozizi.core.schema import require_valid
-from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state, utc_now
-from shumozizi.simple.visualization import require_visualization_complete
 
 PAPER_CONTENT_BLUEPRINT_SCHEMA = "paper_content_blueprint"
-PAPER_SUFFICIENCY_REPORT_SCHEMA = "paper_sufficiency_report"
+PAPER_STRUCTURE_SIGNAL_REPORT_SCHEMA = "paper_structure_signal_report"
 PAPER_CONTENT_BLUEPRINT_PATH = Path("paper/content_blueprint.json")
-PAPER_SUFFICIENCY_REPORT_PATH = Path("qa/paper-sufficiency.json")
+PAPER_STRUCTURE_SIGNAL_REPORT_PATH = Path("qa/paper-structure-signals.json")
 
 ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
     "abstract": re.compile(r"摘要|\babstract\b", re.IGNORECASE),
@@ -71,12 +69,6 @@ ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
     "source_code_appendix": re.compile(
         r"源码附录|程序源码|完整源码|source\s*code\s*appendix", re.IGNORECASE
     ),
-    "matlab_proof_figure_explanation": re.compile(
-        r"(?=[\s\S]*(?:MATLAB|Octave))"
-        r"(?=[\s\S]*(?:图|figure)\s*\d+)"
-        r"(?=[\s\S]*(?:证明|验证|临界|边界|收敛|误差|proof|validation|critical|boundary|convergence|error))",
-        re.IGNORECASE,
-    ),
 }
 FIGURE_PATTERN = re.compile(r"(?:图|figure)\s*\d+", re.IGNORECASE)
 TABLE_PATTERN = re.compile(r"(?:表|table)\s*\d+", re.IGNORECASE)
@@ -95,20 +87,8 @@ QUANTITATIVE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SENTENCE_PATTERN = re.compile(r"[。！？；.!?;]")
-MIN_QUESTION_TEXT_CHARACTERS = 120
-MIN_QUESTION_SENTENCES = 3
-_HIGH_RISK_FAMILIES = {"geometry_kinematics", "optimization"}
-_MATLAB_ENGINES = {"matlab", "octave"}
-_GEOMETRY_EVIDENCE_MODES = {"spatial_3d", "orthographic_geometry", "planar_geometry"}
-_OPTIMIZATION_EVIDENCE_MODES = {
-    "heuristic_trace",
-    "proxy_calibration",
-    "local_landscape",
-    "bound_gap",
-    "residual_certificate",
-    "enumeration_coverage",
-    "analytic_derivation",
-}
+MINIMUM_BODY_SIGNAL_CHARACTERS = 120
+MINIMUM_BODY_SIGNAL_SENTENCES = 3
 
 
 def _run_output_path(run_dir: Path, path: Path | None, default: Path, label: str) -> Path:
@@ -204,116 +184,6 @@ def _materialize_source_code_appendix(run_dir: Path) -> list[dict[str, str]]:
     return bindings
 
 
-def _matlab_required_families(run_dir: Path) -> set[str]:
-    """返回当前路由中必须由 MATLAB/Octave 图证明的高风险题型。"""
-    if not (run_dir / "state" / "capability-route.json").is_file():
-        # 兼容仅测试论文文本结构的旧合成运行；正式 paper 阶段由状态机保证路由存在。
-        return set()
-    route = require_capability_route(run_dir)
-    toolchain = route["toolchain"]
-    selected_engines = {
-        toolchain.get("production_engine"),
-        toolchain.get("independent_engine"),
-    }
-    if not selected_engines.intersection(_MATLAB_ENGINES):
-        return set()
-    return set(route["problem_families"]).intersection(_HIGH_RISK_FAMILIES)
-
-
-def _proof_kinds(contract: Mapping[str, Any]) -> set[str]:
-    """根据 Figure Contract 的证据角色判断它承担哪类证明义务。"""
-    roles = set(contract.get("evidence_roles", []))
-    modes = set(contract.get("evidence_modes", []))
-    kinds: set[str] = set()
-    if "model_structure" in roles and modes.intersection(_GEOMETRY_EVIDENCE_MODES):
-        kinds.add("geometry")
-    if roles.intersection({"solver_process", "optimality_evidence"}) and modes.intersection(
-        _OPTIMIZATION_EVIDENCE_MODES
-    ):
-        kinds.add("optimization")
-    return kinds
-
-
-def _materialize_matlab_proof_figures(
-    run_dir: Path,
-    *,
-    required_questions: set[str],
-) -> list[dict[str, Any]]:
-    """冻结 MATLAB/Octave 证明图的脚本、PNG 与真实执行收据。"""
-    required_families = _matlab_required_families(run_dir)
-    if not required_families:
-        return []
-    plan = require_visualization_complete(run_dir)
-    bindings: list[dict[str, Any]] = []
-    covered: set[str] = set()
-    for contract in plan["contracts"]:
-        if contract.get("status") != "complete" or contract.get("question_id") not in required_questions:
-            continue
-        kinds = _proof_kinds(contract)
-        needed_kinds = kinds.intersection(
-            {"geometry" if item == "geometry_kinematics" else item for item in required_families}
-        )
-        if not needed_kinds:
-            continue
-        reference = contract.get("render_receipt")
-        if not isinstance(reference, Mapping):
-            continue
-        receipt_path_value = reference.get("path")
-        receipt_hash = reference.get("sha256")
-        if not isinstance(receipt_path_value, str) or not isinstance(receipt_hash, str):
-            continue
-        receipt_path = run_dir / receipt_path_value
-        if not receipt_path.is_file() or sha256_file(receipt_path) != receipt_hash:
-            continue
-        receipt = load_json(receipt_path)
-        if receipt.get("engine") not in _MATLAB_ENGINES:
-            continue
-        script = receipt.get("script", {})
-        script_path = script.get("path") if isinstance(script, Mapping) else None
-        script_hash = script.get("sha256") if isinstance(script, Mapping) else None
-        if (
-            not isinstance(script_path, str)
-            or not script_path.startswith("code/matlab/")
-            or not script_path.casefold().endswith(".m")
-            or not isinstance(script_hash, str)
-        ):
-            continue
-        outputs = [
-            item
-            for item in receipt.get("outputs", [])
-            if isinstance(item, Mapping)
-            and isinstance(item.get("path"), str)
-            and item["path"].casefold().endswith(".png")
-            and isinstance(item.get("sha256"), str)
-        ]
-        if not outputs:
-            continue
-        for kind in sorted(needed_kinds):
-            bindings.append(
-                {
-                    "proof_kind": kind,
-                    "figure_id": contract["figure_id"],
-                    "question_id": contract["question_id"],
-                    "scientific_question": contract["scientific_question"],
-                    "receipt_path": receipt_path_value,
-                    "receipt_sha256": receipt_hash,
-                    "script_path": script_path,
-                    "script_sha256": script_hash,
-                    "output_paths": [item["path"] for item in outputs],
-                    "output_sha256s": [item["sha256"] for item in outputs],
-                }
-            )
-            covered.add(kind)
-    expected = {"geometry" if item == "geometry_kinematics" else item for item in required_families}
-    missing = sorted(expected - covered)
-    if missing:
-        raise ContractError(
-            "MATLAB/Octave 已用于高风险路线，但缺少由实际 .m 脚本生成并登记的证明图: "
-            + ", ".join(missing)
-        )
-    return bindings
-
-
 def build_content_blueprint(
     run_dir: Path,
     *,
@@ -373,15 +243,6 @@ def build_content_blueprint(
         )
     global_result_ids = list(dict.fromkeys(all_valid_result_ids))
     source_code_appendix = _materialize_source_code_appendix(root)
-    matlab_proof_figures = _materialize_matlab_proof_figures(
-        root,
-        required_questions=set(state["required_questions"]),
-    )
-    matlab_figure_questions = {item["question_id"] for item in matlab_proof_figures}
-    for section in question_sections:
-        if section["question_id"] in matlab_figure_questions:
-            section["required_elements"].append("matlab_proof_figure_explanation")
-
     def global_section(
         section_id: str,
         elements: list[str],
@@ -469,7 +330,6 @@ def build_content_blueprint(
         "required_questions": list(state["required_questions"]),
         "data_processing_applicable": data_processing_applicable,
         "source_code_appendix": source_code_appendix,
-        "matlab_proof_figures": matlab_proof_figures,
         "sections": sections,
         "generated_at": utc_now(),
     }
@@ -527,12 +387,12 @@ def _question_segment(
         return False, ""
 
     def score(segment: str) -> tuple[int, int, int, int, int]:
-        signals = _argument_signals(segment)
+        signals = _content_signals(segment)
         return (
             sum(_element_detected(element, segment) for element in required_elements),
-            int(signals["derivation_or_quantitative_evidence"]),
-            int(signals["explanation_present"]),
-            int(signals["substantive_body"]),
+            int(signals["technical_content_signal"]),
+            int(signals["explanation_marker_present"]),
+            int(signals["minimum_body_signal"]),
             int(signals["text_characters"]),
         )
 
@@ -578,8 +438,8 @@ def _densities(text: str, page_count: int) -> dict[str, int | float]:
     }
 
 
-def _argument_signals(text: str) -> dict[str, int | bool]:
-    """提取逐问正文是否形成最小论证链的可解释信号。"""
+def _content_signals(text: str) -> dict[str, int | bool]:
+    """提取最低非空壳信号，不判断数学或论证质量。"""
     compact = re.sub(r"\s+", "", text)
     text_characters = len(compact)
     sentence_count = len(SENTENCE_PATTERN.findall(text))
@@ -591,15 +451,15 @@ def _argument_signals(text: str) -> dict[str, int | bool]:
     )
     explanation = EXPLANATION_PATTERN.search(text) is not None
     substantive = bool(
-        text_characters >= MIN_QUESTION_TEXT_CHARACTERS
-        and sentence_count >= MIN_QUESTION_SENTENCES
+        text_characters >= MINIMUM_BODY_SIGNAL_CHARACTERS
+        and sentence_count >= MINIMUM_BODY_SIGNAL_SENTENCES
     )
     return {
         "text_characters": text_characters,
         "sentence_count": sentence_count,
-        "substantive_body": substantive,
-        "derivation_or_quantitative_evidence": quantitative,
-        "explanation_present": explanation,
+        "minimum_body_signal": substantive,
+        "technical_content_signal": quantitative,
+        "explanation_marker_present": explanation,
     }
 
 
@@ -614,14 +474,14 @@ def _pdf_text(pdf_path: Path) -> tuple[str, int]:
     return "\n".join(page.extract_text() or "" for page in reader.pages), len(reader.pages)
 
 
-def assess_paper_sufficiency(
+def assess_paper_structure_signals(
     blueprint: Mapping[str, Any],
     *,
     pdf_path: Path | None = None,
     pdf_text: str | None = None,
     page_count: int | None = None,
 ) -> dict[str, Any]:
-    """检查 PDF 是否覆盖蓝图中的必答内容，而不按页数设门槛。
+    """检查 PDF 的逐问结构和最低内容信号，不评价论证质量。
 
     Args:
         blueprint: 已冻结的论文内容蓝图。
@@ -639,7 +499,7 @@ def assess_paper_sufficiency(
     require_valid(document, PAPER_CONTENT_BLUEPRINT_SCHEMA)
     if pdf_text is None:
         if pdf_path is None:
-            raise ContractError("内容充分性检查需要 PDF 或已提取文本")
+            raise ContractError("论文结构信号检查需要 PDF 或已提取文本")
         text, actual_page_count = _pdf_text(pdf_path)
     else:
         text = pdf_text
@@ -647,7 +507,8 @@ def assess_paper_sufficiency(
     if not isinstance(actual_page_count, int) or actual_page_count < 0:
         raise ContractError("page_count 必须为非负整数")
 
-    hard_failures: list[str] = []
+    missing_required_signals: list[str] = []
+    evidence_blockers: list[str] = []
     section_coverage: list[dict[str, Any]] = []
     question_coverage: list[dict[str, Any]] = []
     by_question = {
@@ -674,29 +535,29 @@ def assess_paper_sufficiency(
             }
         )
         if section["required"] and not section["draft_allowed"]:
-            hard_failures.append(
+            evidence_blockers.append(
                 f"section:{section['section_id']}: {section.get('blocked_reason', '当前证据不允许成文')}"
             )
         elif section["required"] and missing:
-            hard_failures.append(f"section:{section['section_id']}: 缺少 {', '.join(missing)}")
+            missing_required_signals.append(f"section:{section['section_id']}: 缺少 {', '.join(missing)}")
     source_bindings = document.get("source_code_appendix", [])
     for binding in source_bindings:
         filename = Path(binding["appendix_path"]).name
         if filename not in text:
-            hard_failures.append(f"source-code:{filename}: PDF 源码附录未出现该源码文件")
+            missing_required_signals.append(f"source-code:{filename}: PDF 源码附录未出现该源码文件")
         elif not _source_code_present(binding["source_text"], text):
-            hard_failures.append(f"source-code:{filename}: PDF 仅有文件名或不完整片段，未收录完整源码文本")
+            missing_required_signals.append(f"source-code:{filename}: PDF 仅有文件名或不完整片段，未收录完整源码文本")
     for question_id in document["required_questions"]:
         section = by_question.get(question_id)
         if section is None:
-            hard_failures.append(f"question:{question_id}: 内容蓝图缺少必答问题章节")
+            missing_required_signals.append(f"question:{question_id}: 内容蓝图缺少必答问题章节")
             question_coverage.append(
                 {
                     "question_id": question_id,
                     "heading_detected": False,
                     "elements": {},
-                    "argumentation": _argument_signals(""),
-                    "complete": False,
+                    "content_signals": _content_signals(""),
+                    "structure_signals_complete": False,
                 }
             )
             continue
@@ -710,13 +571,12 @@ def assess_paper_sufficiency(
             element: heading_detected and _element_detected(element, segment)
             for element in section["required_elements"]
         }
-        argumentation = _argument_signals(segment) if heading_detected else _argument_signals("")
-        complete = bool(
+        content_signals = _content_signals(segment) if heading_detected else _content_signals("")
+        structure_signals_complete = bool(
             heading_detected
             and all(elements.values())
-            and argumentation["substantive_body"]
-            and argumentation["derivation_or_quantitative_evidence"]
-            and argumentation["explanation_present"]
+            and content_signals["minimum_body_signal"]
+            and content_signals["technical_content_signal"]
             and section["draft_allowed"]
         )
         question_coverage.append(
@@ -724,8 +584,8 @@ def assess_paper_sufficiency(
                 "question_id": question_id,
                 "heading_detected": heading_detected,
                 "elements": elements,
-                "argumentation": argumentation,
-                "complete": complete,
+                "content_signals": content_signals,
+                "structure_signals_complete": structure_signals_complete,
             }
         )
         section_coverage.append(
@@ -740,39 +600,48 @@ def assess_paper_sufficiency(
             }
         )
         if not section["draft_allowed"]:
-            hard_failures.append(
+            evidence_blockers.append(
                 f"question:{question_id}: {section.get('blocked_reason', '当前证据不允许成文')}"
             )
-        elif not complete:
+        elif not structure_signals_complete:
             missing = [element for element, detected in elements.items() if not detected]
             if not heading_detected:
                 missing.insert(0, "question_heading")
-            if not argumentation["substantive_body"]:
-                missing.append("substantive_body")
-            if not argumentation["derivation_or_quantitative_evidence"]:
-                missing.append("derivation_or_quantitative_evidence")
-            if not argumentation["explanation_present"]:
-                missing.append("explanation")
-            hard_failures.append(f"question:{question_id}: 缺少 {', '.join(missing)}")
+            if not content_signals["minimum_body_signal"]:
+                missing.append("minimum_body_signal")
+            if not content_signals["technical_content_signal"]:
+                missing.append("technical_content_signal")
+            missing_required_signals.append(f"question:{question_id}: 缺少 {', '.join(missing)}")
 
     warnings: list[str] = []
     densities = _densities(text, actual_page_count)
-    if hard_failures and (actual_page_count <= 1 or densities["text_characters"] < 600):
+    for item in question_coverage:
+        if not item["content_signals"]["explanation_marker_present"]:
+            warnings.append(f"question:{item['question_id']}: 未检测到最低解释性语言标记，需由 PDF 盲审判断解释质量")
+    if (missing_required_signals or evidence_blockers) and (
+        actual_page_count <= 1 or densities["text_characters"] < 600
+    ):
         warnings.append("PDF 异常短且遗漏必答内容；页数本身不作为阻断条件")
+    mechanical_gate_passed = not missing_required_signals and not evidence_blockers
     report = {
-        "schema_name": PAPER_SUFFICIENCY_REPORT_SCHEMA,
-        "schema_version": "2.0",
+        "schema_name": PAPER_STRUCTURE_SIGNAL_REPORT_SCHEMA,
+        "schema_version": "1.0",
         "run_id": document["run_id"],
-        "status": "pass" if not hard_failures else "blocked",
+        "status": "signals_present" if mechanical_gate_passed else "missing_required_signals",
+        "mechanical_gate_passed": mechanical_gate_passed,
+        "assesses_mathematical_correctness": False,
+        "assesses_argument_quality": False,
+        "independent_pdf_review_required": True,
         "page_count": actual_page_count,
         "densities": densities,
         "section_coverage": section_coverage,
         "question_coverage": question_coverage,
-        "hard_failures": hard_failures,
+        "missing_required_signals": missing_required_signals,
+        "evidence_blockers": evidence_blockers,
         "warnings": warnings,
         "generated_at": utc_now(),
     }
-    require_valid(report, PAPER_SUFFICIENCY_REPORT_SCHEMA)
+    require_valid(report, PAPER_STRUCTURE_SIGNAL_REPORT_SCHEMA)
     return report
 
 
@@ -810,12 +679,6 @@ def verify_content_blueprint(
                     errors.append(f"源码附录与当前源码不一致: {binding['source_path']}")
                 elif source.read_text(encoding="utf-8") != binding["source_text"]:
                     errors.append(f"源码附录蓝图未冻结完整源码文本: {binding['source_path']}")
-        current_matlab_figures = _materialize_matlab_proof_figures(
-            root,
-            required_questions=set(state["required_questions"]),
-        )
-        if blueprint.get("matlab_proof_figures", []) != current_matlab_figures:
-            errors.append("MATLAB/Octave 证明图蓝图与当前真实渲染收据不一致")
         if blueprint["run_id"] != state["run_id"]:
             errors.append("内容蓝图 run_id 与运行目录不一致")
         if blueprint["state_revision"] > state["revision"]:
@@ -842,14 +705,14 @@ def verify_content_blueprint(
     return {"valid": not errors, "errors": errors, "blueprint_path": str(path)}
 
 
-def run_paper_sufficiency_check(
+def run_paper_structure_signal_check(
     run_dir: Path,
     *,
     blueprint_path: Path | None = None,
     pdf_path: Path | None = None,
     output_path: Path | None = None,
 ) -> dict[str, Any]:
-    """读取已规划蓝图并写入最终 PDF 的内容充分性报告。
+    """读取蓝图并写入逐问结构与最低内容信号报告。
 
     Args:
         run_dir: 当前 Capability-First v3 运行目录。
@@ -858,7 +721,7 @@ def run_paper_sufficiency_check(
         output_path: 可选的运行目录内报告路径。
 
     Returns:
-        已写入的内容充分性报告。
+        已写入的论文结构信号报告。
 
     Raises:
         ContractError: 蓝图、生产证据或 PDF 不满足检查前提。
@@ -870,11 +733,11 @@ def run_paper_sufficiency_check(
     blueprint = load_json(
         _run_output_path(root, blueprint_path, PAPER_CONTENT_BLUEPRINT_PATH, "内容蓝图")
     )
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         blueprint,
         pdf_path=(root / "paper" / "final.pdf") if pdf_path is None else pdf_path,
     )
     atomic_json(
-        _run_output_path(root, output_path, PAPER_SUFFICIENCY_REPORT_PATH, "内容充分性报告"), report
+        _run_output_path(root, output_path, PAPER_STRUCTURE_SIGNAL_REPORT_PATH, "论文结构信号报告"), report
     )
     return report

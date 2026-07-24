@@ -1,13 +1,16 @@
-"""验证论文内容充分性蓝图和 PDF 异常短文检查。"""
+"""验证论文内容蓝图和 PDF 结构信号检查的能力边界。"""
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
-import pytest
-
-from shumozizi.core.io import ContractError, atomic_json, sha256_file
-from shumozizi.paper.sufficiency import assess_paper_sufficiency, build_content_blueprint
+from shumozizi.core.io import atomic_json
+from shumozizi.core.schema import validate_document
+from shumozizi.paper.sufficiency import (
+    assess_paper_structure_signals,
+    build_content_blueprint,
+)
 
 
 def _write_production_state(run_dir: Path, questions: list[str]) -> None:
@@ -22,7 +25,7 @@ def _write_production_state(run_dir: Path, questions: list[str]) -> None:
             "execution_mode": "production",
             "revision": 3,
             "competition": "synthetic",
-            "problem_id": "paper-sufficiency",
+            "problem_id": "paper-structure-signals",
             "required_questions": questions,
             "current_question": questions[-1],
             "completed_questions": questions,
@@ -120,7 +123,7 @@ def _blueprint(question_ids: list[str]) -> dict:
 
 def test_five_question_paper_with_only_abstract_and_results_table_is_blocked() -> None:
     """摘要和结果表不能替代五个必答问题的直接回答与验证。"""
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(["Q1", "Q2", "Q3", "Q4", "Q5"]),
         pdf_text="""
         摘要
@@ -130,8 +133,9 @@ def test_five_question_paper_with_only_abstract_and_results_table_is_blocked() -
         page_count=1,
     )
 
-    assert report["status"] == "blocked"
-    assert any("question:Q1" in item for item in report["hard_failures"])
+    assert report["status"] == "missing_required_signals"
+    assert not report["mechanical_gate_passed"]
+    assert any("question:Q1" in item for item in report["missing_required_signals"])
     assert any("异常短" in item for item in report["warnings"])
 
 
@@ -148,7 +152,7 @@ def test_complete_short_paper_is_not_blocked_by_page_count_alone() -> None:
         )
         for number in range(1, 6)
     )
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(["Q1", "Q2", "Q3", "Q4", "Q5"]),
         pdf_text=f"""
         摘要
@@ -162,9 +166,13 @@ def test_complete_short_paper_is_not_blocked_by_page_count_alone() -> None:
         page_count=1,
     )
 
-    assert report["status"] == "pass"
+    assert report["status"] == "signals_present"
+    assert report["mechanical_gate_passed"]
     assert report["page_count"] == 1
-    assert not report["hard_failures"]
+    assert not report["missing_required_signals"]
+    assert report["assesses_mathematical_correctness"] is False
+    assert report["assesses_argument_quality"] is False
+    assert report["independent_pdf_review_required"] is True
 
 
 def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None:
@@ -183,7 +191,7 @@ def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None
         )
         for question_id in question_ids
     )
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(question_ids),
         pdf_text=f"""
         摘要
@@ -199,13 +207,13 @@ def test_question_coverage_uses_body_after_incomplete_contents_entries() -> None
         page_count=2,
     )
 
-    assert report["status"] == "pass"
-    assert all(item["complete"] for item in report["question_coverage"])
+    assert report["status"] == "signals_present"
+    assert all(item["structure_signals_complete"] for item in report["question_coverage"])
 
 
 def test_question_labels_without_argument_are_blocked() -> None:
     """标题、标签和结论口号齐全也不能替代逐问论证。"""
-    report = assess_paper_sufficiency(
+    report = assess_paper_structure_signals(
         _blueprint(["Q1"]),
         pdf_text="""
         摘要
@@ -221,10 +229,10 @@ def test_question_labels_without_argument_are_blocked() -> None:
     )
 
     coverage = report["question_coverage"][0]
-    assert report["status"] == "blocked"
-    assert not coverage["argumentation"]["substantive_body"]
-    assert not coverage["argumentation"]["derivation_or_quantitative_evidence"]
-    assert not coverage["argumentation"]["explanation_present"]
+    assert report["status"] == "missing_required_signals"
+    assert not coverage["content_signals"]["minimum_body_signal"]
+    assert not coverage["content_signals"]["technical_content_signal"]
+    assert not coverage["content_signals"]["explanation_marker_present"]
 
 
 def test_question_section_needs_its_own_current_production_result(
@@ -292,159 +300,56 @@ def test_blueprint_materializes_full_python_and_matlab_source(tmp_path: Path, mo
         assert item["source_text"] == (run_dir / item["source_path"]).read_text(encoding="utf-8")
 
 
-def _matlab_proof_plan(run_dir: Path) -> dict:
-    """生成只供论文蓝图测试使用的 MATLAB 真实渲染绑定。"""
-    script = run_dir / "code" / "matlab" / "geometry_proof.m"
-    output = run_dir / "figures" / "geometry-proof.png"
-    receipt_path = run_dir / "figures" / "receipts" / "geometry-proof" / "receipt.json"
-    script.parent.mkdir(parents=True, exist_ok=True)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    script.write_text("plot(0:1, 0:1);\n", encoding="utf-8")
-    output.write_bytes(b"test-png")
-    atomic_json(
-        receipt_path,
-        {
-            "engine": "matlab",
-            "script": {"path": "code/matlab/geometry_proof.m", "sha256": sha256_file(script)},
-            "outputs": [
-                {"path": "figures/geometry-proof.png", "sha256": sha256_file(output)}
-            ],
-        },
-    )
-    return {
-        "contracts": [
-            {
-                "figure_id": "geometry-proof",
-                "question_id": "Q1",
-                "status": "complete",
-                "scientific_question": "临界端点和连续时间边界是否支持当前几何结论。",
-                "evidence_roles": ["model_structure"],
-                "evidence_modes": ["orthographic_geometry"],
-                "render_receipt": {
-                    "path": "figures/receipts/geometry-proof/receipt.json",
-                    "sha256": sha256_file(receipt_path),
-                },
-            }
-        ]
-    }
-
-
-def _enable_matlab_geometry_route(run_dir: Path, monkeypatch, plan: dict) -> None:
-    """让合成运行声明 MATLAB 几何路线并返回指定图表计划。"""
-    atomic_json(run_dir / "state" / "capability-route.json", {})
-    monkeypatch.setattr(
-        "shumozizi.paper.sufficiency.require_capability_route",
-        lambda _run_dir: {
-            "problem_families": ["geometry_kinematics"],
-            "toolchain": {
-                "production_engine": "python",
-                "independent_engine": "matlab",
-            },
-        },
-    )
-    monkeypatch.setattr(
-        "shumozizi.paper.sufficiency.require_visualization_complete",
-        lambda _run_dir: plan,
-    )
-
-
-def test_matlab_high_risk_route_requires_real_proof_figure(tmp_path: Path, monkeypatch) -> None:
-    """MATLAB 高风险路线缺少实际 .m 证明图时不能建立论文蓝图。"""
-    run_dir = tmp_path / "matlab-proof-missing"
-    _write_production_state(run_dir, ["Q1"])
-    (run_dir / "code").mkdir(parents=True)
-    (run_dir / "code" / "solve.py").write_text("print('solve')\n", encoding="utf-8")
-    _enable_matlab_geometry_route(run_dir, monkeypatch, {"contracts": []})
-    monkeypatch.setattr("shumozizi.paper.sufficiency.quality_allows_paper", lambda *_: True)
-    monkeypatch.setattr(
-        "shumozizi.paper.sufficiency.read_result_index",
-        lambda _run_dir: {"results": [{"result_id": "Q1-R1", "question_id": "Q1"}]},
-    )
-
-    with pytest.raises(ContractError, match=r"实际 \.m 脚本生成.*证明图"):
-        build_content_blueprint(run_dir, evidence_by_question={"Q1": ["Q1-R1"]})
-
-
-def test_matlab_proof_figure_must_be_explained_in_question_body(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """MATLAB 图已生成但正文未说明验证命题时，PDF 充分性仍应阻断。"""
-    run_dir = tmp_path / "matlab-proof-unexplained"
-    _write_production_state(run_dir, ["Q1"])
-    (run_dir / "code").mkdir(parents=True)
-    (run_dir / "code" / "solve.py").write_text("print('solve')\n", encoding="utf-8")
-    plan = _matlab_proof_plan(run_dir)
-    _enable_matlab_geometry_route(run_dir, monkeypatch, plan)
-    monkeypatch.setattr("shumozizi.paper.sufficiency.quality_allows_paper", lambda *_: True)
-    monkeypatch.setattr(
-        "shumozizi.paper.sufficiency.read_result_index",
-        lambda _run_dir: {"results": [{"result_id": "Q1-R1", "question_id": "Q1"}]},
-    )
-    blueprint = build_content_blueprint(
-        run_dir,
-        evidence_by_question={"Q1": ["Q1-R1"]},
-    )
-
-    assert blueprint["matlab_proof_figures"][0]["script_path"].endswith(".m")
-    assert blueprint["matlab_proof_figures"][0]["output_paths"] == [
-        "figures/geometry-proof.png"
-    ]
-    report = assess_paper_sufficiency(
-        blueprint,
+def test_keyword_stuffing_can_only_satisfy_mechanical_signals() -> None:
+    """关键词堆砌即使命中结构信号，也不能产生论证质量结论或跳过盲审。"""
+    report = assess_paper_structure_signals(
+        _blueprint(["Q1"]),
         pdf_text="""
         摘要
         问题重述与假设
         共享模型
         Q1
-        目标函数：采用连续有效遮蔽时长作为选定目标。
-        模型选择理由：该几何模型能够保持有限线段和球体边界，不把无限直线当作目标。
-        证明义务：必须检查左右临界端点、切线和退化情形，且满足全部硬约束。
-        生产结果 Q1-R1：当前结果为 12.3 s，使用独立实现复算并给出误差边界。
-        路线比较：与离散采样基线相比，连续根隔离避免遗漏短区间。
-        证据解释：结果表明候选在当前参数下可行，因此支持本问结论，但不代表全局最优。
-        适用边界：尚未证明不同目标半径下仍保持该排序，不能外推。
-        直接答案：本问持续时间为 12.3 s，单位为秒。
-        全局稳健性：已说明当前验证边界。
+        直接答案：目标函数为 12.3 s。模型与算法、关键结果和验证与边界全部存在。
+        模型选择理由、证明义务、生产结果、基线、因此、表明、局限只是重复标签；
+        目标函数、模型选择理由、证明义务、生产结果、基线、因此、表明、局限继续重复。
+        这些词超过一百二十个字符并出现三个句子标记，但文本不保证任何数学结论正确。
+        全局稳健性：已说明。
         结论
         参考文献
-        源码附录
-        solve.py
-        geometry_proof.m
         """,
-        page_count=8,
+        page_count=2,
     )
 
-    assert report["status"] == "blocked"
-    assert any("matlab_proof_figure_explanation" in item for item in report["hard_failures"])
-    assert any("未收录完整源码文本" in item for item in report["hard_failures"])
+    assert report["status"] == "signals_present"
+    assert report["mechanical_gate_passed"] is True
+    assert report["assesses_mathematical_correctness"] is False
+    assert report["assesses_argument_quality"] is False
+    assert report["independent_pdf_review_required"] is True
+    assert "argument_quality_passed" not in report
 
-    complete_report = assess_paper_sufficiency(
-        blueprint,
+
+def test_structure_signal_schema_rejects_forged_gate_consistency() -> None:
+    """Schema 必须拒绝通过状态、门禁布尔值和阻断事实互相矛盾的报告。"""
+    report = assess_paper_structure_signals(
+        _blueprint(["Q1"]),
         pdf_text="""
-        摘要
-        问题重述与假设
-        共享模型
-        Q1
-        目标函数：采用连续有效遮蔽时长作为选定目标。
-        模型选择理由：该几何模型能够保持有限线段和球体边界，不把无限直线当作目标。
-        证明义务：必须检查左右临界端点、切线和退化情形，且满足全部硬约束。
-        生产结果 Q1-R1：当前结果为 12.3 s，使用独立实现复算并给出误差边界。
-        路线比较：与离散采样基线相比，连续根隔离避免遗漏短区间。
-        证据解释：MATLAB 图 1 验证了临界端点和连续边界，因此支持当前几何命题；
-        该图不能证明不同题面参数下仍成立。
-        适用边界：尚未证明不同目标半径下仍保持该排序，不能外推。
-        直接答案：本问持续时间为 12.3 s，单位为秒。
-        全局稳健性：已说明当前验证边界。
-        结论
-        参考文献
-        源码附录
-        solve.py
-        print('solve')
-        geometry_proof.m
-        plot(0:1, 0:1);
+        摘要 问题重述与假设 共享模型 Q1
+        直接答案：结果为 12.3 s。模型与算法采用精确评分。关键结果见表 1。
+        该结果用于当前问题，因此包含最低解释标记。验证与边界说明不能外推；
+        当前 production 结果还包含约束余量、单位和误差记录，用来确认这里不是空章节。
+        第二句话补足最低正文信号并重复说明当前结果仅适用于题面参数。
+        第三句话补足最低正文信号并明确不同参数仍然需要重新验证。
+        全局稳健性：已说明。结论 参考文献
         """,
-        page_count=8,
+        page_count=2,
     )
+    assert not validate_document(report, "paper_structure_signal_report")
+    assert report["status"] == "signals_present"
 
-    assert complete_report["status"] == "pass"
+    forged_boolean = deepcopy(report)
+    forged_boolean["mechanical_gate_passed"] = False
+    assert validate_document(forged_boolean, "paper_structure_signal_report")
+
+    forged_blocker = deepcopy(report)
+    forged_blocker["evidence_blockers"] = ["当前证据已失效"]
+    assert validate_document(forged_blocker, "paper_structure_signal_report")

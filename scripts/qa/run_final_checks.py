@@ -22,7 +22,7 @@ from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.paper.compiler import verify_paper_compile_receipt
 from shumozizi.paper.contributions import verify_contribution_ledger
 from shumozizi.paper.references import verify_paper_references
-from shumozizi.paper.sufficiency import run_paper_sufficiency_check
+from shumozizi.paper.sufficiency import run_paper_structure_signal_check
 from shumozizi.paper.templates import require_materialized_template
 from shumozizi.simple.figures import verify_current_figure_files
 from shumozizi.simple.results import verify_current_result_files
@@ -222,19 +222,25 @@ def run_final_checks(
     )
     checks.append(_check("pdf", pdf_report, "PDF、空白页、裁切、文字重叠和重复编号"))
     try:
-        content_report = run_paper_sufficiency_check(root)
+        content_report = run_paper_structure_signal_check(root)
         content_payload = {
-            "success": content_report["status"] == "pass",
+            "success": content_report["mechanical_gate_passed"] is True,
             "report": content_report,
         }
     except (ContractError, OSError) as exc:
-        content_report = {"status": "blocked", "hard_failures": [str(exc)], "warnings": []}
+        content_report = {
+            "status": "missing_required_signals",
+            "mechanical_gate_passed": False,
+            "missing_required_signals": [str(exc)],
+            "evidence_blockers": [],
+            "warnings": [],
+        }
         content_payload = {"success": False, "report": content_report}
     checks.append(
         _check(
-            "paper-content-sufficiency",
+            "paper-structure-signals",
             content_payload,
-            "内容蓝图、逐问直接回答与 PDF 内容覆盖",
+            "逐问结构、直接答案与最低非空壳内容信号；不评价数学或论证质量",
         )
     )
     paper_references = _optional_paper_protocol_check(
