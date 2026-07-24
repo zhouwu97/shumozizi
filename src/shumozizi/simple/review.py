@@ -26,7 +26,7 @@ from shumozizi.core.io import (
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import read_simple_state, utc_now, update_simple_state
+from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
 
 REVIEW_ROOT = Path("review")
 SUMMARY_PATH = REVIEW_ROOT / "summary.json"
@@ -81,9 +81,10 @@ _REPORT_ARTIFACT_PATH = re.compile(r"review[\\/]red_team_artifacts[\\/][A-Za-z0-
 
 # 科学审查包文件名过滤：只排除明确的质量协议后缀文件，
 # 不使用 broad 子串匹配（会误杀 q5_best_so_far.json 等科学数据）
+# 匹配 .quality.xxx 和 _quality_xxx 两种分隔模式（兼容新旧命名习惯）
 _PACKET_LABEL_EXCLUDE = re.compile(
-    r"(\.quality\.json|\.quality_verified\.json|\.acceptance\.json|"
-    r"\.quality_audit\.json|\.quality_exact\.json|\.quality_candidates\.json)",
+    r"[._](?:quality|acceptance|quality_audit|quality_exact|quality_verified|quality_candidates)"
+    r"\.json$",
     re.IGNORECASE,
 )
 
@@ -2059,6 +2060,198 @@ def _require_competition_strength_evidence(
             )
 
 
+# ── 红队覆盖声明：防止关键词扫描退化 ──
+
+_COVERAGE_DECLARATION_PATH = REVIEW_ROOT / "red_team_coverage.json"
+
+
+def _validate_coverage_declaration(run_dir: Path, declaration: dict[str, Any]) -> list[str]:
+    """验证红队覆盖声明不是关键词扫描，而是结构化的逐风险结论。
+
+    协调程序只核对：
+    - 当前路由要求的高风险 risk_id 是否均有结论
+    - 是否给出自由报告中的位置
+    - 需要追问的方向是否明确
+    """
+    errors: list[str] = []
+    required_fields = {"schema_name", "schema_version", "run_id", "review_file", "covered_risks"}
+    if not isinstance(declaration, dict) or not required_fields.issubset(declaration):
+        errors.append("覆盖声明缺少必要字段")
+        return errors
+    if declaration["run_id"] != run_dir.name:
+        errors.append("覆盖声明 run_id 不匹配")
+    if not isinstance(declaration["covered_risks"], list) or not declaration["covered_risks"]:
+        errors.append("covered_risks 必须是非空数组")
+        return errors
+    seen_risks: set[str] = set()
+    for item in declaration["covered_risks"]:
+        if not isinstance(item, dict):
+            errors.append("covered_risks 条目必须是对象")
+            continue
+        risk_id = item.get("risk_id", "")
+        if not isinstance(risk_id, str) or not risk_id.strip():
+            errors.append("每个风险条目必须有非空 risk_id")
+        elif risk_id in seen_risks:
+            errors.append(f"risk_id 重复: {risk_id}")
+        else:
+            seen_risks.add(risk_id)
+        conclusion = item.get("conclusion", "")
+        if conclusion not in {"sufficient", "insufficient", "not_applicable", "requires_independent_verification"}:
+            errors.append(f"{risk_id}: conclusion 必须为 sufficient/insufficient/not_applicable/requires_independent_verification")
+        if not isinstance(item.get("evidence_location", ""), str) or not item["evidence_location"].strip():
+            errors.append(f"{risk_id}: 缺少 evidence_location，不能确认审核 AI 实际检查了该风险")
+        if conclusion == "insufficient" and not item.get("follow_up_required"):
+            errors.append(f"{risk_id}: conclusion=insufficient 但 follow_up_required 未设为 true；协调层应自动触发追问")
+
+    review_file = declaration.get("review_file", "")
+    if review_file:
+        try:
+            _safe_run_path(run_dir, review_file)
+        except (ContractError, OSError, KeyError, ValueError):
+            errors.append(f"review_file 不存在或越界: {review_file}")
+
+    return errors
+
+
+def require_coverage_declaration_valid(run_dir: Path) -> dict[str, Any]:
+    """要求科学红队输出覆盖声明，验证后返回声明内容。
+
+    若覆盖声明缺失或无效，抛出 ContractError。
+    """
+    path = run_dir / _COVERAGE_DECLARATION_PATH
+    if not path.is_file():
+        raise ContractError(
+            "科学红队必须输出 review/red_team_coverage.json；"
+            "该声明由审核 AI 在自由报告完成后生成，"
+            "记录每个高风险方向的实际结论和报告中对应位置，"
+            "不能退化为关键词扫描"
+        )
+    try:
+        declaration = load_json(path)
+    except (OSError, ValueError) as exc:
+        raise ContractError(f"覆盖声明无法解析: {exc}")
+    errors = _validate_coverage_declaration(run_dir, declaration)
+    if errors:
+        raise ContractError("红队覆盖声明无效: " + "; ".join(errors))
+    return declaration
+
+
+
+# ── MATLAB/Octave 冲突自动回退 ──
+# 当 MATLAB/Octave oracle 发现不一致或更优候选时，自动使受影响的结果/声明
+# 失效并强制回退到实验阶段，不能让旧方案继续产出论文。
+
+_MATLAB_ENGINES = {"matlab", "octave"}
+
+
+def _matlab_inconsistency_questions(
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> set[str]:
+    """返回 MATLAB/Octave 独立重算发现不一致的问题集合。"""
+    verification = verify_red_team_artifacts(run_dir)
+    questions: set[str] = set()
+    for kind, evidence in verification.get("semantic_evidence", []):
+        if kind not in {"independent-recompute", "alternative-formula"}:
+            continue
+        if evidence.get("verdict") != "inconsistent":
+            continue
+        # 只处理 MATLAB/Octave 引擎执行的证据
+        receipts = [
+            receipt for receipt in verification.get("receipts", [])
+        ]
+        engine = None
+        for receipt_path_value in receipts:
+            try:
+                receipt = load_json(_safe_run_path(run_dir, receipt_path_value["path"]))
+                if receipt.get("kind") == kind:
+                    engine = receipt.get("engine")
+                    break
+            except (ContractError, OSError, KeyError, ValueError):
+                continue
+        if engine not in _MATLAB_ENGINES:
+            continue
+        question_id = evidence.get("question_id")
+        if question_id:
+            questions.add(question_id)
+    return questions
+
+
+def _apply_matlab_finding_consequences(
+    run_dir: Path,
+    artifacts: dict[str, Any],
+    evidence_assessment: dict[str, Any],
+) -> None:
+    """MATLAB 发现不一致或更优候选时自动触发状态回退。
+
+    不一致 → 受影响问题的所有 claim 标记为 stale、状态退回 experiment。
+    更优候选 → incumbent 标记为 superseded、触发重评分。
+
+    此函数在 import_scientific_review() 中自动调用，
+    不依赖 skill 文本手动触发。
+    """
+    inconsistent = _matlab_inconsistency_questions(run_dir, artifacts)
+    if not inconsistent:
+        return
+
+    # 1. 标记受影响问题的 claim_evidence 为 stale
+    claim_path = run_dir / "claims" / "claim_evidence.json"
+    if claim_path.is_file():
+        try:
+            claim_evidence = load_json(claim_path)
+            stale_claims = []
+            for claim in claim_evidence.get("claims", []):
+                if claim.get("claim_id", "").startswith(tuple(
+                    f"{q}-" for q in inconsistent
+                )):
+                    claim["status"] = "rejected"
+                    stale_claims.append(claim["claim_id"])
+            if stale_claims:
+                claim_evidence["stale"] = True
+                claim_evidence["stale_reason"] = (
+                    f"MATLAB/Octave 独立重算发现不一致，影响问题: "
+                    f"{', '.join(sorted(inconsistent))}；声明已拒绝: "
+                    f"{', '.join(stale_claims)}"
+                )
+                atomic_json(claim_path, claim_evidence)
+        except (OSError, ValueError):
+            pass
+
+    # 2. 标记受影响结果索引为 superseded
+    try:
+        index = read_result_index(run_dir)
+        dirty = False
+        for item in index["results"]:
+            if item.get("question_id") in inconsistent and item.get("status") == "current":
+                item["status"] = "superseded"
+                dirty = True
+        if dirty:
+            atomic_json(run_dir / "results" / "index.json", index)
+    except (ContractError, OSError):
+        pass
+
+    # 3. 强制回退到 experiment 阶段
+    try:
+        update_simple_state(run_dir, phase="experiment")
+    except ContractError:
+        pass  # 已完成运行不允许直接回退；由调用方新建修订运行
+
+    # 4. 在审查摘要中记录
+    summary_path = run_dir / SUMMARY_PATH
+    if summary_path.is_file():
+        try:
+            summary = load_json(summary_path)
+            review = summary.get("scientific_review", {})
+            review["matlab_conflict_questions"] = sorted(inconsistent)
+            review["matlab_conflict_recorded_at"] = utc_now()
+            summary["scientific_review"] = review
+            _require_summary(summary)
+            atomic_json(summary_path, summary)
+        except (ContractError, OSError, KeyError, ValueError):
+            pass
+
+
+
 def _review_report(run_dir: Path, relative: Path) -> dict[str, str]:
     """绑定非空自由文本审查报告，而不把其压缩为固定检查表。"""
     report = _safe_run_path(run_dir, relative.as_posix())
@@ -2139,6 +2332,10 @@ def import_scientific_review(
         semantics,
         validated_question_reviews,
     )
+    # ── 验证覆盖声明不是关键词扫描 ──
+    require_coverage_declaration_valid(run_dir)
+    # ── MATLAB/Octave 冲突自动回退 ──
+    _apply_matlab_finding_consequences(run_dir, artifacts, evidence_assessment)
     semantics_binding = None
     if semantics.get("required"):
         semantics_receipt = run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH

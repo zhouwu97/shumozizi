@@ -14,6 +14,8 @@ from pathlib import Path
 from shumozizi.core.io import ContractError, load_json
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.review import (
+    _PACKET_CONTENT_EXCLUDE_KEYS,
+    _neutralize_value,
     build_review_packet,
     completion_status,
     final_audit_status,
@@ -110,6 +112,26 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 output_paths=["property.json"],
             )
             evidence_reference = "证据：`" + receipt["outputs"][0]["path"] + "`。\n"
+            # 写入覆盖声明（科学审查导入时的硬门）
+            import datetime as _dt
+            coverage_path = run_dir / "review" / "red_team_coverage.json"
+            coverage_path.write_text(
+                json.dumps({
+                    "schema_name": "red_team_coverage_declaration",
+                    "schema_version": "1.0",
+                    "run_id": run_dir.name,
+                    "review_file": f"review/{name}",
+                    "covered_risks": [
+                        {
+                            "risk_id": "general-coverage",
+                            "conclusion": "sufficient",
+                            "evidence_location": f"review/{name}#conclusion",
+                        }
+                    ],
+                    "generated_at": _dt.datetime.now(_dt.UTC).isoformat().replace("+00:00", "Z"),
+                }, indent=2),
+                encoding="utf-8",
+            )
         report.write_text(
             "# 独立审查\n\n已从题面重建问题，并记录了可复现实验与反例检查。\n"
             + evidence_reference,
@@ -656,6 +678,137 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self.assertTrue(scientific_review_status(run_dir)["allowed"])
             self.assertTrue(paper_blind_review_status(run_dir)["allowed"])
             self.assertTrue(final_audit_status(run_dir)["allowed"])
+
+    def test_scientific_packet_scrubs_quality_fields_inside_json(self) -> None:
+        """科学审查包必须清除 JSON 文件内容中的质量裁决字段，而非仅过滤文件名。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "content-label-scrub")
+            self._prepare_scientific_phase(run_dir)
+            # 写入包含质量字段的 JSON
+            contaminated = {
+                "objective": 1.0,
+                "accepted": True,
+                "competition_strength": "strong",
+                "quality": "pass",
+                "paper_allowed": True,
+                "search_adequacy": "passed",
+                "result_role": "accepted",
+                "verified": True,
+                "candidate_accepted": True,
+                "best_candidate": "q1",
+                "promotion_allowed": True,
+                "pass_allowed": True,
+            }
+            (run_dir / "results" / "raw" / "candidate.json").write_text(
+                json.dumps(contaminated, indent=2), encoding="utf-8"
+            )
+            packet = build_review_packet(run_dir, kind="scientific")
+            packet_dir = (
+                run_dir
+                / "review"
+                / "packet"
+                / "scientific"
+                / str(packet["packet_id"])
+            )
+            copied = packet_dir / "candidate_results" / "candidate.json"
+            self.assertTrue(copied.is_file(), "候选结果未复制到科学审查包")
+            neutralized = load_json(copied)
+            for excluded_key in _PACKET_CONTENT_EXCLUDE_KEYS:
+                self.assertNotIn(
+                    excluded_key,
+                    neutralized,
+                    f"科学审查包 JSON 内容泄露质量字段: {excluded_key}",
+                )
+            # 科学数据字段应保留
+            self.assertIn("objective", neutralized)
+            self.assertEqual(1.0, neutralized["objective"])
+
+    def test_scientific_packet_scrubs_nested_quality_fields(self) -> None:
+        """科学审查包必须递归清除嵌套 JSON 对象内的质量裁决字段。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "nested-label-scrub")
+            self._prepare_scientific_phase(run_dir)
+            contaminated = {
+                "result": {
+                    "objective": 3.14,
+                    "metadata": {
+                        "accepted": True,
+                        "quality": "strong",
+                        "competition_strength": "qualified",
+                    },
+                    "items": [
+                        {"value": 1, "verified": True, "paper_allowed": True},
+                        {"value": 2, "search_adequacy": "passed"},
+                    ],
+                },
+                "summary": {"best_candidate": "r1", "promotion_allowed": False},
+            }
+            (run_dir / "results" / "raw" / "candidate.json").write_text(
+                json.dumps(contaminated, indent=2), encoding="utf-8"
+            )
+            packet = build_review_packet(run_dir, kind="scientific")
+            packet_dir = (
+                run_dir
+                / "review"
+                / "packet"
+                / "scientific"
+                / str(packet["packet_id"])
+            )
+            copied = packet_dir / "candidate_results" / "candidate.json"
+            neutralized = load_json(copied)
+
+            # 顶层: summary 的所有子键都是 excluded key，中性化后为空对象
+            self.assertEqual(neutralized.get("summary"), {})
+            # 一级嵌套
+            self.assertNotIn("accepted", neutralized.get("result", {}).get("metadata", {}))
+            self.assertNotIn("quality", neutralized.get("result", {}).get("metadata", {}))
+            self.assertNotIn("competition_strength", neutralized.get("result", {}).get("metadata", {}))
+            # 列表内嵌套
+            for item in neutralized.get("result", {}).get("items", []):
+                self.assertNotIn("verified", item)
+                self.assertNotIn("paper_allowed", item)
+                self.assertNotIn("search_adequacy", item)
+            # 科学数据保留
+            self.assertIn("value", neutralized["result"]["items"][0])
+            self.assertEqual(1, neutralized["result"]["items"][0]["value"])
+            self.assertEqual(3.14, neutralized["result"]["objective"])
+
+    def test_scientific_packet_quality_label_filenames_are_excluded(self) -> None:
+        """文件名含质量标签的文件应被科学审查包排除。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "filename-label-exclude")
+            self._prepare_scientific_phase(run_dir)
+            # 写入带质量标签文件名的普通 JSON
+            (run_dir / "results" / "raw" / "q1.quality.json").write_text(
+                json.dumps({"objective": 1.0}), encoding="utf-8"
+            )
+            (run_dir / "results" / "raw" / "q1_quality_verified.json").write_text(
+                json.dumps({"objective": 2.0}), encoding="utf-8"
+            )
+            (run_dir / "results" / "raw" / "q1.quality_audit.json").write_text(
+                json.dumps({"objective": 3.0}), encoding="utf-8"
+            )
+            (run_dir / "results" / "raw" / "q1.quality_exact.json").write_text(
+                json.dumps({"objective": 4.0}), encoding="utf-8"
+            )
+            (run_dir / "results" / "raw" / "q1.quality_candidates.json").write_text(
+                json.dumps({"objective": 5.0}), encoding="utf-8"
+            )
+            # 普通文件应当保留
+            (run_dir / "results" / "raw" / "q5_best_so_far.json").write_text(
+                json.dumps({"best": [1, 2, 3]}), encoding="utf-8"
+            )
+            packet = build_review_packet(run_dir, kind="scientific")
+            manifest = load_json(run_dir / self._manifest_relative(packet))
+            copied = {item["source"] for item in manifest["files"]}
+
+            self.assertNotIn("results/raw/q1.quality.json", copied)
+            self.assertNotIn("results/raw/q1_quality_verified.json", copied)
+            self.assertNotIn("results/raw/q1.quality_audit.json", copied)
+            self.assertNotIn("results/raw/q1.quality_exact.json", copied)
+            self.assertNotIn("results/raw/q1.quality_candidates.json", copied)
+            # 科学数据文件（不含质量标签）应当保留
+            self.assertIn("results/raw/q5_best_so_far.json", copied)
 
 
 if __name__ == "__main__":

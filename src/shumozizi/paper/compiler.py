@@ -192,6 +192,10 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     """
     if timeout_seconds < 1 or timeout_seconds > 3600:
         raise ContractError("论文编译 timeout_seconds 必须在 1 至 3600 之间")
+    # ── 编译前最小编译前提硬门：论证大纲、结果绑定、图表、MATLAB 源码 ──
+    from shumozizi.simple.review import require_paper_generation_allowed
+
+    require_paper_generation_allowed(run_dir)
     state = read_simple_state(run_dir)
     manifest = require_materialized_template(run_dir)
     root = run_dir.resolve()
