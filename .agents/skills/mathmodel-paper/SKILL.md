@@ -8,7 +8,7 @@ description: 使用 Capability-First v3 中真实执行且仍有效的结果撰�
 论文的重点是题目的数学对象、推导、求解、结果解释与局限。内部流程名称、收据和质量协议不应出现在正文。
 
 1. 只在 `paper` 阶段写正式稿。读取当前运行的建模报告、实验报告、决策、结果和图表；只写已通过科学审查、仍为当前生产结果的事实。运行时会复验来源链，作者不必在正文或主对话逐项抄录哈希、适配器或收据。
-2. **实际调用已安装的 `$mathmodel-research-writing` 完成正文写作。** 先按该 Skill 建立 `paper/argument-outline.md`，再展开段落；不得由本 Skill 用标题、表格和结论句直接拼成论文。职责必须分开：`$mathmodel-research-writing` 负责 argument outline、段落推进、学术表达和”主张 → 证据 → 解释/机制 → 限制”链条；本 Skill 负责数模逐问结构、事实边界、图表引用、LaTeX 和编译。若当前环境没有该专业写作 Skill，暂停正文生产并报告依赖缺失，不静默退回空壳写法。
+2. **实际调用已安装的 `$mathmodel-research-writing` 完成正文写作。** 先按该 Skill 建立 `paper/argument-outline.md`，再展开段落；不得由本 Skill 用标题、表格和结论句直接拼成论文。职责必须分开：写作 Skill 负责 argument outline、段落推进和“主张 → 证据 → 解释/机制 → 限制”链条；本 Skill 负责当前证据边界、argument map v3、图表引用、LaTeX 和编译。
 3. 模板必须在从 `visualization` 进入 `paper` 前选择并实例化。默认使用 LaTeX：
 
    ```powershell
@@ -29,6 +29,6 @@ description: 使用 Capability-First v3 中真实执行且仍有效的结果撰�
    python scripts/paper/compile_paper.py runs/<run-id>
    ```
 
-   正式论文必须有“源码附录”，直接收录完整可运行的 Python/MATLAB 源码文本，至少覆盖主求解、exact scorer、独立验证、关键图脚本和运行入口；只给路径、链接或文件清单不合格。若能力路由启用 MATLAB，高风险几何/优化结论必须配有实际 `.m` 脚本生成的证明或验证图，并在正文解释图对应的命题。
+   源码策略必须服从赛事要求：PDF 放必要的关键代码与可核查说明；赛事要求完整工程时，把完整源码、环境与入口放入提交附件。独立验证可以使用任何真实登记的引擎、反例或性质测试，不强制 MATLAB，也不强制把完整工程文本塞入 PDF。
 
-   生成 `paper/final.pdf` 后先运行内容充分性和 PDF 机械检查，再进入 `paper_review`，由全新对话执行独立 PDF 盲审，只看匿名 PDF。盲审必须逐问确认论证完整和页面可读；修改可见论文、图表或 PDF 后必须重新编译、重新盲审和机械终检；机械 QA 通过后还要由第三个新审核对话完成最终交付审核，不能在 `verify` 直接输出。
+   生成 `paper/final.pdf` 后运行 `paper_structure_signal_report` 与 PDF 机械检查，新生产报告只写 `qa/paper-structure-signals.json`，状态为 `signals_present` 或 `missing_required_signals`。`mechanical_gate_passed=true` 仅表示逐问结构和最低非空壳信号存在，明确不评价数学正确性或论证质量，也不能绕过独立 PDF 盲审。进入 `paper_review` 后先由全新对话输出开放盲审报告，再由独立 coverage task 从当前 critical claims、argument map、publication figures 和赛事规则派生风险并查漏；additional findings 的 P0/P1 必须阻断。修改论文、图表或 PDF 后必须重新编译、重新盲审、动态查漏和机械终检。

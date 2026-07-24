@@ -9,7 +9,7 @@ description: 在 Capability-First v3 中执行目标语义预审、独立科学�
 
 ## 隔离规则
 
-1. 审查必须在**全新的 Codex 任务**完成。协调任务实际调用 `create_thread`，再用 `wait_threads` 等待；不得在求解任务内角色扮演审查者，也不得用 `fork_thread` 继承历史。新任务初始只接收本 Skill、绝对审查包路径、报告输出路径和任务说明；不得继承求解对话、其摘要、`DECISIONS.md`、`results/quality.json`、既有审查、QA 结论或预期结果。
+1. 审查必须在**全新的 Codex 对话/任务**完成。协调任务实际调用 `create_thread`，再用 `wait_threads` 等待；不得在求解任务内角色扮演审查者，也不得用 `fork_thread` 继承历史。新任务初始只接收本 Skill、绝对审查包路径、报告输出路径和任务说明；不得继承求解对话、其摘要、`DECISIONS.md`、`results/quality.json`、既有审查、QA 结论、`required_risks` 或预期结果。
 2. 审查期间只读取对应 `review/packet/` 的冻结副本。可按需读取仓库的通用本地知识库来选择方法或攻击，但不得读取历史 run、同题旧解、公开同题答案或网络内容。
 3. 审查者独立形成判断。不能为了“通过流程”默认认可候选，也不能以缺少外部标准答案为理由跳过复现、反例或挑战。
 4. 对发现的 P0/P1，保存最小复现、受影响问题和恢复条件；不得替求解器直接改写模型、结果、论文或历史运行。审查任务只写指定报告并返回；协调任务用 `create_thread` 返回的真实 `threadId` 导入。环境不能新建任务时必须阻断，不能自填 ID 放行。
@@ -71,11 +71,11 @@ python scripts/review/build_review_packet.py runs/<run-id> --kind scientific
 
 ### 第二步：独立覆盖提取
 
-协调程序在自由报告完成后，**由另一个轻量 AI 或程序**读取报告，提取实际覆盖的风险方向（不是审核者自报），检查本题路由所需的高风险 `risk_id` 是否被讨论。
+协调程序只在自由报告冻结后生成动态 `required_risks`，再由独立 coverage task 读取报告并提取实际覆盖方向。coverage declaration 必须绑定当前报告 SHA-256、`required_risks` SHA-256 和真实 coverage task receipt；开放审核 AI 始终不得读取 `required_risks`。
 
 ### 第三步：专项追问
 
-若开放审核未覆盖某个高风险方向（例如几何题未检查切触和端点、优化题未做多种子验证），协调程序不直接判失败，而是对审核者发出专项追问：
+若开放审核未覆盖某个高风险方向（例如几何题未检查切触和端点、优化题未做多种子验证），协调程序不直接判失败，而是创建真实 follow-up task。专项报告必须绑定任务回执、父任务、当前开放报告哈希并写入 closed resolution；`not_applicable` 必须引用可复验的结构事实：
 
 > 整体审核尚未检查 [缺失方向] 的 [具体问题]。请只针对这一点设计并执行独立攻击。
 
@@ -114,16 +114,17 @@ python scripts/review/build_review_packet.py runs/<run-id> --kind paper-blind
 
 盲审依据题意和 PDF 判断：是否逐问直接回答、建模假设与结论是否自洽、推导和图表能否支撑主张、结果解释是否诚实、是否存在空洞章节、不可读图表、无证据的竞争力宣称或匿名问题。对声明为空间、求解或稳定性证据的图，要核查实际可见对象、坐标/单位、边界和论证关系；一张漂亮但不呈现这些对象的 3D 散点图不能承担模型验证。它可标出需要求解任务进一步复核的证据，但不能在看不到代码时臆造数值或数学结论。
 
-将报告写入 `runs/<run-id>/review/PAPER_BLIND_REVIEW.md`，再由协调任务导入：
+将开放报告写入 `runs/<run-id>/review/PAPER_BLIND_REVIEW.md`，报告冻结后再动态生成论文风险、创建独立 coverage task、导入 coverage declaration，并对未覆盖风险创建绑定真实回执和 closed resolution 的专项 follow-up。开放盲审 AI 不得预读 `required_risks`；清单外 additional findings 的 P0/P1 同样阻断，P2 回到论文修改。
+
+再由协调任务导入：
 
 ```powershell
 python scripts/review/import_review.py runs/<run-id> `
   --kind paper-blind --manifest review/packet/paper-blind/<packet-id>/manifest.json `
-  --verdict pass --severity none --thread-id <fresh-codex-thread-id> `
-  --argumentation-complete --readability-passed
+  --verdict pass --severity none --thread-id <fresh-codex-thread-id>
 ```
 
-只有逐问“主张—推导—证据—解释—限制”完整、没有空壳章节，且正文字号、图表、分页和公式均可读时，才能带上这两个通过标志。发现空章节或不可读页面时，以 `--empty-section`、`--unreadable-page` 记录并给出非通过 verdict。
+逐问闭环、模型理由、推导有效性、结果解释、图表支撑和整体说服力只由开放 PDF 盲审及其动态查漏裁决，不接受调用方手填的旧论文评估布尔值。即使 `paper_structure_signal_report.mechanical_gate_passed=true`，没有有效盲审、coverage 或 follow-up 闭合也不得进入最终放行。
 
 PDF 或提交材料变更会撤销盲审。盲审通过后进入 `verify`，由 `$mathmodel-final-check` 做机械检查。
 
@@ -135,4 +136,4 @@ PDF 或提交材料变更会撤销盲审。盲审通过后进入 `verify`，由 
 python scripts/review/build_review_packet.py runs/<run-id> --kind final-audit
 ```
 
-第三个新审核对话只读该包，不读取前两轮报告或求解上下文。它必须按数学建模竞赛论文标准自由判断题意、模型、推导、算法、结果、图表、源码可复现性、边界和提交规范；不得把预设清单逐项勾选或“表格全通过”当作科学结论。最终 PDF 必须直接包含完整源码附录，不能只给路径。发现问题时给出严重性、位置和应回退的生产阶段，不直接修改文件。报告写入 `review/FINAL_SUBMISSION_REVIEW.md`，再以 `--kind final-audit` 导入。审查发现问题后只允许一次集中修订并重新独立审核；第二次仍未通过则停止，不循环自我修补。只有三轮审核使用不同对话、全部有效且科学强度为 `qualified` 或 `strong` 时才能进入 `complete`。
+第三个新审核对话只读该包，不读取前两轮报告或求解上下文。它必须按数学建模竞赛论文标准自由判断题意、模型、推导、算法、结果、图表、源码可复现性、边界和提交规范；不得把预设清单逐项勾选或“表格全通过”当作科学结论。源码按赛事规定在 PDF 关键代码与提交附件完整工程之间分配。发现问题时给出严重性、位置和应回退的生产阶段，不直接修改文件。报告写入 `review/FINAL_SUBMISSION_REVIEW.md`，再以 `--kind final-audit` 导入。审查发现问题后只允许一次集中修订并重新独立审核；第二次仍未通过则停止，不循环自我修补。只有三轮审核使用不同对话、全部有效且科学强度为 `qualified` 或 `strong` 时才能进入 `complete`。

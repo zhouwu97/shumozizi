@@ -10,9 +10,10 @@ description: 使用仓内比赛模板撰写和编译数学建模竞赛论文。�
 ## 接收材料
 
 - 原题
-- 已通过科学审核的模型与结果
-- 关键主张（`state/critical-claims.yaml`）
-- 论文级图表（`figures/publication/`）
+- 实际方法画像（`analysis/method_profile.json`）
+- 高价值关键主张（`analysis/critical_claims.json`）
+- 已通过科学审核且仍为 current 的结果与证据边界
+- 当前论文级图表（`figures/publication/`）
 - 学习模式（`knowledge/patterns/` 和 `knowledge/cards/papers/`）
 - 比赛模板
 
@@ -35,7 +36,7 @@ description: 使用仓内比赛模板撰写和编译数学建模竞赛论文。�
 11. 还不能证明什么
 12. 最终直接答案是什么
 
-不要求固定表格式，但每条必须有实质内容。
+不要求固定表格式、字数或句数门槛。120 字符、3 个句子、技术内容和解释词只能作为机械层的最低非空壳信号，不能据此声称模型合理、推导正确或论证质量已获确认。
 
 ### 第二步：选择模板
 
@@ -71,7 +72,7 @@ python scripts/paper/select_template.py runs/<run-id> \
 - **赛事允许且页数不受影响**：完整相关源码进入 PDF 附录
 - **赛事限制页数**：PDF 放关键代码和文件清单（文件名 / 功能 / 哈希），完整源码放 `paper/submission/source/`
 
-至少收录：主求解入口、核心模型、exact scorer、关键优化器、MATLAB 独立 oracle、关键绘图脚本、运行说明。
+至少收录赛事要求的主求解入口、核心模型、scorer、独立验证、关键绘图脚本和运行说明；PDF 与附件的分配以赛事规则为准，不强制某一引擎或把全部工程塞入 PDF。
 
 ### 第五步：学习应用记录
 
@@ -89,4 +90,4 @@ python scripts/paper/select_template.py runs/<run-id> \
 python scripts/paper/compile_paper.py runs/<run-id>
 ```
 
-编译前 `check_paper_readiness.py` 验证：提纲存在、所有必答问题出现、每问关联当前结果、关键主张有证据、源码附录策略明确。
+编译前 `check_paper_readiness.py` 重新计算 argument map v3 对 `method_profile`、`critical_claims`、逐问 objective semantics、当前结果和当前 publication figures 的全部哈希绑定。机械结构信号只检查缺问、空章节、直接答案和最低非空壳信号；真正的模型合理性、推导有效性、结果解释和论文说服力只由独立 PDF 盲审裁决。

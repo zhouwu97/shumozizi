@@ -11,9 +11,6 @@ description: 解析数学建模题面与附件、识别数学本质、比较候�
 2. 先做结构预检：不变量、界、极端情形、可消元变量、可分解结构、事件边界、小规模 oracle 与主要敏感性风险。给出至少一个题目特定的核心推导或反例，不把几何、物理或统计判断交给通用运行时。
 3. 生成两到三条真正不同的候选路线并进行比较。每条说明假设、最低成本 probe、代价、风险和何时切换 fallback。**至少有一条简单 baseline 路线**。先执行能区分路线的 probe，再确定主路线。
 4. 写入 `reports/ANALYSIS_MODELING_REPORT.md`，自由形式但至少覆盖：题目重述、五问递进、baseline、2-3 条路线、高影响歧义、需要独立验证的结果。
-5. **自由分析完成后**才提取关键主张到 `state/critical-claims.yaml`：
-   - 每问 1-3 个核心主张 + 0-5 个辅助主张
-   - 每个核心主张注明需要什么证据
-   - 参考模板：`templates/critical-claims.yaml`
-   - 不登记坐标、常量、每句论文文字等细节
-6. 将采用解释、主路线、fallback、放弃路线和下一步压缩写入 `state/DECISIONS.md`。正式题面在进入能力路由前还要由只读题面、禁止联网的新 Codex 对话做目标语义预审；若独立判断冲突，回到本阶段修正，不以公开同题答案定案。
+5. 先做结构预检，再按当前题的数学对象受限选择最多 3 个能力包：一个主能力包、至多一个交叉能力包、至多一个验证/不确定性包。既有质量协议只在路线比较后约束实际执行证据，不能预先替代自由分析或路线比较。
+6. 本阶段不预填 `method_profile`，也不把候选模型清单当作实际方法属性。先保留简单 baseline、已知可行例和最低成本 probe；首轮 production 实验实际运行后，才由实验阶段根据代码与执行收据生成 `analysis/method_profile.json`，并把每问少量高价值主张独立写入 `analysis/critical_claims.json`。主张归属只看显式 `question_id`，不从 `claim_id` 前缀猜测。
+6. 将采用解释、主路线、fallback、放弃路线和下一步压缩写入 `state/DECISIONS.md`。可按需读取 `skills/2analysis-modeling/SKILL.md` 与 `knowledge/model-selection-matrix.md`，但不得把旧论文路线直接当作答案。正式题面在进入能力路由前还要由只读题面、禁止联网的新 Codex 对话做目标语义预审；若独立判断冲突，回到本阶段修正，不以公开同题答案定案。

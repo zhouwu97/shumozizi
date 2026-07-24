@@ -1,0 +1,4 @@
+interface:
+  display_name: "数学建模论文论证写作"
+  short_description: "基于当前证据链组织逐问论证并撰写竞赛论文。"
+  default_prompt: "Use $mathmodel-research-writing to write the evidence-bound modeling paper for this run."

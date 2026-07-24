@@ -13,7 +13,7 @@ def test_every_active_skill_has_valid_frontmatter_and_openai_interface() -> None
     """每个主动入口都必须具有稳定名称、触发描述和显式默认调用提示。"""
     skills_root = REPO_ROOT / ".agents/skills"
     skills = sorted(path for path in skills_root.iterdir() if path.is_dir())
-    assert len(skills) == 13
+    assert len(skills) == 14
 
     for skill in skills:
         content = (skill / "SKILL.md").read_text(encoding="utf-8")

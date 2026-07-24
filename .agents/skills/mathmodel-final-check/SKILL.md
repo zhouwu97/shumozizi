@@ -13,8 +13,8 @@ description: 对已通过独立 PDF 盲审的 Capability-First v3 论文执行�
    python scripts/qa/run_final_checks.py runs/<run-id>
    ```
 
-2. 它会检查 PDF 可读性、空白页、裁切、占位符、题号/结果标记、数字一致性、图表和结果漂移、模板匹配、编译回执及可选离线论文卡/贡献账本。失败时先定位实际文件或事实问题；不要手工修改 QA JSON。
-3. `VERIFY_REPORT.md` 的内容密度、图表数、公式数和引用数只是人工定位线索，不能证明模型深入或结果有竞争力。科学正确性由独立红队，论文论证质量由 PDF 盲审决定。
+2. 它会检查 `qa/paper-structure-signals.json`、PDF 可读性、空白页、裁切、占位符、题号/结果标记、数字一致性、图表和结果漂移、模板匹配、编译回执及可选离线论文卡/贡献账本。结构报告只能以 `signals_present` 或 `missing_required_signals` 表示最低非空壳信号；失败时先定位实际文件或事实问题，不要手工修改 QA JSON。
+3. `mechanical_gate_passed=true`、内容密度、图表数、公式数、引用数、120 字符、3 个句子和解释词都不能证明数学正确或论证质量。科学正确性由独立红队，模型合理性、推导有效性、结果解释和论文说服力由开放 PDF 盲审及动态查漏决定；没有有效盲审，机械 QA 通过也不得放行。
 4. 机械 QA 通过后进入 `final_review`，建立最终交付包：
 
    ```powershell
