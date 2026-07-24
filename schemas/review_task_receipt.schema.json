@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/review_task_receipt.schema.json",
+  "title": "Independent Review Task Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "task_id", "task_type", "thread_id", "model_id", "prompt_sha256", "input_manifest_sha256", "parent_task_id", "created_at", "completed_at", "report_file", "report_sha256"],
+  "properties": {
+    "schema_name": {"const": "review_task_receipt"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "task_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "task_type": {"enum": ["objective_semantics", "scientific_open", "coverage_extract", "scientific_follow_up", "paper_blind_open", "paper_coverage_extract", "paper_follow_up", "final_audit"]},
+    "thread_id": {"type": "string", "minLength": 1},
+    "model_id": {"type": "string", "minLength": 1},
+    "prompt_sha256": {"$ref": "#/$defs/sha"},
+    "input_manifest_sha256": {"$ref": "#/$defs/sha"},
+    "parent_task_id": {"type": ["string", "null"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "report_file": {"type": "string", "minLength": 1},
+    "report_sha256": {"$ref": "#/$defs/sha"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

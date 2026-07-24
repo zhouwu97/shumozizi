@@ -8,17 +8,20 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from typing import Any
 from pathlib import Path
+from typing import Any
 
-from shumozizi.core.io import ContractError, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
+from shumozizi.paper.readiness import argument_map_bindings
+from shumozizi.simple.critical_claims import read_critical_claims
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.quality import assess_result_quality
 from shumozizi.simple.review import (
     _PACKET_CONTENT_EXCLUDE_KEYS,
-    _neutralize_value,
     build_review_packet,
     completion_status,
     final_audit_status,
+    generate_required_review_risks,
     import_final_audit,
     import_objective_semantics_review,
     import_paper_blind_review,
@@ -28,11 +31,17 @@ from shumozizi.simple.review import (
     scientific_review_status,
     verify_review_packet,
 )
-from shumozizi.simple.state import update_simple_state
+from shumozizi.simple.review_tasks import create_review_task_receipt
+from shumozizi.simple.state import read_simple_state, update_simple_state
 from tests.capability_flow_helpers import (
     prepare_cumcm_template,
     prepare_minimal_capability_route,
     prepare_minimal_visualization,
+)
+from tests.quality_protocol_helpers import (
+    _ensure_scientific_review_contracts,
+    adapter_backed_assessment,
+    run_synthetic_verification_protocol,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +62,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
         """写入满足导入要求的最小自由审查报告。"""
         report = run_dir / "review" / name
         evidence_reference = ""
+        question_id = list(read_simple_state(run_dir).get("required_questions") or ["Q1"])[0]
         if name == "SCIENTIFIC_RED_TEAM.md":
             artifact_root = run_dir / "review" / "red_team_artifacts"
             manifests = sorted((run_dir / "review" / "packet" / "scientific").glob("*/manifest.json"))
@@ -68,7 +78,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "assert (packet / 'problem').is_dir()\n"
                 "(outputs / 'recompute.json').write_text(json.dumps({\n"
                 "    'claim_id': 'Q1-objective',\n"
-                "    'question_id': 'Q5',\n"
+                f"    'question_id': {question_id!r},\n"
                 "    'method': 'independent_quadratic_oracle',\n"
                 "    'cases': 12,\n"
                 "    'production_value': 3.348287,\n"
@@ -87,7 +97,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "assert (packet / 'source_snapshot').is_dir()\n"
                 "(outputs / 'property.json').write_text(json.dumps({\n"
                 "    'claim_id': 'segment-intersection',\n"
-                "    'question_id': 'Q5',\n"
+                f"    'question_id': {question_id!r},\n"
                 "    'property': 'finite_segment_endpoint_cases',\n"
                 "    'cases': 12,\n"
                 "    'failures': 0,\n"
@@ -117,25 +127,106 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             + evidence_reference,
             encoding="utf-8",
         )
-        if name == "SCIENTIFIC_RED_TEAM.md":
-            # 覆盖声明必须绑定当前报告 SHA；最小夹具的路由为 other 题型，
-            # 动态派生风险集为空，因此 covered_risks 也为空即可放行。
-            import datetime as _dt
-            report_sha = hashlib.sha256(report.read_bytes()).hexdigest()
-            coverage_path = run_dir / "review" / "red_team_coverage.json"
-            coverage_path.write_text(
-                json.dumps({
-                    "schema_name": "red_team_coverage_declaration",
-                    "schema_version": "2.0",
-                    "run_id": run_dir.name,
-                    "review_file": f"review/{name}",
-                    "report_sha256": report_sha,
-                    "covered_risks": [],
-                    "generated_at": _dt.datetime.now(_dt.UTC).isoformat().replace("+00:00", "Z"),
-                }, indent=2),
-                encoding="utf-8",
-            )
         return report
+
+    def _record_open_review_task(
+        self,
+        run_dir: Path,
+        *,
+        packet: dict[str, object],
+        report: Path,
+        task_id: str,
+        task_type: str,
+        thread_id: str,
+    ) -> str:
+        """记录绑定冻结审查包与实际开放报告的任务回执。"""
+        manifest_file = self._manifest_relative(packet)
+        manifest = run_dir / manifest_file
+        receipt = create_review_task_receipt(
+            run_dir,
+            task_id=task_id,
+            task_type=task_type,
+            thread_id=thread_id,
+            model_id="fixture-model",
+            prompt_sha256="4" * 64,
+            input_bindings={
+                "packet": {
+                    "manifest_file": manifest_file,
+                    "manifest_sha256": sha256_file(manifest),
+                }
+            },
+            report_file=report.relative_to(run_dir).as_posix(),
+        )
+        return receipt.relative_to(run_dir).as_posix()
+
+    @staticmethod
+    def _write_passing_coverage(
+        run_dir: Path,
+        *,
+        scope: str,
+        report: Path,
+        parent_task_id: str,
+    ) -> str:
+        """写入绑定报告、动态风险和独立 coverage task 的通过声明。"""
+        report_file = report.relative_to(run_dir).as_posix()
+        risks = generate_required_review_risks(
+            run_dir,
+            scope=scope,
+            report_file=report_file if scope == "paper" else None,
+        )
+        if scope == "scientific":
+            risks_file = "review/required_risks.json"
+            declaration_file = "review/coverage/scientific.json"
+            task_id = "scientific-coverage"
+            task_type = "coverage_extract"
+        else:
+            risks_file = "review/paper_required_risks.json"
+            declaration_file = "review/coverage/paper_blind.json"
+            task_id = "paper-coverage"
+            task_type = "paper_coverage_extract"
+        receipt_file = f"review/tasks/{task_id}/receipt.json"
+        atomic_json(
+            run_dir / declaration_file,
+            {
+                "schema_name": "red_team_coverage_declaration",
+                "schema_version": "3.0",
+                "run_id": run_dir.name,
+                "review_file": report_file,
+                "report_sha256": sha256_file(report),
+                "required_risks_file": risks_file,
+                "required_risks_sha256": sha256_file(run_dir / risks_file),
+                "coverage_task_receipt": receipt_file,
+                "covered_risks": [
+                    {
+                        "risk_id": risk_id,
+                        "conclusion": "sufficient",
+                        "evidence_location": f"{report_file}#独立审查",
+                    }
+                    for risk_id in sorted(risks)
+                ],
+                "follow_ups": [],
+                "additional_findings": [],
+                "generated_at": "2026-07-24T00:00:00Z",
+            },
+        )
+        create_review_task_receipt(
+            run_dir,
+            task_id=task_id,
+            task_type=task_type,
+            thread_id=f"{task_id}-thread",
+            model_id="fixture-model",
+            prompt_sha256="5" * 64,
+            input_bindings={
+                "report": {"file": report_file, "sha256": sha256_file(report)},
+                "required_risks": {
+                    "file": risks_file,
+                    "sha256": sha256_file(run_dir / risks_file),
+                },
+            },
+            report_file=declaration_file,
+            parent_task_id=parent_task_id,
+        )
+        return receipt_file
 
     @staticmethod
     def _prepare_scientific_phase(run_dir: Path) -> None:
@@ -146,7 +237,66 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             json.dumps({"objective": 1.0}), encoding="utf-8"
         )
         prepare_minimal_capability_route(run_dir)
+        script = run_dir / "code" / "figures" / "workflow_visual.py"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(
+            "from PIL import Image\n"
+            "from pathlib import Path\n"
+            "import sys\n"
+            "Path(sys.argv[1]).parent.mkdir(parents=True, exist_ok=True)\n"
+            "Image.new('RGB', (320, 240), color=(48, 98, 148)).save(sys.argv[1])\n",
+            encoding="utf-8",
+        )
+        for index, question_id in enumerate(
+            read_simple_state(run_dir)["required_questions"], start=1
+        ):
+            protocol = run_synthetic_verification_protocol(
+                run_dir,
+                result_id=f"review-result-{question_id}",
+                question_id=question_id,
+                objective=float(index),
+            )
+            assess_result_quality(
+                run_dir,
+                result_id=f"review-result-{question_id}",
+                assessment=adapter_backed_assessment(protocol),
+            )
+        _ensure_scientific_review_contracts(run_dir)
         update_simple_state(run_dir, phase="scientific_review")
+
+    @staticmethod
+    def _write_minimal_argument_map(run_dir: Path) -> None:
+        """写入绑定当前方法、主张、结果与图索引的 v3 论证地图。"""
+        claims = []
+        for item in read_critical_claims(run_dir)["claims"]:
+            claims.append(
+                {
+                    "claim_id": item["claim_id"],
+                    "question_id": item["question_id"],
+                    "claim": item["statement"],
+                    "motivation": "该主张直接回答当前测试问题。",
+                    "baseline_limitation": "最小夹具不声称超出当前证据边界。",
+                    "model_support": "当前方法画像与生产执行收据共同限定该主张。",
+                    "result_ids": item["result_ids"],
+                    "comparison_evidence": [],
+                    "validation_evidence": [],
+                    "figure_ids": [],
+                    "boundary": "仅用于验证工作流门和审查回执。",
+                    "outcome": "supported",
+                    "paper_location": "对应问题章节",
+                }
+            )
+        atomic_json(
+            run_dir / "paper" / "argument_map.json",
+            {
+                "schema_name": "argument_map",
+                "schema_version": "3.0",
+                "run_id": run_dir.name,
+                **argument_map_bindings(run_dir),
+                "status": "current",
+                "claims": claims,
+            },
+        )
 
     def _pass_scientific_review(
         self, run_dir: Path, required_questions: list[str] | None = None
@@ -154,6 +304,21 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
         """构建科学包并导入一个合格的隔离审查结论。"""
         packet = build_review_packet(run_dir, kind="scientific")
         report = self._write_report(run_dir, "SCIENTIFIC_RED_TEAM.md")
+        task_file = self._record_open_review_task(
+            run_dir,
+            packet=packet,
+            report=report,
+            task_id="scientific-open",
+            task_type="scientific_open",
+            thread_id="fresh-scientific-thread",
+        )
+        self._write_passing_coverage(
+            run_dir,
+            scope="scientific",
+            report=report,
+            parent_task_id="scientific-open",
+        )
+        questions = list(read_simple_state(run_dir).get("required_questions") or [])
         kwargs: dict[str, Any] = {
             "manifest_file": self._manifest_relative(packet),
             "verdict": "pass",
@@ -163,28 +328,42 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             "affected_questions": [],
             "reviewer_thread_id": "fresh-scientific-thread",
             "report_file": report.relative_to(run_dir),
+            "task_receipt_file": task_file,
         }
-        if required_questions:
+        if required_questions or questions:
             kwargs["question_reviews"] = [
                 {"question_id": q, "verdict": "pass",
                  "competition_strength": "qualified"}
-                for q in required_questions
+                for q in (required_questions or questions)
             ]
-        import_scientific_review(run_dir, **kwargs)
+        return import_scientific_review(run_dir, **kwargs)
 
     def _pass_paper_blind_review(self, run_dir: Path) -> dict[str, object]:
         """构建盲审包并导入一个合格的隔离 PDF 审查结论。"""
         packet = build_review_packet(run_dir, kind="paper-blind")
         report = self._write_report(run_dir, "PAPER_BLIND_REVIEW.md")
+        task_file = self._record_open_review_task(
+            run_dir,
+            packet=packet,
+            report=report,
+            task_id="paper-blind-open",
+            task_type="paper_blind_open",
+            thread_id="fresh-paper-thread",
+        )
+        self._write_passing_coverage(
+            run_dir,
+            scope="paper",
+            report=report,
+            parent_task_id="paper-blind-open",
+        )
         import_paper_blind_review(
             run_dir,
             manifest_file=self._manifest_relative(packet),
             verdict="pass",
             highest_severity="none",
             reviewer_thread_id="fresh-paper-thread",
-            argumentation_complete=True,
-            readability_passed=True,
             report_file=report.relative_to(run_dir),
+            task_receipt_file=task_file,
         )
         return packet
 
@@ -192,6 +371,14 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
         """构建最终交付包并导入第三个独立对话的通过结论。"""
         packet = build_review_packet(run_dir, kind="final-audit")
         report = self._write_report(run_dir, "FINAL_SUBMISSION_REVIEW.md")
+        task_file = self._record_open_review_task(
+            run_dir,
+            packet=packet,
+            report=report,
+            task_id="final-audit-open",
+            task_type="final_audit",
+            thread_id="fresh-final-thread",
+        )
         import_final_audit(
             run_dir,
             manifest_file=self._manifest_relative(packet),
@@ -199,6 +386,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             highest_severity="none",
             reviewer_thread_id="fresh-final-thread",
             report_file=report.relative_to(run_dir),
+            task_receipt_file=task_file,
         )
         return packet
 
@@ -210,7 +398,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             "state-phase", "scientific-review-release",
             "competition-submission-release", "visualization-contract",
             "paper-template-manifest", "paper-compile-receipt",
-            "paper-blind-review-release", "pdf", "paper-content-sufficiency",
+            "paper-blind-review-release", "pdf", "paper-structure-signals",
             "placeholders", "result-references", "numeric-consistency",
             "current-result-files", "current-figure-files", "contact-sheet",
         ]
@@ -241,6 +429,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
         """在通过科学红队后完成最小可视化门并进入论文阶段。"""
         prepare_minimal_visualization(run_dir)
         prepare_cumcm_template(run_dir)
+        IndependentReviewWorkflowTests._write_minimal_argument_map(run_dir)
         update_simple_state(run_dir, phase="paper")
 
     @staticmethod
@@ -257,6 +446,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             check=False,
         )
         if completed.returncode != 0:
@@ -281,19 +471,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, "独立科学红队|有必答问题"):
                 update_simple_state(run_dir, phase="visualization")
 
-            report = self._write_report(run_dir, "SCIENTIFIC_RED_TEAM.md")
-            import_scientific_review(
-                run_dir,
-                manifest_file=self._manifest_relative(packet),
-                verdict="pass",
-                highest_severity="none",
-                competition_strength="qualified",
-                full_rerun_required=False,
-                affected_questions=[],
-                reviewer_thread_id="fresh-scientific-thread",
-                report_file=report.relative_to(run_dir),
-                # 测试夹具无 required_questions，允许兼容旧接口
-            )
+            self._pass_scientific_review(run_dir)
             self._enter_paper(run_dir)
 
             self.assertTrue(scientific_review_status(run_dir)["allowed"])
@@ -377,6 +555,14 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     affected_questions=["Q1"],
                     reviewer_thread_id="fresh-scientific-thread",
                     report_file=report.relative_to(run_dir),
+                    task_receipt_file="review/tasks/not-needed/receipt.json",
+                    question_reviews=[
+                        {
+                            "question_id": "Q5",
+                            "verdict": "fail",
+                            "competition_strength": "weak",
+                        }
+                    ],
                 )
 
     def test_objective_semantics_reimport_revokes_all_downstream_reviews(self) -> None:
@@ -398,6 +584,18 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     "*/manifest.json"
                 )
             )
+            semantics_report = run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md"
+            semantics_task = self._record_open_review_task(
+                run_dir,
+                packet={
+                    "packet_kind": "objective-semantics",
+                    "packet_id": semantics_manifest.parent.name,
+                },
+                report=semantics_report,
+                task_id="semantic-recheck",
+                task_type="objective_semantics",
+                thread_id="semantic-recheck-thread",
+            )
 
             import_objective_semantics_review(
                 run_dir,
@@ -405,6 +603,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 verdict="pass",
                 highest_severity="none",
                 reviewer_thread_id="semantic-recheck-thread",
+                task_receipt_file=semantics_task,
             )
 
             summary = load_json(run_dir / "review" / "summary.json")
@@ -441,6 +640,14 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     affected_questions=[],
                     reviewer_thread_id="fresh-scientific-thread",
                     report_file=report.relative_to(run_dir),
+                    task_receipt_file="review/tasks/not-needed/receipt.json",
+                    question_reviews=[
+                        {
+                            "question_id": "Q1",
+                            "verdict": "pass",
+                            "competition_strength": "qualified",
+                        }
+                    ],
                 )
 
     def test_three_reviews_and_current_mechanical_qa_are_required_for_completion(self) -> None:
@@ -520,6 +727,14 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             update_simple_state(run_dir, phase="final_review")
             packet = build_review_packet(run_dir, kind="final-audit")
             report = self._write_report(run_dir, "FINAL_SUBMISSION_REVIEW.md")
+            reused_task = self._record_open_review_task(
+                run_dir,
+                packet=packet,
+                report=report,
+                task_id="final-audit-reused",
+                task_type="final_audit",
+                thread_id="fresh-paper-thread",
+            )
 
             with self.assertRaisesRegex(ContractError, "第三个新对话"):
                 import_final_audit(
@@ -529,8 +744,17 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     highest_severity="none",
                     reviewer_thread_id="fresh-paper-thread",
                     report_file=report.relative_to(run_dir),
+                    task_receipt_file=reused_task,
                 )
 
+            final_task = self._record_open_review_task(
+                run_dir,
+                packet=packet,
+                report=report,
+                task_id="final-audit-current",
+                task_type="final_audit",
+                thread_id="fresh-final-thread",
+            )
             import_final_audit(
                 run_dir,
                 manifest_file=self._manifest_relative(packet),
@@ -538,6 +762,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 highest_severity="none",
                 reviewer_thread_id="fresh-final-thread",
                 report_file=report.relative_to(run_dir),
+                task_receipt_file=final_task,
             )
             self.assertTrue(final_audit_status(run_dir)["allowed"])
             (run_dir / "paper" / "submission" / "final.pdf").write_bytes(
@@ -599,6 +824,20 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             self._enter_paper_review(run_dir)
             packet = build_review_packet(run_dir, kind="paper-blind")
             report = self._write_report(run_dir, "PAPER_BLIND_REVIEW.md")
+            task_file = self._record_open_review_task(
+                run_dir,
+                packet=packet,
+                report=report,
+                task_id="paper-blind-reused",
+                task_type="paper_blind_open",
+                thread_id="fresh-scientific-thread",
+            )
+            self._write_passing_coverage(
+                run_dir,
+                scope="paper",
+                report=report,
+                parent_task_id="paper-blind-reused",
+            )
 
             with self.assertRaisesRegex(ContractError, "不同于科学红队"):
                 import_paper_blind_review(
@@ -607,9 +846,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                     verdict="pass",
                     highest_severity="none",
                     reviewer_thread_id="fresh-scientific-thread",
-                    argumentation_complete=True,
-                    readability_passed=True,
                     report_file=report.relative_to(run_dir),
+                    task_receipt_file=task_file,
                 )
 
     def test_review_cli_crosses_all_independent_boundaries(self) -> None:
@@ -622,6 +860,20 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             )
             scientific_manifest = self._manifest_relative(scientific_packet)
             scientific_report = self._write_report(run_dir, "SCIENTIFIC_RED_TEAM.md")
+            scientific_task = self._record_open_review_task(
+                run_dir,
+                packet=scientific_packet,
+                report=scientific_report,
+                task_id="cli-scientific-open",
+                task_type="scientific_open",
+                thread_id="cli-scientific-thread",
+            )
+            self._write_passing_coverage(
+                run_dir,
+                scope="scientific",
+                report=scientific_report,
+                parent_task_id="cli-scientific-open",
+            )
             self._run_review_cli(
                 str(IMPORT_REVIEW),
                 str(run_dir),
@@ -637,6 +889,10 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "qualified",
                 "--thread-id",
                 "cli-scientific-thread",
+                "--task-receipt",
+                scientific_task,
+                "--per-question",
+                "Q1=pass,qualified",
                 "--report",
                 scientific_report.relative_to(run_dir).as_posix(),
             )
@@ -648,6 +904,20 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             )
             blind_manifest = self._manifest_relative(blind_packet)
             blind_report = self._write_report(run_dir, "PAPER_BLIND_REVIEW.md")
+            blind_task = self._record_open_review_task(
+                run_dir,
+                packet=blind_packet,
+                report=blind_report,
+                task_id="cli-paper-open",
+                task_type="paper_blind_open",
+                thread_id="cli-paper-thread",
+            )
+            self._write_passing_coverage(
+                run_dir,
+                scope="paper",
+                report=blind_report,
+                parent_task_id="cli-paper-open",
+            )
             self._run_review_cli(
                 str(IMPORT_REVIEW),
                 str(run_dir),
@@ -661,8 +931,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "none",
                 "--thread-id",
                 "cli-paper-thread",
-                "--argumentation-complete",
-                "--readability-passed",
+                "--task-receipt",
+                blind_task,
                 "--report",
                 blind_report.relative_to(run_dir).as_posix(),
             )
@@ -674,6 +944,14 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
             )
             final_manifest = self._manifest_relative(final_packet)
             final_report = self._write_report(run_dir, "FINAL_SUBMISSION_REVIEW.md")
+            final_task = self._record_open_review_task(
+                run_dir,
+                packet=final_packet,
+                report=final_report,
+                task_id="cli-final-open",
+                task_type="final_audit",
+                thread_id="cli-final-thread",
+            )
             self._run_review_cli(
                 str(IMPORT_REVIEW),
                 str(run_dir),
@@ -687,6 +965,8 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "none",
                 "--thread-id",
                 "cli-final-thread",
+                "--task-receipt",
+                final_task,
                 "--report",
                 final_report.relative_to(run_dir).as_posix(),
             )

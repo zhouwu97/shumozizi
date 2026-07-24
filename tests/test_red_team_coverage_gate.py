@@ -1,75 +1,109 @@
-"""验证红队覆盖声明不是 general-coverage 自报，而是动态风险差集 + 追问闭环。
-
-覆盖 review 计划要求的七个失败场景：
-- general-coverage 不能放行；
-- 缺少动态风险不能放行；
-- 虚构 heading/行号不能放行；
-- insufficient 但无 follow-up 不能放行；
-- follow-up 未关闭不能放行；
-- 所有专项关闭后可以放行；
-- 自由报告中发现未预设的新风险仍可保留为 additional finding。
-
-覆盖门与路由派生解耦：required_risks 的派生逻辑单独由 _derive_required_risks
-单元测试覆盖；本文件在 orchestrator 测试中 patch _route_required_risks，
-以隔离 schema 校验、报告 SHA 绑定、位置真实性与追问闭环逻辑。
-"""
+"""验证动态风险派生、开放报告覆盖和专项追问的真实回执边界。"""
 
 from __future__ import annotations
 
-import hashlib
-import json
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from shumozizi.core.io import ContractError
+from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.simple.review import (
-    _derive_required_risks,
+    derive_required_review_risks,
     require_coverage_declaration_valid,
 )
+from shumozizi.simple.review_tasks import create_review_task_receipt
 
 _REPORT = "# 搜索稳定性\n\n多种子分析显示解稳定。\n\n## 代理与精确\n\n一致。\n"
+_RISK_ID = "optimization.multiseed.Q1"
+
+
+def _profile(**solver_properties: bool) -> dict[str, Any]:
+    """构造只描述实际求解属性的方法画像。"""
+    return {
+        "questions": [
+            {
+                "question_id": "Q1",
+                "model_families": ["other"],
+                "solver_properties": solver_properties,
+            }
+        ]
+    }
 
 
 class RequiredRiskDerivationTests(unittest.TestCase):
-    """动态派生：题型 + 工具链 + decision_space → 必答风险集。"""
+    """风险由实际方法属性触发，而不是由题型或引擎名称猜测。"""
 
-    def test_optimization_family_requires_multiseed(self) -> None:
-        risks = _derive_required_risks(
-            {"problem_families": ["optimization"], "toolchain": {"production_engine": "python"}},
-            None,
+    def test_only_stochastic_triggers_multiseed(self) -> None:
+        route = {"problem_families": ["optimization"], "toolchain": {}}
+        stochastic = derive_required_review_risks(
+            route, None, _profile(stochastic=True), None, []
         )
-        self.assertIn("optimization-multiseed", risks)
-        self.assertNotIn("optimization-proxy-exact", risks)
-
-    def test_matlab_optimization_adds_proxy_exact(self) -> None:
-        risks = _derive_required_risks(
-            {"problem_families": ["optimization"], "toolchain": {"production_engine": "matlab"}},
-            None,
+        deterministic = derive_required_review_risks(
+            route, None, _profile(local_search=True), None, []
         )
-        self.assertIn("optimization-proxy-exact", risks)
 
-    def test_geometry_and_variable_action(self) -> None:
-        risks = _derive_required_risks(
+        self.assertIn("optimization.multiseed.Q1", stochastic)
+        self.assertNotIn("optimization.multiseed.Q1", deterministic)
+
+    def test_only_proxy_property_triggers_proxy_exact(self) -> None:
+        route = {
+            "problem_families": ["optimization"],
+            "toolchain": {"production_engine": "matlab"},
+        }
+        matlab_only = derive_required_review_risks(route, None, _profile(), None, [])
+        proxy = derive_required_review_risks(
+            route,
+            None,
+            _profile(uses_proxy_objective=True),
+            None,
+            [{"question_id": "Q1", "metrics": {"proxy_score": 1, "exact_score": 1}}],
+        )
+
+        self.assertNotIn("optimization.proxy_exact.Q1", matlab_only)
+        self.assertNotIn("optimization.multiseed.Q1", matlab_only)
+        self.assertIn("optimization.proxy_exact.Q1", proxy)
+
+    def test_geometry_and_decision_risks_come_from_structured_facts(self) -> None:
+        profile = _profile()
+        profile["questions"][0]["mathematical_properties"] = {
+            "continuous_geometry": True,
+            "finite_segment_logic": True,
+        }
+        risks = derive_required_review_risks(
             {"problem_families": ["geometry_kinematics"], "toolchain": {}},
-            {"questions": [{"question_id": "Q5", "decision_space": {"action_cardinality": "variable"}}]},
-        )
-        self.assertIn("geometry-continuous-boundary", risks)
-        self.assertIn("geometry-finite-segment", risks)
-        self.assertIn("action-activation-Q5", risks)
-
-    def test_other_family_has_no_required_risk(self) -> None:
-        risks = _derive_required_risks(
-            {"problem_families": ["other"], "toolchain": {"production_engine": "python"}},
+            {
+                "questions": [
+                    {
+                        "question_id": "Q1",
+                        "decision_space": {"action_cardinality": "variable"},
+                    }
+                ]
+            },
+            profile,
             None,
+            [],
         )
-        self.assertEqual({}, risks)
+
+        self.assertIn("geometry.continuous_boundary.Q1", risks)
+        self.assertIn("geometry.finite_segment_endpoint.Q1", risks)
+        self.assertIn("decision_space.activation.Q1", risks)
+
+    def test_proxy_receipt_integrity_uses_execution_receipts(self) -> None:
+        risks = derive_required_review_risks(
+            {"problem_families": ["optimization"], "toolchain": {}},
+            None,
+            _profile(uses_proxy_objective=True),
+            None,
+            [{"question_id": "Q1", "metrics": {"objective": 1}}],
+        )
+
+        self.assertIn("optimization.proxy_receipt_integrity.Q1", risks)
 
 
 class CoverageGateOrchestratorTests(unittest.TestCase):
-    """require_coverage_declaration_valid 的 schema/SHA/位置/闭环端到端行为。"""
+    """覆盖声明必须具备报告、风险和真实任务的完整绑定。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -78,36 +112,120 @@ class CoverageGateOrchestratorTests(unittest.TestCase):
         (self.run_dir / "review").mkdir(parents=True)
         self.report = self.run_dir / "review" / "SCIENTIFIC_RED_TEAM.md"
         self.report.write_text(_REPORT, encoding="utf-8")
-        self.report_sha = hashlib.sha256(self.report.read_bytes()).hexdigest()
-
-    def _write_declaration(self, **overrides: Any) -> None:
-        declaration: dict[str, Any] = {
-            "schema_name": "red_team_coverage_declaration",
-            "schema_version": "2.0",
-            "run_id": self.run_dir.name,
-            "review_file": "review/SCIENTIFIC_RED_TEAM.md",
-            "report_sha256": self.report_sha,
-            "covered_risks": [],
-        }
-        declaration.update(overrides)
-        (self.run_dir / "review" / "red_team_coverage.json").write_text(
-            json.dumps(declaration, ensure_ascii=False), encoding="utf-8"
+        atomic_json(
+            self.run_dir / "review" / "required_risks.json",
+            {
+                "schema_name": "required_review_risks",
+                "schema_version": "1.0",
+                "run_id": self.run_dir.name,
+                "source_bindings": {},
+                "risks": [{"risk_id": _RISK_ID, "reason": "多种子稳定性"}],
+                "generated_at": "2026-07-24T00:00:00Z",
+            },
         )
 
-    def _touch(self, relative: str) -> str:
-        path = self.run_dir / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("专项追问产物\n", encoding="utf-8")
-        return relative
+    def _follow_up(self, *, status: str = "closed") -> dict[str, Any]:
+        """创建绑定 coverage 父任务的真实专项报告与任务回执。"""
+        report_file = "review/followups/multiseed.md"
+        report = self.run_dir / report_file
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# 多种子专项\n\n已复现实验并关闭风险。\n", encoding="utf-8")
+        receipt = create_review_task_receipt(
+            self.run_dir,
+            task_id="multiseed-follow-up",
+            task_type="scientific_follow_up",
+            thread_id="follow-up-thread",
+            model_id="fixture-model",
+            prompt_sha256="3" * 64,
+            input_bindings={
+                **self._coverage_inputs(),
+                "risk_id": _RISK_ID,
+            },
+            report_file=report_file,
+            parent_task_id="coverage-task",
+        )
+        return {
+            "risk_id": _RISK_ID,
+            "task_receipt": receipt.relative_to(self.run_dir).as_posix(),
+            "report_file": report_file,
+            "report_sha256": sha256_file(report),
+            "status": status,
+            "resolution": "独立多种子实验未发现结论翻转。",
+            "closed_at": "2026-07-24T00:00:00Z",
+        }
 
-    def _validate(self, required: dict[str, str]) -> None:
+    def _coverage_inputs(self) -> dict[str, dict[str, str]]:
+        """返回 coverage 提取器必须冻结的两项输入。"""
+        return {
+            "report": {
+                "file": "review/SCIENTIFIC_RED_TEAM.md",
+                "sha256": sha256_file(self.report),
+            },
+            "required_risks": {
+                "file": "review/required_risks.json",
+                "sha256": sha256_file(self.run_dir / "review" / "required_risks.json"),
+            },
+        }
+
+    def _write_declaration(self, **overrides: Any) -> None:
+        """写入 v3 声明，再创建绑定该声明的独立 coverage 回执。"""
+        declaration: dict[str, Any] = {
+            "schema_name": "red_team_coverage_declaration",
+            "schema_version": "3.0",
+            "run_id": self.run_dir.name,
+            "review_file": "review/SCIENTIFIC_RED_TEAM.md",
+            "report_sha256": sha256_file(self.report),
+            "required_risks_file": "review/required_risks.json",
+            "required_risks_sha256": sha256_file(
+                self.run_dir / "review" / "required_risks.json"
+            ),
+            "coverage_task_receipt": "review/tasks/coverage-task/receipt.json",
+            "covered_risks": [],
+            "follow_ups": [],
+            "additional_findings": [],
+            "generated_at": "2026-07-24T00:00:00Z",
+        }
+        declaration.update(overrides)
+        declaration_path = self.run_dir / "review" / "coverage" / "scientific.json"
+        atomic_json(declaration_path, declaration)
+        create_review_task_receipt(
+            self.run_dir,
+            task_id="coverage-task",
+            task_type="coverage_extract",
+            thread_id="coverage-thread",
+            model_id="fixture-model",
+            prompt_sha256="2" * 64,
+            input_bindings=self._coverage_inputs(),
+            report_file="review/coverage/scientific.json",
+            parent_task_id="scientific-open",
+        )
+
+    def _validate(self) -> dict[str, Any]:
+        """用固定风险集运行协调层差集校验。"""
         with patch(
-            "shumozizi.simple.review._route_required_risks", return_value=required
+            "shumozizi.simple.review._route_required_risks",
+            return_value={_RISK_ID: "多种子稳定性"},
         ):
-            require_coverage_declaration_valid(self.run_dir)
+            return require_coverage_declaration_valid(
+                self.run_dir,
+                expected_parent_task_id="scientific-open",
+            )
 
-    def test_general_coverage_cannot_release(self) -> None:
-        """general-coverage 占位 ID 不能替代具体动态风险。"""
+    @staticmethod
+    def _covered(
+        conclusion: str = "sufficient",
+        location: str = "review/SCIENTIFIC_RED_TEAM.md#搜索稳定性",
+    ) -> list[dict[str, str]]:
+        """返回一条实际报告锚点覆盖。"""
+        return [
+            {
+                "risk_id": _RISK_ID,
+                "conclusion": conclusion,
+                "evidence_location": location,
+            }
+        ]
+
+    def test_unknown_or_missing_risk_cannot_release(self) -> None:
         self._write_declaration(
             covered_risks=[
                 {
@@ -118,145 +236,63 @@ class CoverageGateOrchestratorTests(unittest.TestCase):
             ]
         )
         with self.assertRaisesRegex(ContractError, "general-coverage|未派生"):
-            self._validate({"optimization-multiseed": "多种子稳定性"})
+            self._validate()
 
-    def test_missing_dynamic_risk_cannot_release(self) -> None:
-        """动态派生的风险完全未覆盖时阻断。"""
-        self._write_declaration(covered_risks=[])
-        with self.assertRaisesRegex(ContractError, "未被充分覆盖|optimization-multiseed"):
-            self._validate({"optimization-multiseed": "多种子稳定性"})
-
-    def test_fabricated_heading_cannot_release(self) -> None:
-        """evidence_location 指向不存在的标题时阻断。"""
+    def test_fabricated_location_cannot_release(self) -> None:
         self._write_declaration(
-            covered_risks=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "conclusion": "sufficient",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#根本不存在的标题",
-                }
-            ]
+            covered_risks=self._covered(
+                location="review/SCIENTIFIC_RED_TEAM.md#不存在的标题"
+            )
         )
         with self.assertRaisesRegex(ContractError, "evidence_location"):
-            self._validate({"optimization-multiseed": "多种子稳定性"})
+            self._validate()
 
-    def test_fabricated_line_range_cannot_release(self) -> None:
-        """evidence_location 指向超出报告行数的行范围时阻断。"""
-        self._write_declaration(
-            covered_risks=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "conclusion": "sufficient",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md:L900-L999",
-                }
-            ]
-        )
-        with self.assertRaisesRegex(ContractError, "evidence_location"):
-            self._validate({"optimization-multiseed": "多种子稳定性"})
-
-    def test_stale_report_sha_cannot_release(self) -> None:
-        """报告内容变化使覆盖声明失效。"""
+    def test_stale_report_or_risk_hash_cannot_release(self) -> None:
         self._write_declaration(
             report_sha256="0" * 64,
-            covered_risks=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "conclusion": "sufficient",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#搜索稳定性",
-                }
-            ],
+            covered_risks=self._covered(),
         )
         with self.assertRaisesRegex(ContractError, "report_sha256"):
-            self._validate({"optimization-multiseed": "多种子稳定性"})
+            self._validate()
 
-    def test_insufficient_without_follow_up_cannot_release(self) -> None:
-        """insufficient 风险缺少专项 follow-up 时阻断。"""
+    def test_follow_up_requires_real_receipt_report_and_closed_resolution(self) -> None:
+        follow_up = self._follow_up(status="open")
         self._write_declaration(
-            covered_risks=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "conclusion": "insufficient",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#搜索稳定性",
-                }
-            ]
+            covered_risks=self._covered("insufficient"),
+            follow_ups=[follow_up],
         )
-        with self.assertRaisesRegex(ContractError, "follow_up"):
-            self._validate({"optimization-multiseed": "多种子稳定性"})
+        with self.assertRaisesRegex(ContractError, "未关闭|closed|follow_up"):
+            self._validate()
 
-    def test_unclosed_follow_up_cannot_release(self) -> None:
-        """follow-up 存在但未关闭时阻断。"""
+        follow_up = self._follow_up(status="closed")
         self._write_declaration(
-            covered_risks=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "conclusion": "insufficient",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#搜索稳定性",
-                }
-            ],
-            follow_ups=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "task_receipt": self._touch("review/followups/ms-receipt.json"),
-                    "report_file": self._touch("review/followups/ms-report.md"),
-                    "status": "open",
-                }
-            ],
+            covered_risks=self._covered("insufficient"),
+            follow_ups=[follow_up],
         )
-        with self.assertRaisesRegex(ContractError, "未关闭|follow_up"):
-            self._validate({"optimization-multiseed": "多种子稳定性"})
+        self.assertEqual("closed", self._validate()["follow_ups"][0]["status"])
 
-    def test_all_follow_ups_closed_releases(self) -> None:
-        """所有专项追问关闭且位置真实后放行。"""
+    def test_additional_p0_p1_blocks_but_p2_is_preserved(self) -> None:
+        finding = {
+            "finding_id": "unexpected-instability",
+            "severity": "P1",
+            "question_ids": ["Q1"],
+            "summary": "发现未预设的数值不稳定。",
+            "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#代理与精确",
+            "disposition": "blocking",
+        }
         self._write_declaration(
-            covered_risks=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "conclusion": "insufficient",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#搜索稳定性",
-                }
-            ],
-            follow_ups=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "task_receipt": self._touch("review/followups/ms-receipt.json"),
-                    "report_file": self._touch("review/followups/ms-report.md"),
-                    "status": "closed",
-                }
-            ],
+            covered_risks=self._covered(), additional_findings=[finding]
         )
-        # 不抛异常即通过
-        self._validate({"optimization-multiseed": "多种子稳定性"})
+        with self.assertRaisesRegex(ContractError, "P1|必须阻断"):
+            self._validate()
 
-    def test_additional_finding_is_preserved_and_allowed(self) -> None:
-        """自由报告中发现的未预设新风险作为 additional finding 保留，不阻止放行。"""
+        finding["severity"] = "P2"
+        finding["disposition"] = "advisory"
         self._write_declaration(
-            covered_risks=[
-                {
-                    "risk_id": "optimization-multiseed",
-                    "conclusion": "sufficient",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#搜索稳定性",
-                }
-            ],
-            additional_findings=[
-                {
-                    "risk_id": "unexpected-numerical-instability",
-                    "note": "报告发现了预设集之外的数值不稳定现象，建议后续关注。",
-                    "evidence_location": "review/SCIENTIFIC_RED_TEAM.md#代理与精确",
-                }
-            ],
+            covered_risks=self._covered(), additional_findings=[finding]
         )
-        declaration = None
-        with patch(
-            "shumozizi.simple.review._route_required_risks",
-            return_value={"optimization-multiseed": "多种子稳定性"},
-        ):
-            declaration = require_coverage_declaration_valid(self.run_dir)
-        self.assertEqual(
-            "unexpected-numerical-instability",
-            declaration["additional_findings"][0]["risk_id"],
-        )
+        self.assertEqual("P2", self._validate()["additional_findings"][0]["severity"])
 
 
 if __name__ == "__main__":
     unittest.main()
-

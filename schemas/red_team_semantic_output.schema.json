@@ -85,13 +85,16 @@
       "type": "object",
       "required": ["incumbent_exact", "challenge_best_exact", "evaluation_budget", "independent_candidates", "feasible_candidates", "verdict"],
       "properties": {
+        "question_id": {"type": "string", "minLength": 1},
+        "claim_id": {"type": "string", "minLength": 1},
         "incumbent_exact": {"type": "number"},
         "challenge_best_exact": {"type": "number"},
         "evaluation_budget": {"type": "integer", "minimum": 1},
         "independent_candidates": {"type": "integer", "minimum": 1},
         "feasible_candidates": {"type": "integer", "minimum": 0},
         "verdict": {"enum": ["incumbent_competitive", "incumbent_not_competitive", "inconclusive"]}
-      }
+      },
+      "anyOf": [{"required": ["question_id"]}, {"required": ["claim_id"]}]
     },
     "property": {
       "type": "object",

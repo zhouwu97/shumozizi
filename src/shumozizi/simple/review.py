@@ -26,6 +26,7 @@ from shumozizi.core.io import (
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import validate_document
 from shumozizi.simple.capabilities import require_capability_route
+from shumozizi.simple.objective_semantics import build_question_objective_bindings
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
 
@@ -41,7 +42,15 @@ FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
 RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
 _PACKET_ROOTS = {
     "objective-semantics": ("problem",),
-    "scientific": ("problem", "code", "results/raw"),
+    "scientific": (
+        "problem",
+        "code",
+        "results/raw",
+        "results/evidence",
+        "figures/evidence",
+        "analysis/method_profile.json",
+        "analysis/critical_claims.json",
+    ),
     "paper-blind": ("problem", "paper/final.pdf", "paper/submission"),
     "final-audit": ("problem", "paper/final.pdf", "paper/submission"),
 }
@@ -49,6 +58,10 @@ _PACKET_DESTINATIONS = {
     "problem": "problem",
     "code": "source_snapshot",
     "results/raw": "candidate_results",
+    "results/evidence": "results_evidence",
+    "figures/evidence": "figures_evidence",
+    "analysis/method_profile.json": "analysis_snapshot/method_profile.json",
+    "analysis/critical_claims.json": "analysis_snapshot/critical_claims.json",
     "paper/final.pdf": "paper/final.pdf",
     "paper/submission": "submission",
     "results": "results",
@@ -58,7 +71,10 @@ _PACKET_DESTINATIONS = {
 }
 _REQUIRED_PACKET_ROOTS = {
     "objective-semantics": frozenset(("problem",)),
-    "scientific": frozenset(("problem", "code", "results/raw")),
+    "scientific": frozenset((
+        "problem", "code", "results/raw", "results/evidence", "figures/evidence",
+        "analysis/method_profile.json", "analysis/critical_claims.json",
+    )),
     "paper-blind": frozenset(("problem", "paper/final.pdf", "paper/submission")),
     "final-audit": frozenset(("problem", "paper/final.pdf", "paper/submission")),
 }
@@ -145,6 +161,12 @@ def _infer_source_root(source_relative: str) -> str:
         return "results/raw"
     if source_relative.startswith("code/"):
         return "code"
+    if source_relative.startswith("results/evidence"):
+        return "results/evidence"
+    if source_relative.startswith("figures/evidence"):
+        return "figures/evidence"
+    if source_relative.startswith("analysis/"):
+        return source_relative
     return "problem"
 
 
@@ -418,6 +440,11 @@ def _summarize_evidence_verdicts(
                 blocking_reasons.append(f"{kind}:{verdict}")
             elif verdict == "inconclusive":
                 promotion_blockers.append(f"{kind}:{verdict}")
+        elif kind == "fixed-action-utilization" and verdict in {
+            "underutilized_required_action",
+            "invalid",
+        }:
+            blocking_reasons.append(f"{kind}:{verdict}")
         elif kind == "geometry-continuous-validation" and verdict == "fail":
             blocking_reasons.append(f"{kind}:fail")
     if blocking_reasons:
@@ -709,6 +736,7 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
     evidence_files: dict[str, dict[str, str]] = {}
     evidence_kinds: set[str] = set()
     semantic_evidence: list[tuple[str, dict[str, Any]]] = []
+    evidence_records: list[dict[str, Any]] = []
     receipt_paths = sorted((_red_team_root(root) / "executions").glob("*/receipt.json"))
     if not receipt_paths:
         return {
@@ -718,6 +746,7 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
             "files": {},
             "kinds": [],
             "semantic_evidence": [],
+            "evidence_records": [],
         }
     for receipt_path in receipt_paths:
         try:
@@ -771,6 +800,22 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
                 raise ContractError("红队语义输出未列入登记输出")
             evidence = _require_red_team_semantic_output(receipt["kind"], semantic_output)
             semantic_evidence.append((receipt["kind"], evidence))
+            evidence_record = {
+                "evidence_id": receipt["evidence_id"],
+                "kind": receipt["kind"],
+                "engine": receipt["engine"],
+                "receipt": {"file": relative_receipt, "sha256": sha256_file(receipt_path)},
+                "semantic_output": evidence,
+                "semantic_output_file": {
+                    "file": receipt["semantic_output"]["path"],
+                    "sha256": receipt["semantic_output"]["sha256"],
+                },
+            }
+            if isinstance(evidence.get("question_id"), str):
+                evidence_record["question_id"] = evidence["question_id"]
+            if isinstance(evidence.get("claim_id"), str):
+                evidence_record["claim_id"] = evidence["claim_id"]
+            evidence_records.append(evidence_record)
             for item in (
                 receipt["script"],
                 *receipt["inputs"],
@@ -793,6 +838,7 @@ def verify_red_team_artifacts(run_dir: Path) -> dict[str, Any]:
         "files": evidence_files,
         "kinds": sorted(evidence_kinds),
         "semantic_evidence": semantic_evidence,
+        "evidence_records": evidence_records,
     }
 
 
@@ -1311,6 +1357,33 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
                 exclude_quality_labels=False,
             ) != expected_hash:
                 errors.append(f"冻结审查副本已变化: {packet_relative}")
+            if source is not None:
+                filter_labels = is_scientific and _source_is_candidate_results(source_relative)
+                current_files = {
+                    relative_inside(run_dir, path).as_posix()
+                    for path in _packet_files(
+                        source,
+                        exclude_visualization_scripts=source_relative == "code",
+                        exclude_quality_labels=filter_labels,
+                    )
+                }
+                recorded_files = {
+                    item.get("source")
+                    for item in manifest["files"]
+                    if isinstance(item, dict)
+                    and isinstance(item.get("source"), str)
+                    and (
+                        item["source"] == source_relative
+                        or item["source"].startswith(source_relative.rstrip("/") + "/")
+                    )
+                }
+                if current_files != recorded_files:
+                    added = sorted(current_files - recorded_files)
+                    removed = sorted(recorded_files - current_files)
+                    if added:
+                        errors.append("审查后新增源文件: " + ", ".join(added))
+                    if removed:
+                        errors.append("审查后删除或改名源文件: " + ", ".join(removed))
         # ── 逐文件验证：包文件哈希匹配；对于中性化源文件，重新中性化并比较 ──
         for item in manifest["files"]:
             if not isinstance(item, dict):
@@ -1331,8 +1404,10 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
                 if packet_hash != expected_hash:
                     errors.append(f"冻结审查文件已变化: {packet_relative}")
                 # 中性化源文件：重新中性化当前源并与冻结副本比较
-                if source_relative and _source_is_candidate_results(
-                    _infer_source_root(source_relative)
+                if (
+                    source_relative
+                    and Path(source_relative).suffix.lower() == ".json"
+                    and _source_is_candidate_results(_infer_source_root(source_relative))
                 ):
                     source_file = _safe_run_path(run_dir, source_relative)
                     if not source_file.is_file():
@@ -1363,7 +1438,9 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
                 # 非中性化源文件：直接比较哈希
                 elif source_relative:
                     source = _safe_run_path(run_dir, source_relative)
-                    if source.is_file() and sha256_file(source) != expected_hash:
+                    if not source.is_file():
+                        errors.append(f"原始审查文件已缺失: {source_relative}")
+                    elif sha256_file(source) != expected_hash:
                         errors.append(f"原始审查文件已变化: {source_relative}")
             except ContractError as exc:
                 errors.append(str(exc))
@@ -1380,7 +1457,7 @@ def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any
 
 
 def _verify_language_evidence_source(
-    run_dir: Path, ref: dict[str, Any]
+    run_dir: Path, ref: dict[str, Any], manifest_file: str
 ) -> None:
     """验证 language_evidence_ref 引用的源文件真实存在于审查包中。
 
@@ -1390,39 +1467,41 @@ def _verify_language_evidence_source(
     excerpt = ref.get("excerpt", "").strip()
     if not source_file:
         return
-    packet_match = list(
-        (run_dir / "review" / "packet" / "objective-semantics").glob("*/**")
+    manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
+    if manifest["packet_kind"] != "objective-semantics":
+        raise ContractError("language_evidence 必须绑定当前 objective-semantics 包")
+    match = next(
+        (
+            item for item in manifest["files"]
+            if item.get("source") == source_file or item.get("packet") == source_file
+        ),
+        None,
     )
-    found = False
-    for candidate in packet_match:
-        if candidate.is_file() and candidate.name == Path(source_file).name:
-            found = True
-            if excerpt:
-                try:
-                    content = candidate.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    raise ContractError(
-                        f"language_evidence 引用的题面文件无法读取: {source_file}"
-                    )
-                normalized_content = " ".join(content.split())
-                normalized_excerpt = " ".join(excerpt.split())
-                if normalized_excerpt not in normalized_content:
-                    raise ContractError(
-                        f"language_evidence 引用的原文片段未在 {source_file} 中找到"
-                    )
-            break
-    if not found:
+    if match is None:
         raise ContractError(
-            f"language_evidence 引用的源文件不在审查包中: {source_file}"
+            f"language_evidence 引用的精确相对路径不在当前审查包中: {source_file}"
         )
+    if ref.get("file_sha256") != match["sha256"]:
+        raise ContractError("language_evidence 引用的题面文件哈希不匹配")
+    candidate = _safe_packet_path(manifest_path.parent, match["packet"], must_exist=True)
+    try:
+        content = candidate.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ContractError(f"language_evidence 引用的题面文件无法读取: {source_file}") from exc
+    if " ".join(excerpt.split()) not in " ".join(content.split()):
+        raise ContractError(f"language_evidence 引用的原文片段未在 {source_file} 中找到")
 
 
 def objective_semantics_review_required(run_dir: Path) -> bool:
     """判断当前生产运行是否具有需要独立解释的正式题面。"""
     state = read_simple_state(run_dir)
+    problem_root = run_dir / "problem"
+    problem_files_present = bool(
+        problem_root.is_dir() and any(path.is_file() for path in problem_root.rglob("*"))
+    )
     return bool(
         state.get("execution_mode") == "production"
-        and state.get("artifacts", {}).get("statement")
+        and (state.get("artifacts", {}).get("statement") or problem_files_present)
     )
 
 
@@ -1479,7 +1558,7 @@ def _derive_semantic_conflict_fields(question: dict[str, Any]) -> dict[str, Any]
 
 
 def _validate_objective_assessment(
-    run_dir: Path, payload: dict[str, Any]
+    run_dir: Path, payload: dict[str, Any], manifest_file: str
 ) -> dict[str, Any]:
     """校验独立任务逐问给出的目标解释、备选聚合和选择依据。"""
     _validate_document(
@@ -1541,6 +1620,10 @@ def _validate_objective_assessment(
                     missing_parts.append("source_file")
                 if not ref.get("excerpt", "").strip():
                     missing_parts.append("excerpt")
+                if not ref.get("file_sha256", "").strip():
+                    missing_parts.append("file_sha256")
+                if not ref.get("page_or_line", "").strip():
+                    missing_parts.append("page_or_line")
                 if not ref.get("how_it_excludes_alternatives", "").strip():
                     missing_parts.append("how_it_excludes_alternatives")
                 if missing_parts:
@@ -1549,7 +1632,7 @@ def _validate_objective_assessment(
                         f"缺少: {', '.join(missing_parts)}"
                     )
                 # 验证 source_file 真实存在于 objective-semantics 冻结包中
-                _verify_language_evidence_source(run_dir, ref)
+                _verify_language_evidence_source(run_dir, ref, manifest_file)
         if question["materiality"] == "high" and question["selection_confidence"] == "ambiguous":
             if question["selection_basis"] != "user_decision":
                 raise ContractError(
@@ -1695,34 +1778,40 @@ def _bound_review_file(run_dir: Path, relative: Path, *, suffix: str) -> dict[st
 
 
 def _stale_results_for_objective_change(
-    run_dir: Path, new_objectives_sha256: str
+    run_dir: Path, question_bindings: dict[str, str]
 ) -> None:
-    """目标语义变化后标记所有旧生产结果为 stale。
+    """目标语义变化后精确失效绑定旧逐问哈希的产物。
 
     不直接修改结果 JSON 内容（那可能触发额外的 Schema 校验），
     而是将未绑定新目标哈希的 current 结果标记为 superseded。
     同时将质量和图表标记为失效。
     """
     # 1. 结果索引
+    affected_questions: set[str] = set()
+    affected_results: set[str] = set()
     try:
         index = read_result_index(run_dir)
     except (ContractError, OSError):
-        return
-    dirty = False
-    for item in index["results"]:
-        if item.get("execution_mode") != "production":
-            continue
-        if item.get("status") != "current":
-            continue
-        existing = item.get("objective_semantics_sha256")
-        if existing and existing == new_objectives_sha256:
-            continue
-        item["status"] = "superseded"
-        dirty = True
-    if dirty:
-        from shumozizi.core.io import atomic_json as _atomic
-
-        _atomic(run_dir / "results" / "index.json", index)
+        index = None
+    if index is not None:
+        dirty = False
+        for item in index["results"]:
+            if item.get("execution_mode") != "production" or item.get("status") != "current":
+                continue
+            qid = item.get("question_id")
+            expected = question_bindings.get(qid)
+            if expected is None or item.get("objective_semantics_sha256") == expected:
+                continue
+            scope = item.get("dependency_scope", "question")
+            impacted = set(item.get("affected_question_ids", [qid]))
+            if scope == "global":
+                impacted = set(question_bindings)
+            item["status"] = "superseded"
+            affected_questions.update(impacted)
+            affected_results.add(item["result_id"])
+            dirty = True
+        if dirty:
+            atomic_json(run_dir / "results" / "index.json", index)
 
     # 2. 质量文档：paper_allowed 强制回退
     quality_path = run_dir / "results" / "quality.json"
@@ -1730,8 +1819,15 @@ def _stale_results_for_objective_change(
         try:
             q = load_json(quality_path)
             stale = False
+            current_objective_hashes = set(question_bindings.values())
             for item in q.get("assessments", []):
-                if item.get("result_role") == "accepted":
+                objective_changed = (
+                    isinstance(item.get("objective_semantics_sha256"), str)
+                    and item["objective_semantics_sha256"] not in current_objective_hashes
+                )
+                if (
+                    item.get("result_id") in affected_results or objective_changed
+                ) and item.get("result_role") == "accepted":
                     item["result_role"] = "candidate"
                     item["paper_allowed"] = False
                     item.setdefault("reasons", []).append(
@@ -1745,21 +1841,45 @@ def _stale_results_for_objective_change(
         except (OSError, ValueError):
             pass
 
-    # 3. 图表索引：标记所有生产图为 stale
+    # 3. 图表索引：标记依赖旧目标或旧结果的图为 superseded
     fig_index_path = run_dir / "figures" / "index.json"
     if fig_index_path.is_file():
         try:
             fig_idx = load_json(fig_index_path)
             stale = False
             for item in fig_idx.get("figures", []):
-                existing = item.get("objective_semantics_sha256")
-                if not existing or existing != new_objectives_sha256:
-                    item["status"] = "stale"
+                source_ids = set(item.get("source_result_ids", [item.get("result_id")]))
+                qid = item.get("question_id")
+                expected = question_bindings.get(qid)
+                objective_changed = bool(
+                    expected
+                    and item.get("objective_semantics_sha256") != expected
+                )
+                if source_ids & affected_results or objective_changed:
+                    item["status"] = "superseded"
+                    item["superseded_reason"] = "objective_semantics_changed"
                     stale = True
             if stale:
                 from shumozizi.core.io import atomic_json as _atomic
 
                 _atomic(fig_index_path, fig_idx)
+        except (OSError, ValueError):
+            pass
+
+    # 结果索引损坏也不能阻止按逐问目标哈希继续失效带直接绑定的图。
+    if index is None and fig_index_path.is_file():
+        try:
+            fig_idx = load_json(fig_index_path)
+            dirty = False
+            for item in fig_idx.get("figures", []):
+                qid = item.get("question_id")
+                expected = question_bindings.get(qid)
+                if expected and item.get("objective_semantics_sha256") != expected:
+                    item["status"] = "superseded"
+                    item["superseded_reason"] = "objective_semantics_changed"
+                    dirty = True
+            if dirty:
+                atomic_json(fig_index_path, fig_idx)
         except (OSError, ValueError):
             pass
 
@@ -1771,6 +1891,7 @@ def import_objective_semantics_review(
     verdict: str,
     highest_severity: str,
     reviewer_thread_id: str,
+    task_receipt_file: str,
     assessment_file: Path = OBJECTIVE_SEMANTICS_ASSESSMENT_PATH,
     report_file: Path = OBJECTIVE_SEMANTICS_REPORT_PATH,
 ) -> dict[str, Any]:
@@ -1791,16 +1912,33 @@ def import_objective_semantics_review(
     assessment = load_json(assessment_path)
     if not isinstance(assessment, dict):
         raise ContractError("独立目标语义评估必须是 JSON 对象")
-    _validate_objective_assessment(run_dir, assessment)
+    _validate_objective_assessment(run_dir, assessment, manifest_file)
     # 将机器派生字段（distinct_aggregations 等）持久化回评估文件，
     # 让下游消费者无需重复推导即可统一读取语义冲突判定。
     atomic_json(assessment_path, assessment)
     if not reviewer_thread_id.strip():
         raise ContractError("目标语义预审必须记录新对话 thread_id")
     ambiguity_decisions = _human_ambiguity_binding(run_dir, assessment)
+    decisions_payload = None
+    if ambiguity_decisions is not None:
+        decisions_payload = load_json(run_dir / ambiguity_decisions["file"])
+    question_bindings = build_question_objective_bindings(assessment, decisions_payload)
+    report_binding = _review_report(run_dir, report_file)
+    packet_task_binding = {
+        "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
+        "manifest_sha256": sha256_file(manifest_path),
+    }
+    task_reference, _ = _review_task_reference(
+        run_dir,
+        receipt_file=task_receipt_file,
+        task_type="objective_semantics",
+        report_file=report_binding["file"],
+        packet=packet_task_binding,
+        reviewer_thread_id=reviewer_thread_id,
+    )
     receipt = {
         "schema_name": "objective_semantics_review",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": run_dir.name,
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -1810,7 +1948,9 @@ def import_objective_semantics_review(
         },
         "assessment": _bound_review_file(run_dir, assessment_file, suffix=".json"),
         "selected_objectives_sha256": _selected_objectives_sha256(assessment),
-        "report": _review_report(run_dir, report_file),
+        "question_bindings": question_bindings,
+        "report": report_binding,
+        "task_receipt": task_reference,
         "reviewer": {"thread_id": reviewer_thread_id},
         "reviewed_at": utc_now(),
     }
@@ -1829,12 +1969,9 @@ def import_objective_semantics_review(
         _require_summary(summary)
         atomic_json(summary_path, summary)
     # 使所有绑定旧目标语义的结果 stale，并标记质量/图/Excel 必须重跑。
-    _stale_results_for_objective_change(run_dir, _selected_objectives_sha256(assessment))
+    _stale_results_for_objective_change(run_dir, question_bindings)
     # 目标改变后状态强制回退到 analysis，不能在旧结果上直接产出论文。
-    try:
-        update_simple_state(run_dir, phase="analysis")
-    except ContractError:
-        pass  # 已完成运行不允许直接回退；由调用方负责新建修订运行。
+    update_simple_state(run_dir, phase="analysis")
     return receipt
 
 
@@ -1847,6 +1984,8 @@ def objective_semantics_review_status(run_dir: Path) -> dict[str, Any]:
         if not isinstance(receipt, dict):
             raise ContractError("目标语义预审收据必须是 JSON 对象")
         _validate_document(receipt, "objective_semantics_review", "目标语义预审收据")
+        if receipt.get("schema_version") != "1.1":
+            raise ContractError("旧目标语义预审缺少真实任务回执，不能用于当前生产放行")
         if receipt["run_id"] != run_dir.name:
             raise ContractError("目标语义预审收据 run_id 不匹配")
         packet = verify_review_packet(run_dir, receipt["packet"]["file"])
@@ -1860,15 +1999,43 @@ def objective_semantics_review_status(run_dir: Path) -> dict[str, Any]:
         assessment = load_json(assessment_path)
         if not isinstance(assessment, dict):
             raise ContractError("独立目标语义评估必须是 JSON 对象")
-        _validate_objective_assessment(run_dir, assessment)
+        _validate_objective_assessment(run_dir, assessment, receipt["packet"]["file"])
         if _selected_objectives_sha256(assessment) != receipt["selected_objectives_sha256"]:
             raise ContractError("逐问选定目标已变化")
         ambiguity_decisions = _human_ambiguity_binding(run_dir, assessment)
         if ambiguity_decisions != receipt.get("ambiguity_decisions"):
             raise ContractError("高影响歧义人工裁决已变化或缺失")
+        decisions_payload = None
+        if ambiguity_decisions is not None:
+            decisions_payload = load_json(run_dir / ambiguity_decisions["file"])
+        if build_question_objective_bindings(assessment, decisions_payload) != receipt["question_bindings"]:
+            raise ContractError("逐问目标语义绑定已变化")
         report_path = _safe_run_path(run_dir, receipt["report"]["file"])
         if sha256_file(report_path) != receipt["report"]["sha256"]:
             raise ContractError("目标语义预审报告已变化")
+        task_reference = receipt["task_receipt"]
+        task_path = _safe_run_path(run_dir, task_reference["file"])
+        if sha256_file(task_path) != task_reference["sha256"]:
+            raise ContractError("目标语义预审任务回执已变化")
+        from shumozizi.simple.review_tasks import validate_review_task_receipt
+
+        task = validate_review_task_receipt(
+            run_dir,
+            task_reference["file"],
+            expected_type="objective_semantics",
+            expected_report=receipt["report"]["file"],
+            expected_input_bindings={
+                "packet": {
+                    "manifest_file": receipt["packet"]["file"],
+                    "manifest_sha256": receipt["packet"]["sha256"],
+                }
+            },
+        )
+        if (
+            task["task_id"] != task_reference["task_id"]
+            or task["thread_id"] != receipt["reviewer"]["thread_id"]
+        ):
+            raise ContractError("目标语义预审任务身份不一致")
         allowed = bool(
             receipt["verdict"] == "pass"
             and receipt["highest_severity"] not in {"P0", "P1"}
@@ -2073,71 +2240,328 @@ def _require_competition_strength_evidence(
 # 4. covered_risks 只能引用动态派生的 risk_id；general-coverage 或任意未知
 #    risk_id 一律拒绝；未预设的新风险放入 additional_findings，不替代具体风险。
 
-_COVERAGE_DECLARATION_PATH = REVIEW_ROOT / "red_team_coverage.json"
+_COVERAGE_DECLARATION_PATH = REVIEW_ROOT / "coverage" / "scientific.json"
+_REQUIRED_RISKS_PATH = REVIEW_ROOT / "required_risks.json"
+_PAPER_COVERAGE_DECLARATION_PATH = REVIEW_ROOT / "coverage" / "paper_blind.json"
+_PAPER_REQUIRED_RISKS_PATH = REVIEW_ROOT / "paper_required_risks.json"
 _COVERAGE_SATISFIED = {"sufficient", "not_applicable"}
-_COVERAGE_NEEDS_FOLLOW_UP = {"insufficient", "requires_independent_verification"}
+_COVERAGE_NEEDS_FOLLOW_UP = {
+    "insufficient",
+    "partial",
+    "uncovered",
+    "requires_independent_verification",
+}
 
 
 def _derive_required_risks(
     route: dict[str, Any],
     assessment: dict[str, Any] | None,
 ) -> dict[str, str]:
-    """从路由题型、工具链和逐问 decision_space 动态派生必答高风险集合。
+    """兼容入口：只派生不依赖方法画像的题型与决策空间风险。"""
+    return derive_required_review_risks(route, assessment, None, None, [])
 
-    Args:
-        route: 已校验能力路由。
-        assessment: 目标语义评估（可为 None，表示无正式题面）。
 
-    Returns:
-        risk_id -> 该风险的简短说明，供追问和差集比较使用。
-    """
+def _declared_bool(properties: dict[str, Any], name: str) -> bool:
+    """读取方法画像中的布尔或 declared 布尔属性。"""
+    value = properties.get(name)
+    if isinstance(value, bool):
+        return value
+    return bool(value.get("value")) if isinstance(value, dict) else False
+
+
+def derive_general_risks(route: dict[str, Any]) -> dict[str, str]:
+    """派生题型固有、与具体算法实现无关的风险。"""
     families = set(route.get("problem_families", []))
-    toolchain = route.get("toolchain", {})
-    engines = {
-        toolchain.get("production_engine"),
-        toolchain.get("independent_engine"),
+    risks: dict[str, str] = {}
+    if "mechanism_dynamics" in families:
+        risks["dynamics.dimension_consistency"] = "机理方程的量纲与状态定义是否一致"
+    if "network_system" in families:
+        risks["network.flow_conservation"] = "网络流与节点守恒约束是否闭合"
+    return risks
+
+
+def derive_method_risks(method_profile: dict[str, Any] | None) -> dict[str, str]:
+    """严格按实际方法属性派生专项风险。"""
+    risks: dict[str, str] = {}
+    rules = {
+        "solver_properties": {
+            "stochastic": ("optimization.multiseed", "随机求解的同预算多种子稳定性"),
+            "local_search": ("optimization.multistart_or_landscape", "局部搜索的多起点或景观挑战"),
+            "uses_proxy_objective": ("optimization.proxy_exact", "代理目标与精确目标的一致性"),
+            "variable_dimension": ("optimization.dimension_coverage", "变维决策空间的维度覆盖"),
+            "discrete_decisions": ("optimization.discrete_feasibility", "离散决策的可行性复验"),
+            "exact_within_declared_space": ("optimization.scope_and_certificate", "精确性声明的空间边界与证书"),
+        },
+        "data_properties": {
+            "time_ordered": ("prediction.temporal_leakage", "时间顺序数据的未来信息泄漏"),
+            "feature_selection_used": ("prediction.selection_leakage", "特征选择在验证折外执行导致的泄漏"),
+            "class_imbalance": ("prediction.imbalance_metrics", "类别不平衡下指标与阈值适用性"),
+            "repeated_measurements": ("prediction.group_leakage", "重复测量跨训练验证组泄漏"),
+        },
+        "mathematical_properties": {
+            "continuous_geometry": ("geometry.continuous_boundary", "连续几何边界和临界事件"),
+            "finite_segment_logic": ("geometry.finite_segment_endpoint", "有限线段端点、切线与退化情形"),
+            "coordinate_transform": ("geometry.coordinate_consistency", "坐标变换方向、原点和单位一致性"),
+            "critical_event_detection": ("geometry.root_isolation", "临界事件根隔离与漏根风险"),
+            "differential_equation": ("dynamics.step_convergence", "微分方程步长与积分器收敛"),
+            "conservation_law": ("dynamics.conservation", "守恒量数值漂移"),
+            "network_structure": ("network.topology_perturbation", "拓扑扰动下结论稳定性"),
+            "ranking_weights": ("evaluation.weight_sensitivity", "权重扰动下排名稳定性"),
+        },
+    }
+    for question in (method_profile or {}).get("questions", []):
+        qid = question.get("question_id", "unknown")
+        for group, group_rules in rules.items():
+            properties = question.get(group, {})
+            for field, (prefix, reason) in group_rules.items():
+                if _declared_bool(properties, field):
+                    risks[f"{prefix}.{qid}"] = f"{qid}: {reason}"
+        data = question.get("data_properties", {})
+        if _declared_bool(data, "time_ordered"):
+            risks[f"prediction.time_split.{qid}"] = f"{qid}: 时间顺序切分或滚动验证"
+        if _declared_bool(data, "class_imbalance"):
+            risks[f"prediction.calibration.{qid}"] = f"{qid}: 概率校准与决策阈值"
+        if _declared_bool(data, "repeated_measurements"):
+            risks[f"prediction.correlation_structure.{qid}"] = f"{qid}: 组内相关结构"
+        math_props = question.get("mathematical_properties", {})
+        if _declared_bool(math_props, "differential_equation"):
+            risks[f"dynamics.integrator_crosscheck.{qid}"] = f"{qid}: 独立积分器交叉复验"
+        if _declared_bool(math_props, "network_structure"):
+            risks[f"network.scale_robustness.{qid}"] = f"{qid}: 网络规模变化稳健性"
+        if _declared_bool(math_props, "ranking_weights"):
+            risks[f"evaluation.ranking_stability.{qid}"] = f"{qid}: 排名区间与翻转点"
+    return risks
+
+
+def derive_decision_space_risks(assessment: dict[str, Any] | None) -> dict[str, str]:
+    """从已确认目标的决策空间派生动作完整性风险。"""
+    risks: dict[str, str] = {}
+    for question in (assessment or {}).get("questions", []):
+        decision = question.get("decision_space", {})
+        qid = question.get("question_id", "unknown")
+        if decision.get("action_cardinality") == "variable":
+            risks[f"decision_space.activation.{qid}"] = f"{qid}: 可变动作数量的完整激活挑战"
+        elif decision.get("action_cardinality") == "fixed" and decision.get("allowed_action_count", 0) >= 2:
+            risks[f"decision_space.fixed_ablation.{qid}"] = f"{qid}: 固定多动作的逐一消融"
+    return risks
+
+
+def derive_claim_risks(critical_claims: dict[str, Any] | None) -> dict[str, str]:
+    """从高价值主张类型派生证明责任。"""
+    mapping = {
+        "global_optimality": ("claim.global_optimality_certificate", "全局最优性证书或反例挑战"),
+        "comparative_superiority": ("claim.equal_budget_baseline", "同预算基线比较"),
+        "robustness": ("claim.perturbation_robustness", "扰动稳健性"),
+        "all_actions_material": ("claim.deletion_ablation", "逐动作删除消融"),
+        "generalization": ("claim.holdout_or_ood", "留出或分布外验证"),
+        "mechanism_explanation": ("claim.mechanism_counterfactual", "机理反事实"),
+        "parameter_insensitivity": ("claim.sensitivity_analysis", "参数敏感性"),
+        "result_correctness": ("claim.independent_recompute", "独立重算"),
     }
     risks: dict[str, str] = {}
+    for claim in (critical_claims or {}).get("claims", []):
+        rule = mapping.get(claim.get("claim_type"))
+        if rule:
+            prefix, reason = rule
+            risks[f"{prefix}.{claim['claim_id']}"] = f"{claim['question_id']}: {reason}"
+    return risks
 
-    if "geometry_kinematics" in families:
-        risks["geometry-continuous-boundary"] = "连续边界/临界端点是否用连续量证明"
-        risks["geometry-finite-segment"] = "有限线段端点、切线与退化反例是否覆盖"
-    if "optimization" in families:
-        risks["optimization-multiseed"] = "同预算多种子搜索稳定性是否验证"
-        if engines & {"matlab", "octave"}:
-            risks["optimization-proxy-exact"] = "代理目标与精确目标一致性是否交叉验证"
-    if "mechanism_dynamics" in families:
-        risks["mechanism-conservation"] = "守恒量/量纲一致性是否检验"
-    if "network_system" in families:
-        risks["network-scale-robustness"] = "规模放大与拓扑扰动下结论是否稳健"
-    if "prediction_statistical" in families:
-        risks["prediction-holdout-generalization"] = "留出/交叉验证泛化是否成立"
-    if "evaluation_ranking" in families:
-        risks["evaluation-weight-sensitivity"] = "权重/指标扰动下排名是否稳定"
 
-    # 逐问 decision_space：可变动作与固定多动作各自的高风险方向
-    questions = (assessment or {}).get("questions", [])
-    for question in questions:
-        decision = question.get("decision_space", {}) if isinstance(question, dict) else {}
-        cardinality = decision.get("action_cardinality")
-        question_id = question.get("question_id", "?")
-        if cardinality == "variable":
-            risks[f"action-activation-{question_id}"] = (
-                f"{question_id} 可变动作数量的完整激活挑战"
+def derive_required_review_risks(
+    route: dict[str, Any],
+    assessment: dict[str, Any] | None,
+    method_profile: dict[str, Any] | None,
+    critical_claims: dict[str, Any] | None,
+    execution_receipts: list[dict[str, Any]],
+) -> dict[str, str]:
+    """合并路线、目标、实际方法、关键主张和执行收据的动态风险。"""
+    risks: dict[str, str] = {}
+    for source in (
+        derive_general_risks(route),
+        derive_method_risks(method_profile),
+        derive_decision_space_risks(assessment),
+        derive_claim_risks(critical_claims),
+    ):
+        risks.update(source)
+    profile_questions = {
+        item.get("question_id"): item
+        for item in (method_profile or {}).get("questions", [])
+    }
+    receipts_by_question: dict[str, list[dict[str, Any]]] = {}
+    for receipt in execution_receipts:
+        qid = receipt.get("question_id")
+        if isinstance(qid, str):
+            receipts_by_question.setdefault(qid, []).append(receipt)
+    for qid, question in profile_questions.items():
+        if not isinstance(qid, str):
+            continue
+        if _declared_bool(question.get("solver_properties", {}), "uses_proxy_objective"):
+            has_bound_scores = any(
+                {"proxy_score", "exact_score"}.issubset(set(item.get("metrics", {})))
+                for item in receipts_by_question.get(qid, [])
             )
-        elif cardinality == "fixed" and (decision.get("allowed_action_count") or 0) >= 2:
-            risks[f"fixed-action-utilization-{question_id}"] = (
-                f"{question_id} 固定多动作的逐一消融边际贡献"
-            )
+            if not has_bound_scores:
+                risks[f"optimization.proxy_receipt_integrity.{qid}"] = (
+                    f"{qid}: 代理目标声明缺少同一执行收据中的 proxy/exact 绑定"
+                )
     return risks
 
 
 def _route_required_risks(run_dir: Path) -> dict[str, str]:
-    """读取当前路由与目标语义，派生本次运行的必答高风险集合。"""
+    """在自由报告完成后生成并绑定本轮动态风险产物。"""
+    from shumozizi.simple.critical_claims import read_critical_claims
+    from shumozizi.simple.method_profile import read_method_profile
+    from shumozizi.simple.objective_semantics import objective_semantics_digest
+
+    report_path = run_dir / SCIENTIFIC_REPORT_PATH
+    if not report_path.is_file():
+        raise ContractError("必须先完成自由科学审核报告，再派生 required_risks")
     route = require_capability_route(run_dir)
     semantics = objective_semantics_review_status(run_dir)
     assessment = semantics.get("assessment") if semantics.get("required") else None
-    return _derive_required_risks(route, assessment)
+    profile = read_method_profile(run_dir)
+    claims = read_critical_claims(run_dir)
+    index = read_result_index(run_dir)
+    risks = derive_required_review_risks(route, assessment, profile, claims, index["results"])
+    route_path = run_dir / "state" / "capability-route.json"
+    profile_path = run_dir / "analysis" / "method_profile.json"
+    claims_path = run_dir / "analysis" / "critical_claims.json"
+    payload = {
+        "schema_name": "required_review_risks",
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "source_bindings": {
+            "route_sha256": sha256_file(route_path),
+            "objective_semantics_sha256": objective_semantics_digest(run_dir),
+            "method_profile_sha256": sha256_file(profile_path),
+            "critical_claims_sha256": sha256_file(claims_path),
+            "execution_receipts_sha256": sha256_file(run_dir / "results" / "index.json"),
+        },
+        "risks": [
+            {"risk_id": risk_id, "reason": reason}
+            for risk_id, reason in sorted(risks.items())
+        ],
+        "generated_at": utc_now(),
+    }
+    path = run_dir / _REQUIRED_RISKS_PATH
+    if path.is_file():
+        previous = load_json(path)
+        if (
+            previous.get("source_bindings") == payload["source_bindings"]
+            and previous.get("risks") == payload["risks"]
+        ):
+            return risks
+    atomic_json(path, payload)
+    return risks
+
+
+def _paper_required_risks(run_dir: Path, report_file: str) -> dict[str, str]:
+    """在开放 PDF 盲审报告完成后派生论文专项风险。"""
+    report_path = _safe_run_path(run_dir, report_file)
+    if not report_path.is_file():
+        raise ContractError("必须先完成开放 PDF 盲审报告，再派生论文风险")
+    state = read_simple_state(run_dir)
+    claims_path = run_dir / "analysis" / "critical_claims.json"
+    argument_path = run_dir / "paper" / "argument_map.json"
+    figures_path = run_dir / "figures" / "index.json"
+    claims = load_json(claims_path)
+    argument_map = load_json(argument_path)
+    figures = load_json(figures_path)
+    risks: dict[str, str] = {}
+    for question_id in state.get("required_questions", []):
+        risks[f"paper.question_closure.{question_id}"] = (
+            f"{question_id}: 题目要求、模型、推导、结果和边界是否闭合"
+        )
+        risks[f"paper.model_rationale.{question_id}"] = (
+            f"{question_id}: 模型选择是否有题意和数据依据"
+        )
+        risks[f"paper.direct_answer.{question_id}"] = (
+            f"{question_id}: 是否给出可定位的直接答案"
+        )
+    for claim in claims.get("claims", []):
+        risks[f"paper.claim_support.{claim['claim_id']}"] = (
+            f"{claim['question_id']}: 主张是否由当前结果、验证和边界共同支撑"
+        )
+    for claim in argument_map.get("claims", []):
+        risks[f"paper.result_explanation.{claim['claim_id']}"] = (
+            f"{claim['question_id']}: 当前结果是否在正文中得到解释而非只被罗列"
+        )
+    for figure in figures.get("figures", []):
+        if (
+            figure.get("status") == "current"
+            and figure.get("figure_stage", "publication") == "publication"
+        ):
+            risks[f"paper.figure_readability.{figure['figure_id']}"] = (
+                f"{figure.get('question_id', 'global')}: 图形、图注和正文解释是否可读且一致"
+            )
+    risks["paper.source_appendix"] = "源码呈现与附件策略是否满足当前竞赛要求"
+    risks["paper.competition_fit"] = (
+        f"论文是否符合 {state.get('competition', '当前竞赛')} 的匿名与提交边界"
+    )
+    source_bindings = {
+        "critical_claims_sha256": sha256_file(claims_path),
+        "argument_map_sha256": sha256_file(argument_path),
+        "publication_figures_sha256": sha256_file(figures_path),
+        "paper_pdf_sha256": sha256_file(run_dir / "paper" / "final.pdf"),
+        "competition_profile_sha256": sha256_bytes(
+            json_bytes(
+                {
+                    "competition": state.get("competition"),
+                    "required_questions": state.get("required_questions", []),
+                }
+            )
+        ),
+    }
+    payload = {
+        "schema_name": "required_review_risks",
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "source_bindings": source_bindings,
+        "risks": [
+            {"risk_id": risk_id, "reason": reason}
+            for risk_id, reason in sorted(risks.items())
+        ],
+        "generated_at": utc_now(),
+    }
+    path = run_dir / _PAPER_REQUIRED_RISKS_PATH
+    if path.is_file():
+        previous = load_json(path)
+        if (
+            previous.get("source_bindings") == payload["source_bindings"]
+            and previous.get("risks") == payload["risks"]
+        ):
+            return risks
+    atomic_json(path, payload)
+    return risks
+
+
+def generate_required_review_risks(
+    run_dir: Path,
+    *,
+    scope: str = "scientific",
+    report_file: str | None = None,
+) -> dict[str, str]:
+    """在开放审核报告完成后生成当前动态风险清单。
+
+    Args:
+        run_dir: 当前 Capability-First v3 运行目录。
+        scope: ``scientific`` 或 ``paper``。
+        report_file: 论文开放盲审报告路径；科学审核使用固定报告路径。
+
+    Returns:
+        风险 ID 到派生原因的映射。
+
+    Raises:
+        ContractError: scope 不合法或开放报告尚未生成。
+    """
+    if scope == "scientific":
+        return _route_required_risks(run_dir)
+    if scope == "paper":
+        return _paper_required_risks(
+            run_dir,
+            report_file or PAPER_BLIND_REPORT_PATH.as_posix(),
+        )
+    raise ContractError("coverage scope 必须是 scientific 或 paper")
 
 
 def _report_heading_anchors(text: str) -> set[str]:
@@ -2246,6 +2670,13 @@ def _evaluate_coverage(
         elif conclusion in _COVERAGE_SATISFIED:
             covered_ok.add(risk_id)
 
+    for finding in declaration.get("additional_findings", []):
+        if finding.get("severity") in {"P0", "P1"}:
+            errors.append(
+                f"additional finding {finding.get('finding_id')} 为 "
+                f"{finding.get('severity')}，必须阻断并闭环"
+            )
+
     # 5. required_risks 差集：任一未被充分覆盖（缺失或未闭合）即阻断
     uncovered = sorted(set(required_risks) - covered_ok)
     if uncovered:
@@ -2257,7 +2688,16 @@ def _evaluate_coverage(
 
 
 def _validate_coverage_declaration(
-    run_dir: Path, declaration: dict[str, Any]
+    run_dir: Path,
+    declaration: dict[str, Any],
+    *,
+    expected_report_file: str,
+    declaration_file: str,
+    required_risks: dict[str, str],
+    required_risks_file: Path,
+    coverage_task_type: str,
+    follow_up_task_type: str,
+    expected_parent_task_id: str,
 ) -> list[str]:
     """校验覆盖声明：真实 schema 调用 + 报告绑定 + 动态差集 + 追问闭环。"""
     # 8. 真实调用 Schema（Draft202012Validator），不再手写字段检查
@@ -2272,6 +2712,9 @@ def _validate_coverage_declaration(
         errors.append("覆盖声明 run_id 不匹配")
 
     review_file = declaration["review_file"]
+    if Path(review_file).as_posix() != Path(expected_report_file).as_posix():
+        errors.append("覆盖声明绑定的报告不是本次实际导入报告")
+        return errors
     try:
         report_path = _safe_run_path(run_dir, review_file)
     except (ContractError, OSError, KeyError, ValueError):
@@ -2290,22 +2733,86 @@ def _validate_coverage_declaration(
         )
         return errors
 
-    # follow_up 引用的任务回执与专项报告必须真实存在
-    for follow_up in declaration.get("follow_ups", []):
-        for key in ("task_receipt", "report_file"):
-            relative = follow_up.get(key, "")
-            try:
-                candidate = _safe_run_path(run_dir, relative)
-            except (ContractError, OSError, KeyError, ValueError):
-                errors.append(f"follow_up.{key} 越界: {relative}")
-                continue
-            if not candidate.is_file():
-                errors.append(
-                    f"follow_up[{follow_up.get('risk_id')}].{key} 不存在: {relative}"
-                )
+    risks_path = run_dir / required_risks_file
+    if declaration["required_risks_file"] != required_risks_file.as_posix():
+        errors.append(f"覆盖声明未绑定本轮 {required_risks_file.as_posix()}")
+    if not risks_path.is_file() or declaration["required_risks_sha256"] != sha256_file(risks_path):
+        errors.append("覆盖声明的 required_risks 哈希已失效")
+        return errors
 
-    # 1/2. required_risks 由协调层动态派生，审核 AI 不读取此集合
-    required_risks = _route_required_risks(run_dir)
+    from shumozizi.simple.review_tasks import validate_review_task_receipt
+
+    coverage_inputs = {
+        "report": {"file": review_file, "sha256": sha256_file(report_path)},
+        "required_risks": {
+            "file": required_risks_file.as_posix(),
+            "sha256": sha256_file(risks_path),
+        },
+    }
+    try:
+        coverage_receipt = validate_review_task_receipt(
+            run_dir,
+            declaration["coverage_task_receipt"],
+            expected_type=coverage_task_type,
+            expected_report=declaration_file,
+            expected_input_bindings=coverage_inputs,
+            expected_parent_task_id=expected_parent_task_id,
+        )
+    except (ContractError, OSError, KeyError, ValueError) as exc:
+        errors.append(str(exc))
+        return errors
+
+    # not_applicable 只能由协调层依据当前结构事实批准。
+    for item in declaration.get("covered_risks", []):
+        if item.get("conclusion") != "not_applicable":
+            continue
+        basis = item.get("basis")
+        if not item.get("not_applicable_reason") or not isinstance(basis, dict):
+            errors.append(f"{item.get('risk_id')}: not_applicable 缺少结构事实依据")
+            continue
+        try:
+            basis_path = _safe_run_path(run_dir, basis["file"])
+            fact: Any = load_json(basis_path)
+            field = basis["field"].replace("[", ".").replace("]", "")
+            for token in [part for part in field.split(".") if part]:
+                if isinstance(fact, list):
+                    if token.isdigit():
+                        fact = fact[int(token)]
+                    else:
+                        fact = next(
+                            item
+                            for item in fact
+                            if isinstance(item, dict)
+                            and item.get("question_id") == token
+                        )
+                else:
+                    fact = fact[token]
+            if fact is not True and not (isinstance(fact, dict) and fact.get("value") is True):
+                raise KeyError(field)
+        except (ContractError, OSError, KeyError, IndexError, TypeError, ValueError):
+            errors.append(f"{item.get('risk_id')}: not_applicable 依据不是当前可验证结构事实")
+
+    for follow_up in declaration.get("follow_ups", []):
+        report_file = follow_up.get("report_file", "")
+        try:
+            follow_report = _safe_run_path(run_dir, report_file)
+            if sha256_file(follow_report) != follow_up.get("report_sha256"):
+                raise ContractError("专项报告哈希不匹配")
+            validate_review_task_receipt(
+                run_dir,
+                follow_up["task_receipt"],
+                expected_type=follow_up_task_type,
+                expected_report=report_file,
+                expected_input_bindings={
+                    **coverage_inputs,
+                    "risk_id": follow_up["risk_id"],
+                },
+                expected_parent_task_id=coverage_receipt["task_id"],
+            )
+            if follow_up.get("status") != "closed" or not follow_up.get("resolution"):
+                raise ContractError("专项追问没有 closed resolution")
+        except (ContractError, OSError, KeyError, ValueError) as exc:
+            errors.append(f"follow_up[{follow_up.get('risk_id')}] 无效: {exc}")
     report_relative = relative_inside(run_dir, report_path).as_posix()
     errors.extend(
         _evaluate_coverage(declaration, required_risks, report_text, report_relative)
@@ -2313,15 +2820,35 @@ def _validate_coverage_declaration(
     return errors
 
 
-def require_coverage_declaration_valid(run_dir: Path) -> dict[str, Any]:
+def require_coverage_declaration_valid(
+    run_dir: Path,
+    *,
+    expected_report_file: str = "review/SCIENTIFIC_RED_TEAM.md",
+    scope: str = "scientific",
+    expected_parent_task_id: str,
+) -> dict[str, Any]:
     """要求科学红队输出覆盖声明，验证后返回声明内容。
 
     若覆盖声明缺失或无效，抛出 ContractError。
     """
-    path = run_dir / _COVERAGE_DECLARATION_PATH
+    if scope == "scientific":
+        declaration_path = _COVERAGE_DECLARATION_PATH
+        required_risks_path = _REQUIRED_RISKS_PATH
+        required_risks = _route_required_risks(run_dir)
+        coverage_task_type = "coverage_extract"
+        follow_up_task_type = "scientific_follow_up"
+    elif scope == "paper":
+        declaration_path = _PAPER_COVERAGE_DECLARATION_PATH
+        required_risks_path = _PAPER_REQUIRED_RISKS_PATH
+        required_risks = _paper_required_risks(run_dir, expected_report_file)
+        coverage_task_type = "paper_coverage_extract"
+        follow_up_task_type = "paper_follow_up"
+    else:
+        raise ContractError(f"未知覆盖范围: {scope}")
+    path = run_dir / declaration_path
     if not path.is_file():
         raise ContractError(
-            "科学红队必须输出 review/red_team_coverage.json；"
+            f"审核必须输出 {declaration_path.as_posix()}；"
             "该声明由独立覆盖提取器在自由报告完成后生成，"
             "把报告中的实际论证绑定到协调层动态派生的高风险方向，"
             "不能退化为 general-coverage 自报"
@@ -2329,126 +2856,21 @@ def require_coverage_declaration_valid(run_dir: Path) -> dict[str, Any]:
     try:
         declaration = load_json(path)
     except (OSError, ValueError) as exc:
-        raise ContractError(f"覆盖声明无法解析: {exc}")
-    errors = _validate_coverage_declaration(run_dir, declaration)
+        raise ContractError(f"覆盖声明无法解析: {exc}") from exc
+    errors = _validate_coverage_declaration(
+        run_dir,
+        declaration,
+        expected_report_file=expected_report_file,
+        declaration_file=declaration_path.as_posix(),
+        required_risks=required_risks,
+        required_risks_file=required_risks_path,
+        coverage_task_type=coverage_task_type,
+        follow_up_task_type=follow_up_task_type,
+        expected_parent_task_id=expected_parent_task_id,
+    )
     if errors:
         raise ContractError("红队覆盖声明无效: " + "; ".join(errors))
     return declaration
-
-
-
-# ── MATLAB/Octave 冲突自动回退 ──
-# 当 MATLAB/Octave oracle 发现不一致或更优候选时，自动使受影响的结果/声明
-# 失效并强制回退到实验阶段，不能让旧方案继续产出论文。
-
-_MATLAB_ENGINES = {"matlab", "octave"}
-
-
-def _matlab_inconsistency_questions(
-    run_dir: Path,
-    artifacts: dict[str, Any],
-) -> set[str]:
-    """返回 MATLAB/Octave 独立重算发现不一致的问题集合。"""
-    verification = verify_red_team_artifacts(run_dir)
-    questions: set[str] = set()
-    for kind, evidence in verification.get("semantic_evidence", []):
-        if kind not in {"independent-recompute", "alternative-formula"}:
-            continue
-        if evidence.get("verdict") != "inconsistent":
-            continue
-        # 只处理 MATLAB/Octave 引擎执行的证据
-        receipts = [
-            receipt for receipt in verification.get("receipts", [])
-        ]
-        engine = None
-        for receipt_path_value in receipts:
-            try:
-                receipt = load_json(_safe_run_path(run_dir, receipt_path_value["path"]))
-                if receipt.get("kind") == kind:
-                    engine = receipt.get("engine")
-                    break
-            except (ContractError, OSError, KeyError, ValueError):
-                continue
-        if engine not in _MATLAB_ENGINES:
-            continue
-        question_id = evidence.get("question_id")
-        if question_id:
-            questions.add(question_id)
-    return questions
-
-
-def _apply_matlab_finding_consequences(
-    run_dir: Path,
-    artifacts: dict[str, Any],
-    evidence_assessment: dict[str, Any],
-) -> None:
-    """MATLAB 发现不一致或更优候选时自动触发状态回退。
-
-    不一致 → 受影响问题的所有 claim 标记为 stale、状态退回 experiment。
-    更优候选 → incumbent 标记为 superseded、触发重评分。
-
-    此函数在 import_scientific_review() 中自动调用，
-    不依赖 skill 文本手动触发。
-    """
-    inconsistent = _matlab_inconsistency_questions(run_dir, artifacts)
-    if not inconsistent:
-        return
-
-    # 1. 标记受影响问题的 claim_evidence 为 stale
-    claim_path = run_dir / "claims" / "claim_evidence.json"
-    if claim_path.is_file():
-        try:
-            claim_evidence = load_json(claim_path)
-            stale_claims = []
-            for claim in claim_evidence.get("claims", []):
-                if claim.get("claim_id", "").startswith(tuple(
-                    f"{q}-" for q in inconsistent
-                )):
-                    claim["status"] = "rejected"
-                    stale_claims.append(claim["claim_id"])
-            if stale_claims:
-                claim_evidence["stale"] = True
-                claim_evidence["stale_reason"] = (
-                    f"MATLAB/Octave 独立重算发现不一致，影响问题: "
-                    f"{', '.join(sorted(inconsistent))}；声明已拒绝: "
-                    f"{', '.join(stale_claims)}"
-                )
-                atomic_json(claim_path, claim_evidence)
-        except (OSError, ValueError):
-            pass
-
-    # 2. 标记受影响结果索引为 superseded
-    try:
-        index = read_result_index(run_dir)
-        dirty = False
-        for item in index["results"]:
-            if item.get("question_id") in inconsistent and item.get("status") == "current":
-                item["status"] = "superseded"
-                dirty = True
-        if dirty:
-            atomic_json(run_dir / "results" / "index.json", index)
-    except (ContractError, OSError):
-        pass
-
-    # 3. 强制回退到 experiment 阶段
-    try:
-        update_simple_state(run_dir, phase="experiment")
-    except ContractError:
-        pass  # 已完成运行不允许直接回退；由调用方新建修订运行
-
-    # 4. 在审查摘要中记录
-    summary_path = run_dir / SUMMARY_PATH
-    if summary_path.is_file():
-        try:
-            summary = load_json(summary_path)
-            review = summary.get("scientific_review", {})
-            review["matlab_conflict_questions"] = sorted(inconsistent)
-            review["matlab_conflict_recorded_at"] = utc_now()
-            summary["scientific_review"] = review
-            _require_summary(summary)
-            atomic_json(summary_path, summary)
-        except (ContractError, OSError, KeyError, ValueError):
-            pass
 
 
 
@@ -2468,6 +2890,38 @@ def _review_report(run_dir: Path, relative: Path) -> dict[str, str]:
     return {"file": report_relative.as_posix(), "sha256": sha256_file(report)}
 
 
+def _review_task_reference(
+    run_dir: Path,
+    *,
+    receipt_file: str,
+    task_type: str,
+    report_file: str,
+    packet: dict[str, str],
+    reviewer_thread_id: str,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """复验开放审核任务并返回可持久化的回执引用。"""
+    from shumozizi.simple.review_tasks import validate_review_task_receipt
+
+    receipt = validate_review_task_receipt(
+        run_dir,
+        receipt_file,
+        expected_type=task_type,
+        expected_report=report_file,
+        expected_input_bindings={"packet": packet},
+    )
+    if receipt["thread_id"] != reviewer_thread_id:
+        raise ContractError("审核任务回执 thread_id 与导入参数不一致")
+    path = _safe_run_path(run_dir, receipt_file)
+    return (
+        {
+            "file": relative_inside(run_dir, path).as_posix(),
+            "sha256": sha256_file(path),
+            "task_id": receipt["task_id"],
+        },
+        receipt,
+    )
+
+
 def import_scientific_review(
     run_dir: Path,
     *,
@@ -2478,6 +2932,7 @@ def import_scientific_review(
     full_rerun_required: bool,
     affected_questions: list[str],
     reviewer_thread_id: str,
+    task_receipt_file: str,
     report_file: Path = SCIENTIFIC_REPORT_PATH,
     question_reviews: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -2513,8 +2968,35 @@ def import_scientific_review(
     if not packet["success"]:
         raise ContractError("科学审查包已失效: " + "；".join(packet["errors"]))
     report = _review_report(run_dir, report_file)
+    packet_binding = {
+        "manifest_file": packet["manifest_file"],
+        "manifest_sha256": packet["manifest_sha256"],
+    }
+    task_reference, task_receipt = _review_task_reference(
+        run_dir,
+        receipt_file=task_receipt_file,
+        task_type="scientific_open",
+        report_file=report["file"],
+        packet=packet_binding,
+        reviewer_thread_id=reviewer_thread_id,
+    )
     artifacts = _bind_red_team_artifacts(run_dir, report)
+    verification = verify_red_team_artifacts(run_dir)
+    if not verification["valid"]:
+        raise ContractError("红队执行证据无效: " + "；".join(verification["errors"]))
+    from shumozizi.simple.evidence_consequences import (
+        apply_independent_evidence_consequences,
+    )
+
+    consequences = apply_independent_evidence_consequences(
+        run_dir, verification["evidence_records"]
+    )
     evidence_assessment = _verified_evidence_assessment(run_dir)
+    if consequences:
+        raise ContractError(
+            "独立负面证据已先执行级联失效并回退 experiment: "
+            + ", ".join(item["source_evidence_id"] for item in consequences)
+        )
     if verdict == "pass" and not evidence_assessment["pass_allowed"]:
         raise ContractError(
             "科学审查 pass 与红队负面证据冲突: "
@@ -2533,9 +3015,12 @@ def import_scientific_review(
         validated_question_reviews,
     )
     # ── 验证覆盖声明不是关键词扫描 ──
-    require_coverage_declaration_valid(run_dir)
-    # ── MATLAB/Octave 冲突自动回退 ──
-    _apply_matlab_finding_consequences(run_dir, artifacts, evidence_assessment)
+    require_coverage_declaration_valid(
+        run_dir,
+        expected_report_file=report["file"],
+        scope="scientific",
+        expected_parent_task_id=task_receipt["task_id"],
+    )
     semantics_binding = None
     if semantics.get("required"):
         semantics_receipt = run_dir / OBJECTIVE_SEMANTICS_RECEIPT_PATH
@@ -2554,6 +3039,7 @@ def import_scientific_review(
             "manifest_sha256": packet["manifest_sha256"],
         },
         "report": report,
+        "task_receipt": task_reference,
         "artifacts": artifacts,
         "objective_semantics": semantics_binding,
         "reviewer": _reviewer_scientific(reviewer_thread_id),
@@ -2562,7 +3048,7 @@ def import_scientific_review(
     if validated_question_reviews is not None:
         review["question_reviews"] = validated_question_reviews
     # 没有必答问题时仍用 v1.5 兼容旧运行
-    summary_version = "1.6" if validated_question_reviews is not None else "1.5"
+    summary_version = "1.7"
     summary = {
         "schema_version": summary_version,
         "run_id": run_dir.name,
@@ -2584,10 +3070,7 @@ def import_paper_blind_review(
     verdict: str,
     highest_severity: str,
     reviewer_thread_id: str,
-    argumentation_complete: bool,
-    readability_passed: bool,
-    empty_sections: list[str] | None = None,
-    unreadable_pages: list[int] | None = None,
+    task_receipt_file: str,
     report_file: Path = PAPER_BLIND_REPORT_PATH,
 ) -> dict[str, Any]:
     """绑定独立盲审报告；它只决定提交可读性，不替代科学红队。"""
@@ -2595,15 +3078,6 @@ def import_paper_blind_review(
         raise ContractError("盲审 verdict 或严重性不合法")
     if verdict == "pass" and highest_severity in {"P0", "P1"}:
         raise ContractError("盲审含 P0/P1 时不能导入为 pass")
-    empty_sections = list(dict.fromkeys(empty_sections or []))
-    unreadable_pages = list(dict.fromkeys(unreadable_pages or []))
-    if verdict == "pass" and (
-        not argumentation_complete
-        or not readability_passed
-        or empty_sections
-        or unreadable_pages
-    ):
-        raise ContractError("PDF 盲审未确认逐问论证完整和页面可读时不能导入为 pass")
     if read_simple_state(run_dir)["phase"] != "paper_review":
         raise ContractError("PDF 盲审结论只能在 paper_review 阶段导入")
     require_paper_generation_allowed(run_dir)
@@ -2613,6 +3087,25 @@ def import_paper_blind_review(
     manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
     if manifest["packet_kind"] != "paper-blind":
         raise ContractError("盲审必须绑定 paper-blind 审查包")
+    report = _review_report(run_dir, report_file)
+    packet_binding = {
+        "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
+        "manifest_sha256": sha256_file(manifest_path),
+    }
+    task_reference, task_receipt = _review_task_reference(
+        run_dir,
+        receipt_file=task_receipt_file,
+        task_type="paper_blind_open",
+        report_file=report["file"],
+        packet=packet_binding,
+        reviewer_thread_id=reviewer_thread_id,
+    )
+    require_coverage_declaration_valid(
+        run_dir,
+        expected_report_file=report["file"],
+        scope="paper",
+        expected_parent_task_id=task_receipt["task_id"],
+    )
     summary = read_review_summary(run_dir)
     used_threads = {summary["scientific_review"]["reviewer"]["thread_id"]}
     semantics = objective_semantics_review_status(run_dir)
@@ -2620,7 +3113,7 @@ def import_paper_blind_review(
         used_threads.add(semantics["review"]["reviewer"]["thread_id"])
     if reviewer_thread_id in used_threads:
         raise ContractError("PDF 盲审必须使用不同于科学红队、目标语义预审的新对话")
-    summary["schema_version"] = "1.4"
+    summary["schema_version"] = "1.7"
     summary["paper_blind_review"] = {
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -2628,13 +3121,8 @@ def import_paper_blind_review(
             "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
             "manifest_sha256": sha256_file(manifest_path),
         },
-        "report": _review_report(run_dir, report_file),
-        "assessment": {
-            "argumentation_complete": argumentation_complete,
-            "readability_passed": readability_passed,
-            "empty_sections": empty_sections,
-            "unreadable_pages": unreadable_pages,
-        },
+        "report": report,
+        "task_receipt": task_reference,
         "reviewer": _reviewer_paper(reviewer_thread_id),
         "reviewed_at": utc_now(),
     }
@@ -2653,6 +3141,7 @@ def import_final_audit(
     verdict: str,
     highest_severity: str,
     reviewer_thread_id: str,
+    task_receipt_file: str,
     report_file: Path = FINAL_AUDIT_REPORT_PATH,
 ) -> dict[str, Any]:
     """绑定第三个新对话完成的最终交付审核报告。"""
@@ -2669,6 +3158,19 @@ def import_final_audit(
     manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
     if manifest["packet_kind"] != "final-audit":
         raise ContractError("最终交付审核必须绑定 final-audit 审查包")
+    report = _review_report(run_dir, report_file)
+    packet_binding = {
+        "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
+        "manifest_sha256": sha256_file(manifest_path),
+    }
+    task_reference, _ = _review_task_reference(
+        run_dir,
+        receipt_file=task_receipt_file,
+        task_type="final_audit",
+        report_file=report["file"],
+        packet=packet_binding,
+        reviewer_thread_id=reviewer_thread_id,
+    )
     summary = read_review_summary(run_dir)
     used_threads = {
         summary["scientific_review"]["reviewer"]["thread_id"],
@@ -2679,7 +3181,7 @@ def import_final_audit(
         used_threads.add(semantics["review"]["reviewer"]["thread_id"])
     if reviewer_thread_id in used_threads:
         raise ContractError("最终交付审核必须使用不同于前两轮审核的第三个新对话")
-    summary["schema_version"] = "1.4"
+    summary["schema_version"] = "1.7"
     summary["final_audit"] = {
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -2687,7 +3189,8 @@ def import_final_audit(
             "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
             "manifest_sha256": sha256_file(manifest_path),
         },
-        "report": _review_report(run_dir, report_file),
+        "report": report,
+        "task_receipt": task_reference,
         "reviewer": _reviewer_final(reviewer_thread_id),
         "reviewed_at": utc_now(),
     }
@@ -2712,6 +3215,48 @@ def _review_current(
     report = _safe_run_path(run_dir, review["report"]["file"])
     if sha256_file(report) != review["report"]["sha256"]:
         return False, "审查报告哈希已变化"
+    task_type = {
+        "scientific": "scientific_open",
+        "paper-blind": "paper_blind_open",
+        "final-audit": "final_audit",
+    }[expected_kind]
+    task_reference = review.get("task_receipt")
+    if not isinstance(task_reference, dict):
+        return False, "审核摘要缺少真实任务回执；旧摘要不能用于当前生产放行"
+    try:
+        task_path = _safe_run_path(run_dir, task_reference["file"])
+        if sha256_file(task_path) != task_reference["sha256"]:
+            return False, "审核任务回执哈希已变化"
+        from shumozizi.simple.review_tasks import validate_review_task_receipt
+
+        task_receipt = validate_review_task_receipt(
+            run_dir,
+            task_reference["file"],
+            expected_type=task_type,
+            expected_report=review["report"]["file"],
+            expected_input_bindings={"packet": review["packet"]},
+        )
+        if (
+            task_receipt["task_id"] != task_reference["task_id"]
+            or task_receipt["thread_id"] != review["reviewer"]["thread_id"]
+        ):
+            return False, "审核摘要与任务回执身份不一致"
+        if expected_kind == "scientific":
+            require_coverage_declaration_valid(
+                run_dir,
+                expected_report_file=review["report"]["file"],
+                scope="scientific",
+                expected_parent_task_id=task_receipt["task_id"],
+            )
+        elif expected_kind == "paper-blind":
+            require_coverage_declaration_valid(
+                run_dir,
+                expected_report_file=review["report"]["file"],
+                scope="paper",
+                expected_parent_task_id=task_receipt["task_id"],
+            )
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return False, str(exc)
     if expected_kind == "scientific":
         if "artifacts" not in review:
             return False, "科学审查缺少可执行红队证据；旧摘要不能作为生产放行依据"
@@ -2825,21 +3370,10 @@ def paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
         if review is None:
             return {"allowed": False, "reason": "缺少独立 PDF 盲审"}
         current, reason = _review_current(run_dir, review, expected_kind="paper-blind")
-        assessment = review.get("assessment")
-        assessment_passed = bool(
-            assessment is None
-            or (
-                assessment["argumentation_complete"]
-                and assessment["readability_passed"]
-                and not assessment["empty_sections"]
-                and not assessment["unreadable_pages"]
-            )
-        )
         allowed = bool(
             current
             and review["verdict"] == "pass"
             and review["highest_severity"] not in {"P0", "P1"}
-            and assessment_passed
         )
         return {"allowed": allowed, "review": review, "reason": reason}
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
@@ -2880,7 +3414,7 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
             "state-phase", "scientific-review-release",
             "competition-submission-release", "visualization-contract",
             "paper-template-manifest", "paper-compile-receipt",
-            "paper-blind-review-release", "pdf", "paper-content-sufficiency",
+            "paper-blind-review-release", "pdf", "paper-structure-signals",
             "placeholders", "result-references", "numeric-consistency",
             "current-result-files", "current-figure-files", "contact-sheet",
         }

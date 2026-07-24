@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 ROOT_MARKER = ".shumozizi-root"
@@ -51,7 +52,12 @@ def assert_repo_root(path: Path) -> None:
     Raises:
         RepositoryRootError: 标记、Git 元数据或 Git 根不匹配。
     """
-    resolved = path.resolve()
+    _assert_repo_root_cached(path.resolve())
+
+
+@lru_cache(maxsize=32)
+def _assert_repo_root_cached(resolved: Path) -> None:
+    """首次访问时校验仓库根，并缓存同一路径的 Git 解析结果。"""
     if not (resolved / ROOT_MARKER).is_file():
         raise RepositoryRootError(f"缺少仓库根标记: {resolved / ROOT_MARKER}")
     if not (resolved / ".git").exists():

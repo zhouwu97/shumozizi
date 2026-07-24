@@ -6,13 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.review import (
     build_review_packet,
     import_objective_semantics_review,
     objective_semantics_review_status,
 )
+from shumozizi.simple.review_tasks import create_review_task_receipt
 from shumozizi.simple.state import update_simple_state
 
 
@@ -90,6 +91,27 @@ def _manifest_relative(packet: dict) -> str:
     return f"review/packet/{packet['packet_kind']}/{packet['packet_id']}/manifest.json"
 
 
+def _objective_task_receipt(run_dir: Path, packet: dict, thread_id: str) -> str:
+    """创建绑定当前题面包和自由报告的目标语义审核任务回执。"""
+    manifest_file = _manifest_relative(packet)
+    receipt = create_review_task_receipt(
+        run_dir,
+        task_id="objective-semantics-open",
+        task_type="objective_semantics",
+        thread_id=thread_id,
+        model_id="fixture-model",
+        prompt_sha256="1" * 64,
+        input_bindings={
+            "packet": {
+                "manifest_file": manifest_file,
+                "manifest_sha256": sha256_file(run_dir / manifest_file),
+            }
+        },
+        report_file="review/OBJECTIVE_SEMANTICS_REVIEW.md",
+    )
+    return receipt.relative_to(run_dir).as_posix()
+
+
 def test_formal_problem_cannot_enter_capability_route_without_semantics_review(
     tmp_path: Path,
 ) -> None:
@@ -123,6 +145,9 @@ def test_ambiguous_interpretation_cannot_claim_language_evidence_is_decisive(
             verdict="pass",
             highest_severity="none",
             reviewer_thread_id="objective-review-thread",
+            task_receipt_file=_objective_task_receipt(
+                run_dir, packet, "objective-review-thread"
+            ),
         )
 
 
@@ -164,6 +189,9 @@ def test_passed_semantics_review_is_hash_bound_and_required_for_route(tmp_path: 
         verdict="pass",
         highest_severity="none",
         reviewer_thread_id="objective-review-thread",
+        task_receipt_file=_objective_task_receipt(
+            run_dir, packet, "objective-review-thread"
+        ),
     )
 
     update_simple_state(run_dir, phase="capability_route")
@@ -211,6 +239,9 @@ def test_high_materiality_ambiguity_requires_hash_bound_human_decision(tmp_path:
         verdict="pass",
         highest_severity="none",
         reviewer_thread_id="objective-human-review-thread",
+        task_receipt_file=_objective_task_receipt(
+            run_dir, packet, "objective-human-review-thread"
+        ),
     )
 
     assert "ambiguity_decisions" in receipt
@@ -253,6 +284,9 @@ def test_medium_confidence_with_conflicting_aggregations_is_machine_blocked(
             verdict="pass",
             highest_severity="none",
             reviewer_thread_id="objective-review-thread",
+            task_receipt_file=_objective_task_receipt(
+                run_dir, packet, "objective-review-thread"
+            ),
         )
 
 
@@ -295,6 +329,9 @@ def test_machine_derived_fields_are_populated_on_valid_assessment(
         verdict="pass",
         highest_severity="none",
         reviewer_thread_id="objective-review-thread",
+        task_receipt_file=_objective_task_receipt(
+            run_dir, packet, "objective-review-thread"
+        ),
     )
 
     # 读取评估以验证 machine 字段已被补入
@@ -338,4 +375,7 @@ def test_conflicting_aggregations_with_user_decision_marks_decision_required(
             verdict="pass",
             highest_severity="none",
             reviewer_thread_id="objective-review-thread",
+            task_receipt_file=_objective_task_receipt(
+                run_dir, packet, "objective-review-thread"
+            ),
         )
