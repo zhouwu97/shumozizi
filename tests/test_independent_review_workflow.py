@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from typing import Any
 from pathlib import Path
 
 from shumozizi.core.io import ContractError, load_json
@@ -65,6 +66,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "assert (packet / 'problem').is_dir()\n"
                 "(outputs / 'recompute.json').write_text(json.dumps({\n"
                 "    'claim_id': 'Q1-objective',\n"
+                "    'question_id': 'Q5',\n"
                 "    'method': 'independent_quadratic_oracle',\n"
                 "    'cases': 12,\n"
                 "    'production_value': 3.348287,\n"
@@ -83,6 +85,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 "assert (packet / 'source_snapshot').is_dir()\n"
                 "(outputs / 'property.json').write_text(json.dumps({\n"
                 "    'claim_id': 'segment-intersection',\n"
+                "    'question_id': 'Q5',\n"
                 "    'property': 'finite_segment_endpoint_cases',\n"
                 "    'cases': 12,\n"
                 "    'failures': 0,\n"
@@ -125,22 +128,29 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
         prepare_minimal_capability_route(run_dir)
         update_simple_state(run_dir, phase="scientific_review")
 
-    def _pass_scientific_review(self, run_dir: Path) -> dict[str, object]:
+    def _pass_scientific_review(
+        self, run_dir: Path, required_questions: list[str] | None = None
+    ) -> dict[str, object]:
         """构建科学包并导入一个合格的隔离审查结论。"""
         packet = build_review_packet(run_dir, kind="scientific")
         report = self._write_report(run_dir, "SCIENTIFIC_RED_TEAM.md")
-        import_scientific_review(
-            run_dir,
-            manifest_file=self._manifest_relative(packet),
-            verdict="pass",
-            highest_severity="none",
-            competition_strength="qualified",
-            full_rerun_required=False,
-            affected_questions=[],
-            reviewer_thread_id="fresh-scientific-thread",
-            report_file=report.relative_to(run_dir),
-        )
-        return packet
+        kwargs: dict[str, Any] = {
+            "manifest_file": self._manifest_relative(packet),
+            "verdict": "pass",
+            "highest_severity": "none",
+            "competition_strength": "qualified",
+            "full_rerun_required": False,
+            "affected_questions": [],
+            "reviewer_thread_id": "fresh-scientific-thread",
+            "report_file": report.relative_to(run_dir),
+        }
+        if required_questions:
+            kwargs["question_reviews"] = [
+                {"question_id": q, "verdict": "pass",
+                 "competition_strength": "qualified"}
+                for q in required_questions
+            ]
+        import_scientific_review(run_dir, **kwargs)
 
     def _pass_paper_blind_review(self, run_dir: Path) -> dict[str, object]:
         """构建盲审包并导入一个合格的隔离 PDF 审查结论。"""
@@ -281,9 +291,12 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
     def test_scientific_review_drift_or_p0_cannot_release_paper(self) -> None:
         """代码变化和 P0 都必须撤销论文放行，而不是只保留旧摘要。"""
         with tempfile.TemporaryDirectory() as temporary:
-            run_dir = initialize_simple_run(Path(temporary), "scientific-revocation")
+            run_dir = initialize_simple_run(
+                Path(temporary), "scientific-revocation",
+                required_questions=["Q5"],
+            )
             self._prepare_scientific_phase(run_dir)
-            self._pass_scientific_review(run_dir)
+            self._pass_scientific_review(run_dir, required_questions=["Q5"])
             (run_dir / "code" / "solver.py").write_text("print('changed')\n", encoding="utf-8")
 
             self.assertFalse(scientific_review_status(run_dir)["allowed"])
@@ -291,7 +304,10 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 self._enter_paper(run_dir)
 
         with tempfile.TemporaryDirectory() as temporary:
-            run_dir = initialize_simple_run(Path(temporary), "scientific-p0")
+            run_dir = initialize_simple_run(
+                Path(temporary), "scientific-p0",
+                required_questions=["Q5"],
+            )
             self._prepare_scientific_phase(run_dir)
             packet = build_review_packet(run_dir, kind="scientific")
             report = self._write_report(run_dir, "SCIENTIFIC_RED_TEAM.md")
@@ -322,7 +338,7 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 required_questions=["Q5"],
             )
             self._prepare_scientific_phase(run_dir)
-            self._pass_scientific_review(run_dir)
+            self._pass_scientific_review(run_dir, required_questions=["Q5"])
             semantics_manifest = next(
                 (run_dir / "review" / "packet" / "objective-semantics").glob(
                     "*/manifest.json"
@@ -376,9 +392,12 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
     def test_three_reviews_and_current_mechanical_qa_are_required_for_completion(self) -> None:
         """三轮审核和机械 QA 必须依次绑定同一套当前交付物。"""
         with tempfile.TemporaryDirectory() as temporary:
-            run_dir = initialize_simple_run(Path(temporary), "paper-blind-gate")
+            run_dir = initialize_simple_run(
+                Path(temporary), "paper-blind-gate",
+                required_questions=["Q5"],
+            )
             self._prepare_scientific_phase(run_dir)
-            self._pass_scientific_review(run_dir)
+            self._pass_scientific_review(run_dir, required_questions=["Q5"])
             self._enter_paper(run_dir)
             (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nminimal")
             self._enter_paper_review(run_dir)
@@ -398,9 +417,12 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                 update_simple_state(run_dir, phase="verify")
 
         with tempfile.TemporaryDirectory() as temporary:
-            run_dir = initialize_simple_run(Path(temporary), "complete-gate")
+            run_dir = initialize_simple_run(
+                Path(temporary), "complete-gate",
+                required_questions=["Q5"],
+            )
             self._prepare_scientific_phase(run_dir)
-            self._pass_scientific_review(run_dir)
+            self._pass_scientific_review(run_dir, required_questions=["Q5"])
             self._enter_paper(run_dir)
             pdf = run_dir / "paper" / "final.pdf"
             pdf.write_bytes(b"%PDF-1.4\nminimal")
@@ -429,9 +451,12 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
     def test_final_audit_requires_third_thread_and_invalidates_on_delivery_drift(self) -> None:
         """终审不得复用旧对话，且最终交付树变化后必须重新审核。"""
         with tempfile.TemporaryDirectory() as temporary:
-            run_dir = initialize_simple_run(Path(temporary), "final-audit-drift")
+            run_dir = initialize_simple_run(
+                Path(temporary), "final-audit-drift",
+                required_questions=["Q5"],
+            )
             self._prepare_scientific_phase(run_dir)
-            self._pass_scientific_review(run_dir)
+            self._pass_scientific_review(run_dir, required_questions=["Q5"])
             self._enter_paper(run_dir)
             (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nminimal")
             self._enter_paper_review(run_dir)
@@ -470,9 +495,12 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
     def test_blind_packet_contains_completed_task_attachments(self) -> None:
         """盲审提交包必须使用已填写产物，而不是题面中的空白模板。"""
         with tempfile.TemporaryDirectory() as temporary:
-            run_dir = initialize_simple_run(Path(temporary), "completed-attachments")
+            run_dir = initialize_simple_run(
+                Path(temporary), "completed-attachments",
+                required_questions=["Q5"],
+            )
             self._prepare_scientific_phase(run_dir)
-            self._pass_scientific_review(run_dir)
+            self._pass_scientific_review(run_dir, required_questions=["Q5"])
             self._enter_paper(run_dir)
             (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nminimal")
             template = run_dir / "problem" / "attachments" / "result1.xlsx"
@@ -506,9 +534,12 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
     def test_paper_blind_review_cannot_reuse_the_scientific_review_thread(self) -> None:
         """两次独立审查必须绑定不同的新对话标识。"""
         with tempfile.TemporaryDirectory() as temporary:
-            run_dir = initialize_simple_run(Path(temporary), "separate-review-threads")
+            run_dir = initialize_simple_run(
+                Path(temporary), "separate-review-threads",
+                required_questions=["Q5"],
+            )
             self._prepare_scientific_phase(run_dir)
-            self._pass_scientific_review(run_dir)
+            self._pass_scientific_review(run_dir, required_questions=["Q5"])
             self._enter_paper(run_dir)
             (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nminimal")
             self._enter_paper_review(run_dir)

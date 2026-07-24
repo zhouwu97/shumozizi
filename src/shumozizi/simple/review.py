@@ -817,11 +817,25 @@ def _source_root(run_dir: Path, relative: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
-def _packet_files(source: Path, *, exclude_visualization_scripts: bool) -> list[Path]:
-    """返回需要冻结的文件，允许科学审查排除后续阶段的纯绘图脚本。"""
+def _packet_files(
+    source: Path,
+    *,
+    exclude_visualization_scripts: bool,
+    exclude_quality_labels: bool = False,
+) -> list[Path]:
+    """返回需要冻结的文件，允许科学审查排除后续阶段的纯绘图脚本和质量标签。
+
+    Args:
+        exclude_visualization_scripts: 排除 figures/ 目录下的纯绘图脚本。
+        exclude_quality_labels: 排除文件名含质量标签的文件（用于科学包去标签化）。
+    """
     if source.is_file():
+        if exclude_quality_labels and _packet_should_exclude(source):
+            return []
         return [source]
     files = sorted(path for path in source.rglob("*") if path.is_file())
+    if exclude_quality_labels:
+        files = [path for path in files if not _packet_should_exclude(path)]
     if not exclude_visualization_scripts:
         return files
     return [
@@ -831,12 +845,18 @@ def _packet_files(source: Path, *, exclude_visualization_scripts: bool) -> list[
     ]
 
 
-def _packet_tree_hash(source: Path, *, exclude_visualization_scripts: bool) -> str:
+def _packet_tree_hash(
+    source: Path,
+    *,
+    exclude_visualization_scripts: bool,
+    exclude_quality_labels: bool = False,
+) -> str:
     """计算审查快照的内容哈希，保证源树与冻结副本使用相同过滤规则。"""
     digest = hashlib.sha256()
     for item in _packet_files(
         source,
         exclude_visualization_scripts=exclude_visualization_scripts,
+        exclude_quality_labels=exclude_quality_labels,
     ):
         relative = item.name if source.is_file() else item.relative_to(source).as_posix()
         digest.update(relative.encode("utf-8"))
@@ -972,8 +992,15 @@ def _copy_packet_tree(
     packet_dir: Path,
     source_relative: str,
     destination_relative: str,
+    *,
+    exclude_quality_labels: bool = False,
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
-    """复制一个审查允许的源树，并记录原始与副本的逐文件哈希。"""
+    """复制一个审查允许的源树，并记录原始与副本的逐文件哈希。
+
+    Args:
+        exclude_quality_labels: 同时过滤文件名和哈希计算中的质量标签文件，
+            确保源树哈希和副本树哈希使用同一个过滤后的文件集合。
+    """
     source = _source_root(run_dir, source_relative)
     if source is None:
         return None, []
@@ -981,6 +1008,9 @@ def _copy_packet_tree(
     copied: list[dict[str, str]] = []
     exclude_visualization_scripts = source_relative == "code"
     if source.is_file():
+        if exclude_quality_labels and _packet_should_exclude(source):
+            return {"source": relative_inside(run_dir, source).as_posix(),
+                    "packet": destination_relative, "sha256": ""}, []
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
         copied.append(
@@ -991,16 +1021,12 @@ def _copy_packet_tree(
             }
         )
     else:
-        # 空目录也必须冻结为目录；否则刚创建的审查包会被误判为已漂移。
         destination.mkdir(parents=True, exist_ok=True)
         for item in _packet_files(
             source,
             exclude_visualization_scripts=exclude_visualization_scripts,
+            exclude_quality_labels=exclude_quality_labels,
         ):
-            # 科学审查包不得泄露质量标签：跳过文件名含 quality/verified 等
-            # 标签的文件，并跳过 JSON 字段含 accepted/paper_allowed 等的文件。
-            if source_relative == "results/raw" and _packet_should_exclude(item):
-                continue
             target = destination / item.relative_to(source)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(item, target)
@@ -1017,6 +1043,7 @@ def _copy_packet_tree(
         "sha256": _packet_tree_hash(
             source,
             exclude_visualization_scripts=exclude_visualization_scripts,
+            exclude_quality_labels=exclude_quality_labels,
         ),
     }, copied
 
@@ -1075,6 +1102,7 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
             packet_dir,
             source_relative,
             _PACKET_DESTINATIONS[source_relative],
+            exclude_quality_labels=(kind == "scientific"),
         )
         if root is not None:
             roots.append(root)
@@ -1277,7 +1305,16 @@ def _derive_semantic_conflict_fields(question: dict[str, Any]) -> dict[str, Any]
         for a, b in _SEMANTIC_CONFLICT_PAIRS
     )
     distinct = list(dict.fromkeys(aggregations))
-    language_resolves = question.get("selection_basis") == "language_evidence"
+    # language_evidence 必须绑定题面原文引用，不能只靠字段自报
+    evidence_ref = question.get("language_evidence_ref", {})
+    has_bound_evidence = (
+        isinstance(evidence_ref, dict)
+        and bool(evidence_ref.get("source_file", "").strip())
+        and bool(evidence_ref.get("excerpt", "").strip())
+    )
+    language_resolves = (
+        question.get("selection_basis") == "language_evidence" and has_bound_evidence
+    )
     user_decision_required = (
         distinct_count >= 2
         and has_conflict
@@ -1332,6 +1369,37 @@ def _validate_objective_assessment(
                 raise ContractError(
                     f"{question['question_id']} 仍有歧义时必须记录用户裁决或显式建模假设"
                 )
+        # 当 AI 声称 language_evidence 且存在语义冲突时，不能仅靠字段自报。
+        # 必须有绑定的题面引用（源文件、页码/行号、原文、如何排除其他解释）。
+        if question["selection_basis"] == "language_evidence":
+            has_conflict = (
+                len(question.get("distinct_aggregations", [])) >= 2
+                or len(
+                    {
+                        item["aggregation"]
+                        for item in question["interpretations"]
+                    }
+                )
+                >= 2
+            )
+            if has_conflict:
+                ref = question.get("language_evidence_ref", {})
+                if not isinstance(ref, dict):
+                    raise ContractError(
+                        f"{question['question_id']} 的 language_evidence_ref 必须是对象"
+                    )
+                missing_parts = []
+                if not ref.get("source_file", "").strip():
+                    missing_parts.append("source_file")
+                if not ref.get("excerpt", "").strip():
+                    missing_parts.append("excerpt")
+                if not ref.get("how_it_excludes_alternatives", "").strip():
+                    missing_parts.append("how_it_excludes_alternatives")
+                if missing_parts:
+                    raise ContractError(
+                        f"{question['question_id']} 的 language_evidence 必须绑定题面原文引用，"
+                        f"缺少: {', '.join(missing_parts)}"
+                    )
         if question["materiality"] == "high" and question["selection_confidence"] == "ambiguous":
             if question["selection_basis"] != "user_decision":
                 raise ContractError(
@@ -1367,9 +1435,18 @@ def _validate_question_reviews(
     """校验逐问审查结论覆盖全部必答问题，且每个结论自洽。
 
     Returns:
-        规范化后的逐问审查列表；输入为 None 时返回 None（兼容旧调用）。
+        规范化后的逐问审查列表。
+
+    Raises:
+        ContractError: 生产模式下 question_reviews 为 None，或覆盖/自洽性不合法。
     """
     if question_reviews is None:
+        # 兼容不含必答问题的运行（如纯探索、技能学习、无题面运行）
+        state = read_simple_state(run_dir)
+        if state.get("required_questions"):
+            raise ContractError(
+                "生产模式下逐问审查 (question_reviews) 必须覆盖全部必答问题，不能省略。"
+            )
         return None
     if not isinstance(question_reviews, list):
         raise ContractError("question_reviews 必须是列表")
@@ -1474,7 +1551,9 @@ def _stale_results_for_objective_change(
 
     不直接修改结果 JSON 内容（那可能触发额外的 Schema 校验），
     而是将未绑定新目标哈希的 current 结果标记为 superseded。
+    同时将质量和图表标记为失效。
     """
+    # 1. 结果索引
     try:
         index = read_result_index(run_dir)
     except (ContractError, OSError):
@@ -1494,6 +1573,45 @@ def _stale_results_for_objective_change(
         from shumozizi.core.io import atomic_json as _atomic
 
         _atomic(run_dir / "results" / "index.json", index)
+
+    # 2. 质量文档：paper_allowed 强制回退
+    quality_path = run_dir / "results" / "quality.json"
+    if quality_path.is_file():
+        try:
+            q = load_json(quality_path)
+            stale = False
+            for item in q.get("assessments", []):
+                if item.get("result_role") == "accepted":
+                    item["result_role"] = "candidate"
+                    item["paper_allowed"] = False
+                    item.setdefault("reasons", []).append(
+                        "objective_semantics_changed"
+                    )
+                    stale = True
+            if stale:
+                from shumozizi.core.io import atomic_json as _atomic
+
+                _atomic(quality_path, q)
+        except (OSError, ValueError):
+            pass
+
+    # 3. 图表索引：标记所有生产图为 stale
+    fig_index_path = run_dir / "figures" / "index.json"
+    if fig_index_path.is_file():
+        try:
+            fig_idx = load_json(fig_index_path)
+            stale = False
+            for item in fig_idx.get("figures", []):
+                existing = item.get("objective_semantics_sha256")
+                if not existing or existing != new_objectives_sha256:
+                    item["status"] = "stale"
+                    stale = True
+            if stale:
+                from shumozizi.core.io import atomic_json as _atomic
+
+                _atomic(fig_index_path, fig_idx)
+        except (OSError, ValueError):
+            pass
 
 
 def import_objective_semantics_review(
@@ -1659,6 +1777,7 @@ def _require_competition_strength_evidence(
     evidence_assessment: dict[str, Any],
     run_dir: Path,
     semantics: dict[str, Any],
+    question_reviews: list[dict[str, Any]] | None = None,
 ) -> None:
     """阻止 CLI 仅靠一个标签把科学结果抬成可竞赛提交。"""
     if competition_strength not in {"qualified", "strong"}:
@@ -1685,6 +1804,43 @@ def _require_competition_strength_evidence(
             "几何/运动题的 qualified/strong 需要 geometry-continuous-validation，"
             "随机内部采样不能替代连续边界证明"
         )
+    # ── 逐问证据绑定：qualified/strong 的每个问题必须有独立证据 ──
+    verification = verify_red_team_artifacts(run_dir)
+    semantic_evidence = verification.get("semantic_evidence", [])
+    if question_reviews is not None:
+        evidence_by_question: dict[str, dict[str, set[str]]] = {}
+        for kind, evidence in semantic_evidence:
+            qid = evidence.get("question_id")
+            if not qid:
+                continue
+            groups = evidence_by_question.setdefault(
+                qid, {"independent": set(), "adversarial": set()}
+            )
+            if kind in {"independent-recompute", "alternative-formula"}:
+                groups["independent"].add(kind)
+            elif kind in {
+                "counterexample", "small-enumeration", "search-challenge",
+                "property-test", "action-activation-challenge",
+                "fixed-action-utilization",
+            }:
+                groups["adversarial"].add(kind)
+        for item in question_reviews:
+            if item["competition_strength"] not in {"qualified", "strong"}:
+                continue
+            qid = item["question_id"]
+            ev = evidence_by_question.get(qid, {})
+            if not ev.get("independent"):
+                raise ContractError(
+                    f"{qid} 标记为 {item['competition_strength']}，"
+                    f"但没有属于该问题的独立复算或替代公式证据——"
+                    f"Q1 的独立验证不能替其他问题背书"
+                )
+            if not ev.get("adversarial"):
+                raise ContractError(
+                    f"{qid} 缺少属于自己的对抗性证据"
+                    f"（搜索挑战/消融/性质测试），不能标记为 qualified/strong"
+                )
+
     required_actions = {
         question["question_id"]: question["decision_space"]["allowed_action_count"]
         for question in semantics.get("assessment", {}).get("questions", [])
@@ -1788,7 +1944,7 @@ def import_scientific_review(
 
     Args:
         question_reviews: 逐问细化结论，每项至少包含 question_id / verdict /
-            competition_strength。为 None 时回退到全局值（兼容旧调用）。
+            competition_strength。当运行有必答问题时必须提供，不可回退到全局值。
     """
     if verdict not in _VERDICTS or highest_severity not in _SEVERITIES:
         raise ContractError("科学审查 verdict 或严重性不合法")
@@ -1796,8 +1952,14 @@ def import_scientific_review(
         raise ContractError("competition_strength 不合法")
     if verdict == "pass" and (highest_severity in {"P0", "P1"} or full_rerun_required):
         raise ContractError("P0/P1 或全量重跑要求不能导入为 pass")
-    if read_simple_state(run_dir)["phase"] != "scientific_review":
+    state = read_simple_state(run_dir)
+    if state["phase"] != "scientific_review":
         raise ContractError("科学审查结论只能在 scientific_review 阶段导入")
+    # 有必答问题时逐问审查不可省略
+    if state.get("required_questions") and question_reviews is None:
+        raise ContractError(
+            "有必答问题时逐问审查 (question_reviews) 必须覆盖全部问题，不能省略"
+        )
     semantics = objective_semantics_review_status(run_dir)
     if not semantics["allowed"]:
         raise ContractError("科学审查前的目标语义预审未通过或已失效: " + semantics["reason"])
@@ -1817,16 +1979,17 @@ def import_scientific_review(
             "科学审查 pass 与红队负面证据冲突: "
             + "；".join(evidence_assessment["blocking_reasons"])
         )
+    # ── 逐问审查：校验并合并 per-question verdicts ──
+    validated_question_reviews = _validate_question_reviews(
+        run_dir, question_reviews
+    )
     _require_competition_strength_evidence(
         competition_strength,
         artifacts,
         evidence_assessment,
         run_dir,
         semantics,
-    )
-    # ── 逐问审查：校验并合并 per-question verdicts ──
-    validated_question_reviews = _validate_question_reviews(
-        run_dir, question_reviews
+        validated_question_reviews,
     )
     semantics_binding = None
     if semantics.get("required"):

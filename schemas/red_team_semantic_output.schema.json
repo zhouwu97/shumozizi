@@ -49,6 +49,7 @@
       "required": ["claim_id", "method", "cases", "production_value", "independent_value", "absolute_difference", "verdict"],
       "properties": {
         "claim_id": {"type": "string", "minLength": 1},
+        "question_id": {"type": "string", "minLength": 1},
         "method": {"type": "string", "minLength": 3},
         "cases": {"type": "integer", "minimum": 1},
         "production_value": {"type": "number"},

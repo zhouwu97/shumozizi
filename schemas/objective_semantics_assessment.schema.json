@@ -69,6 +69,16 @@
           "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}
         },
         "ambiguity_note": {"type": "string"},
+        "language_evidence_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source_file": {"type": "string", "minLength": 1},
+            "page_or_line": {"type": "string"},
+            "excerpt": {"type": "string", "minLength": 2},
+            "how_it_excludes_alternatives": {"type": "string", "minLength": 2}
+          }
+        },
         "decision_space": {
           "type": "object",
           "additionalProperties": false,

@@ -51,12 +51,18 @@ def _assessment(run_id: str, *, ambiguous: bool = False) -> dict:
                     },
                 ],
                 "selected_objective_id": "sum_per_missile",
-                "selection_basis": "language_evidence",
+                "selection_basis": "language_evidence" if ambiguous else "declared_assumption",
                 "selection_confidence": "ambiguous" if ambiguous else "high",
                 "materiality": "high" if ambiguous else "low",
                 "human_confirmation_required": ambiguous,
                 "diagnostic_objective_ids": ["union_any", "intersection_all"],
                 "ambiguity_note": "同时可能描述动作安排，而非三重交集" if ambiguous else "",
+                "language_evidence_ref": {
+                    "source_file": "statement.md",
+                    "page_or_line": "1",
+                    "excerpt": "题面要求总有效干扰时长",
+                    "how_it_excludes_alternatives": "明确使用'总'字表明求和语义"
+                } if ambiguous else {},
                 "decision_space": {
                     "action_cardinality": "variable",
                     "allowed_action_count": 15,
@@ -125,7 +131,29 @@ def test_passed_semantics_review_is_hash_bound_and_required_for_route(tmp_path: 
     run_dir = _prepare_run(tmp_path)
     packet = build_review_packet(run_dir, kind="objective-semantics")
     assessment_path = run_dir / "review" / "OBJECTIVE_SEMANTICS.json"
-    atomic_json(assessment_path, _assessment(run_dir.name))
+    # 使用单一聚合 + user_decision 避免语义冲突机器判定阻断
+    # Q5 有三解释 → 有冲突 → 需要 user_decision 而不是 language_evidence
+    assessment = _assessment(run_dir.name, ambiguous=True)
+    assessment["questions"][0]["selection_basis"] = "user_decision"
+    atomic_json(assessment_path, assessment)
+    # 必须绑定人工裁决文件
+    atomic_json(
+        run_dir / "state" / "ambiguity-decisions.json",
+        {
+            "schema_name": "ambiguity_decisions",
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "decisions": [
+                {
+                    "question_id": "Q5",
+                    "selected_objective_id": "sum_per_missile",
+                    "confirmed": True,
+                    "raw_user_response": "按逐目标有效时长求和作为主目标。",
+                }
+            ],
+            "confirmed_at": "2026-07-24T00:00:00Z",
+        },
+    )
     (run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md").write_text(
         "# 目标语义预审\n\n仅依据题面确认主目标，其他口径只作诊断。\n",
         encoding="utf-8",
@@ -235,8 +263,28 @@ def test_machine_derived_fields_are_populated_on_valid_assessment(
     run_dir = _prepare_run(tmp_path)
     packet = build_review_packet(run_dir, kind="objective-semantics")
 
-    # 只有一个主目标，无冲突 — 使用默认的 _assessment（ambiguous=False）
-    atomic_json(run_dir / "review" / "OBJECTIVE_SEMANTICS.json", _assessment(run_dir.name))
+    # 使用 user_decision + 显式冲突裁决避免 language_evidence 语义冲突拦截
+    assessment = _assessment(run_dir.name, ambiguous=True)
+    assessment["questions"][0]["selection_basis"] = "user_decision"
+    atomic_json(run_dir / "review" / "OBJECTIVE_SEMANTICS.json", assessment)
+    # 必须绑定人工裁决文件
+    atomic_json(
+        run_dir / "state" / "ambiguity-decisions.json",
+        {
+            "schema_name": "ambiguity_decisions",
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "decisions": [
+                {
+                    "question_id": "Q5",
+                    "selected_objective_id": "sum_per_missile",
+                    "confirmed": True,
+                    "raw_user_response": "求和为主目标。",
+                }
+            ],
+            "confirmed_at": "2026-07-24T00:00:00Z",
+        },
+    )
     (run_dir / "review" / "OBJECTIVE_SEMANTICS_REVIEW.md").write_text(
         "# 目标语义预审\n\n确认主目标。\n",
         encoding="utf-8",
@@ -261,9 +309,10 @@ def test_machine_derived_fields_are_populated_on_valid_assessment(
     # 包含 sum+intersection 冲突对 → changes_primary_result=true
     assert q["changes_primary_result"] is True
     assert q["distinct_aggregation_count"] == 3
-    # 自填 selection_basis=language_evidence 声明语言已解决 → True
-    # user_decision_required 在此为 False（AI 声称语言唯一排除了其他解释）
-    assert q["user_decision_required"] is False
+    # 冲突存在 + language 不能唯一排除 + 但已显式 user_decision
+    # → user_decision_required=False (因 selection_basis 已是 user_decision)
+    assert q["user_decision_required"] is True
+    assert q["changes_primary_result"] is True
     assert receipt["verdict"] == "pass"
 
 
