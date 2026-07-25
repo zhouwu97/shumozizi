@@ -31,7 +31,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 - 前期可用 fresh thread、获奖论文结构卡或网页 GPT 讨论题意、建模、反例、验证和论文建议；专家卡和网页讨论都是发现问题的可选手段，不是阶段门。进入实验前的正式 `MODELING_UNITS.json` 仍须有两次只绑定 `problem/` 的真实 fresh-thread 题意重建，但回执只证明独立性，绝不证明模型或结论已正确。应及时把改变路线的判断写成绑定 `problem/` 的 `analysis/BASELINE_FREEZE.json` 决策快照，并在问题、反例或实验冲突出现后修订、重跑和复审。
 - 获奖论文专家库和网页讨论都不是答案库、引用库、结果来源或状态门。运行时只能读取安全 `library.json`；来源、页码与论文标识仅保留于离线 `provenance.json`。未冻结时路由须标记 `advisory_only=true` 和 `requires_independent_verification=true`；冻结或修订后应重新路由，并用 `AWARD_EXPERT_ROUTE_AUDIT.json` 确认 `structure_only=true`、`prompt_safe=true` 和 `raw_sources_returned=0`。审计须说明它没有操作系统级文件访问监控。
-- 网页 GPT 仅可基于用户提供的题面讨论和批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，也不得复用此类内容。其建议与专家卡只能帮助路线竞争、probe、验证、研究主线和 LaTeX 论文组织；不得作为当前模型、参数、结果、图表、代码、citation、claim evidence 或 exact 比较的替代品。所有可采纳建议必须由当前运行的 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核验证；同题资料仍只能在 baseline 快照后进入 answer-filter。
+- 网页 GPT 仅可基于用户提供的题面讨论和批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，也不得复用此类内容。其建议与专家卡只能帮助路线竞争、probe、验证、研究主线和 LaTeX 论文组织；不得作为当前模型、参数、结果、图表、代码、citation、claim evidence 或 exact 比较的替代品。需要并行讨论时，先将仅基于 `problem/` 的路线冻结为 `LOCAL_ROUTE_SNAPSHOT.json`，发给网页的首轮提示不得披露该路线，且在本地路线写完前不得阅读网页回应；之后将差异和本地验证动作写入 `EXTERNAL_DISCUSSION_COMPARISON.json`。实现总结必须另开网页 fresh chat，不能续用首轮讨论；它只能给出可由 exact scorer 和真实实验检验的实现建议，不能替代本地寻找最优。所有可采纳建议必须由当前运行的 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核验证；同题资料仍只能在 baseline 快照后进入 answer-filter。
 - v3.2 每个 `compare` 单元必须有 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 仅用于题型明确需要独立 oracle 的单元。单纯替换 GA、PSO、DE 等求解器属于同一路线比较。
 - 比较统一 exact 目标、实际预算与可行性优先；首个可行解后必须至少用两类异构策略深化，且只可使用计划声明的停止理由白名单。灵敏度、鲁棒性和题型 oracle 条件触发，不能互相替代。
 - 将主路线、fallback、切换条件写入 `analysis/ROUTE_COMPETITION.md`；将只有决策价值的实验写入 `analysis/NEXT_EXPERIMENTS.md`。
@@ -45,7 +45,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 实验结束做一次自由科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。报告冻结后必须提取强断言并生成 `review/gaps/round-N.json`：只有具有攻击描述、报告定位与实际证据文件的 `attacked` 风险才能视为覆盖；未覆盖中央风险须由 fresh-thread 专项审核闭合。所有 blocking P2 必须按 finding ID 逐项绑定恢复条件、修复文件、专项报告和回执，不能只关闭其中一个。
 
-PDF 盲评必须用 Codex `create_thread` 新建独立顶层对话，禁止 fork、子 Agent 或续用任何已有对话。新对话只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，要严格检查内容、数学逻辑、结果可信度和排版格式，并给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
+PDF 盲评必须用 Codex `create_thread` 新建独立顶层对话，禁止 fork、子 Agent 或续用任何已有对话。新对话只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，要严格检查内容、数学逻辑、结果可信度和排版格式，并给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。完成一版 PDF 后还应进行一次网页版 GPT 补充审核：通过网页“添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核只审 PDF 内部自洽性、可读性、论证、图表和版式；无法由 PDF 验证的地方必须转为本地复算或题面对照任务。将每项 P0/P1/P2/P3 写入 `WEB_PAPER_AUDIT.json`，用 `WEB_PAPER_REPAIR_PLAN.json` 逐项局部修复、重新编译并复核；不因一般问题整篇重写。同一运行最多三轮网页版终审；第三轮仍有 P0/P1 时，写 `WEB_PAPER_AUDIT_FAILURE.json`，按工作流、建模、证据、论文/图表与下一步复盘并保持 `not_submission_ready`，不得继续循环或标记完成。网页评价或循环完成均不能证明省一或任何奖项，只能降低已识别的质量风险。
 
 ## 图表与论文
 

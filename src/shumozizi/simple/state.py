@@ -253,6 +253,10 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             from shumozizi.simple.review import require_paper_blind_review_allowed
 
             require_paper_blind_review_allowed(run_dir)
+            if is_competition_first_v32_state(state):
+                from shumozizi.knowledge.external_discussion import require_web_paper_audit_release
+
+                require_web_paper_audit_release(run_dir)
         if next_phase == "complete":
             from shumozizi.simple.review import require_completion_allowed
 

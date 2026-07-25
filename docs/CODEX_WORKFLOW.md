@@ -12,7 +12,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 ## 分析
 
-v3.2 前期可按问题需要用只绑定 `problem/` 的 fresh thread、CUMCM A/B 获奖论文的 3--6 张 structure-only 卡和网页版 GPT 讨论题意、建模、反例、验证与论文建议。它们只用于提出假设和攻击点，不能替代本地验证，也不参与状态跳转。可在讨论前后写入 `analysis/BASELINE_FREEZE.json`：它是绑定当前 `problem/` 哈希、带建议来源记录和修订号的决策快照，不是禁止纠错的终局文件。发现反例、目标歧义、实验冲突或审查缺口后，应修订快照，重跑受影响实验、重新路由和复审。未冻结的路由写为 `advisory_only=true`；冻结或修订后旧路由因 SHA 漂移失效，必须重新生成。随后按决策价值写 `analysis/MODELING_UNITS.json`。每个 `compare` 单元冻结 baseline、两条数学结构不同的候选路线、统一 exact 目标和实际预算、fallback、首批攻击、至少两类首解后深化、停止理由白名单及条件验证；`oracle_only` 只用于明确需要独立 oracle 的题型。`ROUTE_COMPETITION.md` 仍用于人类可读的路线叙事。
+v3.2 前期可按问题需要用只绑定 `problem/` 的 fresh thread、CUMCM A/B 获奖论文的 3--6 张 structure-only 卡和网页版 GPT 讨论题意、建模、反例、验证与论文建议。它们只用于提出假设和攻击点，不能替代本地验证，也不参与状态跳转。需要并行网页讨论时，先冻结 `analysis/LOCAL_ROUTE_SNAPSHOT.json`：它只绑定 `problem/`、明确尚未阅读外部材料；首轮网页提示不披露本地路线，且本地路线写完前不得阅读回应。随后用 `EXTERNAL_DISCUSSION_COMPARISON.json` 将每项同意、冲突或新增假设绑定到本地验证动作；最后仅可使用 `EXTERNAL_DISCUSSION_SYNTHESIS.json` 另开 fresh chat 做实现总结。新对话只提出可验证的实验与搜索方向，实际最优或最强下界只能由本地 exact scorer 和真实执行确定。可在讨论前后写入 `analysis/BASELINE_FREEZE.json`：它是绑定当前 `problem/` 哈希、带建议来源记录和修订号的决策快照，不是禁止纠错的终局文件。发现反例、目标歧义、实验冲突或审查缺口后，应修订快照，重跑受影响实验、重新路由和复审。未冻结的路由写为 `advisory_only=true`；冻结或修订后旧路由因 SHA 漂移失效，必须重新生成。随后按决策价值写 `analysis/MODELING_UNITS.json`。每个 `compare` 单元冻结 baseline、两条数学结构不同的候选路线、统一 exact 目标和实际预算、fallback、首批攻击、至少两类首解后深化、停止理由白名单及条件验证；`oracle_only` 只用于明确需要独立 oracle 的题型。`ROUTE_COMPETITION.md` 仍用于人类可读的路线叙事。
 
 专家库运行时只读取 `knowledge/award-experts/library.json`：21 张跨题结构卡与 15 个规则组合角色，覆盖 2012--2025 年官方展示的 A/B 论文。来源 URL、页码、论文 ID 和哈希只留在离线 `provenance.json`。路由按 A/B、当前阶段和受限 `topic_key` 选择少量结构建议；同题资料只能在 baseline 快照后进入 answer-filter，不能改变当前题模型、参数、结果或论文结构。网页版 GPT 也只能对用户提供的题面进行讨论或批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，且不得复用这类内容。专家库和网页建议必须由当前 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核独立确认。审计的 `access_monitoring.enabled=false` 仅说明序列化输出检查的边界，不宣称操作系统级文件访问监控。
 
@@ -34,6 +34,6 @@ v3.2 前期可按问题需要用只绑定 `problem/` 的 fresh thread、CUMCM A/
 
 科学挑战只进行一次自由攻击，报告六项固定问题。只有 P0/P1、需要确认的决定性实验或无法判断是否继续时才建立一个 `FOCUSED_FOLLOWUP.md`。PDF 盲评采用相对评价，不能只写 pass/fail。
 
-最终 PDF 盲评必须由 `create_thread` 创建全新独立顶层对话，不得使用 fork、子 Agent、续聊或写作对话。先构建 `paper-blind` 冻结包，再运行 `scripts/review/show_paper_blind_prompt.py <run-dir> --manifest <manifest> --json`；把返回的提示词原样交给新对话。新对话只读取冻结 PDF，不读取题面、源码、实验、作者说明或既有审核意见。主流程等待审核完成，将报告和新 `thread_id` 写入回执；提示词哈希不匹配时拒绝导入。机械 QA 只检查交付，不重定义数学正确性。
+最终 PDF 盲评必须由 `create_thread` 创建全新独立顶层对话，不得使用 fork、子 Agent、续聊或写作对话。先构建 `paper-blind` 冻结包，再运行 `scripts/review/show_paper_blind_prompt.py <run-dir> --manifest <manifest> --json`；把返回的提示词原样交给新对话。新对话只读取冻结 PDF，不读取题面、源码、实验、作者说明或既有审核意见。主流程等待审核完成，将报告和新 `thread_id` 写入回执；提示词哈希不匹配时拒绝导入。完成该盲评后，再用 `scripts/review/web_paper_audit.py prompt` 生成网页版 GPT 补充审核的固定提示，另开网页对话并通过“添加照片和文件”仅上传同一冻结 PDF。网页审核禁止搜索答案或外部资料，必须检查论证、可读性、图表和排版，并把无法由 PDF 判断的内容显式交给本地验证。导入报告后将 P0/P1/P2/P3 全部逐项绑定到局部修复、重编译和复核；一般问题不重新开始整篇论文。每次修改 PDF 都会使网页审核的 PDF 哈希漂移，必须重新审核当前版本。同一运行最多三轮网页终审；第三轮仍有 P0/P1 时，必须写入 `review/WEB_PAPER_AUDIT_FAILURE.json`，在工作流、建模、证据、论文/图表和下一步五个维度复盘，状态为 `not_submission_ready`，禁止继续终审循环或标记完成。两种审核都只能发现风险，不能证明竞赛名次或保证省一；机械 QA 只检查交付，不重定义数学正确性。
 
 正文小改：重新编译和机械 QA。解释、图表、主要结论改动：重新编译、PDF 盲评和机械 QA。代码、数据、目标或主要结果改动：回到实验、科学挑战、PDF 盲评和机械 QA。

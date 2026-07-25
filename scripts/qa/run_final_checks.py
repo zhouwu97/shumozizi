@@ -19,6 +19,10 @@ from scripts.qa.check_numeric_consistency import check_numeric_consistency
 from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.knowledge.external_discussion import (
+    validate_web_paper_audit_if_present,
+    web_paper_audit_status,
+)
 from shumozizi.paper.compiler import verify_paper_compile_receipt
 from shumozizi.paper.contributions import verify_contribution_ledger
 from shumozizi.paper.readiness import check_paper_readiness
@@ -32,7 +36,11 @@ from shumozizi.simple.review import (
     paper_blind_review_status,
     scientific_review_status,
 )
-from shumozizi.simple.state import is_competition_first_state, read_simple_state
+from shumozizi.simple.state import (
+    is_competition_first_state,
+    is_competition_first_v32_state,
+    read_simple_state,
+)
 from shumozizi.simple.visualization import require_visualization_complete
 from tools.qa.make_contact_sheet import make_contact_sheet
 from tools.qa.pdf_qa import audit_pdf
@@ -228,6 +236,22 @@ def run_final_checks(
             "paper-blind-review-release",
             {"success": paper_blind_review["allowed"], "reason": paper_blind_review["reason"]},
             "独立 PDF 盲审的冻结输入、报告和隔离声明仍有效",
+        )
+    )
+    if is_competition_first_v32_state(state):
+        web_paper_audit_payload = web_paper_audit_status(root)
+        web_paper_audit_payload["success"] = web_paper_audit_payload.pop("allowed")
+    else:
+        try:
+            validate_web_paper_audit_if_present(root)
+            web_paper_audit_payload = {"success": True, "skipped": True}
+        except (ContractError, OSError, TypeError, ValueError) as exc:
+            web_paper_audit_payload = {"success": False, "errors": [str(exc)]}
+    checks.append(
+        _check(
+            "web-paper-audit-release",
+            web_paper_audit_payload,
+            "v3.2 当前 PDF 已完成仅 PDF、禁止检索、最多三轮的网页审核放行",
         )
     )
     pdf_report = audit_pdf(

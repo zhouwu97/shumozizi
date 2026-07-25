@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_tree
+from shumozizi.knowledge.external_discussion import validate_external_discussion_protocol_if_present
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.review_tasks import validate_review_task_receipt
 from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
@@ -389,6 +390,8 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
         raise ContractError("MODELING_UNITS 只适用于 Competition-First v3.2 运行")
     if payload.get("schema_version") != "1.0" or payload.get("run_id") != state["run_id"]:
         raise ContractError("MODELING_UNITS 的 schema_version 或 run_id 不匹配")
+    # 网页讨论不是阶段门；但一旦选择登记，就必须保持本地先行和延迟揭示边界。
+    validate_external_discussion_protocol_if_present(run_dir)
     question_ids = set(state["required_questions"])
     if not question_ids:
         raise ContractError("v3.2 运行必须先声明 required_questions")

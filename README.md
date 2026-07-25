@@ -21,7 +21,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 - 先提高答案上限，再验证安全底线。
 - 每个 `compare` 单元建立一个 baseline、两条数学结构不同的竞争路线和 fallback；仅更换遗传算法、粒子群或差分进化不算新路线。
 - `knowledge/award-experts/library.json` 覆盖 2012--2025 年 CUMCM A/B 的 21 张 structure-only 卡和 15 个角色；可按 A/B、阶段和受限 `topic_key` 选择少量卡。未冻结时会明确标注为 `advisory_only`，冻结或修订 baseline 后应重新路由。`provenance.json` 是离线追溯资产，运行时不读取；同题材料只能进入 answer-filter，不能反向改变模型、参数、结果或论文结构。
-- 网页版 GPT 可参与题意、建模、反例、验证与论文建议的讨论或审核，但只能分析用户提供的材料，禁止联网检索题目答案、题解、往届答案或相近题现成结论，禁止复用这类内容。建议必须由本地 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核确认。
+- 网页版 GPT 可参与题意、建模、反例、验证与论文建议的讨论或审核，但只能分析用户提供的材料，禁止联网检索题目答案、题解、往届答案或相近题现成结论，禁止复用这类内容。并行讨论时先冻结只依赖 `problem/` 的本地路线，首轮网页提示不披露本地路线且直到本地写完才可阅读回应；随后逐项记录差异与本地验证，最后另开 fresh chat 做实现总结。网页只提出可检验的搜索方向，本地 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核才可比较候选与寻找最优。
 - 在第一批结果后先做科学攻击，再用至少两类策略继续深化，并把停止理由限制为预先声明的白名单。统一 exact 目标、实际预算与可行性事实；灵敏度、鲁棒性和独立 oracle 仅按题型条件触发，彼此不能替代。
 - 首先运行能改变路线选择的区分性 probe。没有可能改变路线、模型、主要结论、机制解释或论文贡献的实验，只记录为低优先级建议。
 - 生产结果必须由执行器真实运行。`current` 结果、输入输出哈希和指标来源仍是论文数字与图表的唯一事实来源。
@@ -68,6 +68,15 @@ python scripts/knowledge/award_experts.py audit runs/2026-A-001
 
 `baseline-freeze-input.json` 必须声明 `allowed_inputs: ["problem/"]`，并如实记录 `award_expert_library_used`、`external_discussion_used` 和 `web_answer_search_used: false`。同一快照发现问题后可修订；修订会使旧路由失效，需重新路由。路由与审计是可选辅助，绝不替代实验、exact 比较或独立审核；网页版讨论严禁联网寻找题目答案或现成题解。
 
+需要使用网页讨论时，可选地写入延迟揭示收据。`freeze-local` 的输入只能来自 `problem/`；首轮讨论发出后不得读取回应，直到本地路线已冻结。`compare` 只接受带本地验证动作的差异，`synthesis` 生成只能交给全新网页对话的提示：
+
+```powershell
+python scripts/knowledge/external_discussion.py freeze-local runs/2026-A-001 --input analysis/local-route.json
+python scripts/knowledge/external_discussion.py launch runs/2026-A-001 --input analysis/web-discussion.json
+python scripts/knowledge/external_discussion.py compare runs/2026-A-001 --input analysis/web-comparison.json
+python scripts/knowledge/external_discussion.py synthesis runs/2026-A-001
+```
+
 进入论文前，选择真实可用的模板并实例化：
 
 ```powershell
@@ -82,6 +91,25 @@ python scripts/paper/compile_paper.py runs/2026-A-001
 python scripts/qa/run_final_checks.py runs/2026-A-001 --anonymous
 ```
 
+编译后的冻结 PDF 还应交给网页版 GPT 做补充审查，但只上传 PDF 和固定提示词，必须新开网页对话且不得网上搜索答案。网页报告只作为待验证 finding 来源；每一项都要转为局部修复、重新编译和复核，不把一次评价或“流程全绿”当作竞赛名次保证：
+
+```powershell
+python scripts/review/web_paper_audit.py prompt runs/2026-A-001 --pdf paper/final.pdf
+# 通过网页“添加照片和文件”将该 JSON 中的 prompt 与唯一 PDF 附件发给全新的网页对话；不要提供其它材料。
+python scripts/review/web_paper_audit.py record runs/2026-A-001 --input review/web-paper-audit-input.json
+python scripts/review/web_paper_audit.py repair-plan runs/2026-A-001 --input review/web-paper-repair-plan.json
+python scripts/review/web_paper_audit.py status runs/2026-A-001
+```
+
+每次重编译改变 PDF 后，旧网页审核会自动归档，必须重新生成提示并审核新 PDF。同一运行最多三轮；第三轮仍存在 P0/P1 时，停止网页审核循环并写入失败复盘：
+
+```powershell
+python scripts/review/web_paper_audit.py failure-report runs/2026-A-001 `
+  --input review/web-paper-audit-failure-input.json
+```
+
+失败复盘必须列出工作流、建模、证据、论文/图表问题和下一步，运行会维持 `not_submission_ready`，不能标记完成。网页审核只降低已识别风险，不保证省一或任何奖项。
+
 ## 运行产物
 
 ```text
@@ -94,6 +122,9 @@ runs/<run-id>/
 │   ├── BASELINE_FREEZE.json          # 独立题面分析冻结；专家库介入前不可改写
 │   ├── AWARD_EXPERT_ROUTE.json       # 可选：3--6 张提示安全的结构卡
 │   ├── AWARD_EXPERT_ROUTE_AUDIT.json # 可选：结构卡路由隔离审计
+│   ├── LOCAL_ROUTE_SNAPSHOT.json      # 可选：仅题面的本地路线先行快照
+│   ├── EXTERNAL_DISCUSSION_COMPARISON.json # 可选：延迟阅读后的差异及验证
+│   ├── EXTERNAL_DISCUSSION_SYNTHESIS.json  # 可选：给全新网页对话的受限提示
 │   ├── MODELING_UNITS.json           # v3.2：题意重建、比较/独立 oracle 与真实回填
 │   └── method_facts.json             # 显式事实优先；全面审核后查漏的必需输入
 ├── results/                          # 真实执行与 current/superseded 结果

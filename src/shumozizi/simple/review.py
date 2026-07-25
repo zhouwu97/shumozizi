@@ -31,6 +31,7 @@ from shumozizi.simple.objective_semantics import build_question_objective_bindin
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import (
     is_competition_first_state,
+    is_competition_first_v32_state,
     read_simple_state,
     update_simple_state,
     utc_now,
@@ -3910,6 +3911,8 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
         }
         if _competition_first_run(run_dir):
             required_check_ids.add("scientific-challenge-release")
+            if is_competition_first_v32_state(state):
+                required_check_ids.add("web-paper-audit-release")
         else:
             required_check_ids |= {
                 "scientific-review-release", "competition-submission-release",
@@ -4054,6 +4057,12 @@ def completion_status(run_dir: Path) -> dict[str, Any]:
                 "status": "unreviewed",
                 "completion_status": "unreviewed",
             }
+        if is_competition_first_v32_state(read_simple_state(run_dir)):
+            from shumozizi.knowledge.external_discussion import web_paper_audit_status
+
+            web_audit = web_paper_audit_status(run_dir)
+            if not web_audit["allowed"]:
+                return {"allowed": False, "reason": web_audit["reason"]}
         mechanical = mechanical_qa_status(run_dir)
         if not mechanical["allowed"]:
             return {"allowed": False, "reason": mechanical["reason"]}
