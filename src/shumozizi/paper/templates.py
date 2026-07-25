@@ -11,7 +11,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_tree
 from shumozizi.core.repo_root import resolve_repo_root
-from shumozizi.simple.state import read_simple_state, utc_now
+from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
 
 MANIFEST_PATH = Path("paper/template_manifest.json")
 _COMPETITION_ALIASES = {
@@ -422,6 +422,8 @@ def select_paper_template(
         raise ContractError("未声明 competition，不能选择论文模板")
     if not state["required_questions"]:
         raise ContractError("未声明 required_questions，不能选择论文模板")
+    if is_competition_first_v32_state(state) and (engine or "auto").strip().casefold() != "latex":
+        raise ContractError("Competition-First v3.2 强制使用 LaTeX 学术论文，不能选择 auto 或 Typst")
     actual_engine, requested_engine, fallback_used, fallback_reason = _resolve_paper_engine(engine)
     base = _template_base(state["competition"], language)
     template_id, source = _source_dir(language, base, actual_engine)
@@ -506,6 +508,10 @@ def read_template_manifest(run_dir: Path) -> dict[str, Any]:
     )
     if payload["template_id"] != expected_id or source.resolve() != expected_source.resolve():
         raise ContractError("论文模板与比赛类型或排版引擎不匹配")
+    if is_competition_first_v32_state(state) and (
+        payload["engine"] != "latex" or payload["fallback_used"] is not False
+    ):
+        raise ContractError("Competition-First v3.2 的论文清单必须绑定无回退的 LaTeX 模板")
     if payload["schema_version"] in {"1.1", "1.2"}:
         _require_dynamic_question_support(
             payload["language"],

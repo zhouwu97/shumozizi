@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.paper.readiness import (
     build_argument_map_from_current_artifacts,
     check_paper_readiness,
@@ -19,16 +19,28 @@ from shumozizi.simple.competition import (
     write_answer_map,
 )
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.method_facts import write_method_facts
 from shumozizi.simple.objective_semantics import (
     objective_semantics_for_question,
     objective_semantics_review_required,
 )
 from shumozizi.simple.results import register_result
-from shumozizi.simple.review import mechanical_qa_status, record_paper_blind_review_skip
+from shumozizi.simple.review import (
+    build_review_packet,
+    mechanical_qa_status,
+    paper_blind_review_prompt,
+    paper_blind_review_prompt_sha256,
+    record_paper_blind_review_skip,
+)
 from shumozizi.simple.review_focus import (
     record_scientific_challenge_evidence,
     verify_scientific_challenge_evidence,
     write_focused_followup,
+)
+from shumozizi.simple.review_tasks import (
+    create_review_task_receipt,
+    persist_review_task_creation_event,
+    validate_review_task_receipt,
 )
 from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
 from tests.quality_protocol_helpers import record_passing_scientific_review
@@ -44,6 +56,7 @@ def _register_current_result(
     *,
     result_id: str = "q1_primary",
     objective: float = 1.0,
+    method_facts: dict[str, bool | str] | None = None,
 ) -> None:
     """登记一个可供 answer map 使用的真实当前结果。"""
     source = run_dir / "code" / "q1.py"
@@ -74,6 +87,7 @@ def _register_current_result(
         finished_at=now,
         duration_seconds=0.1,
         objective_semantics_sha256="a" * 64,
+        method_facts=method_facts,
     )
 
 
@@ -207,6 +221,25 @@ def test_scientific_challenge_requires_real_current_execution(tmp_path: Path) ->
     assert verify_scientific_challenge_evidence(run_dir)["valid"]
 
 
+def test_explicit_result_method_facts_override_heuristic_inference(tmp_path: Path) -> None:
+    """实验登记的事实优先于指标名和源码关键词。"""
+    run_dir = _run_dir(tmp_path)
+    _register_current_result(
+        run_dir,
+        method_facts={
+            "uses_continuous_time": True,
+            "uses_discrete_approximation": True,
+            "uses_proxy_objective": False,
+        },
+    )
+
+    facts = write_method_facts(run_dir)
+
+    assert facts["facts"]["uses_continuous_time"] is True
+    assert facts["facts"]["uses_discrete_approximation"] is True
+    assert facts["facts"]["uses_proxy_objective"] is False
+
+
 def test_scientific_followup_is_limited_to_one(tmp_path: Path) -> None:
     """集中挑战只允许一个决定性专项追问。"""
     run_dir = _run_dir(tmp_path)
@@ -217,6 +250,81 @@ def test_scientific_followup_is_limited_to_one(tmp_path: Path) -> None:
 
     with pytest.raises(ContractError, match="最多允许一个"):
         write_focused_followup(run_dir, "# 第二次追问\n\n这不应被允许，因为同一轮已经存在专项追问。")
+
+
+def _force_paper_review_with_pdf(run_dir: Path) -> None:
+    """为盲审合同单测构造最小 paper_review 状态。"""
+    state_path = run_dir / "state" / "run.json"
+    state = load_json(state_path)
+    state["phase"] = "paper_review"
+    atomic_json(state_path, state)
+    (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nminimal")
+
+
+def test_final_blind_review_uses_fresh_pdf_only_prompt(tmp_path: Path) -> None:
+    """最终盲审包只暴露冻结 PDF，并为全新顶层任务生成固定提示词。"""
+    run_dir = _run_dir(tmp_path, "paper-blind-fresh-context")
+    _force_paper_review_with_pdf(run_dir)
+
+    packet = build_review_packet(run_dir, kind="paper-blind")
+    manifest_file = f"review/packet/paper-blind/{packet['packet_id']}/manifest.json"
+    manifest = load_json(run_dir / manifest_file)
+    copied = {item["source"] for item in manifest["files"]}
+    prompt = paper_blind_review_prompt(run_dir, manifest_file)
+    frozen_pdf = (
+        run_dir
+        / "review"
+        / "packet"
+        / "paper-blind"
+        / packet["packet_id"]
+        / "paper"
+        / "final.pdf"
+    ).resolve()
+
+    assert copied == {"paper/final.pdf"}
+    assert prompt.startswith("严格审核这份冻结 PDF")
+    assert "学术论文，而非内部技术或审核报告" in prompt
+    assert str(frozen_pdf) in prompt
+    assert "SCIENTIFIC_CHALLENGE" not in prompt
+    assert "results" not in prompt
+
+
+def test_final_blind_review_receipt_rejects_changed_prompt(tmp_path: Path) -> None:
+    """最终盲审任务回执不能用任意提示词哈希冒充全新严格审核。"""
+    run_dir = _run_dir(tmp_path, "paper-blind-prompt-binding")
+    _force_paper_review_with_pdf(run_dir)
+    packet = build_review_packet(run_dir, kind="paper-blind")
+    manifest_file = f"review/packet/paper-blind/{packet['packet_id']}/manifest.json"
+    report = run_dir / "review" / "PAPER_BLIND_REVIEW.md"
+    report.write_text("# 严格审核\n\n发现一项需要修复的问题。\n", encoding="utf-8")
+    bindings = {
+        "packet": {
+            "manifest_file": manifest_file,
+            "manifest_sha256": sha256_file(run_dir / manifest_file),
+        }
+    }
+    receipt = create_review_task_receipt(
+        run_dir,
+        task_id="paper-blind-wrong-prompt",
+        task_type="paper_blind_open",
+        thread_id="fresh-top-level-thread",
+        model_id="fixture-model",
+        prompt_sha256="4" * 64,
+        input_bindings=bindings,
+        report_file=report.relative_to(run_dir).as_posix(),
+    )
+
+    with pytest.raises(ContractError, match="规定的独立审核提示词"):
+        validate_review_task_receipt(
+            run_dir,
+            receipt.relative_to(run_dir).as_posix(),
+            expected_type="paper_blind_open",
+            expected_report=report.relative_to(run_dir).as_posix(),
+            expected_input_bindings=bindings,
+            expected_prompt_sha256=paper_blind_review_prompt_sha256(
+                run_dir, manifest_file
+            ),
+        )
 
 
 def test_production_blind_review_skip_does_not_allow_complete(tmp_path: Path) -> None:
@@ -287,6 +395,71 @@ def test_result_change_after_scientific_challenge_blocks_completion(tmp_path: Pa
     assert not status["allowed"]
     assert status["status"] == "scientific_challenge_unavailable"
     assert "科学挑战" in status["reason"]
+
+
+def test_scientific_release_requires_current_gap_report(tmp_path: Path) -> None:
+    """全面科学报告和 runner 证据均存在时，缺少查漏报告仍必须阻断。"""
+    run_dir = _run_dir(tmp_path)
+    _register_current_result(run_dir)
+    record_passing_scientific_review(run_dir)
+    (run_dir / "review" / "gaps" / "round-1.json").unlink()
+
+    status = review_module._competition_scientific_review_status(run_dir)
+
+    assert not status["allowed"]
+    assert "查漏" in status["reason"]
+
+
+def test_pdf_blind_review_import_requires_current_gap_report(tmp_path: Path) -> None:
+    """最终 PDF 盲审不能在全面审查后跳过中央风险查漏。"""
+    run_dir = _run_dir(tmp_path, "paper-gap-required")
+    _register_current_result(run_dir)
+    record_passing_scientific_review(run_dir)
+    _force_paper_review_with_pdf(run_dir)
+    packet = build_review_packet(run_dir, kind="paper-blind")
+    manifest_file = f"review/packet/paper-blind/{packet['packet_id']}/manifest.json"
+    report = run_dir / "review" / "PAPER_BLIND_REVIEW.md"
+    report.write_text("# PDF 全面盲审\n\n论文需要进一步修订。\n", encoding="utf-8")
+    bindings = {
+        "packet": {
+            "manifest_file": manifest_file,
+            "manifest_sha256": sha256_file(run_dir / manifest_file),
+        }
+    }
+    event = persist_review_task_creation_event(
+        run_dir,
+        event_file="review/tasks/creation-events/paper-open.json",
+        raw_event={
+            "schema_name": "review_task_creation_event",
+            "schema_version": "1.0",
+            "provider": "codex",
+            "raw_task_id": "paper-open-task",
+            "raw_thread_id": "paper-open-thread",
+            "creation_mode": "create_thread",
+            "parent_context_inherited": False,
+            "created_at": "2026-07-25T00:00:00Z",
+        },
+    )
+    receipt = create_review_task_receipt(
+        run_dir,
+        task_id="paper-open",
+        task_type="paper_blind_open",
+        model_id="fixture-model",
+        prompt_sha256=paper_blind_review_prompt_sha256(run_dir, manifest_file),
+        input_bindings=bindings,
+        report_file="review/PAPER_BLIND_REVIEW.md",
+        creation_event_file=event.relative_to(run_dir).as_posix(),
+    )
+
+    with pytest.raises(ContractError, match="查漏"):
+        review_module.import_paper_blind_review(
+            run_dir,
+            manifest_file=manifest_file,
+            verdict="pass",
+            highest_severity="none",
+            reviewer_thread_id="paper-open-thread",
+            task_receipt_file=receipt.relative_to(run_dir).as_posix(),
+        )
 
 
 def test_mechanical_qa_requires_scientific_challenge_release(tmp_path: Path) -> None:

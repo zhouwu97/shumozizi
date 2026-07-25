@@ -32,7 +32,7 @@ from shumozizi.simple.review import (
     paper_blind_review_status,
     scientific_review_status,
 )
-from shumozizi.simple.state import read_simple_state
+from shumozizi.simple.state import is_competition_first_state, read_simple_state
 from shumozizi.simple.visualization import require_visualization_complete
 from tools.qa.make_contact_sheet import make_contact_sheet
 from tools.qa.pdf_qa import audit_pdf
@@ -127,7 +127,7 @@ def run_final_checks(
     """
     root = run_dir.resolve()
     state = read_simple_state(root)
-    competition_first = state.get("schema_version") == "3.1"
+    competition_first = is_competition_first_state(state)
     pdf = root / "paper" / "final.pdf"
     checks: list[dict[str, Any]] = []
     checks.append(

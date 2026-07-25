@@ -45,6 +45,11 @@ AMBIGUITY_DECISIONS_PATH = Path("state/ambiguity-decisions.json")
 SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
 SCIENTIFIC_CHALLENGE_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_CHALLENGE.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
+PAPER_BLIND_PROMPT_PREFIX = (
+    "严格审核这份冻结 PDF。请全面审查内容、数学逻辑、结果可信度和排版，"
+    "并判断正文是否是一篇面向数学建模评委的学术论文，而非内部技术或审核报告。"
+    "独立指出问题并按 P0-P3 分级；除该 PDF 外不要读取任何文件或既有对话。论文 PDF："
+)
 FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
 RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
 _PACKET_ROOTS = {
@@ -121,7 +126,7 @@ def _required_packet_roots(run_dir: Path, kind: str) -> frozenset[str]:
         return {
             "objective-semantics": frozenset(("problem",)),
             "scientific": frozenset(("problem", "code", "results/raw")),
-            "paper-blind": frozenset(("problem", "paper/final.pdf", "paper/submission")),
+            "paper-blind": frozenset(("paper/final.pdf",)),
         }[kind]
     return _REQUIRED_PACKET_ROOTS[kind]
 
@@ -1230,12 +1235,12 @@ def _build_competition_review_packet(run_dir: Path, *, kind: str) -> dict[str, A
     if kind == "paper-blind":
         if not (run_dir / "paper" / "final.pdf").is_file():
             raise ContractError("paper-blind 审查包需要已编译的 paper/final.pdf")
-        materialize_submission_package(run_dir)
 
     roots_by_kind = {
         "objective-semantics": ("problem",),
         "scientific": ("problem", "code", "results/raw"),
-        "paper-blind": ("problem", "paper/final.pdf", "paper/submission"),
+        # 最终盲评只接收冻结 PDF，避免题面、源码、历史结论和作者解释污染评委视角。
+        "paper-blind": ("paper/final.pdf",),
     }
     existing_roots = [
         relative for relative in roots_by_kind[kind] if _source_root(run_dir, relative) is not None
@@ -1427,6 +1432,33 @@ def _read_packet_manifest(run_dir: Path, manifest_relative: str) -> tuple[Path, 
             raise ContractError("审查包文件路径不属于对应冻结源树")
         _safe_packet_path(packet_dir, packet)
     return manifest_path, payload
+
+
+def paper_blind_review_prompt(run_dir: Path, manifest_relative: str) -> str:
+    """返回启动全新顶层盲审任务时必须原样使用的极简提示词。
+
+    Args:
+        run_dir: 当前运行目录。
+        manifest_relative: ``paper-blind`` 冻结包清单的运行内相对路径。
+
+    Returns:
+        只包含严格审核要求和冻结 PDF 绝对路径的提示词。
+
+    Raises:
+        ContractError: 清单类型错误或冻结 PDF 不存在。
+    """
+    manifest_path, manifest = _read_packet_manifest(run_dir, manifest_relative)
+    if manifest["packet_kind"] != "paper-blind":
+        raise ContractError("极简盲审提示词只能绑定 paper-blind 审查包")
+    frozen_pdf = manifest_path.parent / _PACKET_DESTINATIONS["paper/final.pdf"]
+    if not frozen_pdf.is_file():
+        raise ContractError("paper-blind 审查包缺少冻结 PDF")
+    return PAPER_BLIND_PROMPT_PREFIX + str(frozen_pdf.resolve())
+
+
+def paper_blind_review_prompt_sha256(run_dir: Path, manifest_relative: str) -> str:
+    """返回当前冻结 PDF 极简盲审提示词的 SHA-256。"""
+    return sha256_bytes(paper_blind_review_prompt(run_dir, manifest_relative).encode("utf-8"))
 
 
 def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any]:
@@ -3007,6 +3039,8 @@ def _review_task_reference(
     report_file: str,
     packet: dict[str, str],
     reviewer_thread_id: str,
+    expected_prompt_sha256: str | None = None,
+    require_fresh_thread: bool = False,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     """复验开放审核任务并返回可持久化的回执引用。"""
     from shumozizi.simple.review_tasks import validate_review_task_receipt
@@ -3017,6 +3051,8 @@ def _review_task_reference(
         expected_type=task_type,
         expected_report=report_file,
         expected_input_bindings={"packet": packet},
+        expected_prompt_sha256=expected_prompt_sha256,
+        require_fresh_thread=require_fresh_thread,
     )
     if receipt["thread_id"] != reviewer_thread_id:
         raise ContractError("审核任务回执 thread_id 与导入参数不一致")
@@ -3053,6 +3089,11 @@ def _competition_review_reference(
         "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
         "manifest_sha256": sha256_file(manifest_path),
     }
+    expected_prompt_sha256 = None
+    if expected_kind == "paper-blind":
+        expected_prompt_sha256 = paper_blind_review_prompt_sha256(
+            run_dir, relative_inside(run_dir, manifest_path).as_posix()
+        )
     task_reference, _ = _review_task_reference(
         run_dir,
         receipt_file=receipt_file,
@@ -3060,6 +3101,8 @@ def _competition_review_reference(
         report_file=report["file"],
         packet=packet_binding,
         reviewer_thread_id=reviewer_thread_id,
+        expected_prompt_sha256=expected_prompt_sha256,
+        require_fresh_thread=True,
     )
     return packet_binding, report, task_reference
 
@@ -3067,7 +3110,7 @@ def _competition_review_reference(
 def _competition_review_current(
     run_dir: Path, review: dict[str, Any], *, expected_kind: str, task_type: str
 ) -> tuple[bool, str]:
-    """复验 v3.1 单次审查，不要求 coverage declaration 或 final audit。"""
+    """复验 v3.1 单次审查及其全面审核后的结构化查漏。"""
     try:
         packet = verify_review_packet(run_dir, review["packet"]["manifest_file"])
         if not packet["success"]:
@@ -3091,9 +3134,20 @@ def _competition_review_current(
             expected_type=task_type,
             expected_report=review["report"]["file"],
             expected_input_bindings={"packet": review["packet"]},
+            require_fresh_thread=True,
         )
         if receipt["task_id"] != task["task_id"] or receipt["thread_id"] != review["reviewer"]["thread_id"]:
             return False, "审核摘要与任务回执身份不一致"
+        if expected_kind in {"scientific", "paper-blind"}:
+            from shumozizi.simple.review_gaps import verify_review_gap_completion
+
+            gap = verify_review_gap_completion(
+                run_dir,
+                scope="scientific" if expected_kind == "scientific" else "paper",
+                review_report=review,
+            )
+            if not gap["allowed"]:
+                return False, "全面审核后的查漏未完成: " + gap["reason"]
         return True, ""
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         return False, str(exc)
@@ -3139,6 +3193,19 @@ def _import_competition_scientific_review(
         consequences = apply_independent_evidence_consequences(run_dir, verification["evidence_records"])
         if consequences:
             raise ContractError("独立负面证据已回退 experiment，不能导入挑战通过结论")
+    from shumozizi.simple.review_gaps import verify_review_gap_completion
+
+    gap = verify_review_gap_completion(
+        run_dir,
+        scope="scientific",
+        review_report={
+            "report": report,
+            "task_receipt": task,
+            "reviewer": _reviewer_scientific(reviewer_thread_id),
+        },
+    )
+    if not gap["allowed"]:
+        raise ContractError("科学全面审核后的查漏未完成: " + gap["reason"])
     review = {
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -3190,6 +3257,19 @@ def _import_competition_paper_blind_review(
     scientific_thread = summary["scientific_review"]["reviewer"]["thread_id"]
     if reviewer_thread_id == scientific_thread:
         raise ContractError("PDF 盲评必须使用不同于科学挑战的新对话")
+    from shumozizi.simple.review_gaps import verify_review_gap_completion
+
+    gap = verify_review_gap_completion(
+        run_dir,
+        scope="paper",
+        review_report={
+            "report": report,
+            "task_receipt": task,
+            "reviewer": _reviewer_paper(reviewer_thread_id),
+        },
+    )
+    if not gap["allowed"]:
+        raise ContractError("PDF 全面盲审后的查漏未完成: " + gap["reason"])
     summary["paper_blind_review"] = {
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -3704,6 +3784,8 @@ def scientific_review_status(run_dir: Path) -> dict[str, Any]:
 def require_paper_generation_allowed(run_dir: Path) -> None:
     """要求当前源代码、输入和候选结果已通过独立科学红队。"""
     if _competition_first_run(run_dir):
+        from shumozizi.simple.competition import require_route_tournament_for_paper
+
         state = read_simple_state(run_dir)
         from shumozizi.simple.results import read_result_index
 
@@ -3717,6 +3799,7 @@ def require_paper_generation_allowed(run_dir: Path) -> None:
         missing = sorted(set(state["required_questions"]) - current)
         if missing:
             raise ContractError("不能进入论文阶段：必答问题缺少 current production 结果: " + ", ".join(missing))
+        require_route_tournament_for_paper(run_dir)
         challenge = _competition_scientific_review_status(run_dir)
         if not challenge["allowed"]:
             raise ContractError("不能进入论文阶段：科学挑战未通过或已失效: " + challenge["reason"])

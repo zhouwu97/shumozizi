@@ -1,4 +1,4 @@
-"""初始化 Competition-First v3.1 运行目录。"""
+"""初始化 Competition-First v3.1/v3.2 运行目录。"""
 
 from __future__ import annotations
 
@@ -106,6 +106,7 @@ def initialize_simple_run(
     required_questions: list[str] | None = None,
     total_hours: float | None = None,
     token_soft_cap: int | None = None,
+    workflow_version: str = "3.1",
 ) -> Path:
     """创建可独立恢复的 v3 运行目录。
 
@@ -118,6 +119,7 @@ def initialize_simple_run(
         required_questions: 已知必答问题列表。
         total_hours: 可选的总时间预算。
         token_soft_cap: 可选的 token 软上限。
+        workflow_version: ``3.1`` 保持兼容；``3.2`` 启用建模单元和 LaTeX 主链。
 
     Returns:
         新建运行目录。
@@ -127,6 +129,8 @@ def initialize_simple_run(
         FileExistsError: 指定运行目录已经包含内容。
     """
     root = repo_root.resolve()
+    if workflow_version not in {"3.1", "3.2"}:
+        raise ContractError("workflow_version 必须为 3.1 或 3.2")
     identifier = safe_simple_run_id(run_id)
     runs_root = (root / "runs").resolve()
     run_dir = (runs_root / identifier).resolve()
@@ -140,9 +144,9 @@ def initialize_simple_run(
     artifacts = _copy_problem(problem_path, run_dir) if problem_path else {}
     now = utc_now()
     state: dict[str, Any] = {
-        "schema_version": "3.1",
+        "schema_version": workflow_version,
         "run_id": identifier,
-        "workflow": "competition-first-v3.1",
+        "workflow": f"competition-first-v{workflow_version}",
         "phase": "analysis",
         "execution_mode": "production",
         "revision": 0,
@@ -179,4 +183,18 @@ def initialize_simple_run(
         encoding="utf-8",
         newline="\n",
     )
+    if workflow_version == "3.2":
+        atomic_json(
+            run_dir / "analysis" / "MODELING_UNITS.json",
+            {
+                "schema_version": "1.0",
+                "run_id": identifier,
+                "semantic_reconstructions": [],
+                "research_story": {
+                    "central_tension": "待填写：题目的核心矛盾与统一研究主线。",
+                    "question_progression": [],
+                },
+                "units": [],
+            },
+        )
     return run_dir

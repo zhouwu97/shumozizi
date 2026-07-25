@@ -27,7 +27,7 @@ from shumozizi.simple.method_profile import METHOD_PROFILE_PATH
 from shumozizi.simple.objective_semantics import objective_semantics_digest
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import read_simple_state
+from shumozizi.simple.state import is_competition_first_state, read_simple_state
 
 _APPENDIX_MODES = {"pdf", "attachment", "both"}
 
@@ -58,7 +58,7 @@ def _current_production_results(run_dir: Path) -> dict[str, dict[str, Any]]:
     """返回所有可作为论文事实的 current production 结果。"""
     index = read_result_index(run_dir)
     allowed: dict[str, dict[str, Any]] = {}
-    competition_first = read_simple_state(run_dir).get("schema_version") == "3.1"
+    competition_first = is_competition_first_state(read_simple_state(run_dir))
     for result in index["results"]:
         if result.get("status") != "current":
             continue
@@ -151,7 +151,7 @@ def _current_figure_ids(run_dir: Path) -> tuple[set[str], str | None]:
 
 
 def _competition_answer_map(run_dir: Path) -> dict[str, Any] | None:
-    """读取 v3.1 的逐问直接答案映射，兼容最终归档到 paper/ 的路径。"""
+    """读取 Competition-First 的逐问直接答案映射，兼容最终归档路径。"""
     for relative in (Path("paper/answer-map.json"), Path("analysis/answer_map.json")):
         path = run_dir / relative
         if not path.is_file():
@@ -221,7 +221,7 @@ def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
 
 
 def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]]:
-    """执行 v3.1 最小论文硬门和可选竞争力警告。"""
+    """执行 Competition-First 最小论文硬门和可选写作警告。"""
     errors: list[str] = []
     warnings: list[str] = []
     answers = _competition_answer_map(run_dir)
@@ -274,7 +274,7 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
 
 def _validate_readiness(run_dir: Path) -> list[str]:
     """执行所有轻量检查，返回阻断原因列表。"""
-    if read_simple_state(run_dir).get("schema_version") == "3.1":
+    if is_competition_first_state(read_simple_state(run_dir)):
         return _validate_competition_readiness(run_dir)[0]
     errors: list[str] = []
 
@@ -408,7 +408,7 @@ def check_paper_readiness(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     errors = _validate_readiness(run_dir)
     warnings: list[str] = []
-    if read_simple_state(run_dir).get("schema_version") == "3.1":
+    if is_competition_first_state(read_simple_state(run_dir)):
         _, warnings = _validate_competition_readiness(run_dir)
     return {
         "ready": not errors,

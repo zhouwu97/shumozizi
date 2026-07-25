@@ -1,4 +1,4 @@
-"""管理 Competition-First v3.1 的最小运行状态。"""
+"""管理 Competition-First v3.1/v3.2 的最小运行状态。"""
 
 from __future__ import annotations
 
@@ -89,15 +89,27 @@ def require_simple_state(payload: dict[str, Any]) -> None:
 
 
 def is_competition_first_state(payload: dict[str, Any]) -> bool:
-    """判断状态是否使用 Competition-First v3.1 主链。
+    """判断状态是否使用 Competition-First v3 主链。
 
     Args:
         payload: 已读取或待校验的状态对象。
 
     Returns:
-        当状态属于 v3.1 时返回 ``True``。
+        当状态属于 v3.1 或 v3.2 时返回 ``True``。
     """
-    return payload.get("schema_version") == "3.1"
+    return payload.get("schema_version") in {"3.1", "3.2"}
+
+
+def is_competition_first_v32_state(payload: dict[str, Any]) -> bool:
+    """判断状态是否启用 v3.2 的建模单元和 LaTeX 强制协议。
+
+    Args:
+        payload: 已读取或待校验的状态对象。
+
+    Returns:
+        当状态属于 Competition-First v3.2 时返回 ``True``。
+    """
+    return payload.get("schema_version") == "3.2"
 
 
 def _map_legacy_state(payload: dict[str, Any]) -> dict[str, Any]:
@@ -218,16 +230,20 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
         if next_phase not in ALLOWED_PHASE_TRANSITIONS[state["phase"]]:
             raise ContractError(f"v3 状态不允许从 {state['phase']} 直接进入 {next_phase}")
         if next_phase == "experiment":
+            from shumozizi.simple.modeling_units import require_v32_modeling_plan
             from shumozizi.simple.objective_semantics import objective_semantics_review_required
             from shumozizi.simple.review import require_objective_semantics_review
 
+            require_v32_modeling_plan(run_dir)
             if objective_semantics_review_required(run_dir):
                 require_objective_semantics_review(run_dir)
         if next_phase == "paper":
             from shumozizi.paper.templates import require_materialized_template
+            from shumozizi.simple.modeling_units import require_v32_experiment_evidence
             from shumozizi.simple.review import require_paper_generation_allowed
 
             require_paper_generation_allowed(run_dir)
+            require_v32_experiment_evidence(run_dir)
             require_materialized_template(run_dir)
         if next_phase == "paper_review":
             from shumozizi.paper.templates import require_materialized_template

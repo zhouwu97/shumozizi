@@ -27,7 +27,10 @@ from shumozizi.simple.review import (
     run_red_team_evidence,
 )
 from shumozizi.simple.review_focus import record_scientific_challenge_evidence
-from shumozizi.simple.review_tasks import create_review_task_receipt
+from shumozizi.simple.review_tasks import (
+    create_review_task_receipt,
+    persist_review_task_creation_event,
+)
 from shumozizi.simple.state import read_simple_state, update_simple_state
 
 
@@ -684,6 +687,22 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         "manifest_file": manifest_file,
         "manifest_sha256": sha256_file(run_dir / manifest_file),
     }
+    creation_event = None
+    if competition_first:
+        creation_event = persist_review_task_creation_event(
+            run_dir,
+            event_file="review/tasks/creation-events/scientific-open.json",
+            raw_event={
+                "schema_name": "review_task_creation_event",
+                "schema_version": "1.0",
+                "provider": "codex",
+                "raw_task_id": "synthetic-scientific-open-task",
+                "raw_thread_id": "synthetic-fresh-review-thread",
+                "creation_mode": "create_thread",
+                "parent_context_inherited": False,
+                "created_at": "2026-07-25T00:00:00Z",
+            },
+        )
     open_task = create_review_task_receipt(
         run_dir,
         task_id="scientific-open",
@@ -693,6 +712,11 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
         prompt_sha256="1" * 64,
         input_bindings={"packet": packet_binding},
         report_file=report.relative_to(run_dir).as_posix(),
+        creation_event_file=(
+            creation_event.relative_to(run_dir).as_posix()
+            if creation_event is not None
+            else None
+        ),
     )
     if competition_first:
         result_ids = [
@@ -706,6 +730,69 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
             run_dir,
             result_ids=result_ids,
             attack_description="独立复算和性质测试攻击当前目标值及其不变量。",
+        )
+        method_facts = run_dir / "analysis" / "method_facts.json"
+        atomic_json(
+            method_facts,
+            {
+                "schema_version": "1.1",
+                "run_id": run_dir.name,
+                "facts": {
+                    "uses_stochastic_solver": False,
+                    "uses_proxy_objective": False,
+                    "uses_temporal_split": False,
+                    "uses_continuous_geometry": False,
+                    "uses_heuristic_optimization": False,
+                    "uses_continuous_time": False,
+                    "uses_discrete_approximation": False,
+                    "candidate_search_limited": False,
+                    "has_shared_downstream_dependency": False,
+                },
+            },
+        )
+        strong_claims = run_dir / "review" / "strong_claims" / "scientific.json"
+        atomic_json(
+            strong_claims,
+            {
+                "schema_name": "review_strong_claims",
+                "schema_version": "1.0",
+                "run_id": run_dir.name,
+                "scope": "scientific",
+                "review_file": report.relative_to(run_dir).as_posix(),
+                "review_sha256": sha256_file(report),
+                "claims": [],
+            },
+        )
+        # Competition-First 也必须在全面报告之后留下结构化查漏；这里的夹具
+        # 绑定真实 runner 输出，而不是用报告中的关键词冒充已经实施攻击。
+        atomic_json(
+            run_dir / "review" / "gaps" / "round-1.json",
+            {
+                "schema_name": "review_gap_report",
+                "schema_version": "1.0",
+                "run_id": run_dir.name,
+                "scope": "scientific",
+                "review_file": report.relative_to(run_dir).as_posix(),
+                "review_sha256": sha256_file(report),
+                "method_facts_file": method_facts.relative_to(run_dir).as_posix(),
+                "method_facts_sha256": sha256_file(method_facts),
+                "strong_claims_file": strong_claims.relative_to(run_dir).as_posix(),
+                "strong_claims_sha256": sha256_file(strong_claims),
+                "risks": [
+                    {
+                        "risk_id": "synthetic-current-result-attack",
+                        "coverage_status": "attacked",
+                        "evidence_locations": [
+                            report.relative_to(run_dir).as_posix() + "#实际攻击"
+                        ],
+                        "attack_performed": "以独立性质测试攻击当前目标与不变量。",
+                        "evidence_files": [challenge_receipt["outputs"][0]["path"]],
+                        "conclusion": "未发现可推翻当前结论的反例。",
+                    }
+                ],
+                "findings": [],
+                "closures": [],
+            },
         )
     else:
         _write_passing_scientific_coverage(

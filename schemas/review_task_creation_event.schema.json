@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/review_task_creation_event.schema.json",
+  "title": "Codex Create Thread Event",
+  "description": "协调器从真实 create_thread 响应直接保存的最小原始元数据；不得由完成回执自报。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "provider", "raw_task_id", "raw_thread_id", "creation_mode", "parent_context_inherited", "created_at"],
+  "properties": {
+    "schema_name": {"const": "review_task_creation_event"},
+    "schema_version": {"const": "1.0"},
+    "provider": {"const": "codex"},
+    "raw_task_id": {"type": "string", "minLength": 1},
+    "raw_thread_id": {"type": "string", "minLength": 1},
+    "creation_mode": {"const": "create_thread"},
+    "parent_context_inherited": {"const": false},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}
