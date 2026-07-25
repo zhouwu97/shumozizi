@@ -6,15 +6,15 @@
 analysis -> experiment -> paper -> paper_review -> verify -> complete
 ```
 
-进入 `experiment` 前，v3.2 必须先完成两次仅题面的 fresh-thread 重建和 `analysis/MODELING_UNITS.json`；仅当 `analysis/objective-ambiguities.json` 表明存在未解决的高影响歧义时，才要求目标语义审查。进入 `paper` 前必须有每个必答问题的 current production 答案、已回填的攻击/深化/条件验证证据、没有已知负面证据、无回退 LaTeX 模板和一次有效科学挑战。进入 `verify` 前必须有 PDF、有效 PDF 盲评或明确跳过原因、没有 P0/P1；跳过盲评只能继续机械 QA，状态为 `unreviewed`。进入 `complete` 前必须重新验证科学挑战、通过真实 PDF 盲评和机械 QA，且当前结果、图表和 PDF 都没有漂移。
+进入 `experiment` 前，v3.2 要有包含两次仅题面的真实 fresh-thread 重建的 `analysis/MODELING_UNITS.json`；这是最终分析计划的独立性证据，而不是“流程合规即模型正确”的证明。专家库和网页讨论可在其前后用于提出或攻击假设，但不得替代它；发现冲突后回到分析、修订、重跑即可。仅当 `analysis/objective-ambiguities.json` 表明存在未解决的高影响歧义时，才要求目标语义审查。进入 `paper` 前必须有每个必答问题的 current production 答案、已回填的攻击/深化/条件验证证据、没有已知负面证据、无回退 LaTeX 模板和一次有效科学挑战。进入 `verify` 前必须有 PDF、有效 PDF 盲评或明确跳过原因、没有 P0/P1；跳过盲评只能继续机械 QA，状态为 `unreviewed`。进入 `complete` 前必须重新验证科学挑战、通过真实 PDF 盲评和机械 QA，且当前结果、图表和 PDF 都没有漂移。
 
 旧 v3.0 状态按内存映射读取，更新时生成 `state/migrations.json`，不改写历史审核产物。
 
 ## 分析
 
-v3.2 先用两个只绑定 `problem/` 的 fresh thread 重建题意，再只基于题面冻结 `analysis/BASELINE_FREEZE.json`。冻结文件会绑定当前 `problem/` 哈希，并声明 `award_expert_library_used=false`。随后可按需路由 CUMCM A/B 获奖论文的 3--6 张 structure-only 卡，写入 `analysis/AWARD_EXPERT_ROUTE.json` 并用 `AWARD_EXPERT_ROUTE_AUDIT.json` 复验隔离边界；它们不参与状态跳转，也不能成为模型、参数、结果、图表、代码、引用或 claim evidence。最后才写 `analysis/MODELING_UNITS.json`。每个 `compare` 单元冻结 baseline、两条数学结构不同的候选路线、统一 exact 目标和实际预算、fallback、首批攻击、至少两类首解后深化、停止理由白名单及条件验证；`oracle_only` 只用于明确需要独立 oracle 的题型。`ROUTE_COMPETITION.md` 仍用于人类可读的路线叙事。
+v3.2 前期可按问题需要用只绑定 `problem/` 的 fresh thread、CUMCM A/B 获奖论文的 3--6 张 structure-only 卡和网页版 GPT 讨论题意、建模、反例、验证与论文建议。它们只用于提出假设和攻击点，不能替代本地验证，也不参与状态跳转。可在讨论前后写入 `analysis/BASELINE_FREEZE.json`：它是绑定当前 `problem/` 哈希、带建议来源记录和修订号的决策快照，不是禁止纠错的终局文件。发现反例、目标歧义、实验冲突或审查缺口后，应修订快照，重跑受影响实验、重新路由和复审。未冻结的路由写为 `advisory_only=true`；冻结或修订后旧路由因 SHA 漂移失效，必须重新生成。随后按决策价值写 `analysis/MODELING_UNITS.json`。每个 `compare` 单元冻结 baseline、两条数学结构不同的候选路线、统一 exact 目标和实际预算、fallback、首批攻击、至少两类首解后深化、停止理由白名单及条件验证；`oracle_only` 只用于明确需要独立 oracle 的题型。`ROUTE_COMPETITION.md` 仍用于人类可读的路线叙事。
 
-专家库运行时只读取 `knowledge/award-experts/library.json`：21 张跨题结构卡与 15 个规则组合角色，覆盖 2012--2025 年官方展示的 A/B 论文。来源 URL、页码、论文 ID 和哈希只留在离线 `provenance.json`。路由按 A/B、当前阶段和受限 `topic_key` 选择少量结构建议；同题资料只能在 baseline 冻结后进入 answer-filter，不能改变当前题模型、参数、结果或论文结构。审计的 `access_monitoring.enabled=false` 仅说明序列化输出检查的边界，不宣称操作系统级文件访问监控。
+专家库运行时只读取 `knowledge/award-experts/library.json`：21 张跨题结构卡与 15 个规则组合角色，覆盖 2012--2025 年官方展示的 A/B 论文。来源 URL、页码、论文 ID 和哈希只留在离线 `provenance.json`。路由按 A/B、当前阶段和受限 `topic_key` 选择少量结构建议；同题资料只能在 baseline 快照后进入 answer-filter，不能改变当前题模型、参数、结果或论文结构。网页版 GPT 也只能对用户提供的题面进行讨论或批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，且不得复用这类内容。专家库和网页建议必须由当前 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核独立确认。审计的 `access_monitoring.enabled=false` 仅说明序列化输出检查的边界，不宣称操作系统级文件访问监控。
 
 再写 `analysis/NEXT_EXPERIMENTS.md`。每个实验必须说明要改变的决定、成本、成功/失败后的动作和优先级。不能改变路线、模型、主要结论、机制、贡献或反证当前结果的实验不应占用比赛预算。
 
@@ -28,7 +28,7 @@ v3.2 先用两个只绑定 `problem/` 的 fresh thread 重建题意，再只基�
 
 图表默认写入 `figures/current/`，每张图登记 `source`、`question`、`takeaway` 和可选 `limitations`。删除图后论文不会失去信息时，删除该图。不得默认要求每问图、3D、收敛图、多种子图、敏感性图或重复 evidence/publication 图。
 
-先用 `paper/STORYBOARD.md` 形成结构蓝图；再统一共享符号、假设和数学对象，并逐问成文；最后把结论逐项与 `answer_map`、结果、图表和限制对齐后严格返修。三者按草稿和证据状态往返，不按 R1--R5 固定轮次推进，也不把文档填写变成门禁。获奖论文专家卡可按草稿状态提示研究主线、模型推导、算法说明、结果闭环、图表任务、摘要、严格返修和 LaTeX 版式，但不能提供当前事实。`CONTRIBUTION_BRIEF.md` 最多三项贡献且为警告项。硬门只有：每个必答问题存在 `answer_map` 直接答案映射、引用 current 生产结果、引用的图有效、没有负面证据、v3.2 的无回退 LaTeX 模板和正文可编译、源码策略符合比赛要求。`paper/generated/argument_map.json` 自动生成，禁止要求人工维护哈希地图。摘要最后写。
+先用 `paper/STORYBOARD.md` 形成结构蓝图；再统一共享符号、假设和数学对象，并逐问成文；最后把结论逐项与 `answer_map`、结果、图表和限制对齐后严格返修。三者按草稿和证据状态往返，不按 R1--R5 固定轮次推进，也不把文档填写变成门禁。获奖论文专家卡和网页讨论可按草稿状态提示研究主线、模型推导、算法说明、结果闭环、图表任务、摘要、严格返修和 LaTeX 版式，但不能提供当前事实。`CONTRIBUTION_BRIEF.md` 最多三项贡献且为警告项。硬门只有：每个必答问题存在 `answer_map` 直接答案映射、引用 current 生产结果、引用的图有效、没有负面证据、v3.2 的无回退 LaTeX 模板和正文可编译、源码策略符合比赛要求。`paper/generated/argument_map.json` 自动生成，禁止要求人工维护哈希地图。摘要最后写。
 
 ## 审查与重跑
 

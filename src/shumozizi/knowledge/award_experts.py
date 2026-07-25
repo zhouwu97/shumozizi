@@ -202,9 +202,14 @@ def _current_problem_bindings(run_dir: Path) -> list[dict[str, str]]:
 
 
 def _baseline_document(
-    run_dir: Path, state: dict[str, Any], payload: dict[str, Any], *, frozen_at: str
+    run_dir: Path,
+    state: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    frozen_at: str,
+    revision: int,
 ) -> dict[str, Any]:
-    """从独立分析输入构造不可变 baseline 文件。"""
+    """从当前题面和决策快照构造可追溯的 baseline 文件。"""
     question_id = _nonempty_text(payload.get("question_id"), "question_id")
     if question_id not in state["required_questions"]:
         raise ContractError("baseline question_id 必须是当前运行的必答问题")
@@ -220,47 +225,81 @@ def _baseline_document(
     }
     independent_analysis = payload.get("independent_analysis")
     if not isinstance(independent_analysis, dict):
-        raise ContractError("independent_analysis 必须声明独立题面分析边界")
-    if (
-        independent_analysis.get("allowed_inputs") != ["problem/"]
-        or independent_analysis.get("award_expert_library_used") is not False
-    ):
-        raise ContractError("baseline 必须仅基于 problem/，且冻结前不得使用获奖论文专家库")
+        raise ContractError("independent_analysis 必须声明题面事实与建议来源边界")
+    if independent_analysis.get("allowed_inputs") != ["problem/"]:
+        raise ContractError("baseline 的题面事实输入必须仅为 problem/")
+    advisory_fields = {
+        "award_expert_library_used": independent_analysis.get("award_expert_library_used", False),
+        "external_discussion_used": independent_analysis.get("external_discussion_used", False),
+        "web_answer_search_used": independent_analysis.get("web_answer_search_used", False),
+    }
+    if not all(isinstance(value, bool) for value in advisory_fields.values()):
+        raise ContractError("独立分析中的建议来源字段必须为布尔值")
+    if advisory_fields["web_answer_search_used"]:
+        raise ContractError("网页版讨论或审核禁止联网检索题目答案、题解或现成结论")
+    if not isinstance(revision, int) or revision < 1:
+        raise ContractError("baseline revision 必须是从 1 开始的整数")
     return {
         "schema_version": "1.0",
         "run_id": state["run_id"],
         "question_id": question_id,
         "frozen_at": frozen_at,
+        "revision": revision,
         "input_bindings": _current_problem_bindings(run_dir),
         "independent_analysis": {
             "allowed_inputs": ["problem/"],
-            "award_expert_library_used": False,
+            **advisory_fields,
         },
         "baseline": normalized_baseline,
     }
 
 
+def _legacy_baseline_document(
+    run_dir: Path, state: dict[str, Any], payload: dict[str, Any], *, frozen_at: str
+) -> dict[str, Any]:
+    """重建旧版不可变 baseline，保证已有运行仍可只读复验。"""
+    document = _baseline_document(
+        run_dir,
+        state,
+        payload,
+        frozen_at=frozen_at,
+        revision=1,
+    )
+    document.pop("revision")
+    document["independent_analysis"].pop("external_discussion_used")
+    document["independent_analysis"].pop("web_answer_search_used")
+    return document
+
+
 def validate_baseline_freeze(run_dir: Path, payload: dict[str, Any]) -> None:
-    """复验 baseline 仍只绑定当前题面，且未被事后改写。
+    """复验 baseline 快照仍绑定当前题面且建议来源可追溯。
 
     Args:
         run_dir: 当前 v3.2 运行目录。
         payload: 已保存的 ``BASELINE_FREEZE.json`` 内容。
 
     Raises:
-        ContractError: 运行版本、题面哈希、独立分析声明或冻结内容发生漂移。
+        ContractError: 运行版本、题面哈希、建议来源声明或快照内容发生漂移。
     """
     state = _require_v32_run(run_dir)
     if payload.get("schema_version") != "1.0" or payload.get("run_id") != state["run_id"]:
         raise ContractError("BASELINE_FREEZE 的 schema_version 或 run_id 不匹配")
     frozen_at = _nonempty_text(payload.get("frozen_at"), "BASELINE_FREEZE.frozen_at")
-    expected = _baseline_document(run_dir, state, payload, frozen_at=frozen_at)
-    if payload != expected:
+    revision = payload.get("revision", 1)
+    expected = _baseline_document(
+        run_dir,
+        state,
+        payload,
+        frozen_at=frozen_at,
+        revision=revision,
+    )
+    legacy_expected = _legacy_baseline_document(run_dir, state, payload, frozen_at=frozen_at)
+    if payload != expected and payload != legacy_expected:
         raise ContractError("BASELINE_FREEZE 与当前题面绑定或独立分析声明不一致")
 
 
 def write_baseline_freeze(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
-    """原子冻结独立 baseline，拒绝在专家库介入后改写。
+    """原子写入或修订绑定当前题面的 baseline 决策快照。
 
     Args:
         run_dir: 当前 v3.2 运行目录。
@@ -270,37 +309,51 @@ def write_baseline_freeze(run_dir: Path, payload: dict[str, Any]) -> dict[str, A
         已冻结的 baseline 文档。
 
     Raises:
-        ContractError: baseline 未只依赖题面，或既有冻结内容被试图改写。
+        ContractError: baseline 的题面事实输入越界、建议来源不透明或内容无效。
     """
     state = _require_v32_run(run_dir)
     path = run_dir / BASELINE_FREEZE_PATH
     if path.is_file():
         existing = load_json(path)
         validate_baseline_freeze(run_dir, existing)
-        expected = _baseline_document(run_dir, state, payload, frozen_at=existing["frozen_at"])
+        expected = _baseline_document(
+            run_dir,
+            state,
+            payload,
+            frozen_at=existing["frozen_at"],
+            revision=existing.get("revision", 1),
+        )
         if existing != expected:
-            raise ContractError("BASELINE_FREEZE 已冻结；专家库路由后不得改写 baseline")
+            document = _baseline_document(
+                run_dir,
+                state,
+                payload,
+                frozen_at=utc_now(),
+                revision=existing.get("revision", 1) + 1,
+            )
+            atomic_json(path, document)
+            return document
         return existing
-    document = _baseline_document(run_dir, state, payload, frozen_at=utc_now())
+    document = _baseline_document(run_dir, state, payload, frozen_at=utc_now(), revision=1)
     atomic_json(path, document)
     return document
 
 
 def read_baseline_freeze(run_dir: Path) -> dict[str, Any]:
-    """读取并复验当前运行的独立 baseline 冻结。
+    """读取并复验当前运行的 baseline 决策快照。
 
     Args:
         run_dir: 当前 v3.2 运行目录。
 
     Returns:
-        当前题面绑定的不可变 baseline 文档。
+        当前题面绑定且带修订号的 baseline 文档。
 
     Raises:
-        ContractError: 冻结文件缺失、不是 v3.2 运行或题面已发生漂移。
+        ContractError: 快照文件缺失、不是 v3.2 运行或题面已发生漂移。
     """
     path = run_dir / BASELINE_FREEZE_PATH
     if not path.is_file():
-        raise ContractError("路由专家库前必须先冻结 analysis/BASELINE_FREEZE.json")
+        raise ContractError("缺少 analysis/BASELINE_FREEZE.json")
     payload = load_json(path)
     validate_baseline_freeze(run_dir, payload)
     return payload
@@ -406,7 +459,8 @@ def _route_document(
     topic_key: str,
 ) -> dict[str, Any]:
     """构造不含题面、结果或来源资料的专家路由收据。"""
-    baseline = read_baseline_freeze(run_dir)
+    baseline_path = run_dir / BASELINE_FREEZE_PATH
+    baseline = read_baseline_freeze(run_dir) if baseline_path.is_file() else None
     card_ids, expert_ids = _selection(award_question, phase, topic_key)
     if not 3 <= len(card_ids) <= 6:
         raise ContractError("专家路由必须只选择 3--6 张结构卡")
@@ -424,9 +478,18 @@ def _route_document(
         "phase": phase,
         "topic_key": topic_key,
         "library_hash": library["library_hash"],
-        "baseline_freeze_sha256": sha256_file(run_dir / BASELINE_FREEZE_PATH),
+        "baseline_status": "frozen" if baseline is not None else "not_frozen",
+        "baseline_freeze_sha256": sha256_file(baseline_path) if baseline is not None else None,
         "usage": "structure-only",
         "same_problem_policy": "freeze-baseline-then-answer-filter",
+        "advisory_only": True,
+        "requires_independent_verification": True,
+        "external_discussion_policy": {
+            "purpose": "仅讨论题意、建模假设、反例、验证与论文建议",
+            "online_answer_search": "prohibited",
+            "answer_reuse": "prohibited",
+            "verification": "必须由当前运行的 baseline、exact scorer、真实实验或独立复算确认",
+        },
         "selected_experts": [_public_expert(experts_by_id[expert_id]) for expert_id in expert_ids],
         "selected_cards": selected_cards,
         "allowed_uses": [
@@ -435,19 +498,21 @@ def _route_document(
         ],
         "prohibited_uses": [
             "不得作为当前题模型、参数、结果、图表、代码、引用或 claim evidence",
-            "不得替代 exact 比较、独立审核或当前生产事实",
+            "不得替代 exact 比较、独立审核、真实实验或当前生产事实",
+            "网页版讨论或审核不得联网检索题目答案、题解、往届答案或相近题现成结论",
         ],
         "routed_at": utc_now(),
-        "baseline_question_id": baseline["question_id"],
+        "baseline_question_id": baseline["question_id"] if baseline is not None else None,
     }
 
 
 def write_award_expert_route(
     run_dir: Path, *, award_question: str, phase: str, topic_key: str = ""
 ) -> dict[str, Any]:
-    """在 baseline 冻结后写出少量专家卡的可审计路由。
+    """写出少量专家卡的可审计建议路由。
 
-    这是可选辅助产物，不参与状态迁移门禁，也不能成为实验或论文事实来源。
+    baseline 未冻结时，路由明确标记为 ``advisory_only``；冻结或修订后应重新
+    路由。它不参与状态迁移门禁，也不能成为实验或论文事实来源。
 
     Args:
         run_dir: 当前 v3.2 运行目录。

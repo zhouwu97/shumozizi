@@ -12,7 +12,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 `blocked` 只表示真实生产错误或已验证的负面证据，绝不因为缺少方法画像、主张清单、覆盖声明、图表合同或手工 argument map 而进入该状态。
 
-新运行默认使用 v3.2：两次仅题面 fresh-thread 重建后，先独立冻结 `BASELINE_FREEZE.json`，再按需路由 3--6 张获奖论文结构专家卡，最后为每个问题冻结轻量 `MODELING_UNITS.json`。专家卡只提供研究主线、验证闭环和论文组织的跨题规则，不提供本题模型、参数、结果或引用，也不构成状态门。`compare` 单元要求 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 单元只用于题型明确需要独立 oracle 的情况。首个可行解只能成为深化起点，不得直接充当最终解。
+新运行默认使用 v3.2：可先用仅题面的 fresh thread、获奖论文结构专家卡或网页版 GPT 讨论题意、建模、反例和验证，再为每个问题形成可修订的 `BASELINE_FREEZE.json` 决策快照与轻量 `MODELING_UNITS.json`。进入实验前，后者仍需两次真实 fresh-thread 题意重建；它们只验证独立性，不代替模型、实验和复算。这是质量改进闭环，不是按文件顺序阻塞的状态机：发现反例、实验冲突或审查缺口后，应修订快照、重跑、复审和改写。专家卡与网页讨论只提供研究主线、验证闭环和论文组织的建议，不提供本题模型、参数、结果或引用，也不构成状态门。`compare` 单元要求 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 单元只用于题型明确需要独立 oracle 的情况。首个可行解只能成为深化起点，不得直接充当最终解。
 
 旧 v3.0/v3.1 运行可继续打开。读取 v3.0 时会把旧阶段映射为 v3.1 内存状态；第一次显式更新才写入 `state/migrations.json`，原始阶段保存在 `legacy_phase`，历史审核产物仍可查看。
 
@@ -20,7 +20,8 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 - 先提高答案上限，再验证安全底线。
 - 每个 `compare` 单元建立一个 baseline、两条数学结构不同的竞争路线和 fallback；仅更换遗传算法、粒子群或差分进化不算新路线。
-- `knowledge/award-experts/library.json` 覆盖 2012--2025 年 CUMCM A/B 的 21 张 structure-only 卡和 15 个角色；仅在独立 baseline 冻结后按 A/B、阶段和受限 `topic_key` 选择少量卡。`provenance.json` 是离线追溯资产，运行时不读取；同题材料只能进入 answer-filter，不能反向改变模型、参数、结果或论文结构。
+- `knowledge/award-experts/library.json` 覆盖 2012--2025 年 CUMCM A/B 的 21 张 structure-only 卡和 15 个角色；可按 A/B、阶段和受限 `topic_key` 选择少量卡。未冻结时会明确标注为 `advisory_only`，冻结或修订 baseline 后应重新路由。`provenance.json` 是离线追溯资产，运行时不读取；同题材料只能进入 answer-filter，不能反向改变模型、参数、结果或论文结构。
+- 网页版 GPT 可参与题意、建模、反例、验证与论文建议的讨论或审核，但只能分析用户提供的材料，禁止联网检索题目答案、题解、往届答案或相近题现成结论，禁止复用这类内容。建议必须由本地 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核确认。
 - 在第一批结果后先做科学攻击，再用至少两类策略继续深化，并把停止理由限制为预先声明的白名单。统一 exact 目标、实际预算与可行性事实；灵敏度、鲁棒性和独立 oracle 仅按题型条件触发，彼此不能替代。
 - 首先运行能改变路线选择的区分性 probe。没有可能改变路线、模型、主要结论、机制解释或论文贡献的实验，只记录为低优先级建议。
 - 生产结果必须由执行器真实运行。`current` 结果、输入输出哈希和指标来源仍是论文数字与图表的唯一事实来源。
@@ -55,7 +56,7 @@ python scripts/runtime/run_simple_experiment.py runs/2026-A-001 `
   --metrics-from results/raw/q1.json
 ```
 
-可选地，在分析后冻结 baseline 并路由结构专家卡：
+可选地，先路由结构建议卡以辅助讨论，或先/后写入 baseline 决策快照；未冻结路由不会成为任何事实依据：
 
 ```powershell
 python scripts/knowledge/award_experts.py freeze runs/2026-A-001 `
@@ -65,7 +66,7 @@ python scripts/knowledge/award_experts.py route runs/2026-A-001 `
 python scripts/knowledge/award_experts.py audit runs/2026-A-001
 ```
 
-`baseline-freeze-input.json` 必须声明 `allowed_inputs: ["problem/"]` 和 `award_expert_library_used: false`。路由与审计是可选辅助，绝不替代实验、exact 比较或独立审核。
+`baseline-freeze-input.json` 必须声明 `allowed_inputs: ["problem/"]`，并如实记录 `award_expert_library_used`、`external_discussion_used` 和 `web_answer_search_used: false`。同一快照发现问题后可修订；修订会使旧路由失效，需重新路由。路由与审计是可选辅助，绝不替代实验、exact 比较或独立审核；网页版讨论严禁联网寻找题目答案或现成题解。
 
 进入论文前，选择真实可用的模板并实例化：
 

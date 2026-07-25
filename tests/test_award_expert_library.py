@@ -45,17 +45,27 @@ def _freeze(run_dir: Path) -> None:
             "independent_analysis": {
                 "allowed_inputs": ["problem/"],
                 "award_expert_library_used": False,
+                "external_discussion_used": False,
+                "web_answer_search_used": False,
             },
         },
     )
 
 
-def test_award_expert_route_requires_independent_baseline_freeze(tmp_path: Path) -> None:
-    """专家库不能在独立 baseline 之前介入当前题分析。"""
+def test_award_expert_route_is_advisory_before_baseline_freeze(tmp_path: Path) -> None:
+    """未冻结时仍可获得建议，但收据必须显式限制其用途。"""
     run_dir = _run(tmp_path, "award-route-no-freeze")
 
-    with pytest.raises(ContractError, match="先冻结"):
-        write_award_expert_route(run_dir, award_question="A", phase="analysis")
+    route = write_award_expert_route(run_dir, award_question="A", phase="analysis")
+    audit = audit_award_expert_route(run_dir, route)
+
+    assert route["baseline_status"] == "not_frozen"
+    assert route["baseline_freeze_sha256"] is None
+    assert route["baseline_question_id"] is None
+    assert route["advisory_only"] is True
+    assert route["requires_independent_verification"] is True
+    assert route["external_discussion_policy"]["online_answer_search"] == "prohibited"
+    assert audit["status"] == "pass", audit
 
 
 def test_award_expert_routes_are_small_prompt_safe_and_cover_a_b_specialists(tmp_path: Path) -> None:
@@ -82,12 +92,90 @@ def test_award_expert_routes_are_small_prompt_safe_and_cover_a_b_specialists(tmp
     assert 3 <= len(route_b["selected_cards"]) <= 6
     assert "a-state-predicate-optimizer" in {item["card_id"] for item in route_a["selected_cards"]}
     assert "b-baseline-uncertainty" in {item["card_id"] for item in route_b["selected_cards"]}
+    assert route_a["baseline_status"] == "frozen"
     assert route_a["baseline_freeze_sha256"] == route_b["baseline_freeze_sha256"]
     assert audit["status"] == "pass", audit
     assert audit["raw_sources_returned"] == 0
     assert audit["access_monitoring"]["enabled"] is False
     for prohibited in ("http://", "https://", "paper_id", "evidence_refs", "pages", "C:\\"):
         assert prohibited not in rendered
+
+
+def test_baseline_snapshot_can_be_revised_after_advice_and_invalidates_old_route(tmp_path: Path) -> None:
+    """发现问题后允许修订快照，旧路由不能伪装成仍绑定当前基线。"""
+    run_dir = _run(tmp_path, "award-route-revision")
+    _freeze(run_dir)
+    route = write_award_expert_route(run_dir, award_question="A", phase="analysis")
+
+    revised = write_baseline_freeze(
+        run_dir,
+        {
+            "question_id": "Q1",
+            "baseline": {
+                "mathematical_structure": "可解释的约束规则模型",
+                "objective": "统一 exact 总成本",
+                "rationale": "讨论提出反例后，补入边界条件并重建可行性基线。",
+            },
+            "independent_analysis": {
+                "allowed_inputs": ["problem/"],
+                "award_expert_library_used": True,
+                "external_discussion_used": True,
+                "web_answer_search_used": False,
+            },
+        },
+    )
+
+    stale_audit = audit_award_expert_route(run_dir, route)
+    fresh_route = write_award_expert_route(run_dir, award_question="A", phase="analysis")
+    fresh_audit = audit_award_expert_route(run_dir, fresh_route)
+
+    assert revised["revision"] == 2
+    assert revised["independent_analysis"]["external_discussion_used"] is True
+    assert stale_audit["status"] == "fail"
+    assert fresh_route["baseline_freeze_sha256"] != route["baseline_freeze_sha256"]
+    assert fresh_audit["status"] == "pass", fresh_audit
+
+
+def test_baseline_rejects_web_answer_search_claim(tmp_path: Path) -> None:
+    """建议来源记录不得把网页答案检索包装成题意讨论。"""
+    run_dir = _run(tmp_path, "award-route-web-search")
+
+    with pytest.raises(ContractError, match="禁止联网检索"):
+        write_baseline_freeze(
+            run_dir,
+            {
+                "question_id": "Q1",
+                "baseline": {
+                    "mathematical_structure": "约束模型",
+                    "objective": "总成本",
+                    "rationale": "记录讨论后的初始方案。",
+                },
+                "independent_analysis": {
+                    "allowed_inputs": ["problem/"],
+                    "award_expert_library_used": False,
+                    "external_discussion_used": True,
+                    "web_answer_search_used": True,
+                },
+            },
+        )
+
+
+def test_legacy_baseline_remains_readable_for_audit(tmp_path: Path) -> None:
+    """旧版仅记录专家库字段的 baseline 不应阻断已有运行。"""
+    run_dir = _run(tmp_path, "award-route-legacy-baseline")
+    _freeze(run_dir)
+    path = run_dir / "analysis" / "BASELINE_FREEZE.json"
+    legacy = json.loads(path.read_text(encoding="utf-8"))
+    legacy.pop("revision")
+    legacy["independent_analysis"].pop("external_discussion_used")
+    legacy["independent_analysis"].pop("web_answer_search_used")
+    path.write_text(json.dumps(legacy, ensure_ascii=False), encoding="utf-8")
+
+    route = write_award_expert_route(run_dir, award_question="B", phase="analysis")
+    audit = audit_award_expert_route(run_dir, route)
+
+    assert route["baseline_status"] == "frozen"
+    assert audit["status"] == "pass", audit
 
 
 def test_award_expert_audit_rejects_a_tampered_route(tmp_path: Path) -> None:

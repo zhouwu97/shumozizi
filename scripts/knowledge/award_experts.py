@@ -19,11 +19,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="管理获奖论文结构专家库")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    freeze = subparsers.add_parser("freeze", help="冻结独立 baseline")
+    freeze = subparsers.add_parser("freeze", help="写入或修订 baseline 决策快照")
     freeze.add_argument("run_dir", type=Path)
     freeze.add_argument("--input", type=Path, required=True, help="baseline JSON 输入")
 
-    route = subparsers.add_parser("route", help="在 baseline 后路由少量结构卡")
+    route = subparsers.add_parser("route", help="路由少量结构建议卡；未冻结时仅作建议")
     route.add_argument("run_dir", type=Path)
     route.add_argument("--award-question", choices=("A", "B"), required=True)
     route.add_argument("--phase", choices=("analysis", "experiment", "paper", "paper_review", "verify"), required=True)

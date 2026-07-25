@@ -29,9 +29,9 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 ## 路线与实验
 
-- 分析先以两个只绑定 `problem/` 的 fresh thread 重建题意，并只基于 `problem/` 独立冻结 `analysis/BASELINE_FREEZE.json`；随后才可按需路由 `knowledge/award-experts/library.json` 的 3--6 张 structure-only 卡，再识别题型、数学结构、baseline、实质不同的竞争或反证路线和最低成本区分性 probe。
-- 获奖论文专家库是可选辅助，不是答案库、引用库、结果来源或状态门。运行时只能读取安全 `library.json`；来源、页码与论文标识仅保留于离线 `provenance.json`。路由必须通过 `AWARD_EXPERT_ROUTE_AUDIT.json` 确认 `structure_only=true`、`prompt_safe=true` 和 `raw_sources_returned=0`，且审计须说明它没有操作系统级访问监控。
-- 专家卡只能帮助路线竞争、probe、验证、研究主线和 LaTeX 论文组织；不得改变冻结 baseline，不得作为当前模型、参数、结果、图表、代码、citation、claim evidence 或 exact 比较的替代品。同题资料只能在 baseline 冻结后进入 answer-filter。
+- 前期可用 fresh thread、获奖论文结构卡或网页 GPT 讨论题意、建模、反例、验证和论文建议；专家卡和网页讨论都是发现问题的可选手段，不是阶段门。进入实验前的正式 `MODELING_UNITS.json` 仍须有两次只绑定 `problem/` 的真实 fresh-thread 题意重建，但回执只证明独立性，绝不证明模型或结论已正确。应及时把改变路线的判断写成绑定 `problem/` 的 `analysis/BASELINE_FREEZE.json` 决策快照，并在问题、反例或实验冲突出现后修订、重跑和复审。
+- 获奖论文专家库和网页讨论都不是答案库、引用库、结果来源或状态门。运行时只能读取安全 `library.json`；来源、页码与论文标识仅保留于离线 `provenance.json`。未冻结时路由须标记 `advisory_only=true` 和 `requires_independent_verification=true`；冻结或修订后应重新路由，并用 `AWARD_EXPERT_ROUTE_AUDIT.json` 确认 `structure_only=true`、`prompt_safe=true` 和 `raw_sources_returned=0`。审计须说明它没有操作系统级文件访问监控。
+- 网页 GPT 仅可基于用户提供的题面讨论和批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，也不得复用此类内容。其建议与专家卡只能帮助路线竞争、probe、验证、研究主线和 LaTeX 论文组织；不得作为当前模型、参数、结果、图表、代码、citation、claim evidence 或 exact 比较的替代品。所有可采纳建议必须由当前运行的 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核验证；同题资料仍只能在 baseline 快照后进入 answer-filter。
 - v3.2 每个 `compare` 单元必须有 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 仅用于题型明确需要独立 oracle 的单元。单纯替换 GA、PSO、DE 等求解器属于同一路线比较。
 - 比较统一 exact 目标、实际预算与可行性优先；首个可行解后必须至少用两类异构策略深化，且只可使用计划声明的停止理由白名单。灵敏度、鲁棒性和题型 oracle 条件触发，不能互相替代。
 - 将主路线、fallback、切换条件写入 `analysis/ROUTE_COMPETITION.md`；将只有决策价值的实验写入 `analysis/NEXT_EXPERIMENTS.md`。
