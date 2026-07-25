@@ -20,10 +20,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="登记科学挑战的实际执行证据")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--result-id", action="append", required=True)
+    parser.add_argument("--comparison-result-id", action="append", default=[])
     parser.add_argument("--attack", required=True)
     args = parser.parse_args()
     payload = record_scientific_challenge_evidence(
-        args.run_dir.resolve(), result_ids=args.result_id, attack_description=args.attack
+        args.run_dir.resolve(),
+        result_ids=args.result_id,
+        comparison_result_ids=args.comparison_result_id,
+        attack_description=args.attack,
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0

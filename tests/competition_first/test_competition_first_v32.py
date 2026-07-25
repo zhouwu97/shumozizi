@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError
+from shumozizi.core.io import ContractError, sha256_file
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.templates import select_paper_template
+from shumozizi.simple import review as simple_review
 from shumozizi.simple.competition import write_answer_map
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import (
@@ -18,6 +19,7 @@ from shumozizi.simple.modeling_units import (
     write_modeling_units,
 )
 from shumozizi.simple.results import register_result
+from shumozizi.simple.review_focus import record_scientific_challenge_evidence
 from shumozizi.simple.review_tasks import (
     create_review_task_receipt,
     persist_review_task_creation_event,
@@ -281,3 +283,132 @@ def test_v32_uses_competition_answer_map_for_paper_readiness(tmp_path: Path) -> 
     status = check_paper_readiness(run_dir)
 
     assert status["ready"], status
+
+
+def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
+    tmp_path: Path,
+) -> None:
+    """v3.2 用报告、fresh-thread 回执和当前结果放行论文，不要求 v3.1 摘要。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-scientific-challenge",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    (run_dir / "problem" / "statement.md").write_text("最小化总成本。", encoding="utf-8")
+    plan = _plan(run_dir)
+    write_modeling_units(run_dir, plan)
+    update_simple_state(run_dir, phase="experiment")
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _actual(plan)
+    write_modeling_units(run_dir, plan)
+
+    packet = simple_review.build_review_packet(run_dir, kind="scientific")
+    manifest_file = f"review/packet/scientific/{packet['packet_id']}/manifest.json"
+    report = run_dir / "review" / "SCIENTIFIC_CHALLENGE.md"
+    report.write_text(
+        "# 科学挑战\n\n## 风险清单\n\n- **P0：** 无。\n- **P1-01：** 有限采样不能证明连续模型。\n",
+        encoding="utf-8",
+    )
+    bindings = {
+        "packet": {
+            "manifest_file": manifest_file,
+            "manifest_sha256": sha256_file(run_dir / manifest_file),
+        }
+    }
+    task_dir = run_dir / "review" / "tasks" / "scientific-v32"
+    task_dir.mkdir(parents=True)
+    (task_dir / "input-bindings.json").write_text(
+        json.dumps(bindings, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    event = persist_review_task_creation_event(
+        run_dir,
+        event_file="review/tasks/scientific-v32/creation-event.json",
+        raw_event={
+            "schema_name": "review_task_creation_event",
+            "schema_version": "1.0",
+            "provider": "codex",
+            "raw_task_id": "v32-scientific-task",
+            "raw_thread_id": "v32-scientific-thread",
+            "creation_mode": "create_thread",
+            "parent_context_inherited": False,
+            "created_at": "2026-07-25T00:00:00Z",
+        },
+    )
+    create_review_task_receipt(
+        run_dir,
+        task_id="scientific-v32",
+        task_type="scientific_open",
+        model_id="fixture-model",
+        prompt_sha256="1" * 64,
+        input_bindings=bindings,
+        report_file="review/SCIENTIFIC_CHALLENGE.md",
+        creation_event_file=event.relative_to(run_dir).as_posix(),
+    )
+    record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=[
+            "baseline",
+            "structural",
+            "global",
+            "attack",
+            "first-feasible",
+            "final",
+            "sensitivity",
+            "robustness",
+        ],
+        attack_description="独立攻击当前生产结果。",
+    )
+
+    status = simple_review.scientific_review_status(run_dir)
+
+    assert status["allowed"], status
+    assert not status["submission_ready"]
+    assert status["unresolved_high_severities"] == ["P1"]
+    assert not (run_dir / "review" / "summary.json").exists()
+    simple_review.require_paper_generation_allowed(run_dir)
+
+
+def test_v32_paper_generation_uses_modeling_evidence_not_legacy_tournament(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """v3.2 以实际 compare 单元为准，不要求 v3.1 路线锦标赛文件。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-paper-generation",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _actual(plan)
+    write_modeling_units(run_dir, plan)
+    monkeypatch.setattr(
+        simple_review,
+        "_v32_scientific_challenge_status",
+        lambda _run: {"allowed": True, "submission_ready": False, "reason": "fixture"},
+    )
+
+    simple_review.require_paper_generation_allowed(run_dir)

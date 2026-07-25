@@ -57,10 +57,11 @@ def _register_current_result(
     result_id: str = "q1_primary",
     objective: float = 1.0,
     method_facts: dict[str, bool | str] | None = None,
+    output_name: str = "q1.json",
 ) -> None:
     """登记一个可供 answer map 使用的真实当前结果。"""
     source = run_dir / "code" / "q1.py"
-    output = run_dir / "results" / "raw" / "q1.json"
+    output = run_dir / "results" / "raw" / output_name
     source.write_text("print('ok')\n", encoding="utf-8")
     output.write_text(json.dumps({"metrics": {"objective": objective}}), encoding="utf-8")
     now = utc_now()
@@ -72,11 +73,11 @@ def _register_current_result(
         command="python code/q1.py",
         source_script="code/q1.py",
         input_files=["code/q1.py"],
-        output_files=["results/raw/q1.json"],
+        output_files=[f"results/raw/{output_name}"],
         metrics={"objective": objective},
         metric_sources={
             "objective": {
-                "file": "results/raw/q1.json",
+                "file": f"results/raw/{output_name}",
                 "json_path": "metrics.objective",
             }
         },
@@ -219,6 +220,71 @@ def test_scientific_challenge_requires_real_current_execution(tmp_path: Path) ->
     )
 
     assert verify_scientific_challenge_evidence(run_dir)["valid"]
+
+
+def test_scientific_challenge_accepts_registered_legacy_output_file_evidence(
+    tmp_path: Path,
+) -> None:
+    """旧文件级挑战证据仍须同时匹配登记输出哈希和实际输出文件。"""
+    run_dir = _run_dir(tmp_path)
+    _register_current_result(run_dir)
+    output = run_dir / "results" / "raw" / "q1.json"
+    atomic_json(
+        run_dir / "review" / "scientific-challenge-evidence.json",
+        {
+            "schema_version": "1.1",
+            "run_id": run_dir.name,
+            "attack_description": "独立复算当前结果。",
+            "results": [
+                {
+                    "result_id": "q1_primary",
+                    "file": "results/raw/q1.json",
+                    "sha256": sha256_file(output),
+                }
+            ],
+        },
+    )
+
+    assert verify_scientific_challenge_evidence(run_dir)["valid"]
+
+    output.write_text('{"metrics": {"objective": 2.0}}', encoding="utf-8")
+
+    assert not verify_scientific_challenge_evidence(run_dir)["valid"]
+
+
+def test_scientific_challenge_keeps_intact_superseded_comparison_evidence(
+    tmp_path: Path,
+) -> None:
+    """已验证的生产级路线对照不应因 winner 更新而被误判为漂移。"""
+    run_dir = _run_dir(tmp_path)
+    _register_current_result(
+        run_dir,
+        result_id="q1_comparison",
+        objective=1.0,
+        output_name="q1-comparison.json",
+    )
+    _register_current_result(
+        run_dir,
+        result_id="q1_selected",
+        objective=2.0,
+        output_name="q1-selected.json",
+    )
+
+    receipt = record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=["q1_selected"],
+        comparison_result_ids=["q1_comparison"],
+        attack_description="保留路线收益与稳健性取舍的已验证反例。",
+    )
+
+    assert receipt["schema_version"] == "1.2"
+    assert verify_scientific_challenge_evidence(run_dir)["valid"]
+
+    (run_dir / "results" / "raw" / "q1-comparison.json").write_text(
+        '{"metrics": {"objective": 3.0}}', encoding="utf-8"
+    )
+
+    assert not verify_scientific_challenge_evidence(run_dir)["valid"]
 
 
 def test_explicit_result_method_facts_override_heuristic_inference(tmp_path: Path) -> None:

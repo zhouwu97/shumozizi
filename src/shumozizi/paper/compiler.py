@@ -109,7 +109,9 @@ def _compiler_steps(engine: str) -> tuple[str, list[list[str]]]:
         return "typst", [[command, "compile", "main.typ", "final.pdf"]]
 
     latexmk = shutil.which("latexmk")
-    if latexmk is not None:
+    # latexmk 是 Perl 脚本包装器；MiKTeX 只安装了可执行入口而缺少 Perl 时，
+    # 直接调用它会阻断本可由 XeLaTeX 完成的受控双次编译。
+    if latexmk is not None and shutil.which("perl") is not None:
         return "latexmk", [
             [
                 latexmk,

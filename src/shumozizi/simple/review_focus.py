@@ -5,7 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, atomic_json, json_bytes, load_json, sha256_bytes
+from shumozizi.core.io import (
+    ContractError,
+    atomic_json,
+    json_bytes,
+    load_json,
+    resolve_inside,
+    sha256_bytes,
+    sha256_file,
+)
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import utc_now
 
@@ -37,14 +45,20 @@ def write_focused_followup(run_dir: Path, content: str) -> Path:
 
 
 def record_scientific_challenge_evidence(
-    run_dir: Path, *, result_ids: list[str], attack_description: str
+    run_dir: Path,
+    *,
+    result_ids: list[str],
+    attack_description: str,
+    comparison_result_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """绑定科学挑战实际使用的当前执行结果。
+    """绑定科学挑战的当前结论与保留对照执行结果。
 
     Args:
         run_dir: 当前运行目录。
-        result_ids: 实际攻击或复算产生的 current production 结果。
+        result_ids: 支撑当前结论的 current production 结果。
         attack_description: 该攻击试图推翻的具体结论。
+        comparison_result_ids: 用于反例或路线取舍的生产级对照结果；允许已经
+            被当前候选替换，但其输出仍须保持登记时的内容。
 
     Returns:
         已写入的轻量挑战证据收据。
@@ -56,22 +70,57 @@ def record_scientific_challenge_evidence(
         raise ContractError("科学挑战必须说明实际攻击要推翻的具体结论")
     if not result_ids:
         raise ContractError("科学挑战必须绑定至少一个真实执行结果")
-    results = {
+    comparison_ids = list(dict.fromkeys(comparison_result_ids or []))
+    if set(result_ids) & set(comparison_ids):
+        raise ContractError("科学挑战结果不能同时作为当前结论和对照证据")
+    current_results = {
         item["result_id"]: item
         for item in read_result_index(run_dir)["results"]
         if item.get("status") == "current"
         and item.get("execution_mode") == "production"
         and item.get("execution_valid") is True
     }
-    missing = [result_id for result_id in result_ids if result_id not in results]
+    missing = [result_id for result_id in result_ids if result_id not in current_results]
     if missing:
         raise ContractError("科学挑战绑定了非 current production 结果: " + ", ".join(missing))
+
+    # 对照结果用于保留已验证的反例或目标取舍，不能因为 winner 更新被静默抹去。
+    # 但 failed/diagnostic 或探索性结果从不具备挑战证据资格。
+    comparison_results = {
+        item["result_id"]: item
+        for item in read_result_index(run_dir)["results"]
+        if item.get("status") in {"current", "superseded"}
+        and item.get("execution_mode") == "production"
+        and item.get("execution_valid") is True
+    }
+    comparison_missing = [
+        result_id for result_id in comparison_ids if result_id not in comparison_results
+    ]
+    if comparison_missing:
+        raise ContractError(
+            "科学挑战绑定了无效的生产级对照结果: " + ", ".join(comparison_missing)
+        )
+
     records = [
-        {"result_id": result_id, "sha256": sha256_bytes(json_bytes(results[result_id]))}
+        {
+            "result_id": result_id,
+            "sha256": sha256_bytes(json_bytes(current_results[result_id])),
+            "evidence_role": "current",
+            "output_hashes": current_results[result_id]["output_hashes"],
+        }
         for result_id in dict.fromkeys(result_ids)
     ]
+    records.extend(
+        {
+            "result_id": result_id,
+            "sha256": sha256_bytes(json_bytes(comparison_results[result_id])),
+            "evidence_role": "comparison",
+            "output_hashes": comparison_results[result_id]["output_hashes"],
+        }
+        for result_id in comparison_ids
+    )
     payload = {
-        "schema_version": "1.0",
+        "schema_version": "1.2" if comparison_ids else "1.0",
         "run_id": run_dir.name,
         "attack_description": attack_description.strip(),
         "results": records,
@@ -97,19 +146,73 @@ def verify_scientific_challenge_evidence(run_dir: Path) -> dict[str, Any]:
         payload = load_json(path)
         if payload.get("run_id") != run_dir.name or not payload.get("attack_description"):
             raise ContractError("科学挑战证据 run_id 或攻击描述无效")
+        schema_version = payload.get("schema_version", "1.0")
+        if schema_version not in {"1.0", "1.1", "1.2"}:
+            raise ContractError("科学挑战证据 schema_version 不受支持")
         results = {
             item["result_id"]: item
             for item in read_result_index(run_dir)["results"]
-            if item.get("status") == "current"
-            and item.get("execution_mode") == "production"
+            if item.get("execution_mode") == "production"
             and item.get("execution_valid") is True
         }
-        errors = [
-            f"科学挑战结果已失效或漂移: {item.get('result_id')}"
-            for item in payload.get("results", [])
-            if item.get("result_id") not in results
-            or item.get("sha256") != sha256_bytes(json_bytes(results[item["result_id"]]))
-        ]
+        errors = []
+        for item in payload.get("results", []):
+            result_id = item.get("result_id") if isinstance(item, dict) else None
+            result = results.get(result_id)
+            evidence_role = item.get("evidence_role", "current") if isinstance(item, dict) else None
+            allowed_statuses = (
+                {"current", "superseded"}
+                if schema_version == "1.2" and evidence_role == "comparison"
+                else {"current"}
+            )
+            if (
+                evidence_role not in {"current", "comparison"}
+                or (evidence_role == "comparison" and schema_version != "1.2")
+                or result is None
+                or result.get("status") not in allowed_statuses
+                or not isinstance(item, dict)
+            ):
+                errors.append(f"科学挑战结果已失效或漂移: {result_id}")
+                continue
+            record_sha256 = sha256_bytes(json_bytes(result))
+            recorded_output_hashes = item.get("output_hashes")
+            if recorded_output_hashes is not None:
+                # v1.2 同时冻结登记记录和所有输出，避免保留对照只校验元数据。
+                if (
+                    item.get("sha256") != record_sha256
+                    or recorded_output_hashes != result.get("output_hashes")
+                    or not isinstance(recorded_output_hashes, dict)
+                ):
+                    errors.append(f"科学挑战结果已失效或漂移: {result_id}")
+                    continue
+                try:
+                    for output_file, output_sha256 in recorded_output_hashes.items():
+                        output_path = resolve_inside(run_dir, output_file, must_exist=True)
+                        if sha256_file(output_path) != output_sha256:
+                            raise ContractError("科学挑战输出文件哈希不匹配")
+                except (ContractError, OSError, KeyError, TypeError, ValueError):
+                    errors.append(f"科学挑战结果已失效或漂移: {result_id}")
+                continue
+            if item.get("sha256") == record_sha256:
+                continue
+            # v1.1 曾以结果原始输出文件作为挑战证据。仍须同时核验登记的
+            # output_hashes 和磁盘实际文件，不能仅凭路径或报告文字放行。
+            output_file = item.get("file")
+            output_hashes = result.get("output_hashes")
+            if (
+                not isinstance(output_file, str)
+                or output_file not in result.get("output_files", [])
+                or not isinstance(output_hashes, dict)
+                or output_hashes.get(output_file) != item.get("sha256")
+            ):
+                errors.append(f"科学挑战结果已失效或漂移: {result_id}")
+                continue
+            try:
+                output_path = resolve_inside(run_dir, output_file, must_exist=True)
+                if sha256_file(output_path) != item["sha256"]:
+                    errors.append(f"科学挑战结果已失效或漂移: {result_id}")
+            except (ContractError, OSError, KeyError, TypeError, ValueError):
+                errors.append(f"科学挑战结果已失效或漂移: {result_id}")
         if not payload.get("results"):
             errors.append("科学挑战没有绑定任何执行结果")
         return {"valid": not errors, "errors": errors, "evidence": payload}
