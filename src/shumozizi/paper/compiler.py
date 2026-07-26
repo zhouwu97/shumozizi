@@ -137,6 +137,25 @@ def _compiler_steps(engine: str) -> tuple[str, list[list[str]]]:
     raise ContractError("模板选择了 LaTeX，但未检测到 latexmk/xelatex/tectonic/pdflatex")
 
 
+def _extract_latex_errors(paper_dir: Path) -> str:
+    """从 main.log 提取 LaTeX 的 '! Error' 行，辅助失败诊断。
+
+    xelatex/pdflatex/latexmk 把真实错误写入 main.log 而非 stderr；
+    仅在编译失败后调用，最多返回前 5 条错误行，不超过 400 字符。
+    """
+    log_path = paper_dir / "main.log"
+    if not log_path.is_file():
+        return ""
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    error_lines = [line for line in lines if line.startswith("! ")][:5]
+    if not error_lines:
+        return ""
+    return " | ".join(error_lines)[:400]
+
+
 def _run_compiler_steps(
     paper_dir: Path, steps: list[list[str]], *, timeout_seconds: int
 ) -> list[dict[str, Any]]:
@@ -159,8 +178,13 @@ def _run_compiler_steps(
         except OSError as exc:
             raise ContractError(f"无法启动论文编译器 {command[0]}: {exc}") from exc
         if completed.returncode != 0:
-            message = (completed.stderr or completed.stdout).strip().replace("\n", " ")[:800]
-            raise ContractError(f"论文编译失败（{command[0]}，退出码 {completed.returncode}）: {message}")
+            # LaTeX 把真实错误写入 main.log，stderr/stdout 通常近空；优先从日志提取。
+            log_snippet = _extract_latex_errors(paper_dir)
+            stream_snippet = (completed.stderr or completed.stdout).strip().replace("\n", " ")[:400]
+            detail = log_snippet or stream_snippet
+            raise ContractError(
+                f"论文编译失败（{command[0]}，退出码 {completed.returncode}）: {detail}"
+            )
         executions.append(
             {
                 "command": command,
@@ -273,13 +297,23 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     if _paper_source_sha256(paper_dir) != source_sha256:
         raise ContractError("论文源文件在编译期间发生变化，拒绝冻结不稳定产物")
 
-    # PDF 已冻结，生成同步交付的 Word 版本。
-    # compile_docx 在 pandoc 缺失时直接抛出 ContractError，让编译整体失败——
-    # 竞赛提交规定同时提供 .docx，不允许只有 PDF 通过门控。
-    final_docx = compile_docx(paper_dir, engine=manifest["engine"], timeout_seconds=timeout_seconds)
+    # PDF 已冻结，尝试生成同步交付的 Word 版本。
+    # pandoc 缺失时不阻断 PDF 交付——记录跳过原因供后续补生成，而非让整个
+    # 编译失败。竞赛要求同时提交 .docx 的场合，补生成后需重新运行本函数或
+    # 单独调用 compile_docx。
+    docx_skipped_reason: str | None = None
+    final_docx: Path | None = None
+    try:
+        final_docx = compile_docx(paper_dir, engine=manifest["engine"], timeout_seconds=timeout_seconds)
+    except ContractError as exc:
+        # 仅在 pandoc 缺失时降级，其他 ContractError（转换失败、产物为空）仍阻断。
+        if "未检测到 pandoc" in str(exc):
+            docx_skipped_reason = str(exc)
+        else:
+            raise
 
     manifest_path = root / MANIFEST_PATH
-    receipt = {
+    receipt: dict[str, Any] = {
         "schema_version": "1.0",
         "run_id": state["run_id"],
         "template_manifest_path": MANIFEST_PATH.as_posix(),
@@ -294,11 +328,14 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
         "paper_source_sha256": source_sha256,
         "final_pdf_path": "paper/final.pdf",
         "final_pdf_sha256": sha256_file(final_pdf),
-        "final_docx_path": "paper/final.docx",
-        "final_docx_sha256": sha256_file(final_docx),
         "executions": executions,
         "generated_at": utc_now(),
     }
+    if final_docx is not None:
+        receipt["final_docx_path"] = "paper/final.docx"
+        receipt["final_docx_sha256"] = sha256_file(final_docx)
+    if docx_skipped_reason is not None:
+        receipt["docx_skipped_reason"] = docx_skipped_reason
     _require_schema(receipt)
     atomic_json(root / COMPILE_RECEIPT_PATH, receipt)
     return receipt
@@ -340,6 +377,13 @@ def verify_paper_compile_receipt(run_dir: Path) -> dict[str, Any]:
                 errors.append("最终 PDF 在编译后已变化")
         except ContractError as exc:
             errors.append(str(exc))
+        # DOCX 字段是可选的（pandoc 缺失时跳过）；有则复验，跳过则忽略。
+        if "final_docx_path" in receipt:
+            final_docx = root / receipt["final_docx_path"]
+            if not final_docx.is_file() or final_docx.stat().st_size == 0:
+                errors.append("回执记录了 final.docx 但文件不存在或为空")
+            elif receipt.get("final_docx_sha256") != sha256_file(final_docx):
+                errors.append("最终 .docx 在编译后已变化")
     except (ContractError, KeyError) as exc:
         errors.append(str(exc))
     return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}

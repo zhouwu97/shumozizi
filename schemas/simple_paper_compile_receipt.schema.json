@@ -22,6 +22,7 @@
     "final_pdf_sha256": {"$ref": "#/$defs/sha"},
     "final_docx_path": {"const": "paper/final.docx"},
     "final_docx_sha256": {"$ref": "#/$defs/sha"},
+    "docx_skipped_reason": {"type": "string", "minLength": 1},
     "executions": {
       "type": "array",
       "minItems": 1,
@@ -45,6 +46,12 @@
     {
       "if": {"properties": {"fallback_used": {"const": false}}},
       "then": {"properties": {"fallback_reason": {"type": "null"}}}
+    },
+    {
+      "oneOf": [
+        {"required": ["final_docx_path", "final_docx_sha256"], "not": {"required": ["docx_skipped_reason"]}},
+        {"required": ["docx_skipped_reason"], "not": {"required": ["final_docx_path"]}}
+      ]
     }
   ],
   "$defs": {

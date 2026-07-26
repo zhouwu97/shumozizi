@@ -437,3 +437,98 @@ def test_compile_receipt_binds_manifest_and_pdf(
         (run_dir / "paper/final.pdf").write_bytes(b"%PDF-1.4\nchanged")
 
     assert verify_paper_compile_receipt(run_dir)["valid"] is False
+
+
+def test_compile_skips_docx_and_records_reason_when_pandoc_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pandoc 缺失时编译不应整体失败；回执记录跳过原因，不记录 docx 路径。"""
+    _set_engines(monkeypatch, latex=True, typst=True)
+    monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
+    monkeypatch.setattr(paper_readiness, "require_paper_readiness", lambda _run: None)
+
+    def _no_pandoc(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) -> Path:
+        raise ContractError(
+            "论文编译要求同时生成 Word（.docx）版本，但当前环境未检测到 pandoc。"
+            "请安装 pandoc（https://pandoc.org/installing.html）后重试。"
+        )
+
+    monkeypatch.setattr(paper_compiler, "compile_docx", _no_pandoc)
+
+    run_dir = _new_run(tmp_path, "no-pandoc", questions=["Q1"])
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="auto",
+        selection_reason="测试 pandoc 缺失时 PDF 仍可冻结回执。",
+    )
+    materialize_selected_template(run_dir)
+
+    fake_compiler = tmp_path / "fake_xelatex_nopandoc.py"
+    fake_compiler.write_text(
+        "from pathlib import Path\n"
+        "Path('main.log').write_text('generated log', encoding='utf-8')\n"
+        "Path('main.pdf').write_bytes(b'%PDF-1.4\\nno-pandoc test')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        paper_compiler,
+        "_compiler_steps",
+        lambda engine: (
+            "xelatex",
+            [[sys.executable, str(fake_compiler), "main.tex"]] if engine == "latex" else [],
+        ),
+    )
+
+    receipt = compile_paper(run_dir)
+
+    assert receipt["engine"] == "latex"
+    assert receipt["final_pdf_path"] == "paper/final.pdf"
+    assert "final_docx_path" not in receipt
+    assert "final_docx_sha256" not in receipt
+    assert "docx_skipped_reason" in receipt
+    assert "pandoc" in receipt["docx_skipped_reason"]
+    assert verify_paper_compile_receipt(run_dir)["valid"] is True
+
+
+def test_latex_compile_failure_surfaces_log_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LaTeX 编译失败时，ContractError 应包含 main.log 中的 '! Error' 行。"""
+    _set_engines(monkeypatch, latex=True, typst=True)
+    monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
+    monkeypatch.setattr(paper_readiness, "require_paper_readiness", lambda _run: None)
+
+    run_dir = _new_run(tmp_path, "latex-fail", questions=["Q1"])
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="auto",
+        selection_reason="测试 LaTeX 编译失败时从 main.log 提取错误行。",
+    )
+    materialize_selected_template(run_dir)
+
+    fake_compiler = tmp_path / "fake_bad_xelatex.py"
+    fake_compiler.write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "Path('main.log').write_text(\n"
+        "    'This is XeTeX\\n! Undefined control sequence.\\nl.42 \\\\\\\\badcommand\\n',\n"
+        "    encoding='utf-8',\n"
+        ")\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        paper_compiler,
+        "_compiler_steps",
+        lambda engine: (
+            "xelatex",
+            [[sys.executable, str(fake_compiler), "main.tex"]] if engine == "latex" else [],
+        ),
+    )
+
+    with pytest.raises(ContractError, match="Undefined control sequence"):
+        compile_paper(run_dir)
