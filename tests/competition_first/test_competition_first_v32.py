@@ -18,8 +18,15 @@ from shumozizi.simple.modeling_units import (
     semantic_reconstruction_input_bindings,
     write_modeling_units,
 )
+from shumozizi.simple.objective_consequences import (
+    require_objective_consequences,
+    write_objective_candidates,
+)
 from shumozizi.simple.results import register_result
-from shumozizi.simple.review_focus import record_scientific_challenge_evidence
+from shumozizi.simple.review_focus import (
+    record_scientific_challenge_evidence,
+    record_stronger_alternative,
+)
 from shumozizi.simple.review_tasks import (
     create_review_task_receipt,
     persist_review_task_creation_event,
@@ -27,15 +34,21 @@ from shumozizi.simple.review_tasks import (
 from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
 
 
-def _register_result(run_dir: Path, result_id: str, *, objective: float = 1.0) -> None:
-    """登记可用于 v3.2 比较、攻击和深化的真实生产结果。"""
+def _register_result(
+    run_dir: Path,
+    result_id: str,
+    *,
+    objective: float = 1.0,
+    duration_seconds: float = 10.0,
+    extra_metrics: dict[str, float] | None = None,
+) -> None:
+    """登记可用于 v3.2 比较、攻击、深化和目标后果比较的真实生产结果。"""
     source = run_dir / "code" / f"{result_id}.py"
     output = run_dir / "results" / "raw" / f"{result_id}.json"
     source.write_text("print('ok')\n", encoding="utf-8")
-    output.write_text(
-        json.dumps({"metrics": {"objective": objective, "feasible": True}}),
-        encoding="utf-8",
-    )
+    metrics: dict[str, float | bool] = {"objective": objective, "feasible": True}
+    metrics.update(extra_metrics or {})
+    output.write_text(json.dumps({"metrics": metrics}), encoding="utf-8")
     now = utc_now()
     register_result(
         run_dir,
@@ -46,18 +59,36 @@ def _register_result(run_dir: Path, result_id: str, *, objective: float = 1.0) -
         source_script=f"code/{result_id}.py",
         input_files=[f"code/{result_id}.py"],
         output_files=[f"results/raw/{result_id}.json"],
-        metrics={"objective": objective, "feasible": True},
+        metrics=metrics,
         metric_sources={
-            "objective": {"file": f"results/raw/{result_id}.json", "json_path": "metrics.objective"},
-            "feasible": {"file": f"results/raw/{result_id}.json", "json_path": "metrics.feasible"},
+            name: {"file": f"results/raw/{result_id}.json", "json_path": f"metrics.{name}"}
+            for name in metrics
         },
         exit_code=0,
         stdout_path=f"results/{result_id}.stdout.log",
         stderr_path=f"results/{result_id}.stderr.log",
         started_at=now,
         finished_at=now,
-        duration_seconds=10.0,
+        duration_seconds=duration_seconds,
         objective_semantics_sha256="a" * 64,
+    )
+
+
+def _register_objective_probes(run_dir: Path) -> None:
+    """登记两个候选目标的低成本后果 probe。"""
+    _register_result(
+        run_dir,
+        "probe-sum",
+        objective=6.0,
+        duration_seconds=2.0,
+        extra_metrics={"weakest_entity_gain": 0.2},
+    )
+    _register_result(
+        run_dir,
+        "probe-min",
+        objective=7.0,
+        duration_seconds=2.0,
+        extra_metrics={"weakest_entity_gain": 3.4},
     )
 
 
@@ -116,13 +147,30 @@ def _plan(run_dir: Path) -> dict[str, object]:
             {
                 "unit_id": "Q1-search",
                 "question_id": "Q1",
+                "core_question": True,
                 "mode": "compare",
-                "objective": {"exact_metric": "objective", "direction": "minimize"},
+                "objective": {
+                    "exact_metric": "objective",
+                    "direction": "minimize",
+                    "significant_improvement_ratio": 0.1,
+                },
                 "budget": {"kind": "wall_seconds", "tolerance_ratio": 0.1},
                 "baseline": {"route_id": "R0", "mathematical_structure": "可解释规则模型"},
                 "competitive_routes": [
-                    {"route_id": "R1", "mathematical_structure": "约束规划"},
-                    {"route_id": "R2", "mathematical_structure": "连续全局优化"},
+                    {
+                        "route_id": "R1",
+                        "mathematical_structure": "约束规划",
+                        "structure_exploited": "利用可行域的分段线性结构做精确剪枝。",
+                        "expected_upside": "在同预算下把精确目标压到基线以下 15%。",
+                        "expected_improvement_ratio": 0.15,
+                    },
+                    {
+                        "route_id": "R2",
+                        "mathematical_structure": "连续全局优化",
+                        "structure_exploited": "利用目标在连续域上的可微性做多起点下降。",
+                        "expected_upside": "有机会跳出基线所在的局部盆地。",
+                        "expected_improvement_ratio": 0.25,
+                    },
                 ],
                 "fallback": {"route_id": "R1", "switch_condition": "精确目标未改善时切换。"},
                 "expected_outcome": "结构模型将在同预算下改善精确目标。",
@@ -152,6 +200,54 @@ def _plan(run_dir: Path) -> dict[str, object]:
     }
 
 
+def _objective_candidates(run_dir: Path, *, with_actual: bool = True) -> dict[str, object]:
+    """构造开放目标的候选集合与后果度量声明。"""
+    document: dict[str, object] = {
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "questions": [
+            {
+                "question_id": "Q1",
+                "objective_openness": "open",
+                "candidates": [
+                    {
+                        "objective_id": "sum",
+                        "formula": "最大化累计收益 sum(gain_i)",
+                        "expected_strategy_bias": "偏好把资源集中到最容易得分的实体。",
+                        "problem_text_basis": "题面要求总体效果尽可能好。",
+                    },
+                    {
+                        "objective_id": "min",
+                        "formula": "最大化最弱实体收益 min(gain_i)",
+                        "expected_strategy_bias": "偏好把资源摊向最难保障的实体。",
+                        "problem_text_basis": "题面同时要求每个实体都被覆盖。",
+                    },
+                ],
+                "consequence_metrics": [
+                    {"metric": "objective", "kind": "efficiency", "direction": "minimize"},
+                    {
+                        "metric": "weakest_entity_gain",
+                        "kind": "bottleneck",
+                        "direction": "maximize",
+                        "acceptable_floor": 1.0,
+                    },
+                ],
+            }
+        ],
+    }
+    if with_actual:
+        questions = document["questions"]
+        assert isinstance(questions, list)
+        question = questions[0]
+        assert isinstance(question, dict)
+        question["actual"] = {
+            "candidate_probes": {"sum": "probe-sum", "min": "probe-min"},
+            "frozen_objective_id": "min",
+            "freeze_rationale": "累计收益候选让最弱实体跌破可接受下限。",
+        }
+    return document
+
+
 def _actual(plan: dict[str, object]) -> None:
     """为计划回填真实实验的最小证据映射。"""
     unit = plan["units"][0]
@@ -159,7 +255,10 @@ def _actual(plan: dict[str, object]) -> None:
     unit["actual"] = {
         "expectation_status": "confirmed",
         "summary": "R2 在统一 exact 和共同预算下最佳，独立攻击没有改变排序。",
-        "comparison": {"route_result_ids": {"R0": "baseline", "R1": "structural", "R2": "global"}},
+        "comparison": {
+            "route_result_ids": {"R0": "baseline", "R1": "structural", "R2": "global"},
+            "winner_route_id": "R2",
+        },
         "first_batch_attack": {"result_ids": ["attack"], "conclusion": "未发现排序翻转。"},
         "refinement": {
             "first_feasible_result_id": "first-feasible",
@@ -174,6 +273,16 @@ def _actual(plan: dict[str, object]) -> None:
             "sensitivity_result_ids": ["sensitivity"],
             "robustness_result_ids": ["robustness"],
         },
+        "insights": [
+            {
+                "insight_id": "Q1-marginal",
+                "kind": "marginal_gain",
+                "observation": "第三次深化只带来 0.3 的目标改善。",
+                "mechanism": "两条路线在同一活跃约束上受限，额外预算无法放松它。",
+                "boundary": "该结论只覆盖已测试的预算区间。",
+                "evidence_result_ids": ["structural", "global", "final"],
+            }
+        ],
     }
 
 
@@ -190,6 +299,7 @@ def test_v32_requires_two_fresh_reconstructions_then_real_comparison_evidence(tm
     plan = _plan(run_dir)
 
     write_modeling_units(run_dir, plan)
+    write_objective_candidates(run_dir, _objective_candidates(run_dir, with_actual=False))
     state = update_simple_state(run_dir, phase="experiment")
 
     assert state["schema_version"] == "3.2"
@@ -204,10 +314,13 @@ def test_v32_requires_two_fresh_reconstructions_then_real_comparison_evidence(tm
         ("robustness", 7.3),
     ):
         _register_result(run_dir, result_id, objective=objective)
+    _register_objective_probes(run_dir)
     _actual(plan)
     write_modeling_units(run_dir, plan)
+    write_objective_candidates(run_dir, _objective_candidates(run_dir))
 
     require_v32_experiment_evidence(run_dir)
+    require_objective_consequences(run_dir)
 
 
 def test_v32_rejects_first_feasible_as_final_result(tmp_path: Path) -> None:
@@ -299,6 +412,7 @@ def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
     (run_dir / "problem" / "statement.md").write_text("最小化总成本。", encoding="utf-8")
     plan = _plan(run_dir)
     write_modeling_units(run_dir, plan)
+    write_objective_candidates(run_dir, _objective_candidates(run_dir, with_actual=False))
     update_simple_state(run_dir, phase="experiment")
     for result_id, objective in (
         ("baseline", 10.0),
@@ -311,8 +425,10 @@ def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
         ("robustness", 7.3),
     ):
         _register_result(run_dir, result_id, objective=objective)
+    _register_objective_probes(run_dir)
     _actual(plan)
     write_modeling_units(run_dir, plan)
+    write_objective_candidates(run_dir, _objective_candidates(run_dir))
 
     packet = simple_review.build_review_packet(run_dir, kind="scientific")
     manifest_file = f"review/packet/scientific/{packet['packet_id']}/manifest.json"
@@ -370,6 +486,7 @@ def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
         ],
         attack_description="独立攻击当前生产结果。",
     )
+    record_stronger_alternative(run_dir, found=False)
 
     status = simple_review.scientific_review_status(run_dir)
 
@@ -403,8 +520,11 @@ def test_v32_paper_generation_uses_modeling_evidence_not_legacy_tournament(
         ("robustness", 7.3),
     ):
         _register_result(run_dir, result_id, objective=objective)
+    _register_objective_probes(run_dir)
     _actual(plan)
     write_modeling_units(run_dir, plan)
+    write_objective_candidates(run_dir, _objective_candidates(run_dir))
+    record_stronger_alternative(run_dir, found=False)
     monkeypatch.setattr(
         simple_review,
         "_v32_scientific_challenge_status",

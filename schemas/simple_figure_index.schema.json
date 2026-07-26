@@ -23,7 +23,7 @@
           "renderer_script": {"$ref": "#/$defs/file"},
           "outputs": {
             "type": "array",
-            "minItems": 3,
+            "minItems": 1,
             "items": {"$ref": "#/$defs/file"}
           },
           "text_boxes": {"$ref": "#/$defs/file"},
@@ -42,6 +42,8 @@
            "question": {"type": "string", "minLength": 1},
            "takeaway": {"type": "string", "minLength": 1},
            "limitations": {"type": "string", "minLength": 1},
+           "role": {"enum": ["model_understanding", "decisive_evidence", "insight", "stability"]},
+           "placement": {"enum": ["body", "appendix"]},
           "paper_allowed": {"type": "boolean"},
           "demo": {"const": false},
           "created_at": {"type": "string", "format": "date-time"}
@@ -50,6 +52,19 @@
     }
   },
   "allOf": [
+    {
+      "$comment": "1.0/1.1 沿用 PNG+PDF+SVG 三份输出；1.2 起只要求可读 PNG 或 PDF，不再靠输出份数凑数量。",
+      "if": {"properties": {"schema_version": {"enum": ["1.0", "1.1"]}}},
+      "then": {
+        "properties": {
+          "figures": {
+            "items": {
+              "properties": {"outputs": {"minItems": 3}}
+            }
+          }
+        }
+      }
+    },
     {
       "if": {"properties": {"schema_version": {"const": "1.1"}}},
       "then": {

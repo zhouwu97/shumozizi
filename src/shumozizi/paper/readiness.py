@@ -269,7 +269,108 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         warnings.append("缺少 paper/STORYBOARD.md；建议先明确最强问题、篇幅与核心图表。")
     if not (run_dir / "paper" / "CONTRIBUTION_BRIEF.md").is_file():
         warnings.append("缺少 paper/CONTRIBUTION_BRIEF.md；这不阻断普通问题的正确回答。")
+    warnings.extend(_insight_figure_warnings(run_dir))
+    errors.extend(_code_appendix_errors(run_dir))
+    errors.extend(_core_insight_usage_errors(run_dir, answers))
     return errors, warnings
+
+
+def _core_insight_usage_errors(run_dir: Path, answers: dict[str, Any]) -> list[str]:
+    """要求核心问题在论文里真的用上已挖出的规律。
+
+    只生产不消费时，规律挖掘会退化成旁路产物：挖了、论文不写也能过门，于是
+    正文继续只讲参数与复核。
+    """
+    from shumozizi.simple.modeling_units import core_question_insights
+
+    try:
+        available = core_question_insights(run_dir)
+    except (ContractError, OSError, KeyError, TypeError, ValueError):
+        return []
+    errors: list[str] = []
+    for question_id, insights in sorted(available.items()):
+        item = answers.get(question_id)
+        if not isinstance(item, dict):
+            continue
+        used = item.get("insight_ids")
+        known = {insight["insight_id"] for insight in insights}
+        if not isinstance(used, list) or not used:
+            errors.append(
+                f"核心问题 {question_id} 已提炼机制或边际收益类规律，"
+                f"但 answer map 未引用任何 insight_id（可用: {', '.join(sorted(known))}）；"
+                "论文必须真的讲出这些规律"
+            )
+            continue
+        unknown = sorted({value for value in used if value not in known})
+        if unknown:
+            errors.append(
+                f"核心问题 {question_id} 的 answer map 引用了不存在的 insight_id: "
+                + ", ".join(unknown)
+            )
+    return errors
+
+
+def _insight_figure_warnings(run_dir: Path) -> list[str]:
+    """提示正文缺少洞察图：全是证据图会把论文写成技术审计报告。"""
+    index_path = run_dir / "figures" / "index.json"
+    if not index_path.is_file():
+        return []
+    try:
+        payload = load_json(index_path)
+    except (OSError, ValueError):
+        return []
+    figures = [
+        item
+        for item in payload.get("figures", [])
+        if isinstance(item, dict) and item.get("status") == "current"
+    ]
+    if not figures:
+        return []
+    roles = [item.get("role") for item in figures if item.get("role")]
+    if not roles:
+        return ["当前图未声明 role；建议区分模型理解图、决定性证据图与洞察图。"]
+    if not any(role in {"insight", "model_understanding"} for role in roles):
+        return [
+            "当前图全是证据或稳定性图，没有洞察图；"
+            "建议补充回答机制、阈值、边际收益或权衡的主图。"
+        ]
+    return []
+
+
+def _code_appendix_errors(run_dir: Path) -> list[str]:
+    """限制 PDF 内源码版面：代码的边际价值低于机制解释与权衡分析。
+
+    默认允许最多一页；确有赛事要求时必须显式写出 ``competition_requires_full``
+    与理由，否则整篇源码会挤掉结论和洞察。
+    """
+    blueprint_path = run_dir / "paper" / "content_blueprint.json"
+    if not blueprint_path.is_file():
+        return []
+    try:
+        blueprint = load_json(blueprint_path)
+    except (OSError, ValueError):
+        return []
+    appendix = blueprint.get("source_code_appendix")
+    if not isinstance(appendix, dict):
+        return []
+    if appendix.get("mode") == "attachment":
+        return []
+    if appendix.get("competition_requires_full") is True:
+        if not str(appendix.get("full_source_reason", "")).strip():
+            return ["source_code_appendix.competition_requires_full 为真时必须写明赛事依据"]
+        return []
+    budget = appendix.get("pdf_page_budget")
+    if budget is None:
+        return [
+            "source_code_appendix 缺少 pdf_page_budget；"
+            "PDF 内源码默认不超过 1 页，完整代码放附件"
+        ]
+    if not isinstance(budget, (int, float)) or isinstance(budget, bool) or budget > 1:
+        return [
+            f"source_code_appendix.pdf_page_budget={budget} 超过默认 1 页上限；"
+            "请把完整源码移入附件，或显式声明赛事要求"
+        ]
+    return []
 
 
 def _validate_readiness(run_dir: Path) -> list[str]:

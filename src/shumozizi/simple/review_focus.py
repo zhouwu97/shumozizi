@@ -19,6 +19,117 @@ from shumozizi.simple.state import utc_now
 
 FOCUSED_FOLLOWUP_PATH = Path("review/FOCUSED_FOLLOWUP.md")
 SCIENTIFIC_CHALLENGE_EVIDENCE_PATH = Path("review/scientific-challenge-evidence.json")
+STRONGER_ALTERNATIVE_PATH = Path("review/stronger-alternative.json")
+_ALTERNATIVE_RESOLUTIONS = frozenset({"attempted", "infeasible_in_schedule"})
+
+
+def record_stronger_alternative(
+    run_dir: Path,
+    *,
+    found: bool,
+    description: str | None = None,
+    resolution: str | None = None,
+    result_ids: list[str] | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """登记科学挑战是否发现更强路线或目标定义，以及后续处置。
+
+    只有 P0/P1 阻断时，"存在明显更强的路线"这类判断写进报告即可继续前进，
+    等于让挑战发现了上限却不必去拿。这里要求二选一：真的跑一次，或写明为何
+    在赛程内不可行。
+
+    Args:
+        run_dir: 当前运行目录。
+        found: 是否发现更强路线或目标定义。
+        description: 更强方案的具体描述。
+        resolution: ``attempted`` 或 ``infeasible_in_schedule``。
+        result_ids: ``attempted`` 时必须绑定的真实生产结果。
+        reason: ``infeasible_in_schedule`` 时的具体理由。
+
+    Returns:
+        已写入的处置记录。
+
+    Raises:
+        ContractError: 声明发现更强方案却没有实际尝试也没有说明不可行。
+    """
+    if not found:
+        payload = {
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "stronger_alternative_found": False,
+            "recorded_at": utc_now(),
+        }
+        atomic_json(run_dir / STRONGER_ALTERNATIVE_PATH, payload)
+        return payload
+    if not (description or "").strip():
+        raise ContractError("发现更强路线时必须写明它是什么")
+    if resolution not in _ALTERNATIVE_RESOLUTIONS:
+        raise ContractError(
+            "更强路线的处置必须是 attempted 或 infeasible_in_schedule"
+        )
+    identifiers = list(dict.fromkeys(result_ids or []))
+    if resolution == "attempted":
+        if not identifiers:
+            raise ContractError("声明已尝试更强路线时必须绑定真实生产结果")
+        available = {
+            item["result_id"]
+            for item in read_result_index(run_dir)["results"]
+            if item.get("execution_mode") == "production"
+            and item.get("execution_valid") is True
+        }
+        missing = sorted(set(identifiers) - available)
+        if missing:
+            raise ContractError(
+                "更强路线尝试绑定了未真实执行的结果: " + ", ".join(missing)
+            )
+    elif not (reason or "").strip():
+        raise ContractError("声明赛程内无法尝试更强路线时必须写明具体理由")
+    payload = {
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "stronger_alternative_found": True,
+        "description": description.strip(),
+        "resolution": resolution,
+        "result_ids": identifiers,
+        "reason": (reason or "").strip(),
+        "recorded_at": utc_now(),
+    }
+    atomic_json(run_dir / STRONGER_ALTERNATIVE_PATH, payload)
+    return payload
+
+
+def stronger_alternative_status(run_dir: Path) -> dict[str, Any]:
+    """返回更强路线判断是否已闭合，可作为论文放行条件之一。"""
+    path = run_dir / STRONGER_ALTERNATIVE_PATH
+    if not path.is_file():
+        return {
+            "allowed": False,
+            "reason": "科学挑战未记录是否存在更强路线或目标定义",
+        }
+    try:
+        payload = load_json(path)
+        if payload.get("run_id") != run_dir.name:
+            raise ContractError("更强路线记录 run_id 不匹配")
+        if payload.get("stronger_alternative_found") is not True:
+            return {"allowed": True, "reason": "", "record": payload}
+        resolution = payload.get("resolution")
+        if resolution not in _ALTERNATIVE_RESOLUTIONS:
+            raise ContractError("更强路线记录缺少合法处置")
+        if resolution == "attempted":
+            results = {
+                item["result_id"]
+                for item in read_result_index(run_dir)["results"]
+                if item.get("execution_mode") == "production"
+                and item.get("execution_valid") is True
+            }
+            missing = sorted(set(payload.get("result_ids", [])) - results)
+            if missing:
+                raise ContractError(
+                    "更强路线尝试引用的结果已失效: " + ", ".join(missing)
+                )
+        return {"allowed": True, "reason": "", "record": payload}
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return {"allowed": False, "reason": str(exc)}
 
 
 def write_focused_followup(run_dir: Path, content: str) -> Path:

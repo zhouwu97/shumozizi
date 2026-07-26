@@ -231,18 +231,26 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             raise ContractError(f"v3 状态不允许从 {state['phase']} 直接进入 {next_phase}")
         if next_phase == "experiment":
             from shumozizi.simple.modeling_units import require_v32_modeling_plan
+            from shumozizi.simple.objective_consequences import (
+                require_objective_candidate_plan,
+            )
             from shumozizi.simple.objective_semantics import objective_semantics_review_required
             from shumozizi.simple.review import require_objective_semantics_review
 
+            require_objective_candidate_plan(run_dir)
             require_v32_modeling_plan(run_dir)
             if objective_semantics_review_required(run_dir):
                 require_objective_semantics_review(run_dir)
         if next_phase == "paper":
             from shumozizi.paper.templates import require_materialized_template
             from shumozizi.simple.modeling_units import require_v32_experiment_evidence
+            from shumozizi.simple.objective_consequences import (
+                require_objective_consequences,
+            )
             from shumozizi.simple.review import require_paper_generation_allowed
 
             require_paper_generation_allowed(run_dir)
+            require_objective_consequences(run_dir)
             require_v32_experiment_evidence(run_dir)
             require_materialized_template(run_dir)
         if next_phase == "paper_review":

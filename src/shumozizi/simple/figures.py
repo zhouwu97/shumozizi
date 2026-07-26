@@ -21,9 +21,19 @@ from shumozizi.core.io import (
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import is_competition_first_state, read_simple_state, utc_now
+from shumozizi.simple.state import (
+    is_competition_first_state,
+    is_competition_first_v32_state,
+    read_simple_state,
+    utc_now,
+)
 
 INDEX_PATH = Path("figures/index.json")
+# 图的三种正当角色。stability 单列，因为舍入、采样层级和数值稳定性图是内部
+# 审计产物：它们对评委的边际价值远低于机制、阈值和权衡，不该占据正文版面。
+FIGURE_ROLES = frozenset({"model_understanding", "decisive_evidence", "insight", "stability"})
+FIGURE_PLACEMENTS = frozenset({"body", "appendix"})
+_APPENDIX_ONLY_ROLES = frozenset({"stability"})
 
 
 def _schema() -> dict[str, Any]:
@@ -89,10 +99,29 @@ def _register_competition_figure(
     scientific_question: str | None,
     expected_takeaway: str | None,
     cannot_prove: str | None,
+    role: str | None = None,
+    placement: str | None = None,
 ) -> dict[str, Any]:
     """登记由问题和 takeaway 驱动的 v3.1 图表。"""
     if figure_stage not in {"current", "evidence", "publication"}:
         raise ContractError("v3.1 figure_stage 必须为 current、evidence 或 publication")
+    if role is None and is_competition_first_v32_state(read_simple_state(run_dir)):
+        # role 可选时，把稳定性图放进正文只需不声明 role，附录约束等于可规避。
+        raise ContractError(
+            "v3.2 图表必须声明 role（model_understanding / decisive_evidence / "
+            "insight / stability）：不声明角色时附录约束形同虚设"
+        )
+    if role is not None and role not in FIGURE_ROLES:
+        raise ContractError("figure role 必须是 " + ", ".join(sorted(FIGURE_ROLES)))
+    if placement is not None and placement not in FIGURE_PLACEMENTS:
+        raise ContractError("figure placement 必须为 body 或 appendix")
+    if role in _APPENDIX_ONLY_ROLES:
+        if placement == "body":
+            raise ContractError(
+                "稳定性、舍入与采样层级图默认进入附录，不得抢占正文版面；"
+                "正文位置应留给机制、阈值与权衡"
+            )
+        placement = "appendix"
     index = read_figure_index(run_dir)
     source_result = next(
         (item for item in read_result_index(run_dir)["results"] if item["result_id"] == result_id), None
@@ -132,6 +161,10 @@ def _register_competition_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    if role is not None:
+        entry["role"] = role
+    if placement is not None:
+        entry["placement"] = placement
     for existing in index["figures"]:
         if existing["figure_id"] == figure_id and existing["status"] == "current":
             existing["status"] = "superseded"
@@ -153,6 +186,8 @@ def register_insight_figure(
     takeaway: str,
     limitations: str | None = None,
     template_id: str = "custom",
+    role: str | None = None,
+    placement: str | None = None,
 ) -> dict[str, Any]:
     """登记仅包含来源、问题和 takeaway 的 v3.1 图表。
 
@@ -167,6 +202,9 @@ def register_insight_figure(
         takeaway: 读者应一眼看到的结论。
         limitations: 可选的论证边界。
         template_id: 绘图实现类型，仅用于追溯。
+        role: 图的角色（model_understanding / decisive_evidence / insight /
+            stability）；stability 会被强制归入附录。
+        placement: 计划版面位置（body 或 appendix）。
 
     Returns:
         当前图表索引条目。
@@ -187,6 +225,8 @@ def register_insight_figure(
         scientific_question=question,
         expected_takeaway=takeaway,
         cannot_prove=limitations,
+        role=role,
+        placement=placement,
     )
 
 

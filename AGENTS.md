@@ -32,8 +32,12 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 - 前期可用 fresh thread、获奖论文结构卡或网页 GPT 讨论题意、建模、反例、验证和论文建议；专家卡和网页讨论都是发现问题的可选手段，不是阶段门。进入实验前的正式 `MODELING_UNITS.json` 仍须有两次只绑定 `problem/` 的真实 fresh-thread 题意重建，但回执只证明独立性，绝不证明模型或结论已正确。应及时把改变路线的判断写成绑定 `problem/` 的 `analysis/BASELINE_FREEZE.json` 决策快照，并在问题、反例或实验冲突出现后修订、重跑和复审。
 - 获奖论文专家库和网页讨论都不是答案库、引用库、结果来源或状态门。运行时只能读取安全 `library.json`；来源、页码与论文标识仅保留于离线 `provenance.json`。未冻结时路由须标记 `advisory_only=true` 和 `requires_independent_verification=true`；冻结或修订后应重新路由，并用 `AWARD_EXPERT_ROUTE_AUDIT.json` 确认 `structure_only=true`、`prompt_safe=true` 和 `raw_sources_returned=0`。审计须说明它没有操作系统级文件访问监控。
 - 网页 GPT 仅可基于用户提供的题面讨论和批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，也不得复用此类内容。其建议与专家卡只能帮助路线竞争、probe、验证、研究主线和 LaTeX 论文组织；不得作为当前模型、参数、结果、图表、代码、citation、claim evidence 或 exact 比较的替代品。需要并行讨论时，先将仅基于 `problem/` 的路线冻结为 `LOCAL_ROUTE_SNAPSHOT.json`，发给网页的首轮提示不得披露该路线，且在本地路线写完前不得阅读网页回应；之后将差异和本地验证动作写入 `EXTERNAL_DISCUSSION_COMPARISON.json`。实现总结必须另开网页 fresh chat，不能续用首轮讨论；它只能给出可由 exact scorer 和真实实验检验的实现建议，不能替代本地寻找最优。所有可采纳建议必须由当前运行的 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核验证；同题资料仍只能在 baseline 快照后进入 answer-filter。
-- v3.2 每个 `compare` 单元必须有 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 仅用于题型明确需要独立 oracle 的单元。单纯替换 GA、PSO、DE 等求解器属于同一路线比较。
+- 目标不得在看到策略后果之前冻结。题面留有解释空间时，`analysis/OBJECTIVE_CANDIDATES.json` 必须保留至少两个候选目标（各含公式、预期策略偏好、题面依据）和一组共同后果度量，其中至少一个是公平、瓶颈或安全指标。每个候选都要有真实低成本 probe；若冻结候选让某 guard 指标跌破下限而其它候选没有，必须写出权衡裁决并绑定至少两点真实 Pareto 证据。`analysis/objective-ambiguities.json` 仍有未决且会改变主结果的歧义时，不能用 `determined` 跳过候选比较。
+- v3.2 每个 `compare` 单元必须有 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 仅用于题型明确需要独立 oracle 的单元。单纯替换 GA、PSO、DE 等求解器属于同一路线比较。每个单元必须显式声明 `core_question`，且运行至少有一个核心问题。
 - 比较统一 exact 目标、实际预算与可行性优先；首个可行解后必须至少用两类异构策略深化，且只可使用计划声明的停止理由白名单。灵敏度、鲁棒性和题型 oracle 条件触发，不能互相替代。
+- 比较必须真的判胜负。赢家由统一 exact scorer 的实测结果决定，不能由声明指定；核心问题的赢家必须相对 baseline 达到事前声明的 `significant_improvement_ratio`，否则继续搜索、换路线，或用 `baseline_near_bound` 加实际界证据说明已接近上限。深化后的最终结果不得比比较阶段的赢家更差。核心问题的竞争路线要给出可量化的 `expected_improvement_ratio`，实测明显落空时登记 `upside_shortfall` 的原因与决定。
+- 预算优先给搜索。核心问题的搜索与深化耗时必须超过其验证与复算耗时，核心搜索还要占实际算力的 40% 以上；分母统计全部已执行结果，把复算跑成 exploration 不能稀释这条检查。
+- 核心问题必须提炼带 `insight_id` 的结构化规律（观察、机制、真实结果证据、边界），其中至少一条属于机制、边际收益、活跃约束或权衡；只有反直觉描述不算理解。
 - 将主路线、fallback、切换条件写入 `analysis/ROUTE_COMPETITION.md`；将只有决策价值的实验写入 `analysis/NEXT_EXPERIMENTS.md`。
 - 实验必须真实执行，使用 `scripts/runtime/run_simple_experiment.py`。论文数字和图表只能来自 `current` 且 `execution_valid=true` 的生产结果。
 - `analysis/method_facts.json` 以实验显式登记为准，并联合结果、命令和源码提示；全面审核后必须连同强断言进入结构化 gap 查漏。`method_profile.json`、`critical_claims.json` 仍是 legacy 兼容，不参与 v3.1 跳转。
@@ -43,15 +47,17 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 只有高影响且未解决的目标歧义才触发独立目标语义审查。判断来自 `analysis/objective-ambiguities.json`：至少两个合理解释、可能改变主结果、题面未排除、用户未裁决。
 
-实验结束做一次自由科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。报告冻结后必须提取强断言并生成 `review/gaps/round-N.json`：只有具有攻击描述、报告定位与实际证据文件的 `attacked` 风险才能视为覆盖；未覆盖中央风险须由 fresh-thread 专项审核闭合。所有 blocking P2 必须按 finding ID 逐项绑定恢复条件、修复文件、专项报告和回执，不能只关闭其中一个。
+实验结束做一次自由科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。"是否存在明显更强的路线或目标定义"必须用 `record_stronger_alternative` 写成 `review/stronger-alternative.json` 闭合：发现更强方案时要么真的跑一次并绑定真实生产结果，要么写明为何赛程内不可行；未闭合不放行论文。报告冻结后必须提取强断言并生成 `review/gaps/round-N.json`：只有具有攻击描述、报告定位与实际证据文件的 `attacked` 风险才能视为覆盖；未覆盖中央风险须由 fresh-thread 专项审核闭合。所有 blocking P2 必须按 finding ID 逐项绑定恢复条件、修复文件、专项报告和回执，不能只关闭其中一个。
 
 PDF 盲评必须用 Codex `create_thread` 新建独立顶层对话，禁止 fork、子 Agent 或续用任何已有对话。新对话只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，要严格检查内容、数学逻辑、结果可信度和排版格式，并给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。完成一版 PDF 后还应进行一次网页版 GPT 补充审核：通过网页“添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核只审 PDF 内部自洽性、可读性、论证、图表和版式；无法由 PDF 验证的地方必须转为本地复算或题面对照任务。将每项 P0/P1/P2/P3 写入 `WEB_PAPER_AUDIT.json`，用 `WEB_PAPER_REPAIR_PLAN.json` 逐项局部修复、重新编译并复核；不因一般问题整篇重写。同一运行最多三轮网页版终审；第三轮仍有 P0/P1 时，写 `WEB_PAPER_AUDIT_FAILURE.json`，按工作流、建模、证据、论文/图表与下一步复盘并保持 `not_submission_ready`，不得继续循环或标记完成。网页评价或循环完成均不能证明省一或任何奖项，只能降低已识别的质量风险。
 
 ## 图表与论文
 
-- 图表输出默认在 `figures/current/`。每张图只需要真实来源、它回答的问题、读者看到的 takeaway，以及可选边界；不得为每题、3D、多种子、敏感性或双版本输出凑数量。
+- 图表输出默认在 `figures/current/`。每张图只需要真实来源、它回答的问题、读者看到的 takeaway，以及可选边界；不得为每题、3D、多种子、敏感性或双版本输出凑数量，也不靠输出份数凑数量。
+- v3.2 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。`stability`（舍入、采样层级、数值稳定性）一律进入附录，不得占据正文版面。省略 role 会被拒绝，否则附录约束形同虚设。
 - 图必须由当前数据和当前脚本实际生成，PNG/PDF 可读，并在结果变化后失效。
-- 论文只硬性要求每个必答问题在 `analysis/answer_map.json` 或 `paper/answer-map.json` 有直接答案位置和当前结果。运行时会自动生成 `paper/generated/argument_map.json`；v3.2 只能使用无回退 LaTeX 学术模板。
+- 论文只硬性要求每个必答问题在 `analysis/answer_map.json` 或 `paper/answer-map.json` 有直接答案位置和当前结果。核心问题另需用 `insight_ids` 引用实验阶段登记的机制或边际收益类规律——规律只生产不消费时会退化成旁路产物。
+- PDF 内源码默认不超过一页（`source_code_appendix.pdf_page_budget`），完整代码走 `mode: attachment`；确有赛事要求时显式声明 `competition_requires_full` 与依据。运行时会自动生成 `paper/generated/argument_map.json`；v3.2 只能使用无回退 LaTeX 学术模板。
 - 论文采用可往返的三种逻辑动作：结构蓝图，统一共享模型并逐问成文，证据边界与严格返修。可借鉴蓝图、共享模型、逐问章节、证据局限和返修的五轮思路，但不得把次数固定成状态机或伪造完成度。论文阶段按需路由研究主线、公式语境、结果闭环、图表、摘要、严格评阅和 `latex-layout-editor`，但永远不把专家卡当作当前事实。`paper/STORYBOARD.md` 和 `paper/CONTRIBUTION_BRIEF.md` 是提高质量的软产物；贡献最多三项，不能把常规方法组合包装为创新。
 - 小的正文文字改动只需重新编译和机械 QA；影响结论或图表的改动需重新盲评；代码、数据、目标或主要结果改动需回到实验和科学挑战。标记 `complete` 前必须重新验证科学挑战仍绑定当前生产事实。
 

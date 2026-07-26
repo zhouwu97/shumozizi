@@ -3974,8 +3974,19 @@ def require_paper_generation_allowed(run_dir: Path) -> None:
             # v3.2 的真实路线竞争由 modeling units 的 compare 证据承载；
             # 不能以 v3.1 的单一 route_tournament 元数据缺失阻断论文。
             from shumozizi.simple.modeling_units import require_v32_experiment_evidence
+            from shumozizi.simple.objective_consequences import (
+                require_objective_consequences,
+            )
 
+            require_objective_consequences(run_dir)
             require_v32_experiment_evidence(run_dir)
+            from shumozizi.simple.review_focus import stronger_alternative_status
+
+            alternative = stronger_alternative_status(run_dir)
+            if not alternative["allowed"]:
+                raise ContractError(
+                    "不能进入论文阶段：更强路线判断未闭合: " + alternative["reason"]
+                )
         else:
             from shumozizi.simple.competition import require_route_tournament_for_paper
 

@@ -353,6 +353,12 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(result_ids, list) or not result_ids or not all(isinstance(value, str) for value in result_ids):
             raise ContractError(f"{question_id} 必须绑定至少一个 result_id")
         _require_text(location, f"{question_id}.direct_answer_location")
+        insight_ids = item.get("insight_ids")
+        if insight_ids is not None and (
+            not isinstance(insight_ids, list)
+            or not all(isinstance(value, str) and value.strip() for value in insight_ids)
+        ):
+            raise ContractError(f"{question_id}.insight_ids 必须是非空文本数组")
     document = {
         "schema_version": "1.0",
         "run_id": run_dir.name,

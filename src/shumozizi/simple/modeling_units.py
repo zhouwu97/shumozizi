@@ -3,6 +3,11 @@
 该模块只冻结会改变建模决策的事实：题意双重独立重建、比较或 oracle-only
 单元、首解后的异构深化、条件验证，以及事前预期与实际结果的对照。它不复制
 旧工作区的大型模型组合 JSON，也不替代现有的 result、review 或论文协议。
+
+v3.2 另外约束两件直接决定建模上限的事：
+1. 核心问题必须显式标记，并且其搜索预算不得被验证与复算预算压过；
+2. 核心问题必须产出结构化规律（机制、边际收益、活跃约束或权衡），
+   否则结果只是"被证明没撒谎"，而没有被真正理解。
 """
 
 from __future__ import annotations
@@ -28,6 +33,20 @@ STOP_REASON_WHITELIST = frozenset(
 )
 _OBJECTIVE_DIRECTIONS = frozenset({"minimize", "maximize"})
 _EXPECTATION_STATUSES = frozenset({"confirmed", "revised", "contradicted"})
+_INSIGHT_KINDS = frozenset(
+    {
+        "mechanism",
+        "marginal_gain",
+        "active_constraint",
+        "threshold",
+        "tradeoff",
+        "counterintuitive",
+        "decision_rule",
+    }
+)
+# 核心问题的搜索预算下限：占全部生产执行耗时的比例。低于它说明算力主要
+# 花在确认当前候选没撒谎，而不是继续寻找更强候选。
+CORE_SEARCH_BUDGET_SHARE = 0.4
 
 
 def semantic_reconstruction_input_bindings(run_dir: Path) -> dict[str, Any]:
@@ -115,12 +134,35 @@ def _semantic_reconstructions(run_dir: Path, value: object) -> None:
         reports.add(report_file)
 
 
-def _route_definition(value: object, label: str) -> tuple[str, str]:
-    """读取路线 ID 和数学结构，明确排除仅替换求解器的伪竞争。"""
+def _route_definition(
+    value: object, label: str, *, require_potential: bool
+) -> tuple[str, str, float | None]:
+    """读取路线 ID、数学结构和可检验的预期上限。
+
+    核心问题额外要求声明结构利用方式和量化预期上限：只按假设、成本和风险
+    选路线会系统性偏向保守路线，压低建模上限；而纯文字的"预期上限"事后无法
+    与实测对照，等于没有声明。
+    """
     item = _require_mapping(value, label)
+    upside: float | None = None
+    if require_potential:
+        _require_text(item.get("structure_exploited"), f"{label}.structure_exploited")
+        _require_text(item.get("expected_upside"), f"{label}.expected_upside")
+        ratio = item.get("expected_improvement_ratio")
+        if (
+            not isinstance(ratio, (int, float))
+            or isinstance(ratio, bool)
+            or not math.isfinite(float(ratio))
+        ):
+            raise ContractError(
+                f"{label}.expected_improvement_ratio 必须是有限数："
+                "核心问题的预期上限要能在实验后与实测改善对照"
+            )
+        upside = float(ratio)
     return (
         _require_text(item.get("route_id"), f"{label}.route_id"),
         _require_text(item.get("mathematical_structure"), f"{label}.mathematical_structure"),
+        upside,
     )
 
 
@@ -130,6 +172,12 @@ def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict
     question_id = _require_text(unit.get("question_id"), f"{unit_id}.question_id")
     if question_id not in question_ids:
         raise ContractError(f"{unit_id}.question_id 不是必答问题")
+    core = unit.get("core_question")
+    if not isinstance(core, bool):
+        raise ContractError(
+            f"{unit_id}.core_question 必须显式声明；不标出决定奖项上限的问题，"
+            "预算就会被平均分配"
+        )
     mode = unit.get("mode")
     if mode not in {"compare", "oracle_only"}:
         raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
@@ -137,6 +185,26 @@ def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict
     _require_text(objective.get("exact_metric"), f"{unit_id}.objective.exact_metric")
     if objective.get("direction") not in _OBJECTIVE_DIRECTIONS:
         raise ContractError(f"{unit_id}.objective.direction 必须为 minimize 或 maximize")
+    threshold = objective.get("significant_improvement_ratio")
+    if threshold is None:
+        # 核心问题必须事前声明"多大改善才算真的更强"，避免事后把任意结果解释为成功。
+        if core:
+            raise ContractError(
+                f"{unit_id}.objective.significant_improvement_ratio 缺失："
+                "核心问题必须事前声明相对 baseline 的显著改善阈值"
+            )
+        improvement_threshold = 0.0
+    else:
+        if (
+            not isinstance(threshold, (int, float))
+            or isinstance(threshold, bool)
+            or not math.isfinite(float(threshold))
+            or float(threshold) < 0
+        ):
+            raise ContractError(
+                f"{unit_id}.objective.significant_improvement_ratio 必须是非负有限数"
+            )
+        improvement_threshold = float(threshold)
     budget = _require_mapping(unit.get("budget"), f"{unit_id}.budget")
     if budget.get("kind") != "wall_seconds":
         raise ContractError(f"{unit_id}.budget.kind 当前必须为 wall_seconds")
@@ -177,17 +245,25 @@ def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict
         _require_text(validation["oracle"].get("oracle_kind"), f"{unit_id}.validation.oracle.oracle_kind")
 
     route_ids: list[str] = []
+    expected_upsides: dict[str, float] = {}
     if mode == "compare":
-        baseline_id, baseline_structure = _route_definition(unit.get("baseline"), f"{unit_id}.baseline")
+        baseline_id, baseline_structure, _ = _route_definition(
+            unit.get("baseline"), f"{unit_id}.baseline", require_potential=False
+        )
         candidates_raw = unit.get("competitive_routes")
         if not isinstance(candidates_raw, list) or len(candidates_raw) < 2:
             raise ContractError(f"{unit_id}.competitive_routes 至少需要两条机制不同的路线")
         candidates = [
-            _route_definition(route, f"{unit_id}.competitive_routes[{index}]")
+            _route_definition(
+                route, f"{unit_id}.competitive_routes[{index}]", require_potential=core
+            )
             for index, route in enumerate(candidates_raw)
         ]
-        route_ids = [baseline_id, *(route_id for route_id, _ in candidates)]
-        structures = [baseline_structure, *(structure for _, structure in candidates)]
+        expected_upsides = {
+            route_id: upside for route_id, _, upside in candidates if upside is not None
+        }
+        route_ids = [baseline_id, *(route_id for route_id, _, _ in candidates)]
+        structures = [baseline_structure, *(structure for _, structure, _ in candidates)]
         if len(set(route_ids)) != len(route_ids):
             raise ContractError(f"{unit_id} 的 route_id 不得重复")
         if len(set(structures)) != len(structures):
@@ -205,11 +281,14 @@ def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict
     return {
         "unit_id": unit_id,
         "question_id": question_id,
+        "core_question": core,
         "mode": mode,
         "exact_metric": objective["exact_metric"],
         "direction": objective["direction"],
+        "improvement_threshold": improvement_threshold,
         "budget_tolerance_ratio": float(tolerance),
         "route_ids": route_ids,
+        "expected_upsides": expected_upsides,
         "families": families,
         "stop_reasons": set(reasons),
         "oracle_required": oracle_required,
@@ -245,16 +324,34 @@ def _production_result_ids(
     return identifiers
 
 
+def _better(candidate: float, incumbent: float, direction: str) -> bool:
+    """按统一目标方向判断前者是否严格更优。"""
+    return candidate < incumbent if direction == "minimize" else candidate > incumbent
+
+
+def _improvement_ratio(baseline: float, winner: float, direction: str) -> float:
+    """计算赢家相对 baseline 的正向改善比例。"""
+    denominator = max(abs(baseline), 1e-12)
+    if direction == "minimize":
+        return (baseline - winner) / denominator
+    return (winner - baseline) / denominator
+
+
 def _validate_comparison_actual(
     actual: dict[str, Any], plan: dict[str, Any], results: dict[str, dict[str, Any]]
 ) -> None:
-    """用统一 exact、实际预算和可行性事实复验 compare 单元。"""
+    """用统一 exact、实际预算和可行性事实复验 compare 单元。
+
+    这里必须真正比较分数，而不只是确认每条路线都跑过：只验证"可行且预算公平"
+    会允许一个比 baseline 更差的结果一路进入论文，等于取消了搜索下限。
+    """
     comparison = _require_mapping(actual.get("comparison"), f"{plan['unit_id']}.actual.comparison")
     route_result_ids = _require_mapping(
         comparison.get("route_result_ids"), f"{plan['unit_id']}.actual.comparison.route_result_ids"
     )
     if set(route_result_ids) != set(plan["route_ids"]):
         raise ContractError(f"{plan['unit_id']} 的实际比较必须覆盖且仅覆盖已声明路线")
+    scores: dict[str, float] = {}
     durations: list[float] = []
     for route_id in plan["route_ids"]:
         result = _production_result(
@@ -275,6 +372,7 @@ def _validate_comparison_actual(
         duration = result.get("duration_seconds")
         if not isinstance(duration, (int, float)) or isinstance(duration, bool) or float(duration) <= 0:
             raise ContractError(f"{plan['unit_id']} 的路线 {route_id} 缺少正的实际耗时")
+        scores[route_id] = float(metric)
         durations.append(float(duration))
     baseline_duration = durations[0]
     if any(
@@ -282,20 +380,175 @@ def _validate_comparison_actual(
         for duration in durations[1:]
     ):
         raise ContractError(f"{plan['unit_id']} 的路线实际预算不公平")
+    _validate_winner_and_improvement(comparison, plan, scores)
 
 
-def _validate_actual_unit(plan: dict[str, Any], raw_unit: dict[str, Any], results: dict[str, dict[str, Any]]) -> None:
-    """验证事前预期已被首批攻击、深化和条件验证的实际结果回填。"""
+def _validate_winner_and_improvement(
+    comparison: dict[str, Any], plan: dict[str, Any], scores: dict[str, float]
+) -> None:
+    """要求赢家由实测 exact 决定，且核心问题真的比 baseline 更强。
+
+    没有这道检查时，一条比 baseline 更差的路线只要"可行 + 预算公平 + 有两族
+    深化 + 有规律"就能进论文，搜索强度就完全失去下限。
+    """
+    unit_id = plan["unit_id"]
+    direction = plan["direction"]
+    baseline_route = plan["route_ids"][0]
+    winner = _require_text(comparison.get("winner_route_id"), f"{unit_id}.actual.comparison.winner_route_id")
+    if winner not in scores:
+        raise ContractError(f"{unit_id}.actual.comparison.winner_route_id 必须是已比较路线")
+    measured_winner = min(scores, key=lambda key: scores[key]) if direction == "minimize" else max(
+        scores, key=lambda key: scores[key]
+    )
+    if not math.isclose(scores[winner], scores[measured_winner], rel_tol=0.0, abs_tol=1e-9):
+        raise ContractError(
+            f"{unit_id} 声明的赢家 {winner} 不是实测 exact 最优路线（{measured_winner}）；"
+            "赢家必须由统一 scorer 的真实结果决定"
+        )
+    final = plan.get("final_score")
+    if final is not None and _better(scores[winner], final, direction):
+        raise ContractError(
+            f"{unit_id} 的最终结果比比较阶段的赢家更差；"
+            "深化不能让结果退步，请回到搜索或改用赢家路线的解"
+        )
+    if not plan["core_question"]:
+        return
+    threshold = plan["improvement_threshold"]
+    ratio = _improvement_ratio(scores[baseline_route], scores[winner], direction)
+    if ratio < threshold:
+        if comparison.get("baseline_near_bound") is not True:
+            raise ContractError(
+                f"{unit_id} 是核心问题，但赢家相对 baseline 仅改善 {ratio:.1%}，"
+                f"低于计划声明的 {threshold:.1%}；必须继续搜索、换更强路线，"
+                "或用 baseline_near_bound 与实际界证据说明已接近上限"
+            )
+        # baseline 已接近可证界时，"改善很小"是真实结论而不是搜索不足；
+        # 此时路线预期上限落空只是同一事实的另一种说法，不再重复要求登记。
+        _require_text(
+            comparison.get("near_bound_evidence"),
+            f"{unit_id}.actual.comparison.near_bound_evidence",
+        )
+        return
+    _validate_route_upside_expectations(comparison, plan, scores, baseline_route)
+
+
+def _validate_route_upside_expectations(
+    comparison: dict[str, Any],
+    plan: dict[str, Any],
+    scores: dict[str, float],
+    baseline_route: str,
+) -> None:
+    """把事前声明的路线上限与实测改善对照，避免"高上限"只是措辞。
+
+    实测明显低于声明时不直接阻断——预期落空本身是有价值的结论——但必须显式
+    登记为落空，并说明由此做了什么决定，不能继续以原声明叙述路线优势。
+    """
+    unit_id = plan["unit_id"]
+    direction = plan["direction"]
+    baseline_score = scores[baseline_route]
+    shortfalls: list[str] = []
+    for route_id, expected in plan["expected_upsides"].items():
+        measured = _improvement_ratio(baseline_score, scores[route_id], direction)
+        # 只在实测不足声明一半时判为落空，容忍正常的估计误差。
+        if measured < expected * 0.5:
+            shortfalls.append(f"{route_id}(声明 {expected:.1%} / 实测 {measured:.1%})")
+    if not shortfalls:
+        return
+    review = comparison.get("upside_shortfall")
+    if not isinstance(review, dict):
+        raise ContractError(
+            f"{unit_id} 的路线预期上限明显落空: {', '.join(sorted(shortfalls))}；"
+            "必须登记 upside_shortfall，说明落空原因与由此做出的决定"
+        )
+    _require_text(review.get("cause"), f"{unit_id}.actual.comparison.upside_shortfall.cause")
+    _require_text(review.get("decision"), f"{unit_id}.actual.comparison.upside_shortfall.decision")
+
+
+def _duration_seconds(results: dict[str, dict[str, Any]], result_ids: set[str]) -> float:
+    """汇总一组结果的实际执行耗时，用作可复验的预算度量。"""
+    total = 0.0
+    for result_id in result_ids:
+        duration = results[result_id].get("duration_seconds")
+        if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+            value = float(duration)
+            if math.isfinite(value) and value > 0:
+                total += value
+    return total
+
+
+def _validate_insights(value: object, plan: dict[str, Any], results: dict[str, dict[str, Any]]) -> None:
+    """要求核心问题在冻结论文口径前真的挖出规律，而不是只完成复算。
+
+    每条规律必须绑定真实结果、说明机制并写明边界；核心问题至少需要一条
+    机制、边际收益、活跃约束或权衡类规律，因为这几类才回答"为什么最优解
+    是现在这个结构"。
+    """
+    unit_id = plan["unit_id"]
+    label = f"{unit_id}.actual.insights"
+    insights = value
+    if not isinstance(insights, list) or not insights:
+        if plan["core_question"]:
+            raise ContractError(
+                f"{label} 缺失：核心问题必须提炼规律（机制、边际收益、活跃约束或权衡），"
+                "只做独立复算不构成理解"
+            )
+        return
+    kinds: set[str] = set()
+    identifiers: set[str] = set()
+    for index, raw in enumerate(insights):
+        item = _require_mapping(raw, f"{label}[{index}]")
+        insight_id = _require_text(item.get("insight_id"), f"{label}[{index}].insight_id")
+        if insight_id in identifiers:
+            raise ContractError(f"{label} 的 insight_id 不得重复: {insight_id}")
+        identifiers.add(insight_id)
+        kind = item.get("kind")
+        if kind not in _INSIGHT_KINDS:
+            raise ContractError(
+                f"{label}[{index}].kind 必须属于 " + ", ".join(sorted(_INSIGHT_KINDS))
+            )
+        _require_text(item.get("observation"), f"{label}[{index}].observation")
+        _require_text(item.get("mechanism"), f"{label}[{index}].mechanism")
+        _require_text(item.get("boundary"), f"{label}[{index}].boundary")
+        _production_result_ids(
+            results,
+            value=item.get("evidence_result_ids"),
+            question_id=plan["question_id"],
+            label=f"{label}[{index}].evidence_result_ids",
+        )
+        kinds.add(kind)
+    if plan["core_question"] and not kinds & {
+        "mechanism",
+        "marginal_gain",
+        "active_constraint",
+        "tradeoff",
+    }:
+        raise ContractError(
+            f"{label} 只有描述性规律：核心问题至少需要一条机制、边际收益、活跃约束或权衡"
+        )
+
+
+def _validate_actual_unit(
+    plan: dict[str, Any], raw_unit: dict[str, Any], results: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """验证事前预期已被首批攻击、深化和条件验证的实际结果回填。
+
+    Returns:
+        本单元的搜索与验证实际耗时，供全局预算倾斜检查使用。
+    """
     actual = _require_mapping(raw_unit.get("actual"), f"{plan['unit_id']}.actual")
     if actual.get("expectation_status") not in _EXPECTATION_STATUSES:
         raise ContractError(f"{plan['unit_id']}.actual.expectation_status 不合法")
     _require_text(actual.get("summary"), f"{plan['unit_id']}.actual.summary")
+    search_ids: set[str] = set()
+    verify_ids: set[str] = set()
     attack = _require_mapping(actual.get("first_batch_attack"), f"{plan['unit_id']}.actual.first_batch_attack")
-    _production_result_ids(
-        results,
-        value=attack.get("result_ids"),
-        question_id=plan["question_id"],
-        label=f"{plan['unit_id']}.actual.first_batch_attack.result_ids",
+    verify_ids.update(
+        _production_result_ids(
+            results,
+            value=attack.get("result_ids"),
+            question_id=plan["question_id"],
+            label=f"{plan['unit_id']}.actual.first_batch_attack.result_ids",
+        )
     )
     _require_text(attack.get("conclusion"), f"{plan['unit_id']}.actual.first_batch_attack.conclusion")
 
@@ -303,20 +556,32 @@ def _validate_actual_unit(plan: dict[str, Any], raw_unit: dict[str, Any], result
     first = _require_text(refinement.get("first_feasible_result_id"), f"{plan['unit_id']}.actual.refinement.first_feasible_result_id")
     final = _require_text(refinement.get("final_result_id"), f"{plan['unit_id']}.actual.refinement.final_result_id")
     _production_result(results, result_id=first, question_id=plan["question_id"], label=f"{plan['unit_id']}.first_feasible")
-    _production_result(results, result_id=final, question_id=plan["question_id"], label=f"{plan['unit_id']}.final")
+    final_result = _production_result(
+        results, result_id=final, question_id=plan["question_id"], label=f"{plan['unit_id']}.final"
+    )
     if first == final:
         raise ContractError(f"{plan['unit_id']} 不能把首个可行解直接作为最终解")
+    final_metric = final_result.get("metrics", {}).get(plan["exact_metric"])
+    if (
+        isinstance(final_metric, (int, float))
+        and not isinstance(final_metric, bool)
+        and math.isfinite(float(final_metric))
+    ):
+        plan["final_score"] = float(final_metric)
+    search_ids.update({first, final})
     family_results = _require_mapping(
         refinement.get("family_result_ids"), f"{plan['unit_id']}.actual.refinement.family_result_ids"
     )
     if set(family_results) != set(plan["families"]):
         raise ContractError(f"{plan['unit_id']} 的深化证据必须覆盖所有异构策略族")
     for family in plan["families"]:
-        _production_result_ids(
-            results,
-            value=family_results[family],
-            question_id=plan["question_id"],
-            label=f"{plan['unit_id']}.actual.refinement.family_result_ids.{family}",
+        search_ids.update(
+            _production_result_ids(
+                results,
+                value=family_results[family],
+                question_id=plan["question_id"],
+                label=f"{plan['unit_id']}.actual.refinement.family_result_ids.{family}",
+            )
         )
     stop_reason = _require_text(refinement.get("stop_reason"), f"{plan['unit_id']}.actual.refinement.stop_reason")
     if stop_reason not in plan["stop_reasons"]:
@@ -329,29 +594,45 @@ def _validate_actual_unit(plan: dict[str, Any], raw_unit: dict[str, Any], result
         ("robustness", plan["robustness_required"]),
     ):
         result_ids = validation.get(f"{name}_result_ids", [])
-        if required:
-            _production_result_ids(
-                results,
-                value=result_ids,
-                question_id=plan["question_id"],
-                label=f"{plan['unit_id']}.actual.validation.{name}_result_ids",
-            )
-        elif result_ids not in (None, []):
-            _production_result_ids(
-                results,
-                value=result_ids,
-                question_id=plan["question_id"],
-                label=f"{plan['unit_id']}.actual.validation.{name}_result_ids",
+        if required or result_ids not in (None, []):
+            verify_ids.update(
+                _production_result_ids(
+                    results,
+                    value=result_ids,
+                    question_id=plan["question_id"],
+                    label=f"{plan['unit_id']}.actual.validation.{name}_result_ids",
+                )
             )
     if plan["mode"] == "compare":
         _validate_comparison_actual(actual, plan, results)
+        route_result_ids = actual["comparison"]["route_result_ids"]
+        search_ids.update(str(route_result_ids[route_id]) for route_id in plan["route_ids"])
     else:
-        _production_result_ids(
-            results,
-            value=actual.get("oracle_result_ids"),
-            question_id=plan["question_id"],
-            label=f"{plan['unit_id']}.actual.oracle_result_ids",
+        verify_ids.update(
+            _production_result_ids(
+                results,
+                value=actual.get("oracle_result_ids"),
+                question_id=plan["question_id"],
+                label=f"{plan['unit_id']}.actual.oracle_result_ids",
+            )
         )
+    _validate_insights(actual.get("insights"), plan, results)
+    # 同一结果既服务搜索又服务验证时按搜索计入，避免把深化证据算成验证开销。
+    verify_ids -= search_ids
+    search_seconds = _duration_seconds(results, search_ids)
+    verify_seconds = _duration_seconds(results, verify_ids)
+    if plan["core_question"] and verify_seconds > search_seconds:
+        raise ContractError(
+            f"{plan['unit_id']} 是核心问题，但验证与复算耗时 {verify_seconds:.1f}s "
+            f"已超过搜索与深化耗时 {search_seconds:.1f}s；"
+            "必须先继续寻找更强候选，再扩大验证"
+        )
+    return {
+        "unit_id": plan["unit_id"],
+        "core_question": plan["core_question"],
+        "search_seconds": search_seconds,
+        "verification_seconds": verify_seconds,
+    }
 
 
 def _validate_research_story(value: object, question_ids: set[str]) -> None:
@@ -413,10 +694,44 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
         plans.append(plan)
     if covered_questions != question_ids:
         raise ContractError("MODELING_UNITS 必须覆盖每个必答问题")
+    if not any(plan["core_question"] for plan in plans):
+        raise ContractError(
+            "MODELING_UNITS 必须至少标记一个核心问题；"
+            "每问平均用力会让决定奖项上限的问题得不到足够搜索预算"
+        )
     if require_actual:
         results = {item["result_id"]: item for item in read_result_index(run_dir)["results"]}
-        for plan, raw in zip(plans, raw_units, strict=True):
+        budgets = [
             _validate_actual_unit(plan, raw, results)
+            for plan, raw in zip(plans, raw_units, strict=True)
+        ]
+        _require_core_budget_share(run_dir, budgets)
+
+
+def _require_core_budget_share(run_dir: Path, budgets: list[dict[str, Any]]) -> None:
+    """要求核心问题的搜索深化真的占据了主要生产算力。
+
+    只看单元内部比例会漏掉另一种偏差：核心问题本身只跑了很少实验，而算力
+    被平摊到次要问题或全局复算上。因此这里再核对全局份额。
+    """
+    core_search = sum(item["search_seconds"] for item in budgets if item["core_question"])
+    total = 0.0
+    for result in read_result_index(run_dir)["results"]:
+        # 分母统计全部已执行结果（含 exploration 与已被替代者）：只算 current
+        # production 时，把大量复算跑成 exploration 就能稀释这条检查。
+        duration = result.get("duration_seconds")
+        if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+            value = float(duration)
+            if math.isfinite(value) and value > 0:
+                total += value
+    if total <= 0:
+        return
+    share = core_search / total
+    if share < CORE_SEARCH_BUDGET_SHARE:
+        raise ContractError(
+            f"核心问题搜索深化仅占实际算力 {share:.0%}，低于要求的 "
+            f"{CORE_SEARCH_BUDGET_SHARE:.0%}；请把预算从复算与格式稳定性移回候选搜索"
+        )
 
 
 def write_modeling_units(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -437,6 +752,46 @@ def require_v32_modeling_plan(run_dir: Path) -> None:
     if not path.is_file():
         raise ContractError("进入实验前必须完成 analysis/MODELING_UNITS.json")
     validate_modeling_units(run_dir, load_json(path), require_actual=False)
+
+
+_SUBSTANTIVE_INSIGHT_KINDS = frozenset(
+    {"mechanism", "marginal_gain", "active_constraint", "tradeoff"}
+)
+
+
+def core_question_insights(run_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    """返回核心问题已提炼的实质规律，供论文阶段检查是否真被使用。
+
+    Args:
+        run_dir: 当前运行目录。
+
+    Returns:
+        以 question_id 为键的规律列表；只包含机制、边际收益、活跃约束和权衡
+        这四类能回答"为什么最优解是这个结构"的规律。
+    """
+    path = run_dir / MODELING_UNITS_PATH
+    if not path.is_file():
+        return {}
+    try:
+        payload = load_json(path)
+    except (OSError, ValueError):
+        return {}
+    collected: dict[str, list[dict[str, Any]]] = {}
+    for unit in payload.get("units", []):
+        if not isinstance(unit, dict) or unit.get("core_question") is not True:
+            continue
+        question_id = unit.get("question_id")
+        actual = unit.get("actual")
+        if not isinstance(question_id, str) or not isinstance(actual, dict):
+            continue
+        for insight in actual.get("insights", []):
+            if (
+                isinstance(insight, dict)
+                and insight.get("kind") in _SUBSTANTIVE_INSIGHT_KINDS
+                and isinstance(insight.get("insight_id"), str)
+            ):
+                collected.setdefault(question_id, []).append(insight)
+    return collected
 
 
 def require_v32_experiment_evidence(run_dir: Path) -> None:
