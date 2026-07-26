@@ -47,9 +47,15 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 只有高影响且未解决的目标歧义才触发独立目标语义审查。判断来自 `analysis/objective-ambiguities.json`：至少两个合理解释、可能改变主结果、题面未排除、用户未裁决。
 
-实验结束做一次自由科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。"是否存在明显更强的路线或目标定义"必须用 `record_stronger_alternative` 写成 `review/stronger-alternative.json` 闭合：发现更强方案时要么真的跑一次并绑定真实生产结果，要么写明为何赛程内不可行；未闭合不放行论文。报告冻结后必须提取强断言并生成 `review/gaps/round-N.json`：只有具有攻击描述、报告定位与实际证据文件的 `attacked` 风险才能视为覆盖；未覆盖中央风险须由 fresh-thread 专项审核闭合。所有 blocking P2 必须按 finding ID 逐项绑定恢复条件、修复文件、专项报告和回执，不能只关闭其中一个。
+**v3.1/v3.2 Competition-First 审查（当前主链）**：实验结束做一次自由科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。报告须实质性覆盖：独立目标/变量/约束确认、三处最大风险、对最大风险的实际攻击、最薄弱问题和当前竞争力上限；不足 500 字符的报告会被门禁拒绝。”是否存在明显更强的路线或目标定义”必须用 `record_stronger_alternative` 写成 `review/stronger-alternative.json` 闭合——`found=False` 记录会绑定记录时的生产结果集合，如果后续实验新增了生产结果，记录自动失效需重新记录；`found=True` 时要么真的跑一次并绑定真实生产结果，要么写明为何赛程内不可行；未闭合不放行论文。v3.1/v3.2 **不使用** `review/gaps/round-N.json` 查漏系统，该系统仅属于 Capability-First v3.0 路径。
 
-PDF 盲评必须用 Codex `create_thread` 新建独立顶层对话，禁止 fork、子 Agent 或续用任何已有对话。新对话只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，要严格检查内容、数学逻辑、结果可信度和排版格式，并给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。完成一版 PDF 后还应进行一次网页版 GPT 补充审核：通过网页“添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核只审 PDF 内部自洽性、可读性、论证、图表和版式；无法由 PDF 验证的地方必须转为本地复算或题面对照任务。将每项 P0/P1/P2/P3 写入 `WEB_PAPER_AUDIT.json`，用 `WEB_PAPER_REPAIR_PLAN.json` 逐项局部修复、重新编译并复核；不因一般问题整篇重写。同一运行最多三轮网页版终审；第三轮仍有 P0/P1 时，写 `WEB_PAPER_AUDIT_FAILURE.json`，按工作流、建模、证据、论文/图表与下一步复盘并保持 `not_submission_ready`，不得继续循环或标记完成。网页评价或循环完成均不能证明省一或任何奖项，只能降低已识别的质量风险。
+**v3.0 Capability-First 审查（旧运行兼容）**：报告冻结后必须提取强断言并生成 `review/gaps/round-N.json`：只有具有攻击描述、报告定位与实际证据文件的 `attacked` 风险才能视为覆盖；未覆盖中央风险须由 fresh-thread 专项审核闭合。所有 blocking P2 必须按 finding ID 逐项绑定恢复条件、修复文件、专项报告和回执，不能只关闭其中一个。
+
+PDF 盲评需要一个与当前运行完全隔离的独立上下文：
+- **Codex 桌面端**：用 `create_thread` 新建独立顶层对话，禁止 fork 或续用任何已有对话。
+- **Claude.ai / Claude Code**：dispatch 一个子 Agent（Agent tool call），**不能新开浏览器页面**；子 Agent 不得接收任何当前 run 的上下文，只接收冻结 PDF 路径 + 提示词。子 Agent 的 agent ID 即为 `raw_thread_id`，`creation_mode` 为 `dispatch_agent`，`provider` 为 `claude`。
+
+无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，要严格检查内容、数学逻辑、结果可信度和排版格式，并给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。完成一版 PDF 后还应进行一次网页版 GPT 补充审核：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核只审 PDF 内部自洽性、可读性、论证、图表和版式；无法由 PDF 验证的地方必须转为本地复算或题面对照任务。将每项 P0/P1/P2/P3 写入 `WEB_PAPER_AUDIT.json`，用 `WEB_PAPER_REPAIR_PLAN.json` 逐项局部修复、重新编译并复核；不因一般问题整篇重写。同一运行最多三轮网页版终审；第三轮仍有 P0/P1 时，写 `WEB_PAPER_AUDIT_FAILURE.json`，按工作流、建模、证据、论文/图表与下一步复盘并保持 `not_submission_ready`，不得继续循环或标记完成。网页评价或循环完成均不能证明省一或任何奖项，只能降低已识别的质量风险。
 
 ## 图表与论文
 

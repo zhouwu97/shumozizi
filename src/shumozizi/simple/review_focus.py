@@ -53,10 +53,22 @@ def record_stronger_alternative(
         ContractError: 声明发现更强方案却没有实际尝试也没有说明不可行。
     """
     if not found:
+        # 绑定记录时的生产结果集合：若后续实验新增了生产结果，说明挑战可能
+        # 尚未覆盖新的路线，"无更强路线"判断需重新记录。
+        try:
+            prod_result_ids = sorted(
+                item["result_id"]
+                for item in read_result_index(run_dir)["results"]
+                if item.get("execution_mode") == "production"
+                and item.get("execution_valid") is True
+            )
+        except (KeyError, TypeError, ValueError, OSError):
+            prod_result_ids = []
         payload = {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "run_id": run_dir.name,
             "stronger_alternative_found": False,
+            "production_result_ids_at_recording": prod_result_ids,
             "recorded_at": utc_now(),
         }
         atomic_json(run_dir / STRONGER_ALTERNATIVE_PATH, payload)
@@ -111,6 +123,29 @@ def stronger_alternative_status(run_dir: Path) -> dict[str, Any]:
         if payload.get("run_id") != run_dir.name:
             raise ContractError("更强路线记录 run_id 不匹配")
         if payload.get("stronger_alternative_found") is not True:
+            # 检查"无更强路线"记录是否因后续实验新增了生产结果而过时。
+            # schema_version 1.0 不含 production_result_ids_at_recording，不触发失效检查
+            # （向后兼容旧记录）。
+            recorded_ids = set(payload.get("production_result_ids_at_recording") or [])
+            if recorded_ids:
+                try:
+                    current_ids = {
+                        item["result_id"]
+                        for item in read_result_index(run_dir)["results"]
+                        if item.get("execution_mode") == "production"
+                        and item.get("execution_valid") is True
+                    }
+                    new_results = sorted(current_ids - recorded_ids)
+                    if new_results:
+                        return {
+                            "allowed": False,
+                            "reason": (
+                                "实验新增了生产结果，科学挑战时的'无更强路线'判断需重新记录: "
+                                + ", ".join(new_results)
+                            ),
+                        }
+                except (KeyError, TypeError, ValueError, OSError):
+                    pass  # 无法读取结果索引时不阻断（保守策略）
             return {"allowed": True, "reason": "", "record": payload}
         resolution = payload.get("resolution")
         if resolution not in _ALTERNATIVE_RESOLUTIONS:

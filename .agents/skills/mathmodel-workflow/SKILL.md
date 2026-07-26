@@ -12,7 +12,7 @@ description: 以 Competition-First v3.2 完成整道数学建模赛题的分析�
 3. 实验只运行能改变决定的工作，并把预算优先投给核心问题的搜索深化——核心搜索耗时须超过其验证耗时且占实际算力 40% 以上。比较要真的判胜负，核心问题必须达到事前声明的改善阈值。所有论文事实必须由执行器真实登记；生成 `method_facts.json` 只为建议，不得等待它放行。
 4. 结束实验后进行一次自由科学挑战；必要时只允许一个专项追问。用 `record_stronger_alternative` 闭合"是否存在更强路线"。负面证据先级联失效，再决定回退。
 5. 图表与洞察嵌入实验和论文：图在 `figures/current/` 并声明 role（稳定性图入附录），核心问题的规律带 `insight_id` 登记，可读版本写入 `INSIGHTS.md`。
-6. 论文围绕 strongest question、真实规律和最多三项贡献组织。每个必答问题必须在 answer map 有当前结果和直接答案位置；核心问题还要用 `insight_ids` 引用已挖出的机制或边际收益类规律。源码默认不占正文超过一页。
+6. 论文围绕 strongest question、真实规律和最多三项贡献组织。**所有**必答问题的章节都必须包含：模型选择理由（为何选此而非候选替代）、结果解释（数值意味着什么，主要驱动是什么）和适用边界（哪些假设改变后结论变化），而不只是直接答案。核心问题在此基础上还要用 `insight_ids` 引用实验阶段登记的机制、边际收益、活跃约束或权衡类规律，并参照 `paper/ARGUMENT_PLAN.md` 的论证单元写完整的竞争解释排除和讨论节。源码默认不占正文超过一页。
 7. PDF 盲评必须通过 Codex `create_thread` 新建独立顶层对话，禁止 fork、子 Agent 或续用已有对话。新任务只接收 `paper-blind` 包中的冻结 PDF，并原样使用 `scripts/review/show_paper_blind_prompt.py` 生成的“严格审核”提示词；等待它完成后再导入报告和 `thread_id`。盲评采用相对竞争力评价，随后执行机械 QA。无法盲评时的跳过说明只允许继续 QA，状态必须为 `unreviewed`，不能进入 `complete` 或 `submission_ready`；标记完成前重新验证科学挑战仍绑定当前生产事实。不要创建 coverage 或 final audit。
 
 旧 v3.0 运行可查看和更新，运行时会在首次显式更新时记录阶段迁移。不要把 legacy 审核合同重新接入新运行。
