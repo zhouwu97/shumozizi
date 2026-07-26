@@ -1,4 +1,6 @@
 jsonschema[format]>=4.23,<5
 pypdf>=5,<7
 pdfplumber>=0.11,<1
+Pint>=0.24,<1
+python-docx>=1.1,<2
 rfc8785>=0.1.4,<1

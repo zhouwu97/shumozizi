@@ -133,6 +133,14 @@ def _isolate_compiler_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(paper_compiler, "compile_docx", _fake_compile_docx)
 
+    def _fake_audit_docx(run_dir: Path, _docx: Path, *, timeout_seconds: int = 120) -> dict[str, object]:
+        """模拟已独立覆盖的 DOCX 结构 QA，避免编译回执测试依赖 Word XML。"""
+        report = {"schema_version": "1.0", "success": True, "errors": []}
+        atomic_json(run_dir / "qa" / "docx-structure.json", report)
+        return report
+
+    monkeypatch.setattr(paper_compiler, "audit_docx", _fake_audit_docx)
+
 
 def test_auto_template_selection_prefers_latex_and_records_fallback(
     tmp_path: Path,

@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
+from shumozizi.paper.docx_qa import audit_docx
 from shumozizi.paper.templates import MANIFEST_PATH, require_materialized_template
 from shumozizi.simple.state import read_simple_state, utc_now
 
@@ -304,8 +305,12 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     # 单独调用 compile_docx。
     docx_skipped_reason: str | None = None
     final_docx: Path | None = None
+    docx_qa: dict[str, Any] | None = None
     try:
         final_docx = compile_docx(paper_dir, engine=manifest["engine"], timeout_seconds=timeout_seconds)
+        docx_qa = audit_docx(root, final_docx, timeout_seconds=timeout_seconds)
+        if not docx_qa["success"]:
+            raise ContractError("DOCX 内容 QA 失败: " + "; ".join(docx_qa["errors"]))
     except ContractError as exc:
         # 仅在 pandoc 缺失时降级，其他 ContractError（转换失败、产物为空）仍阻断。
         if "未检测到 pandoc" in str(exc):
@@ -335,6 +340,8 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     if final_docx is not None:
         receipt["final_docx_path"] = "paper/final.docx"
         receipt["final_docx_sha256"] = sha256_file(final_docx)
+        receipt["docx_qa_path"] = "qa/docx-structure.json"
+        receipt["docx_qa_sha256"] = sha256_file(root / "qa" / "docx-structure.json")
     if docx_skipped_reason is not None:
         receipt["docx_skipped_reason"] = docx_skipped_reason
     _require_schema(receipt)
@@ -385,6 +392,11 @@ def verify_paper_compile_receipt(run_dir: Path) -> dict[str, Any]:
                 errors.append("回执记录了 final.docx 但文件不存在或为空")
             elif receipt.get("final_docx_sha256") != sha256_file(final_docx):
                 errors.append("最终 .docx 在编译后已变化")
+            docx_qa = root / receipt.get("docx_qa_path", "")
+            if not docx_qa.is_file():
+                errors.append("DOCX QA 报告不存在")
+            elif receipt.get("docx_qa_sha256") != sha256_file(docx_qa):
+                errors.append("DOCX QA 报告在编译后已变化")
     except (ContractError, KeyError) as exc:
         errors.append(str(exc))
     return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}

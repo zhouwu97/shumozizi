@@ -22,6 +22,8 @@
     "final_pdf_sha256": {"$ref": "#/$defs/sha"},
     "final_docx_path": {"const": "paper/final.docx"},
     "final_docx_sha256": {"$ref": "#/$defs/sha"},
+    "docx_qa_path": {"const": "qa/docx-structure.json"},
+    "docx_qa_sha256": {"$ref": "#/$defs/sha"},
     "docx_skipped_reason": {"type": "string", "minLength": 1},
     "executions": {
       "type": "array",
@@ -49,7 +51,7 @@
     },
     {
       "oneOf": [
-        {"required": ["final_docx_path", "final_docx_sha256"], "not": {"required": ["docx_skipped_reason"]}},
+        {"required": ["final_docx_path", "final_docx_sha256", "docx_qa_path", "docx_qa_sha256"], "not": {"required": ["docx_skipped_reason"]}},
         {"required": ["docx_skipped_reason"], "not": {"required": ["final_docx_path"]}}
       ]
     }
