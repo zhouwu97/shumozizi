@@ -23,6 +23,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from pypdf import PdfReader
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -30,38 +32,39 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.qa.metric_ledger import (  # noqa: E402
+    ensure_v32_metric_ledger,
     known_values,
     read_ledger,
     resolve_ledger_value,
+    v32_ledger_requirements,
     validate_ledger,
 )
 from shumozizi.core.io import ContractError  # noqa: E402
 from shumozizi.simple.results import read_result_index  # noqa: E402
+from shumozizi.units import compatible_units, quantity_in_unit  # noqa: E402
 
 # 报告落盘文件名主干；与既有 numeric-consistency 检查区分，避免覆盖。
 REPORT_STEM = "central-metric-coherence"
 
-# 长度单位换算（统一到米）。裸 m 易与词首字母混淆，故不支持，只认带前缀/LaTeX 的形式。
-_LENGTH_FACTOR: dict[str, float] = {
-    "nm": 1e-9,
-    "um": 1e-6,
-    "mm": 1e-3,
-    "cm": 1e-2,
-    "dm": 1e-1,
-}
 # 数字与单位之间的分隔：普通空白、LaTeX 细space（\, \; \: \! \ ）与不断行空格 ~。
 # 论文里 ``8.11\,\mu\mathrm{m}`` 是常态，若不吞掉 \, 就永远识别不到单位。
 _SEP = r"(?:\s|~|\\[,;:!\s])*"
-# 单位识别：数字之后紧邻的单位记号（容忍 LaTeX 写法与中文单位）。键为归一化单位。
-_UNIT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("um", re.compile(_SEP + r"(?:\\(?:mu|upmu)\s*(?:\\mathrm)?\s*\{?\s*m\s*\}?|[µμ]\s*m|um|微米)")),
-    ("nm", re.compile(_SEP + r"(?:(?:\\mathrm\s*)?\{?\s*nm\s*\}?|纳米)")),
-    ("mm", re.compile(_SEP + r"(?:(?:\\mathrm\s*)?\{?\s*mm\s*\}?|毫米)")),
-    ("cm", re.compile(_SEP + r"(?:(?:\\mathrm\s*)?\{?\s*cm\s*\}?|厘米)")),
-    ("dm", re.compile(_SEP + r"(?:(?:\\mathrm\s*)?\{?\s*dm\s*\}?|分米)")),
-    ("%", re.compile(_SEP + r"(?:\\%|%|％)")),
-]
-_NUMBER = re.compile(r"(?<![0-9A-Za-z.])([0-9]+(?:\.[0-9]+)?)")
+# 单位识别由 Pint 完成量纲判断；这里仅取出紧邻的常见中英文、复合或 LaTeX 写法。
+_UNIT_AFTER = re.compile(
+    _SEP
+    + r"(?P<unit>"
+    + r"\\(?:mu|upmu)\s*(?:\\(?:mathrm|text)\s*\{[^{}]+\}|[A-Za-z]+)"
+    + r"|\\(?:mathrm|textrm|text)\s*\{[^{}]+\}"
+    + r"|\\%|%|％|[µμ]m|°C|℃"
+    + r"|(?:km/h|m/s|MPa|Pa|nm|um|mm|cm|dm|km|min|kg|[msthK])(?:\s*/\s*[A-Za-z]+)?"
+    + r"|纳米|微米|毫米|厘米|分米|千米|米|秒|分钟|小时|千克|吨|万元|元|兆帕|帕|摄氏度|开尔文|导弹秒|人次|车公里"
+    + r")"
+)
+_NUMBER = re.compile(
+    r"(?<![0-9A-Za-z.])"
+    r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)\\(?:times|cdot)10\^\{?[+-]?\d+\}?"
+    r"|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"
+)
 _WINDOW_PRE = 14
 _WINDOW_POST = 64
 
@@ -112,24 +115,53 @@ def _body_text_files(run_dir: Path) -> list[tuple[str, str]]:
     return out
 
 
+def _pdf_body_text_files(run_dir: Path) -> list[tuple[str, str]]:
+    """提取最终 PDF 的逐页文本，作为源文件检查之外的显示层复核。
+
+    PDF 不存在或文本层不可提取时不伪造通过结论：调用者会将原因写入报告的
+    ``pdf_text_warning``，而已成功提取的页面仍使用与源文件完全相同的账本规则。
+    """
+    path = run_dir / "paper" / "final.pdf"
+    if not path.is_file():
+        return []
+    reader = PdfReader(str(path))
+    return [
+        (f"paper/final.pdf#page-{index}", page.extract_text() or "")
+        for index, page in enumerate(reader.pages, start=1)
+    ]
+
+
 def _unit_after(text: str, pos: int) -> str | None:
     """识别文本 pos 处紧邻的单位记号，返回归一化单位或 None。
 
     倒数单位（如 ``cm^{-1}`` 波数）虽含 ``cm`` 字样却非长度，必须排除，否则会把
     光谱波数当成长度值误比对。
     """
-    for unit, pattern in _UNIT_PATTERNS:
-        match = pattern.match(text, pos)
-        if match and match.start() == pos:
-            if unit in _LENGTH_FACTOR and re.match(r"[}\s]*\^", text[match.end():match.end() + 6]):
-                return None  # cm^{-1}/µm^{-1} 等倒数单位，非长度量
-            return unit
-    return None
+    match = _UNIT_AFTER.match(text, pos)
+    return match.group("unit") if match else None
 
 
 def _decimals(literal: str) -> int:
     """字面量的小数位数，用于推断该处显示精度对应的舍入容差。"""
-    return len(literal.split(".")[1]) if "." in literal else 0
+    mantissa = re.split(r"(?:[eE]|\\(?:times|cdot)10\^)", literal, maxsplit=1)[0]
+    return len(mantissa.split(".")[1]) if "." in mantissa else 0
+
+
+def _number_value(literal: str) -> float:
+    """解析普通或 LaTeX 科学计数法字面量。"""
+    latex = re.fullmatch(
+        r"([+-]?(?:\d+(?:\.\d*)?|\.\d+))\\(?:times|cdot)10\^\{?([+-]?\d+)\}?", literal
+    )
+    if latex:
+        return float(latex.group(1)) * 10 ** int(latex.group(2))
+    return float(literal)
+
+
+def _display_tolerance(literal: str) -> float:
+    """按有效显示位数计算与字面量同量纲的合法舍入容差。"""
+    exponent_match = re.search(r"(?:[eE]|\\(?:times|cdot)10\^\{?)([+-]?\d+)\}?$", literal)
+    exponent = int(exponent_match.group(1)) if exponent_match else 0
+    return 0.5 * 10 ** (exponent - _decimals(literal)) + 1e-12
 
 
 def _matches(stated: str, stated_unit: str | None, expected: float, ledger_unit: str | None) -> bool:
@@ -144,18 +176,19 @@ def _matches(stated: str, stated_unit: str | None, expected: float, ledger_unit:
     Returns:
         在合法舍入（及必要的单位换算）下是否一致。
     """
-    value = float(stated)
-    tol = 0.5 * 10 ** (-_decimals(stated)) + 1e-9
-    if ledger_unit in _LENGTH_FACTOR and stated_unit in _LENGTH_FACTOR:
-        scale = _LENGTH_FACTOR[stated_unit] / _LENGTH_FACTOR[ledger_unit]
-        value *= scale
-        tol *= scale
+    value = _number_value(stated)
+    tol = _display_tolerance(stated)
+    converted = quantity_in_unit(value, stated_unit, ledger_unit)
+    converted_upper = quantity_in_unit(value + tol, stated_unit, ledger_unit)
+    if converted is not None and converted_upper is not None:
+        # 温度等偏移单位不能把“容差 0.5”单独当 Quantity 转换；必须转换相邻两点再求差。
+        value, tol = converted, abs(converted_upper - converted)
     return abs(value - expected) <= tol
 
 
 def _requires_unit(ledger_unit: str | None) -> bool:
     """带明确单位的核心量，要求正文数字也带单位才算指代它（收紧误报）。"""
-    return ledger_unit in _LENGTH_FACTOR or ledger_unit == "%"
+    return ledger_unit is not None
 
 
 def _unit_compatible(stated_unit: str | None, ledger_unit: str | None) -> bool:
@@ -164,11 +197,9 @@ def _unit_compatible(stated_unit: str | None, ledger_unit: str | None) -> bool:
     长度量只认长度单位、百分比只认百分比；否则该数字与本量无关（如 μm 量旁的
     ``95\\%``），必须排除，否则会把无关数字误判为矛盾。无量纲账本不设限制。
     """
-    if ledger_unit in _LENGTH_FACTOR:
-        return stated_unit in _LENGTH_FACTOR
-    if ledger_unit == "%":
-        return stated_unit == "%"
-    return True
+    if ledger_unit is None:
+        return True
+    return compatible_units(stated_unit, ledger_unit)
 
 
 def check_central_metric_coherence(run_dir: Path) -> dict[str, Any]:
@@ -180,7 +211,9 @@ def check_central_metric_coherence(run_dir: Path) -> dict[str, Any]:
     Returns:
         含 ``success`` 的可复核报告；账本缺失时 ``skipped=True`` 且不阻断。
     """
-    ledger = read_ledger(run_dir)
+    ledger, auto_seeded = ensure_v32_metric_ledger(run_dir)
+    if ledger is None:
+        ledger = read_ledger(run_dir)
     if ledger is None:
         return {
             "success": True,
@@ -191,9 +224,15 @@ def check_central_metric_coherence(run_dir: Path) -> dict[str, Any]:
             "unstated_central": [],
         }
     errors = validate_ledger(ledger)
+    # 仅 v3.2 production 论文阶段会返回实际错误；历史运行和非论文阶段返回空列表。
+    try:
+        errors.extend(v32_ledger_requirements(ledger, run_dir))
+    except (ContractError, OSError) as exc:
+        errors.append(f"v3.2 账本完整性无法核验: {exc}")
     if errors:
         return {"success": False, "skipped": False, "ledger_errors": errors,
-                "contradictions": [], "scope_warnings": [], "unstated_central": []}
+                "contradictions": [], "scope_warnings": [], "unstated_central": [],
+                "auto_seeded": auto_seeded}
 
     try:
         read_result_index(run_dir)
@@ -212,6 +251,13 @@ def check_central_metric_coherence(run_dir: Path) -> dict[str, Any]:
                 "contradictions": [], "scope_warnings": [], "unstated_central": []}
 
     body = _body_text_files(run_dir)
+    pdf_text_warning: str | None = None
+    try:
+        pdf_body = _pdf_body_text_files(run_dir)
+    except (OSError, ValueError) as exc:
+        pdf_body = []
+        pdf_text_warning = f"最终 PDF 文本层无法复核: {exc}"
+    body.extend(pdf_body)
     contradictions: list[dict[str, Any]] = []
     scope_warnings: list[dict[str, Any]] = []
     unstated_central: list[dict[str, Any]] = []
@@ -296,6 +342,7 @@ def check_central_metric_coherence(run_dir: Path) -> dict[str, Any]:
     return {
         "success": not contradictions,
         "skipped": False,
+        "auto_seeded": auto_seeded,
         "metrics_checked": sorted(metrics_checked),
         "contradictions": contradictions,
         "scope_warnings": scope_warnings,
@@ -305,7 +352,10 @@ def check_central_metric_coherence(run_dir: Path) -> dict[str, Any]:
               for item in scope_warnings if item.get("matches_other")),
             *(f"核心量未清晰陈述：{item['metric_id']}（期望 {item['expected']}{item['unit'] or ''}）"
               for item in unstated_central),
+            *([pdf_text_warning] if pdf_text_warning else []),
         ],
+        "sources_scanned": [filename for filename, _ in body],
+        "pdf_text_checked": bool(pdf_body),
     }
 
 

@@ -10,6 +10,19 @@
     "schema_version": {"const": "1.0"},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "note": {"type": "string"},
+    "qualitative_exemptions": {
+      "type": "array",
+      "description": "没有可量化直接答案的问题必须逐项声明豁免；不得以静默跳过代替。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_id", "reason"],
+        "properties": {
+          "question_id": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 8}
+        }
+      }
+    },
     "metrics": {
       "type": "array",
       "items": {

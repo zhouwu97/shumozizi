@@ -4308,6 +4308,7 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
             "paper-blind-review-release", "pdf", "paper-structure-signals",
             "placeholders", "result-references", "numeric-consistency",
             "current-result-files", "current-figure-files", "contact-sheet",
+            "central-metric-coherence",
         }
         if _competition_first_run(run_dir):
             required_check_ids.add("scientific-challenge-release")

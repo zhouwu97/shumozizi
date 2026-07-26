@@ -12,8 +12,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+import scripts.qa.check_central_metric_coherence as coherence_module
 from scripts.qa.check_central_metric_coherence import check_central_metric_coherence
 from scripts.qa.metric_ledger import seed_ledger_from_answers
+from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.units import quantity_in_unit
 
 
 def _result(result_id: str, question_id: str, metrics: dict[str, Any]) -> dict[str, Any]:
@@ -148,6 +151,61 @@ def test_fabricated_central_value_blocks(tmp_path: Path) -> None:
     assert stated.count("7.931") == 1
 
 
+def test_negative_value_conflict_blocks(tmp_path: Path) -> None:
+    """负数不能因旧正则丢失；同一相关系数的负值冲突必须阻断。"""
+    ledger = {
+        "schema_version": "1.0",
+        "run_id": "regr-central-metric",
+        "metrics": [{
+            "metric_id": "correlation", "aliases": ["相关系数"],
+            "source_result_id": "q1-peak-spacing", "source_metric": "d_mean_um",
+            "unit": None, "central": True,
+        }],
+    }
+    body = "\\section{结果} 相关系数为 $-1.25$。"
+    run_dir = _make_run(tmp_path, body=body, ledger=ledger)
+    report = check_central_metric_coherence(run_dir)
+    assert report["success"] is False
+    assert [item["stated"] for item in report["contradictions"]] == ["-1.25"]
+
+
+def test_scientific_notation_conflict_blocks(tmp_path: Path) -> None:
+    """E 记法和 LaTeX 乘十幂都必须作为一个数值进入冲突扫描。"""
+    ledger = {
+        "schema_version": "1.0",
+        "run_id": "regr-central-metric",
+        "metrics": [{
+            "metric_id": "error", "aliases": ["误差"],
+            "source_result_id": "q1-peak-spacing", "source_metric": "d_mean_um",
+            "unit": None, "central": True,
+        }],
+    }
+    body = "\\section{结果} 误差为 $1e-3$，另一处误差为 $2.4\\times10^{-5}$。"
+    run_dir = _make_run(tmp_path, body=body, ledger=ledger)
+    report = check_central_metric_coherence(run_dir)
+    assert report["success"] is False
+    assert {item["stated"] for item in report["contradictions"]} == {"1e-3", "2.4\\times10^{-5}"}
+
+
+def test_final_pdf_text_is_checked_in_addition_to_sources(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """源文件没有矛盾时，最终 PDF 中实际显示的冲突数值仍必须阻断。"""
+    run_dir = _make_run(tmp_path, body=_GOOD_BODY, ledger=_CENTRAL_LEDGER)
+    (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nfixture")
+    monkeypatch.setattr(
+        coherence_module,
+        "_pdf_body_text_files",
+        lambda _run: [("paper/final.pdf#page-1", "外延层厚度为 7.931 um")],
+    )
+
+    report = coherence_module.check_central_metric_coherence(run_dir)
+
+    assert report["success"] is False
+    assert report["pdf_text_checked"] is True
+    assert any(item["file"] == "paper/final.pdf#page-1" for item in report["contradictions"])
+
+
 def test_legit_rounding_passes(tmp_path: Path) -> None:
     """1 位小数 8.1μm 在其显示精度容差内可解释为 8.112μm，不得 FAIL。"""
     body = _GOOD_BODY + "\n厚度约为 $8.1\\,\\mu\\mathrm{m}$。\n"
@@ -162,6 +220,11 @@ def test_unit_conversion_passes(tmp_path: Path) -> None:
     run_dir = _make_run(tmp_path, body=body, ledger=_CENTRAL_LEDGER)
     report = check_central_metric_coherence(run_dir)
     assert report["success"] is True
+
+
+def test_temperature_conversion_uses_offset_aware_quantity() -> None:
+    """摄氏度到开尔文必须包含偏移，不能错误使用单一乘法因子。"""
+    assert quantity_in_unit(0.0, "°C", "K") == 273.15
 
 
 def test_other_method_value_warns_not_blocks(tmp_path: Path) -> None:
@@ -199,18 +262,54 @@ def test_percentage_near_length_metric_ignored(tmp_path: Path) -> None:
     assert all(item["stated"] != "95" for item in report["contradictions"])
 
 
-def test_seeded_draft_is_inert(tmp_path: Path) -> None:
-    """播种草稿全部 central=false：即便正文有异常值也只告警不阻断。"""
+def test_seeded_draft_activates_central_checks(tmp_path: Path) -> None:
+    """播种草稿每题首个量置 central=True：写入账本后核心量自洽检查立即生效。"""
     run_dir = _make_run(tmp_path, body=_GOOD_BODY, ledger=None)
     draft = seed_ledger_from_answers(run_dir)
     assert draft["metrics"], "草稿应至少列出各问直接答案的数值指标"
-    assert all(metric["central"] is False for metric in draft["metrics"])
+    # 每题首个量应为 central=True，其余仍为 False。
+    by_question: dict[str, list[bool]] = {}
+    for m in draft["metrics"]:
+        qid = m["scope"]["question_id"]
+        by_question.setdefault(qid, []).append(m["central"])
+    for qid, flags in by_question.items():
+        assert flags[0] is True, f"{qid} 首个量应为 central=True"
+        assert all(not f for f in flags[1:]), f"{qid} 后续量应为 central=False"
+    # 写入账本后，与正文一致的好论文应通过自洽检查。
     (run_dir / "paper" / "generated" / "metric_ledger.json").write_text(
         json.dumps(draft, ensure_ascii=False), encoding="utf-8"
     )
     report = check_central_metric_coherence(run_dir)
     assert report["success"] is True
     assert report["contradictions"] == []
+
+
+def test_v32_paper_auto_seeds_with_active_central_metrics(tmp_path: Path) -> None:
+    """v3.2 生产论文缺账本时自动播种，播种草稿已含 central=True，检查立即生效。"""
+    run_dir = initialize_simple_run(tmp_path, "ledger-v32", workflow_version="3.2")
+    index = {**_INDEX, "run_id": "ledger-v32"}
+    (run_dir / "results" / "index.json").write_text(json.dumps(index), encoding="utf-8")
+    (run_dir / "paper" / "answer-map.json").write_text(
+        json.dumps(_ANSWER_MAP), encoding="utf-8"
+    )
+    (run_dir / "paper" / "main.tex").write_text(
+        "\\begin{document}\\end{document}", encoding="utf-8"
+    )
+    state_path = run_dir / "state" / "run.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["phase"] = "paper"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    report = check_central_metric_coherence(run_dir)
+
+    # 播种草稿已含 central=True，空正文通过自洽检查。
+    assert report["auto_seeded"] is True
+    assert (run_dir / "paper" / "generated" / "metric_ledger.json").is_file()
+    assert report["success"] is True
+    ledger = json.loads(
+        (run_dir / "paper" / "generated" / "metric_ledger.json").read_text(encoding="utf-8")
+    )
+    assert any(m["central"] is True for m in ledger["metrics"])
 
 
 def test_ledger_pointing_at_missing_metric_blocks(tmp_path: Path) -> None:

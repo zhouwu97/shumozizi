@@ -242,6 +242,10 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             if objective_semantics_review_required(run_dir):
                 require_objective_semantics_review(run_dir)
         if next_phase == "paper":
+            if is_competition_first_v32_state(state) and state["execution_mode"] == "production":
+                from scripts.qa.metric_ledger import require_v32_metric_ledger_for_paper
+
+                require_v32_metric_ledger_for_paper(run_dir)
             from shumozizi.paper.templates import require_materialized_template
             from shumozizi.simple.modeling_units import require_v32_experiment_evidence
             from shumozizi.simple.objective_consequences import (

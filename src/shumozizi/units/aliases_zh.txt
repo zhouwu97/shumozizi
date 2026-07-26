@@ -1,0 +1,24 @@
+# 中文/竞赛特有单位别名。左侧是论文中可能出现的写法，右侧是 Pint 单位表达式。
+纳米 = nanometer
+微米 = micrometer
+毫米 = millimeter
+厘米 = centimeter
+分米 = decimeter
+米 = meter
+千米 = kilometer
+秒 = second
+分钟 = minute
+分 = minute
+小时 = hour
+时 = hour
+千克 = kilogram
+吨 = metric_ton
+元 = yuan
+万元 = wan_yuan
+帕 = pascal
+兆帕 = megapascal
+摄氏度 = degC
+开尔文 = kelvin
+导弹秒 = missile_second
+人次 = person_trip
+车公里 = car_kilometer
