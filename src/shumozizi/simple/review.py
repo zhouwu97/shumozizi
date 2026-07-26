@@ -46,6 +46,9 @@ AMBIGUITY_DECISIONS_PATH = Path("state/ambiguity-decisions.json")
 SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
 SCIENTIFIC_CHALLENGE_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_CHALLENGE.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
+# v3.2 不写 v3.1 的 review/summary.json（科学挑战不经 import_scientific_review），
+# 因此盲评结论需要独立记录文件，否则 v3.2 永远无法完成 PDF 盲评。
+V32_PAPER_BLIND_RECORD_PATH = REVIEW_ROOT / "paper-blind-review.json"
 PAPER_BLIND_PROMPT_PREFIX = (
     "你是一位数学建模竞赛评委，现在做冷读盲评。你只收到这份冻结 PDF，"
     "没有题面、源码、运行记录、作者解释或前序审核结论。\n\n"
@@ -3305,6 +3308,140 @@ def _import_competition_scientific_review(
     return summary
 
 
+def _import_v32_paper_blind_review(
+    run_dir: Path,
+    *,
+    manifest_file: str,
+    verdict: str,
+    highest_severity: str,
+    reviewer_thread_id: str,
+    task_receipt_file: str,
+    report_file: Path,
+) -> dict[str, Any]:
+    """导入 v3.2 的 PDF 盲评，写入独立记录而不依赖 v3.1 ``summary.json``。
+
+    v3.2 的科学挑战由 ``review/SCIENTIFIC_CHALLENGE.md`` 加 fresh-thread 回执承载，
+    不生成 ``review/summary.json``；盲评隔离仍由"冻结 PDF + 独立任务回执 +
+    不同于科学挑战的新对话"三者保证。
+    """
+    if read_simple_state(run_dir)["phase"] != "paper_review":
+        raise ContractError("PDF 盲评结论只能在 paper_review 阶段导入")
+    scientific = _v32_scientific_challenge_status(run_dir)
+    if not scientific["allowed"]:
+        raise ContractError("科学挑战未通过或已失效，不能导入 PDF 盲评: " + scientific["reason"])
+    scientific_thread = scientific["review"]["task_receipt"]["thread_id"]
+    if reviewer_thread_id == scientific_thread:
+        raise ContractError("PDF 盲评必须使用不同于科学挑战的新对话")
+    packet, report, task = _competition_review_reference(
+        run_dir,
+        manifest_file=manifest_file,
+        expected_kind="paper-blind",
+        receipt_file=task_receipt_file,
+        task_type="paper_blind_open",
+        report_file=report_file,
+        reviewer_thread_id=reviewer_thread_id,
+    )
+    record = {
+        "schema_name": "v32_paper_blind_review",
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "verdict": verdict,
+        "highest_severity": highest_severity,
+        "packet": packet,
+        "report": report,
+        "task_receipt": task,
+        "reviewer": _reviewer_paper(reviewer_thread_id),
+        "reviewed_at": utc_now(),
+    }
+    atomic_json(run_dir / V32_PAPER_BLIND_RECORD_PATH, record)
+    return {"paper_blind_review": record}
+
+
+def _v32_paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
+    """返回 v3.2 PDF 盲评或其显式跳过说明是否允许继续机械 QA。"""
+    try:
+        record_path = run_dir / V32_PAPER_BLIND_RECORD_PATH
+        if not record_path.is_file():
+            skip = run_dir / REVIEW_ROOT / "PAPER_BLIND_REVIEW_SKIP.md"
+            if skip.is_file() and len(skip.read_text(encoding="utf-8").strip()) > 32:
+                return {"allowed": True, "skipped": True, "reason": "已显式记录 PDF 盲评跳过原因"}
+            return {"allowed": False, "reason": "缺少独立 PDF 盲评或明确跳过原因"}
+        review = load_json(record_path)
+        if (
+            review.get("schema_name") != "v32_paper_blind_review"
+            or review.get("schema_version") != "1.0"
+            or review.get("run_id") != run_dir.name
+        ):
+            return {"allowed": False, "reason": "v3.2 PDF 盲评记录格式无效"}
+        if review["verdict"] == "pass" and review["highest_severity"] in {"P0", "P1"}:
+            return {"allowed": False, "reason": "盲评含 P0/P1 时不能给出 pass"}
+        current, reason = _v32_paper_blind_review_current(run_dir, review)
+        allowed = bool(
+            current
+            and review["verdict"] == "pass"
+            and review["highest_severity"] not in {"P0", "P1"}
+        )
+        return {"allowed": allowed, "review": review, "reason": reason if not allowed else ""}
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return {"allowed": False, "reason": str(exc)}
+
+
+def _v32_paper_blind_review_current(run_dir: Path, review: dict[str, Any]) -> tuple[bool, str]:
+    """复验 v3.2 盲评仍绑定未漂移的冻结 PDF、报告和独立回执。"""
+    try:
+        packet = _verify_v32_frozen_packet_copy(
+            run_dir, review.get("packet"), expected_kind="paper-blind"
+        )
+        report = _safe_run_path(run_dir, review["report"]["file"])
+        if sha256_file(report) != review["report"]["sha256"]:
+            return False, "盲评报告哈希已变化"
+        task = review.get("task_receipt")
+        if not isinstance(task, dict):
+            return False, "盲评记录缺少真实任务回执"
+        task_path = _safe_run_path(run_dir, task["file"])
+        if sha256_file(task_path) != task["sha256"]:
+            return False, "盲评任务回执哈希已变化"
+        from shumozizi.simple.review_tasks import validate_review_task_receipt
+
+        receipt = validate_review_task_receipt(
+            run_dir,
+            task["file"],
+            expected_type="paper_blind_open",
+            expected_report=review["report"]["file"],
+            expected_input_bindings={"packet": packet},
+            expected_prompt_sha256=paper_blind_review_prompt_sha256(
+                run_dir, packet["manifest_file"]
+            ),
+            require_fresh_thread=True,
+        )
+        if (
+            receipt["task_id"] != task["task_id"]
+            or receipt["thread_id"] != review["reviewer"]["thread_id"]
+        ):
+            return False, "盲评记录与任务回执身份不一致"
+        # 冻结 PDF 必须仍等于当前提交 PDF，否则盲评结论已过期。
+        frozen = _v32_frozen_paper_pdf(run_dir, packet["manifest_file"])
+        current_pdf = run_dir / "paper" / "final.pdf"
+        if not current_pdf.is_file():
+            return False, "缺少当前 paper/final.pdf"
+        if sha256_file(current_pdf) != frozen:
+            return False, "当前 PDF 已在盲评后重新编译，需要重新盲评"
+        return True, ""
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return False, str(exc)
+
+
+def _v32_frozen_paper_pdf(run_dir: Path, manifest_file: str) -> str:
+    """返回盲评冻结包中最终 PDF 的 SHA-256。"""
+    _, manifest = _read_packet_manifest(run_dir, manifest_file)
+    for item in manifest["files"]:
+        if isinstance(item, dict) and item.get("source") == "paper/final.pdf":
+            sha256 = item.get("sha256")
+            if isinstance(sha256, str):
+                return sha256
+    raise ContractError("盲评冻结包未包含 paper/final.pdf")
+
+
 def _import_competition_paper_blind_review(
     run_dir: Path,
     *,
@@ -3316,6 +3453,16 @@ def _import_competition_paper_blind_review(
     report_file: Path,
 ) -> dict[str, Any]:
     """导入 v3.1 的相对竞争力 PDF 盲评，不创建覆盖闭环。"""
+    if is_competition_first_v32_state(read_simple_state(run_dir)):
+        return _import_v32_paper_blind_review(
+            run_dir,
+            manifest_file=manifest_file,
+            verdict=verdict,
+            highest_severity=highest_severity,
+            reviewer_thread_id=reviewer_thread_id,
+            task_receipt_file=task_receipt_file,
+            report_file=report_file,
+        )
     if read_simple_state(run_dir)["phase"] != "paper_review":
         raise ContractError("PDF 盲评结论只能在 paper_review 阶段导入")
     packet, report, task = _competition_review_reference(
@@ -4075,6 +4222,8 @@ def _competition_paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
     跳过说明只保留无法开展盲评时的可追溯性，不能作为 ``complete`` 放行依据。
     """
     try:
+        if is_competition_first_v32_state(read_simple_state(run_dir)):
+            return _v32_paper_blind_review_status(run_dir)
         summary = read_review_summary(run_dir)
         review = summary.get("paper_blind_review")
         if review is None:
@@ -4319,11 +4468,23 @@ def completion_status(run_dir: Path) -> dict[str, Any]:
                 "completion_status": "unreviewed",
             }
         if is_competition_first_v32_state(read_simple_state(run_dir)):
-            from shumozizi.knowledge.external_discussion import web_paper_audit_status
+            from shumozizi.knowledge.external_discussion import (
+                validate_web_paper_audit_if_present,
+                web_paper_audit_started,
+                web_paper_audit_status,
+            )
 
-            web_audit = web_paper_audit_status(run_dir)
-            if not web_audit["allowed"]:
-                return {"allowed": False, "reason": web_audit["reason"]}
+            # 网页审核可选：未发起时不构成完成门，已发起则必须闭合到放行状态，
+            # 否则会出现"发起审核后弃之不管即可完成"的绕过路径。
+            if web_paper_audit_started(run_dir):
+                web_audit = web_paper_audit_status(run_dir)
+                if not web_audit["allowed"]:
+                    return {"allowed": False, "reason": web_audit["reason"]}
+            else:
+                try:
+                    validate_web_paper_audit_if_present(run_dir)
+                except (ContractError, OSError, TypeError, ValueError) as exc:
+                    return {"allowed": False, "reason": str(exc)}
         mechanical = mechanical_qa_status(run_dir)
         if not mechanical["allowed"]:
             return {"allowed": False, "reason": mechanical["reason"]}

@@ -348,8 +348,10 @@ def test_final_blind_review_uses_fresh_pdf_only_prompt(tmp_path: Path) -> None:
     ).resolve()
 
     assert copied == {"paper/final.pdf"}
-    assert prompt.startswith("严格审核这份冻结 PDF")
-    assert "学术论文，而非内部技术或审核报告" in prompt
+    assert prompt.startswith("你是一位数学建模竞赛评委，现在做冷读盲评")
+    # 盲评提示词要求评委判断写作风格是否像流水账/技术报告而非学术论文。
+    assert "而非学术论文" in prompt
+    assert "第一印象与竞争力定位" in prompt
     assert str(frozen_pdf) in prompt
     assert "SCIENTIFIC_CHALLENGE" not in prompt
     assert "results" not in prompt

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.templates import select_paper_template
 from shumozizi.simple import review as simple_review
@@ -532,3 +532,161 @@ def test_v32_paper_generation_uses_modeling_evidence_not_legacy_tournament(
     )
 
     simple_review.require_paper_generation_allowed(run_dir)
+
+
+def test_v32_verify_reachable_without_web_audit(tmp_path: Path) -> None:
+    """v3.2 在没有任何网页审核文件时，科学挑战 + PDF 盲评 → 能进入 verify 阶段。
+
+    回归测试：P1-A 修复前，进入 verify 会无条件调用
+    require_web_paper_audit_release()，导致纯 PDF 盲评路径被网页审核缺失阻断。
+    """
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-no-web-audit",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    (run_dir / "problem" / "statement.md").write_text("最小化总成本。", encoding="utf-8")
+
+    plan = _plan(run_dir)
+    write_modeling_units(run_dir, plan)
+    write_objective_candidates(run_dir, _objective_candidates(run_dir, with_actual=False))
+    update_simple_state(run_dir, phase="experiment")
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _register_objective_probes(run_dir)
+    _actual(plan)
+    write_modeling_units(run_dir, plan)
+    write_objective_candidates(run_dir, _objective_candidates(run_dir))
+
+    # 科学挑战：v3.2 用报告 + fresh-thread 回执 + 当前结果放行。
+    science_packet = simple_review.build_review_packet(run_dir, kind="scientific")
+    science_manifest = f"review/packet/scientific/{science_packet['packet_id']}/manifest.json"
+    (run_dir / "review" / "SCIENTIFIC_CHALLENGE.md").write_text(
+        "# 科学挑战\n\n## 风险清单\n\n- **P0：** 无。\n- **P1：** 无。\n",
+        encoding="utf-8",
+    )
+    science_bindings = {
+        "packet": {
+            "manifest_file": science_manifest,
+            "manifest_sha256": sha256_file(run_dir / science_manifest),
+        }
+    }
+    science_task_dir = run_dir / "review" / "tasks" / "scientific-no-web-audit"
+    science_task_dir.mkdir(parents=True)
+    (science_task_dir / "input-bindings.json").write_text(
+        json.dumps(science_bindings, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    science_event = persist_review_task_creation_event(
+        run_dir,
+        event_file="review/tasks/scientific-no-web-audit/creation-event.json",
+        raw_event={
+            "schema_name": "review_task_creation_event",
+            "schema_version": "1.0",
+            "provider": "codex",
+            "raw_task_id": "no-web-audit-scientific-task",
+            "raw_thread_id": "no-web-audit-scientific-thread",
+            "creation_mode": "create_thread",
+            "parent_context_inherited": False,
+            "created_at": "2026-07-25T00:00:00Z",
+        },
+    )
+    create_review_task_receipt(
+        run_dir,
+        task_id="scientific-no-web-audit",
+        task_type="scientific_open",
+        model_id="fixture-model",
+        prompt_sha256="1" * 64,
+        input_bindings=science_bindings,
+        report_file="review/SCIENTIFIC_CHALLENGE.md",
+        creation_event_file=science_event.relative_to(run_dir).as_posix(),
+    )
+    record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=[
+            "baseline",
+            "structural",
+            "global",
+            "attack",
+            "first-feasible",
+            "final",
+            "sensitivity",
+            "robustness",
+        ],
+        attack_description="独立攻击当前生产结果。",
+    )
+    record_stronger_alternative(run_dir, found=False)
+    assert simple_review.scientific_review_status(run_dir)["allowed"]
+
+    # paper_review 阶段与最小 PDF：本测试只验证 verify 门禁，不重跑编译链。
+    state_path = run_dir / "state" / "run.json"
+    state_raw = load_json(state_path)
+    state_raw["phase"] = "paper_review"
+    atomic_json(state_path, state_raw)
+    (run_dir / "paper" / "final.pdf").write_bytes(b"%PDF-1.4\nv32-no-web-audit")
+
+    packet = simple_review.build_review_packet(run_dir, kind="paper-blind")
+    manifest_file = f"review/packet/paper-blind/{packet['packet_id']}/manifest.json"
+    report = run_dir / "review" / "PAPER_BLIND_REVIEW.md"
+    report.write_text("# PDF 全面盲审\n\n本轮未确认 P0/P1。\n", encoding="utf-8")
+    bindings = {
+        "packet": {
+            "manifest_file": manifest_file,
+            "manifest_sha256": sha256_file(run_dir / manifest_file),
+        }
+    }
+    event = persist_review_task_creation_event(
+        run_dir,
+        event_file="review/tasks/creation-events/paper-blind-no-web-audit.json",
+        raw_event={
+            "schema_name": "review_task_creation_event",
+            "schema_version": "1.0",
+            "provider": "codex",
+            "raw_task_id": "paper-blind-no-web-audit-task",
+            "raw_thread_id": "paper-blind-no-web-audit-thread",
+            "creation_mode": "create_thread",
+            "parent_context_inherited": False,
+            "created_at": "2026-07-25T00:00:00Z",
+        },
+    )
+    receipt = create_review_task_receipt(
+        run_dir,
+        task_id="paper-blind-no-web-audit",
+        task_type="paper_blind_open",
+        model_id="fixture-model",
+        prompt_sha256=simple_review.paper_blind_review_prompt_sha256(run_dir, manifest_file),
+        input_bindings=bindings,
+        report_file=report.relative_to(run_dir).as_posix(),
+        creation_event_file=event.relative_to(run_dir).as_posix(),
+    )
+    simple_review.import_paper_blind_review(
+        run_dir,
+        manifest_file=manifest_file,
+        verdict="pass",
+        highest_severity="none",
+        reviewer_thread_id="paper-blind-no-web-audit-thread",
+        task_receipt_file=receipt.relative_to(run_dir).as_posix(),
+    )
+
+    assert not any(
+        (run_dir / "review" / name).is_file()
+        for name in (
+            "WEB_PAPER_AUDIT_PROMPT.json",
+            "WEB_PAPER_AUDIT.json",
+            "WEB_PAPER_AUDIT_REPAIR_PLAN.json",
+        )
+    ), "夹具不应预先创建任何网页审核文件"
+
+    state = update_simple_state(run_dir, phase="verify")
+
+    assert state["phase"] == "verify"

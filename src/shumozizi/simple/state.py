@@ -262,9 +262,14 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
 
             require_paper_blind_review_allowed(run_dir)
             if is_competition_first_v32_state(state):
-                from shumozizi.knowledge.external_discussion import require_web_paper_audit_release
+                from shumozizi.knowledge.external_discussion import (
+                    validate_web_paper_audit_if_present,
+                )
 
-                require_web_paper_audit_release(run_dir)
+                # 网页审核是可选增强：有文件时全量复验，无文件时直接放行。
+                # 使用 require_web_paper_audit_release 会在无审核文件时阻断终检，
+                # 导致纯 PDF 盲评路径无法进入 verify。
+                validate_web_paper_audit_if_present(run_dir)
         if next_phase == "complete":
             from shumozizi.simple.review import require_completion_allowed
 

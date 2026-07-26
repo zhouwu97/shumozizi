@@ -209,18 +209,13 @@ def test_web_paper_audit_is_pdf_only_and_requires_targeted_p0_p1_repairs(tmp_pat
     assert status["allowed"] is False
     assert status["blocking_findings"] == ["web-p1-evidence"]
 
+    # P0/P1 必须出现在修复计划里；只闭合 P2 会被拒绝。
+    # （disposition=defer_with_limit 本身是允许的，审核者可以写明限制而不修改。）
     with pytest.raises(ContractError, match="P0/P1"):
         write_web_paper_repair_plan(
             run_dir,
             {
                 "repairs": [
-                    {
-                        "finding_id": "web-p1-evidence",
-                        "disposition": "defer_with_limit",
-                        "files": ["paper/sections/results.tex"],
-                        "action": "暂不修改。",
-                        "revalidation": ["重新编译"],
-                    },
                     {
                         "finding_id": "web-p2-legend",
                         "disposition": "fix",
@@ -255,7 +250,8 @@ def test_web_paper_audit_is_pdf_only_and_requires_targeted_p0_p1_repairs(tmp_pat
             "stop_criterion": "没有未修复 P0/P1，且修复页通过 PDF 渲染与机械 QA。",
         },
     )
-    assert plan["targeted_repair_only"] is True
+    assert plan["full_rewrite"] is False
+    assert plan["competition_rank_guarantee"] is False
     validate_web_paper_audit_if_present(run_dir)
 
     final_pdf.write_bytes(b"%PDF-1.4\nchanged\n")
@@ -263,11 +259,16 @@ def test_web_paper_audit_is_pdf_only_and_requires_targeted_p0_p1_repairs(tmp_pat
         validate_web_paper_audit_if_present(run_dir)
 
 
-def test_web_paper_audit_stops_after_three_unresolved_rounds(tmp_path: Path) -> None:
-    """第三轮仍有 P0/P1 时必须复盘，且不得继续创建第四轮审核。"""
+def test_web_paper_audit_stops_after_max_unresolved_rounds(tmp_path: Path) -> None:
+    """达到轮次上限仍有 P0/P1 时必须复盘，且不得继续创建下一轮审核。
+
+    轮次上限由 WEB_PAPER_AUDIT_MAX_ROUNDS 决定（当前为 1 轮），测试不写死轮数，
+    这样上限调整时不会留下一个仍然断言旧轮数的过期测试。
+    """
     from shumozizi.knowledge.external_discussion import (
         WEB_PAPER_AUDIT_FAILURE_PATH,
         WEB_PAPER_AUDIT_HISTORY_DIR,
+        WEB_PAPER_AUDIT_MAX_ROUNDS,
         create_web_paper_audit_prompt,
         record_web_paper_audit,
         web_paper_audit_status,
@@ -278,7 +279,7 @@ def test_web_paper_audit_stops_after_three_unresolved_rounds(tmp_path: Path) -> 
     final_pdf = run_dir / "paper" / "final.pdf"
     final_pdf.write_bytes(b"%PDF-1.4\nround-1\n")
 
-    for round_number in range(1, 4):
+    for round_number in range(1, WEB_PAPER_AUDIT_MAX_ROUNDS + 1):
         prompt = create_web_paper_audit_prompt(run_dir)
         assert prompt["round_number"] == round_number
         record_web_paper_audit(
@@ -307,19 +308,21 @@ def test_web_paper_audit_stops_after_three_unresolved_rounds(tmp_path: Path) -> 
                 ],
             },
         )
-        if round_number < 3:
+        if round_number < WEB_PAPER_AUDIT_MAX_ROUNDS:
             final_pdf.write_bytes(f"%PDF-1.4\nround-{round_number + 1}\n".encode())
 
     blocked = web_paper_audit_status(run_dir)
     assert blocked["allowed"] is False
-    assert blocked["round_count"] == 3
+    assert blocked["round_count"] == WEB_PAPER_AUDIT_MAX_ROUNDS
     assert "必须写入失败复盘" in blocked["reason"]
-    assert len(list((run_dir / WEB_PAPER_AUDIT_HISTORY_DIR).glob("*.json"))) == 2
+    # 每轮开始时归档上一轮，因此历史数量比总轮数少一。
+    history = list((run_dir / WEB_PAPER_AUDIT_HISTORY_DIR).glob("*.json"))
+    assert len(history) == WEB_PAPER_AUDIT_MAX_ROUNDS - 1
 
     failure = write_web_paper_audit_failure(
         run_dir,
         {
-            "summary": "连续三轮局部修订后，核心论证链仍未达到可提交标准。",
+            "summary": "达到网页审核轮次上限后，核心论证链仍未达到可提交标准。",
             "workflow_issues": ["过晚才把关键结论映射到可复算证据。"],
             "modeling_issues": ["模型假设与结论边界没有充分闭合。"],
             "evidence_issues": ["关键指标、图表与主张之间缺少直接绑定。"],
@@ -331,5 +334,5 @@ def test_web_paper_audit_stops_after_three_unresolved_rounds(tmp_path: Path) -> 
     assert (run_dir / WEB_PAPER_AUDIT_FAILURE_PATH).is_file()
     assert "已写入失败复盘" in web_paper_audit_status(run_dir)["reason"]
 
-    with pytest.raises(ContractError, match="三轮上限"):
+    with pytest.raises(ContractError, match=f"{WEB_PAPER_AUDIT_MAX_ROUNDS} 轮上限"):
         create_web_paper_audit_prompt(run_dir)

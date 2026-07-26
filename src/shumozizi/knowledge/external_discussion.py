@@ -32,7 +32,7 @@ WEB_PAPER_AUDIT_PATH = Path("review/WEB_PAPER_AUDIT.json")
 WEB_PAPER_REPAIR_PLAN_PATH = Path("review/WEB_PAPER_REPAIR_PLAN.json")
 WEB_PAPER_AUDIT_HISTORY_DIR = Path("review/web-paper-audit-history")
 WEB_PAPER_AUDIT_FAILURE_PATH = Path("review/WEB_PAPER_AUDIT_FAILURE.json")
-WEB_PAPER_AUDIT_MAX_ROUNDS = 3
+WEB_PAPER_AUDIT_MAX_ROUNDS = 1
 _RELATIONSHIPS = frozenset({"agrees", "new_hypothesis", "conflicts", "rejected"})
 _PAPER_AUDIT_PRIORITIES = frozenset({"P0", "P1", "P2", "P3"})
 _REPAIR_DISPOSITIONS = frozenset({"fix", "defer_with_limit", "reject_with_evidence"})
@@ -486,7 +486,7 @@ def create_web_paper_audit_prompt(run_dir: Path, pdf_path: str = "paper/final.pd
     rounds = _web_paper_audit_round_count(run_dir)
     if rounds >= WEB_PAPER_AUDIT_MAX_ROUNDS:
         raise ContractError(
-            "网页版论文审核已达到三轮上限；请写入 WEB_PAPER_AUDIT_FAILURE，"
+            f"网页版论文审核已达到 {WEB_PAPER_AUDIT_MAX_ROUNDS} 轮上限；请写入 WEB_PAPER_AUDIT_FAILURE，"
             "说明工作流、建模、证据和论文问题后回到相应阶段修复"
         )
     _archive_web_paper_audit_cycle(run_dir, pdf)
@@ -677,6 +677,28 @@ def write_web_paper_repair_plan(run_dir: Path, payload: dict[str, Any]) -> dict[
     return document
 
 
+def web_paper_audit_started(run_dir: Path) -> bool:
+    """判断本次运行是否实际发起过网页版论文审核。
+
+    网页审核是可选增强，调用方需要据此区分"未使用"（不阻断）和
+    "已发起但未闭合"（必须阻断），不能把缺失文件当成失败。
+
+    Args:
+        run_dir: 当前运行目录。
+
+    Returns:
+        存在提示词、审核报告或修复计划中任一文件时为真。
+    """
+    return any(
+        (run_dir / relative).is_file()
+        for relative in (
+            WEB_PAPER_AUDIT_PROMPT_PATH,
+            WEB_PAPER_AUDIT_PATH,
+            WEB_PAPER_REPAIR_PLAN_PATH,
+        )
+    )
+
+
 def validate_web_paper_audit_if_present(run_dir: Path) -> None:
     """复验已有网页 PDF 审核和修复计划；未使用时不形成阶段门。"""
     prompt_path = run_dir / WEB_PAPER_AUDIT_PROMPT_PATH
@@ -715,7 +737,7 @@ def validate_web_paper_audit_if_present(run_dir: Path) -> None:
 
 
 def _validate_web_paper_audit_failure(run_dir: Path, payload: dict[str, Any]) -> None:
-    """校验三轮网页审核失败后的复盘确实定位到可修复环节。"""
+    """校验达到网页审核轮次上限后的复盘确实定位到可修复环节。"""
     state = _require_v32_run(run_dir)
     audit_path = run_dir / WEB_PAPER_AUDIT_PATH
     prompt_path = run_dir / WEB_PAPER_AUDIT_PROMPT_PATH
@@ -724,7 +746,7 @@ def _validate_web_paper_audit_failure(run_dir: Path, payload: dict[str, Any]) ->
     if payload.get("status") != "not_submission_ready":
         raise ContractError("WEB_PAPER_AUDIT_FAILURE.status 必须为 not_submission_ready")
     if payload.get("round_count") != WEB_PAPER_AUDIT_MAX_ROUNDS:
-        raise ContractError("WEB_PAPER_AUDIT_FAILURE 只能在第三轮失败后写入")
+        raise ContractError(f"WEB_PAPER_AUDIT_FAILURE 只能在第 {WEB_PAPER_AUDIT_MAX_ROUNDS} 轮失败后写入")
     if not audit_path.is_file() or not prompt_path.is_file():
         raise ContractError("WEB_PAPER_AUDIT_FAILURE 缺少当前审核或提示词")
     if payload.get("current_audit_sha256") != sha256_file(audit_path):
@@ -750,10 +772,10 @@ def _validate_web_paper_audit_failure(run_dir: Path, payload: dict[str, Any]) ->
 
 
 def write_web_paper_audit_failure(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
-    """记录第三轮仍未通过时的失败原因，阻止无限审核循环。"""
+    """记录达到轮次上限仍未通过时的失败原因，阻止无限审核循环。"""
     state = _require_v32_run(run_dir)
     if _web_paper_audit_round_count(run_dir) != WEB_PAPER_AUDIT_MAX_ROUNDS:
-        raise ContractError("只有恰好完成三轮网页审核后才可写失败复盘")
+        raise ContractError(f"只有恰好完成 {WEB_PAPER_AUDIT_MAX_ROUNDS} 轮网页审核后才可写失败复盘")
     prompt = load_json(run_dir / WEB_PAPER_AUDIT_PROMPT_PATH)
     audit_path = run_dir / WEB_PAPER_AUDIT_PATH
     findings = _validate_web_paper_audit(run_dir, load_json(audit_path))
@@ -807,7 +829,7 @@ def web_paper_audit_status(run_dir: Path) -> dict[str, Any]:
             if rounds >= WEB_PAPER_AUDIT_MAX_ROUNDS:
                 failure_path = root / WEB_PAPER_AUDIT_FAILURE_PATH
                 suffix = "已写入失败复盘" if failure_path.is_file() else "必须写入失败复盘"
-                reason = "网页版 GPT 审核三轮后仍有 P0/P1，" + suffix
+                reason = f"网页版 GPT 审核 {WEB_PAPER_AUDIT_MAX_ROUNDS} 轮后仍有 P0/P1，" + suffix
             else:
                 reason = "网页版 GPT 审核仍有 P0/P1：" + ", ".join(blocking)
             return {

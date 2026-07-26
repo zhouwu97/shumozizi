@@ -24,7 +24,9 @@ from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
 from shumozizi.knowledge.external_discussion import (
+    WEB_PAPER_AUDIT_MAX_ROUNDS,
     validate_web_paper_audit_if_present,
+    web_paper_audit_started,
     web_paper_audit_status,
 )
 from shumozizi.paper.compiler import verify_paper_compile_receipt
@@ -242,7 +244,9 @@ def run_final_checks(
             "独立 PDF 盲审的冻结输入、报告和隔离声明仍有效",
         )
     )
-    if is_competition_first_v32_state(state):
+    # 网页审核是可选增强而非必经环节：只有实际发起过审核的运行才按完整状态放行，
+    # 没有任何审核文件时记为 skipped，避免纯 Codex 盲评路径被缺失的网页审核卡在终检。
+    if is_competition_first_v32_state(state) and web_paper_audit_started(root):
         web_paper_audit_payload = web_paper_audit_status(root)
         web_paper_audit_payload["success"] = web_paper_audit_payload.pop("allowed")
     else:
@@ -255,7 +259,7 @@ def run_final_checks(
         _check(
             "web-paper-audit-release",
             web_paper_audit_payload,
-            "v3.2 当前 PDF 已完成仅 PDF、禁止检索、最多三轮的网页审核放行",
+            f"v3.2 网页审核（若已发起）为仅 PDF、禁止检索、最多 {WEB_PAPER_AUDIT_MAX_ROUNDS} 轮并已放行",
         )
     )
     pdf_report = audit_pdf(
