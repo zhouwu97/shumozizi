@@ -66,18 +66,38 @@ AI 在实现、求解和作图过程中，必须把关键中间过程保存成�
 
 根据 `reports/ANALYSIS_MODELING_REPORT.md` 和 `reports/RESULTS_REPORT.md` 规划图表，生成 PDF 到 `figures/`。
 
-典型图表：
+**中文字体是硬性要求（此前最常见的失分点）。** 中文论文的数据图若用 matplotlib
+默认字体，坐标轴/图例会变成英文、中文变豆腐块，属于国奖硬伤。因此每个作图脚本
+**必须**在作图前引入本 skill 提供的字体引导模块：
 
-- 预测类：真实值-预测值对比、误差分布、指标对比。
-- 优化类：收敛曲线、成本对比、资源利用率、方案前后对比。
-- 评价类：综合得分排序、雷达图、热力图、敏感性曲线。
-- 数据理解：分布图、趋势图、相关性图、箱线图。
+```python
+import sys
+sys.path.insert(0, "<本 skill 路径>/scripts")   # 例如 skills/3coding-visual/scripts
+from mpl_setup import apply_chinese_style
+apply_chinese_style()          # 找不到中文字体会直接抛错，杜绝静默产出英文图
+
+import matplotlib.pyplot as plt
+plt.xlabel("波数 (cm$^{-1}$)")  # 之后所有标签、图例、注释一律中文
+plt.ylabel("反射率 (%)")
+```
+
+该模块已处理：跨平台中文字体选择、负号显示、`pdf.fonttype=42`（文字可被提取，
+便于验收）。**严禁**手动把 `font.sans-serif` 设成 `DejaVu Sans` 或直接输出英文标签图。
 
 图表要求：
 
 - PDF 矢量输出，适合论文。
 - 不在图内写大标题，标题交给论文 caption（Typst 的 `caption:` 或 LaTeX 的 `\caption{}`）。
-- 中文论文图表使用中文坐标轴和图例；英文论文使用英文。
+- **中文论文图表的坐标轴、图例、图内注释一律中文**；英文论文才用英文。
 - 不生成流程图/架构图/路线图。
 
 图表可以由主程序或独立脚本生成，不强制固定脚本名。无论采用哪种方式，都必须保存图表对应的数据来源和生成记录。
+
+#### Step 4 自检（提交前必做）
+
+1. 至少抽查一张图 PDF：`pdftotext figures/xxx.pdf -` 应能看到中文标签，或用眼看
+   PDF 确认无豆腐块、无残留英文轴名。
+2. 若系统缺中文字体，`apply_chinese_style()` 会抛错——必须先装字体
+   （Linux：`fonts-noto-cjk`/`fonts-wqy-zenhei`；Win/mac 通常自带），不要绕过。
+3. `6verity` 的 `writing_check.sh` 会对每张被引用的图做"英文标签"硬检查，
+   英文图会导致验收 FAIL；在本阶段就应消除，而非留到验收。

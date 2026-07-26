@@ -512,11 +512,14 @@ if is_typst:
     image_re = re.compile(r'image\(\s*"([^"]+)"')
 else:
     image_re = re.compile(r'\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}')
+referenced_images = []  # (source_path, resolved_target) for figures actually cited in body
 for path, text in file_texts:
     for ref in image_re.findall(text):
         target = (path.parent / ref).resolve()
         if not target.exists():
             fail(f"referenced image does not exist from {rel(path)}: {ref}")
+        else:
+            referenced_images.append((path, target))
 
 if figures_dir and figures_dir.exists():
     for fig in sorted(figures_dir.glob("*.pdf")):
@@ -605,6 +608,134 @@ if all_results and all_results.exists():
         warn(f"cannot parse all-results JSON: {exc}")
 else:
     info("all-results JSON not supplied/found; skip JSON numeric scan")
+
+# ============================================================================
+# 实质性门禁（form 之外的 substance 检查）
+# 这些检查针对历史上被"形式通过、实质不合格"漏过的硬伤：
+#   A. 写死的 图N/表N/式N 编号引用（应改用 \ref/@ref，否则图表重排即错位）
+#   B. 中文论文的数据图却用英文坐标轴/图例（观感"半成品"，国奖硬伤）
+#   C. 缺少技术路线图/示意图（4drawio 阶段被跳过的信号）
+#   D. 缺少"模型评价与推广"章节
+# ============================================================================
+
+# 论文语言判定：CJK 字符数明显占优即判为中文论文。
+cjk_chars = re.findall(r"[\u4e00-\u9fff]", paper_text)
+latin_words = re.findall(r"[A-Za-z]{2,}", paper_text)
+is_chinese_paper = len(cjk_chars) > max(50, len(latin_words))
+info(f"paper language: {'Chinese' if is_chinese_paper else 'non-Chinese'} "
+     f"(CJK={len(cjk_chars)}, latin_words={len(latin_words)})")
+
+# ---- A. 写死的 图N / 表N / 式N 编号引用 ----
+# 正确写法：LaTeX `图~\ref{fig:x}`、Typst `@fig-x` —— 编号由交叉引用生成。
+# 错误写法：`图1`、`图 2`、`表~3`、`式(4)` —— 手写数字，图表一重排就错位，
+# 且极易出现"正文说图1是示意图，实际图1是别的图"的语义错位。
+# 说明：附件1/附件2 等赛题给定的数据文件名不在此列（不匹配 图/表/式 前缀）；
+#       仅扫描正文 section 文件，排除模板入口(main)、参考文献与附录，并剥离注释。
+def strip_comments(text):
+    if is_typst:
+        return re.sub(r"(?<!:)//.*", "", text)  # Typst 行注释（避免误伤 URL 的 ://）
+    return re.sub(r"(?<!\\)%.*", "", text)       # LaTeX 行注释（保留转义的 \%）
+
+hardcoded_ref_re = re.compile(r"(图|表|式)\s*~?\s*\(?\s*([0-9]+)")
+hardcoded_hits = []
+for path, text in file_texts:
+    if path not in section_files:
+        continue  # 只查正文章节，跳过模板入口/参考文献
+    if path.name.startswith("A_"):
+        continue  # 附录代码不计
+    for m in hardcoded_ref_re.finditer(strip_comments(text)):
+        snippet = re.sub(r"\s+", " ", text[max(0, m.start() - 15):m.end() + 5]).strip()
+        hardcoded_hits.append((path.name, m.group(1) + m.group(2), snippet))
+if hardcoded_hits:
+    fail(f"发现 {len(hardcoded_hits)} 处写死的图/表/式编号引用（应改用 \\ref/@ref 交叉引用）：")
+    for name, tok, snip in hardcoded_hits[:12]:
+        print(f"       - {name}: 「{tok}」… {snip}")
+    if len(hardcoded_hits) > 12:
+        print(f"       -（另有 {len(hardcoded_hits) - 12} 处）")
+
+# ---- B. 中文论文的数据图却用英文标签 ----
+# 判据：对每张被正文引用的图 PDF，用 pdftotext 提取可读文字。matplotlib 的中文
+# 通常无法被 pdftotext 还原为 Unicode（提取为空），但英文坐标轴/图例能稳定提取。
+# 因此"提取出大量长英文词"即强烈指示该图使用英文标注 —— 中文论文视为硬伤。
+import shutil
+import subprocess
+
+pdftotext_bin = shutil.which("pdftotext")
+# 允许在中文图里少量出现的英文技术记号（不计入英文词计数）。
+_ALLOWED_FIG_EN = {
+    "rmse", "mape", "bootstrap", "airy", "cauchy", "snell", "fresnel",
+    "fabry", "perot",
+}
+if is_chinese_paper and pdftotext_bin and referenced_images:
+    checked = set()
+    english_figs = []
+    for _, target in referenced_images:
+        if target in checked or target.suffix.lower() != ".pdf":
+            continue
+        checked.add(target)
+        try:
+            out = subprocess.run(
+                [pdftotext_bin, str(target), "-"],
+                capture_output=True, encoding="utf-8", errors="ignore", timeout=30,
+            ).stdout or ""
+        except Exception:
+            continue
+        words = {w.lower() for w in re.findall(r"[A-Za-z]{4,}", out)}
+        words -= _ALLOWED_FIG_EN
+        if len(words) >= 5:
+            english_figs.append((target.name, sorted(words)[:10]))
+    if english_figs:
+        fail(f"中文论文中有 {len(english_figs)} 张图疑似使用英文坐标轴/图例"
+             f"（应改用中文，见 3coding-visual/scripts/mpl_setup.py）：")
+        for fname, ws in english_figs[:12]:
+            print(f"       - {fname}: {ws}")
+elif is_chinese_paper and not pdftotext_bin:
+    info("pdftotext 不可用，跳过图内英文标签检查（建议安装 poppler-utils 以启用）")
+
+# ---- B2. 作图源码是否配置中文字体（二级网，源码层）----
+# 即使 PDF 检查因故跳过，也从作图脚本判断是否设置了中文字体。
+if is_chinese_paper:
+    py_fig_sources = []
+    for base in [root / "code", root / "scripts", root / "figures", root]:
+        if base.exists():
+            py_fig_sources += list(base.rglob("*.py"))
+    fig_scripts = [
+        p for p in py_fig_sources
+        if re.search(r"matplotlib|pyplot|savefig|plt\.", read(p))
+    ]
+    if fig_scripts:
+        cjk_font_re = re.compile(
+            r"apply_chinese_style|mpl_setup|SimHei|微软雅黑|Microsoft YaHei|"
+            r"Noto Sans CJK|Source Han|WenQuanYi|Heiti|Songti|font\.sans-serif"
+        )
+        configured = [p for p in fig_scripts if cjk_font_re.search(read(p))]
+        if not configured:
+            warn(f"检测到 {len(fig_scripts)} 个 matplotlib 作图脚本，但均未配置中文字体"
+                 f"（应 import mpl_setup; apply_chinese_style()）")
+
+# ---- C. 技术路线图 / 示意图是否存在 ----
+# 竞赛论文通常需要至少一张技术路线图；物理/结构类题目还需光路/结构示意图。
+# 4drawio 阶段负责这些非数据图；整个阶段被跳过时此项会缺失。
+schematic_kw = re.compile(
+    r"roadmap|flow|pipeline|schematic|diagram|structure|"
+    r"路线|流程|示意|结构|框架|机理|原理", re.I)
+schematic_found = False
+schematic_pool = list(referenced_images)
+if figures_dir and figures_dir.exists():
+    schematic_pool += [(figures_dir, p) for p in figures_dir.rglob("*.pdf")]
+    schematic_pool += [(figures_dir, p) for p in figures_dir.rglob("*.drawio")]
+for _, target in schematic_pool:
+    if schematic_kw.search(target.name):
+        schematic_found = True
+        break
+if not schematic_found and re.search(r"问题|模型|建模", paper_text):
+    warn("未发现技术路线图/流程图/示意图（文件名含 roadmap/flow/路线/流程/示意/结构 等）；"
+         "竞赛论文通常需要技术路线图，物理/结构题还需原理或光路示意图（见 4drawio）")
+
+# ---- D. 模型评价与推广章节 ----
+if is_chinese_paper and not re.search(
+    r"模型评价|模型的评价|模型检验|优缺点|模型推广|模型改进|误差分析", paper_text):
+    warn("未发现'模型评价/优缺点/模型推广/误差分析'相关章节；国奖论文通常单列'模型评价与推广'")
 
 if exit_code == 0:
     print("PASS: writing text gate passed")
