@@ -220,6 +220,48 @@ def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
     return document
 
 
+def _argument_plan_warnings(run_dir: Path) -> list[str]:
+    """检查核心问题是否在 ARGUMENT_PLAN.md 中有对应论证单元。
+
+    轻量 warning（不阻断）：核心问题存在但 ARGUMENT_PLAN.md 缺少或
+    没有该问题的论证单元标题时，提醒写作前填写，避免论文仍然流水账。
+    """
+    import re
+
+    try:
+        from shumozizi.simple.modeling_units import core_question_insights
+
+        available = core_question_insights(run_dir)
+    except Exception:  # noqa: BLE001
+        return []
+    if not available:
+        return []
+
+    plan_path = run_dir / "paper" / "ARGUMENT_PLAN.md"
+    if not plan_path.is_file():
+        core_ids = sorted(available)
+        return [
+            f"核心问题 {', '.join(core_ids)} 已提炼规律，但缺少 paper/ARGUMENT_PLAN.md；"
+            "建议写论文前为每个核心问题规划论证单元（判断→推导→证据→竞争解释→讨论）。"
+        ]
+
+    try:
+        text = plan_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    question_pat = re.compile(r"核心问题\s+(Q\w+)", re.MULTILINE)
+    found_in_plan = set(question_pat.findall(text))
+
+    missing = sorted(set(available) - found_in_plan)
+    if not missing:
+        return []
+    return [
+        f"核心问题 {', '.join(missing)} 已提炼规律，但 paper/ARGUMENT_PLAN.md "
+        "中没有对应论证单元；写论文前请补充这些问题的论证单元规划。"
+    ]
+
+
 def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]]:
     """执行 Competition-First 最小论文硬门和可选写作警告。"""
     errors: list[str] = []
@@ -270,6 +312,7 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     if not (run_dir / "paper" / "CONTRIBUTION_BRIEF.md").is_file():
         warnings.append("缺少 paper/CONTRIBUTION_BRIEF.md；这不阻断普通问题的正确回答。")
     warnings.extend(_insight_figure_warnings(run_dir))
+    warnings.extend(_argument_plan_warnings(run_dir))
     errors.extend(_code_appendix_errors(run_dir))
     errors.extend(_core_insight_usage_errors(run_dir, answers))
     return errors, warnings

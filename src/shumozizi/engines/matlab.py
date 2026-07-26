@@ -185,6 +185,8 @@ def run_matlab_script(
     finished_at = utc_now()
 
     # 校验期望输出文件
+    # 注意：即使 exit_code==0，如果期望输出不存在，success 仍为 False。
+    # 脚本可能因为内部错误未产生输出却仍返回 0（例如 MATLAB error() 被捕获）。
     output_results: list[dict[str, Any]] = []
     if expected_outputs is not None:
         for name in expected_outputs:
@@ -196,6 +198,13 @@ def run_matlab_script(
             else:
                 output_results.append({"name": name, "exists": False, "size_bytes": 0})
 
+    outputs_valid = (
+        all(item["exists"] for item in output_results)
+        if output_results  # 只在声明了期望输出时才校验
+        else True           # 未声明期望输出时不因此阻断（调用方自行检查）
+    )
+    success = exit_code == 0 and not timed_out and outputs_valid
+
     return {
         "engine": engine,
         "engine_version": probe["version"],
@@ -203,7 +212,8 @@ def run_matlab_script(
         "script": str(script_path),
         "exit_code": exit_code,
         "timed_out": timed_out,
-        "success": exit_code == 0 and not timed_out,
+        "outputs_valid": outputs_valid,
+        "success": success,
         "stdout": stdout,
         "stderr": stderr,
         "started_at": started_at,
