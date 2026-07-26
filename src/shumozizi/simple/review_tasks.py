@@ -67,7 +67,7 @@ def persist_review_task_creation_event(
         ).iter_errors(raw_event)
     ]
     if errors:
-        raise ContractError("create_thread 原始事件不合法: " + "；".join(errors))
+        raise ContractError("审核任务创建事件不合法: " + "；".join(errors))
     path = resolve_inside(run_dir, event_file, must_exist=False)
     atomic_json(path, raw_event)
     return path
