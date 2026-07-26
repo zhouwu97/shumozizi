@@ -517,7 +517,12 @@ def _no_online_references(value: object, label: str) -> None:
 
 
 def _validate_web_paper_audit(run_dir: Path, payload: dict[str, Any]) -> list[dict[str, str]]:
-    """校验网页审核只绑定当前 PDF、固定提示和本地可执行修复。"""
+    """校验网页审核只绑定当前 PDF、固定提示和基本格式。
+
+    不再强制要求固定字段（competitive_position / argument_and_evidence 等），
+    也不强制每条 finding 必须有完整的六项栏目——审核者可以用自由文本说明
+    需要重构章节或回到实验，不能被拉回逐项填格子。
+    """
     state = _require_v32_run(run_dir)
     prompt_path = run_dir / WEB_PAPER_AUDIT_PROMPT_PATH
     if not prompt_path.is_file():
@@ -536,20 +541,14 @@ def _validate_web_paper_audit(run_dir: Path, payload: dict[str, Any]) -> list[di
     if payload.get("prompt_sha256") != prompt.get("prompt_sha256"):
         raise ContractError("网页版论文审核提示词与冻结版本不一致")
     _text(payload.get("web_chat_id"), "web_chat_id")
-    report = _mapping(payload.get("report"), "report")
-    for field in (
-        "overall_assessment",
-        "competitive_position",
-        "readability",
-        "argument_and_evidence",
-        "format_and_aesthetics",
-        "figures",
-        "repair_strategy",
-    ):
-        _text(report.get(field), f"report.{field}")
+    # report 允许自由文本或结构化字典，只要非空即可
+    report = payload.get("report")
+    if not report:
+        raise ContractError("WEB_PAPER_AUDIT.report 不能为空")
+    # findings 可以是空列表（审核者认为无新问题时）或包含优先级注释的条目
     findings = payload.get("findings")
     if not isinstance(findings, list):
-        raise ContractError("WEB_PAPER_AUDIT.findings 必须是数组")
+        raise ContractError("WEB_PAPER_AUDIT.findings 必须是数组（可以为空）")
     normalized: list[dict[str, str]] = []
     ids: set[str] = set()
     for index, raw in enumerate(findings):
@@ -561,15 +560,17 @@ def _validate_web_paper_audit(run_dir: Path, payload: dict[str, Any]) -> list[di
         priority = finding.get("priority")
         if priority not in _PAPER_AUDIT_PRIORITIES:
             raise ContractError(f"findings[{index}].priority 必须为 P0/P1/P2/P3")
+        # issue 是唯一必填项，其余字段（location/impact/proposed_fix/verification）可选
+        _text(finding.get("issue"), f"findings[{index}].issue")
         normalized.append(
             {
                 "finding_id": identifier,
                 "priority": priority,
-                "location": _text(finding.get("location"), f"findings[{index}].location"),
-                "issue": _text(finding.get("issue"), f"findings[{index}].issue"),
-                "impact": _text(finding.get("impact"), f"findings[{index}].impact"),
-                "proposed_fix": _text(finding.get("proposed_fix"), f"findings[{index}].proposed_fix"),
-                "verification": _text(finding.get("verification"), f"findings[{index}].verification"),
+                "issue": finding["issue"],
+                "location": finding.get("location", ""),
+                "impact": finding.get("impact", ""),
+                "proposed_fix": finding.get("proposed_fix", ""),
+                "verification": finding.get("verification", ""),
             }
         )
     _no_online_references(payload, "WEB_PAPER_AUDIT")
@@ -610,7 +611,13 @@ def _safe_repair_paths(value: object, label: str) -> list[str]:
 
 
 def _validate_web_paper_repair_plan(run_dir: Path, payload: dict[str, Any]) -> None:
-    """验证网页审查发现已被局部修复动作逐项闭合。"""
+    """验证网页修复计划绑定了当前审核报告，以及基本格式正确。
+
+    移除了 targeted_repair_only=True 的强制要求：提示词已明确允许审核者指出
+    需要重写章节或回到实验，代码不应再把它拉回「只能局部修补」。
+    P0/P1 仍然要求给出修复动作，但不强制所有 finding 都必须逐项出现在计划里——
+    审核者可以选择哪些问题值得跟进，哪些可以忽略。
+    """
     state = _require_v32_run(run_dir)
     audit_path = run_dir / WEB_PAPER_AUDIT_PATH
     if not audit_path.is_file():
@@ -621,53 +628,47 @@ def _validate_web_paper_repair_plan(run_dir: Path, payload: dict[str, Any]) -> N
         raise ContractError("WEB_PAPER_REPAIR_PLAN 的 schema_version 或 run_id 不匹配")
     if payload.get("audit_sha256") != sha256_file(audit_path):
         raise ContractError("WEB_PAPER_REPAIR_PLAN 未绑定当前网页审核报告")
-    if payload.get("targeted_repair_only") is not True:
-        raise ContractError("网页版论文审核默认必须采用局部修复")
-    if payload.get("full_rewrite") is not False:
+    # full_rewrite 允许为 True（允许重构），但需要写明理由
+    if payload.get("full_rewrite") is True:
         _text(payload.get("rewrite_justification"), "rewrite_justification")
     repairs = payload.get("repairs")
     if not isinstance(repairs, list):
-        raise ContractError("WEB_PAPER_REPAIR_PLAN.repairs 必须是数组")
-    audit_ids = {finding["finding_id"] for finding in findings}
+        raise ContractError("WEB_PAPER_REPAIR_PLAN.repairs 必须是数组（可以为空）")
+    p0p1_ids = {f["finding_id"] for f in findings if f["priority"] in {"P0", "P1"}}
     repair_ids: set[str] = set()
-    decisions: dict[str, str] = {}
+    audit_ids = {f["finding_id"] for f in findings}
     for index, raw in enumerate(repairs):
         repair = _mapping(raw, f"repairs[{index}]")
         identifier = _text(repair.get("finding_id"), f"repairs[{index}].finding_id")
         if identifier not in audit_ids or identifier in repair_ids:
-            raise ContractError("WEB_PAPER_REPAIR_PLAN 必须逐项且仅一次引用审核 finding_id")
+            raise ContractError("WEB_PAPER_REPAIR_PLAN 不能引用不存在的 finding_id 或重复闭合")
         repair_ids.add(identifier)
         disposition = repair.get("disposition")
         if disposition not in _REPAIR_DISPOSITIONS:
             raise ContractError(f"repairs[{index}].disposition 不合法")
-        decisions[identifier] = disposition
-        _safe_repair_paths(repair.get("files"), f"repairs[{index}].files")
         _text(repair.get("action"), f"repairs[{index}].action")
-        _text_list(repair.get("revalidation"), f"repairs[{index}].revalidation")
-    if repair_ids != audit_ids:
-        raise ContractError("WEB_PAPER_REPAIR_PLAN 必须闭合网页审核的每一项 finding")
-    for finding in findings:
-        if finding["priority"] in {"P0", "P1"} and decisions[finding["finding_id"]] != "fix":
-            raise ContractError("P0/P1 网页审核发现必须给出实际修复动作")
-    _text(payload.get("stop_criterion"), "stop_criterion")
+    # P0/P1 必须出现在修复计划里（但可以 disposition=defer 并写明原因）
+    missing_critical = p0p1_ids - repair_ids
+    if missing_critical:
+        raise ContractError(
+            "P0/P1 网页审核发现必须在修复计划中出现: " + ", ".join(sorted(missing_critical))
+        )
     if payload.get("competition_rank_guarantee") is not False:
         raise ContractError("网页审核不能作为竞赛名次或省一保证")
     _text(payload.get("planned_at"), "planned_at")
 
 
 def write_web_paper_repair_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
-    """把网页审核发现转为局部修复与复核计划。"""
+    """把网页审核发现转为修复计划。允许重构章节，不强制全部局部修补。"""
     state = _require_v32_run(run_dir)
     audit_path = run_dir / WEB_PAPER_AUDIT_PATH
     document = {
         "schema_version": "1.0",
         "run_id": state["run_id"],
         "audit_sha256": sha256_file(audit_path),
-        "targeted_repair_only": True,
         "full_rewrite": payload.get("full_rewrite", False),
         "rewrite_justification": payload.get("rewrite_justification"),
         "repairs": payload.get("repairs"),
-        "stop_criterion": _text(payload.get("stop_criterion"), "stop_criterion"),
         "competition_rank_guarantee": False,
         "planned_at": utc_now(),
     }

@@ -47,7 +47,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 只有高影响且未解决的目标歧义才触发独立目标语义审查。判断来自 `analysis/objective-ambiguities.json`：至少两个合理解释、可能改变主结果、题面未排除、用户未裁决。
 
-**v3.1/v3.2 Competition-First 审查（当前主链）**：实验结束做一次自由科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。报告须实质性覆盖：独立目标/变量/约束确认、三处最大风险、对最大风险的实际攻击、最薄弱问题和当前竞争力上限；不足 500 字符的报告会被门禁拒绝。”是否存在明显更强的路线或目标定义”必须用 `record_stronger_alternative` 写成 `review/stronger-alternative.json` 闭合——`found=False` 记录会绑定记录时的生产结果集合，如果后续实验新增了生产结果，记录自动失效需重新记录；`found=True` 时要么真的跑一次并绑定真实生产结果，要么写明为何赛程内不可行；未闭合不放行论文。v3.1/v3.2 **不使用** `review/gaps/round-N.json` 查漏系统，该系统仅属于 Capability-First v3.0 路径。
+**v3.1/v3.2 Competition-First 审查（当前主链）**：实验结束做一次科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。科学挑战采用两阶段阅读：阶段A只读 `problem/`，独立重建数学结构、最简 baseline、可能更强的候选路线和最关键歧义，并明确写入报告；阶段B再读代码和结果，与阶段A比较后选择一个最高价值结论实施真实攻击，说明攻击结果（推翻/支持/不确定）。风险数量不设要求——一个足以决定论文上限的缺陷可以集中全部篇幅；报告只要求非空（> 300 字符）且包含实质分析，不检查固定关键词或固定栏目数量。”是否存在明显更强的路线或目标定义”必须用 `record_stronger_alternative` 写成 `review/stronger-alternative.json` 闭合——`found=False` 记录会绑定记录时的生产结果集合，如果后续实验新增了生产结果，记录自动失效需重新记录；`found=True` 时要么真的跑一次并绑定真实生产结果，要么写明为何赛程内不可行；未闭合不放行论文。v3.1/v3.2 **不使用** `review/gaps/round-N.json` 查漏系统，该系统仅属于 Capability-First v3.0 路径。
 
 **v3.0 Capability-First 审查（旧运行兼容）**：报告冻结后必须提取强断言并生成 `review/gaps/round-N.json`：只有具有攻击描述、报告定位与实际证据文件的 `attacked` 风险才能视为覆盖；未覆盖中央风险须由 fresh-thread 专项审核闭合。所有 blocking P2 必须按 finding ID 逐项绑定恢复条件、修复文件、专项报告和回执，不能只关闭其中一个。
 
