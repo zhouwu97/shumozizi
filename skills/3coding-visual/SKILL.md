@@ -74,15 +74,34 @@ AI 在实现、求解和作图过程中，必须把关键中间过程保存成�
 import sys
 sys.path.insert(0, "<本 skill 路径>/scripts")   # 例如 skills/3coding-visual/scripts
 from mpl_setup import apply_chinese_style
-apply_chinese_style()          # 找不到中文字体会直接抛错，杜绝静默产出英文图
+
+# profile 决定网格等"风格"参数；字体嵌入与负号修复始终生效。
+apply_chinese_style()                          # 折线图/柱状图/散点图（默认）
+apply_chinese_style(profile="heatmap")         # 热力图（关闭网格，避免切割色块）
+apply_chinese_style(profile="geometry3d")      # 三维几何图（Axes3D 自管网格）
+apply_chinese_style(profile="radar")           # 雷达图/极坐标
+apply_chinese_style(profile="network")         # 网络图（配合 ax.axis("off")）
+apply_chinese_style(profile="schematic")       # 示意图/技术路线图
+apply_chinese_style(profile="image")           # 原始图像（imshow）
 
 import matplotlib.pyplot as plt
 plt.xlabel("波数 (cm$^{-1}$)")  # 之后所有标签、图例、注释一律中文
 plt.ylabel("反射率 (%)")
 ```
 
-该模块已处理：跨平台中文字体选择、负号显示、`pdf.fonttype=42`（文字可被提取，
-便于验收）。**严禁**手动把 `font.sans-serif` 设成 `DejaVu Sans` 或直接输出英文标签图。
+**profile 选择原则**：字体嵌入（`pdf.fonttype=42`）与负号修复（`unicode_minus`）
+是硬配置，所有图类型都生效。`axes.grid` 等风格参数随 profile 而变：
+
+| 图类型 | profile | grid |
+|---|---|---|
+| 折线/柱状/散点 | `"line"`（默认） | True |
+| 热力图 / imshow | `"heatmap"` / `"image"` | False |
+| 三维几何图 | `"geometry3d"` | False |
+| 雷达/极坐标 | `"radar"` | False |
+| 网络图 | `"network"` | False |
+| 示意图 | `"schematic"` | False |
+
+**严禁**手动把 `font.sans-serif` 设成 `DejaVu Sans` 或直接输出英文标签图。
 
 图表要求：
 
