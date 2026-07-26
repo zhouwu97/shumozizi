@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "status": "executed",
+  "execution_file": "evaluation/error_injection/replay-results.json",
+  "cases": [
+    {"id": "continuous-midpoint-false-lower-bound", "expected_signal": "continuous-domain-certificate", "status": "triggered"},
+    {"id": "zero-action-activation", "expected_signal": "action-activation", "status": "triggered"},
+    {"id": "limited-search-competitive-claim", "expected_signal": "search-sufficiency", "status": "triggered"},
+    {"id": "internal-report-language", "expected_signal": "academic-paper-not-internal-report", "status": "triggered"}
+  ]
+}

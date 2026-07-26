@@ -20,6 +20,8 @@
     "paper_source_sha256": {"$ref": "#/$defs/sha"},
     "final_pdf_path": {"const": "paper/final.pdf"},
     "final_pdf_sha256": {"$ref": "#/$defs/sha"},
+    "final_docx_path": {"const": "paper/final.docx"},
+    "final_docx_sha256": {"$ref": "#/$defs/sha"},
     "executions": {
       "type": "array",
       "minItems": 1,

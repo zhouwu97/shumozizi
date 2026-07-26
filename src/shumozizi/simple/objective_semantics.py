@@ -7,6 +7,53 @@ from typing import Any
 
 from shumozizi.core.io import ContractError, json_bytes, load_json, sha256_bytes
 
+OBJECTIVE_AMBIGUITIES_PATH = Path("analysis/objective-ambiguities.json")
+AMBIGUITY_DECISIONS_PATH = Path("state/ambiguity-decisions.json")
+
+
+def objective_semantics_review_required(run_dir: Path) -> bool:
+    """仅在未决且影响主结论的题意歧义存在时要求独立审查。
+
+    Args:
+        run_dir: 当前 v3.1 运行目录。
+
+    Returns:
+        存在至少两个合理解释、会改变主要结果且尚未由题面或用户裁决的歧义时为真。
+    """
+    path = run_dir / OBJECTIVE_AMBIGUITIES_PATH
+    if not path.is_file():
+        return False
+    payload = load_json(path)
+    items = payload.get("ambiguities", payload.get("items", []))
+    if not isinstance(items, list):
+        raise ContractError("analysis/objective-ambiguities.json 必须包含 ambiguities 数组")
+    decisions: set[str] = set()
+    decision_path = run_dir / AMBIGUITY_DECISIONS_PATH
+    if decision_path.is_file():
+        document = load_json(decision_path)
+        for decision in document.get("decisions", []):
+            if isinstance(decision, dict) and decision.get("confirmed") is True:
+                question_id = decision.get("question_id")
+                if isinstance(question_id, str):
+                    decisions.add(question_id)
+    for item in items:
+        if not isinstance(item, dict):
+            raise ContractError("objective ambiguity 条目必须是对象")
+        candidates = item.get("candidate_interpretations", [])
+        question_id = item.get("question_id")
+        unresolved = (
+            isinstance(question_id, str)
+            and isinstance(candidates, list)
+            and len(candidates) >= 2
+            and item.get("can_change_primary_result") is True
+            and item.get("resolved_by_problem_text") is not True
+            and not item.get("resolution")
+            and question_id not in decisions
+        )
+        if unresolved:
+            return True
+    return False
+
 
 def build_question_objective_bindings(
     assessment: dict[str, Any], decisions: dict[str, Any] | None = None
@@ -62,6 +109,15 @@ def objective_semantics_for_question(run_dir: Path, question_id: str) -> str:
     bindings = read_question_objective_bindings(run_dir)
     if question_id in bindings:
         return bindings[question_id]
+    if not objective_semantics_review_required(run_dir):
+        return sha256_bytes(
+            json_bytes(
+                {
+                    "question_id": question_id,
+                    "objective_semantics": "unambiguous_or_review_not_required",
+                }
+            )
+        )
     problem_files = [
         path for path in (run_dir / "problem").rglob("*")
         if path.is_file()

@@ -15,7 +15,11 @@ def main() -> int:
     parser.add_argument("run_dir")
     parser.add_argument("--task-id", required=True)
     parser.add_argument("--task-type", required=True)
-    parser.add_argument("--thread-id", required=True)
+    parser.add_argument(
+        "--creation-event-file",
+        required=True,
+        help="协调器实际 create_thread 后保存的原始事件；不接受手填 thread_id。",
+    )
     parser.add_argument("--model-id", required=True)
     parser.add_argument("--prompt-sha256", required=True)
     parser.add_argument("--input-bindings", required=True, help="输入绑定 JSON 文件")
@@ -26,12 +30,12 @@ def main() -> int:
         Path(args.run_dir).resolve(),
         task_id=args.task_id,
         task_type=args.task_type,
-        thread_id=args.thread_id,
         model_id=args.model_id,
         prompt_sha256=args.prompt_sha256,
         input_bindings=load_json(Path(args.input_bindings).resolve()),
         report_file=args.report_file,
         parent_task_id=args.parent_task_id,
+        creation_event_file=args.creation_event_file,
     )
     print(path)
     return 0

@@ -1,4 +1,4 @@
-"""初始化 Capability-First v3 运行的命令行入口。"""
+"""初始化 Competition-First v3.2 运行的命令行入口。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def main() -> int:
     Returns:
         成功时为零。
     """
-    parser = argparse.ArgumentParser(description="初始化 Capability-First v3 数学建模运行")
+    parser = argparse.ArgumentParser(description="初始化 Competition-First 数学建模运行")
     parser.add_argument("problem_path", nargs="?", help="可选的题面文件或题目目录")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--competition", default="")
@@ -27,6 +27,12 @@ def main() -> int:
     parser.add_argument("--question", dest="questions", action="append", default=[])
     parser.add_argument("--total-hours", type=float)
     parser.add_argument("--token-soft-cap", type=int)
+    parser.add_argument(
+        "--workflow-version",
+        choices=("3.1", "3.2"),
+        default="3.2",
+        help="新运行默认 v3.2；v3.1 仅用于兼容既有轻量运行。",
+    )
     parser.add_argument("--repo-root")
     args = parser.parse_args()
     root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
@@ -40,8 +46,14 @@ def main() -> int:
         required_questions=args.questions,
         total_hours=args.total_hours,
         token_soft_cap=args.token_soft_cap,
+        workflow_version=args.workflow_version,
     )
-    print(json.dumps({"run_id": run_dir.name, "run_dir": str(run_dir), "run_schema_version": "3.0"}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"run_id": run_dir.name, "run_dir": str(run_dir), "run_schema_version": args.workflow_version},
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 

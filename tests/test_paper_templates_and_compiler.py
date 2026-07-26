@@ -118,9 +118,20 @@ def _set_engines(monkeypatch: pytest.MonkeyPatch, latex: bool, typst: bool) -> N
 
 
 def _isolate_compiler_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
-    """隔离编译回执测试，工作流门由独立审核 E2E 单独覆盖。"""
+    """隔离编译回执测试，工作流门由独立审核 E2E 单独覆盖。
+
+    同时用内存存根替换 pandoc docx 转换，避免测试环境依赖 pandoc 安装。
+    """
     monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
     monkeypatch.setattr(paper_readiness, "require_paper_readiness", lambda _run: None)
+
+    def _fake_compile_docx(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) -> Path:
+        """写入最小 docx 存根，确保 sha256 计算和后续文件检查不失败。"""
+        out = paper_dir / "final.docx"
+        out.write_bytes(b"PK\x03\x04fake-docx-stub")
+        return out
+
+    monkeypatch.setattr(paper_compiler, "compile_docx", _fake_compile_docx)
 
 
 def test_auto_template_selection_prefers_latex_and_records_fallback(

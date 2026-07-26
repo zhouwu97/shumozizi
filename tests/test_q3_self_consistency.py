@@ -30,6 +30,10 @@ def load_run_module(name: str):
     return module
 
 
+@unittest.skipUnless(
+    (RUN_CODE / "q3_search_adequacy.py").is_file(),
+    "需要本地 cumcm-2025-a-v3-001 运行产物",
+)
 class Q3SelfConsistencyTests(unittest.TestCase):
     """覆盖不注入 incumbent 且必须可比复现或改善的质量门。"""
 

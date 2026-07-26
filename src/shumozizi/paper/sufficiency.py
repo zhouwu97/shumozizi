@@ -60,11 +60,21 @@ ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
     "comparison_route": re.compile(
         r"基线|替代路线|备选方法|对比方法|路线比较|comparison|alternative\s*route", re.IGNORECASE
     ),
+    # evidence_interpretation：要求实质解释性语言，而非"表明效果良好"式套话。
+    # 删除裸"表明"——"计算表明精度达 0.9"无需解释机制就能触发。
+    # 保留或新增需要因果语境的词：意味着、原因在于、这是因为、机制、驱动因素。
     "evidence_interpretation": re.compile(
-        r"证据解释|结果解释|说明原因|意味着|表明|evidence\s*interpretation", re.IGNORECASE
+        r"证据解释|结果解释|说明原因|意味着|原因(?:在于|是)|这是因为|机制|驱动因素|"
+        r"evidence\s*interpretation|the\s*reason\s*is",
+        re.IGNORECASE,
     ),
+    # unproved_boundary：要求逐问的边界声明，而非全局评价节中的通用"局限"套话。
+    # 删除裸"局限"——9_evaluation 的"模型缺点：未考虑时间动态性"就能触发。
+    # 保留：未证明、适用边界、不外推、尚未验证；新增：结论仅适用、当…改变时。
     "unproved_boundary": re.compile(
-        r"未证明|未证|适用边界|局限|不外推|尚未验证|unproved|limitation|boundary", re.IGNORECASE
+        r"未证明|适用边界|不外推|尚未验证|结论仅适用|当.{1,20}改变时|"
+        r"unproved|applicable\s*boundary|no\s*extrapolation|boundary\s*condition",
+        re.IGNORECASE,
     ),
     "source_code_appendix": re.compile(
         r"源码附录|程序源码|完整源码|source\s*code\s*appendix", re.IGNORECASE

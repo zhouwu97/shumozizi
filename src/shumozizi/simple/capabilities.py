@@ -709,6 +709,7 @@ def require_independent_oracle_execution(run_dir: Path) -> None:
         result
         for result in results
         if result["kind"] == "independent-oracle"
+        and result.get("status") == "current"
         and result["execution_mode"] == "production"
         and result["execution_valid"]
     ]

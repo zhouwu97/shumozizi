@@ -22,6 +22,10 @@ def load(name: str):
     return module
 
 
+@unittest.skipUnless(
+    (RUN_CODE / "q4_multi_uav_search.py").is_file(),
+    "需要本地 cumcm-2025-a-v3-001 运行产物",
+)
 class Q4MultiUavSearchTests(unittest.TestCase):
     """覆盖多平台变量不能退化为 FY1 局部域。"""
 

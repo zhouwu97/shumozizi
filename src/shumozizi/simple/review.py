@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,13 @@ from shumozizi.core.schema import validate_document
 from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.objective_semantics import build_question_objective_bindings
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
+from shumozizi.simple.state import (
+    is_competition_first_state,
+    is_competition_first_v32_state,
+    read_simple_state,
+    update_simple_state,
+    utc_now,
+)
 
 REVIEW_ROOT = Path("review")
 SUMMARY_PATH = REVIEW_ROOT / "summary.json"
@@ -37,7 +44,13 @@ OBJECTIVE_SEMANTICS_ASSESSMENT_PATH = REVIEW_ROOT / "OBJECTIVE_SEMANTICS.json"
 OBJECTIVE_SEMANTICS_RECEIPT_PATH = REVIEW_ROOT / "objective-semantics.json"
 AMBIGUITY_DECISIONS_PATH = Path("state/ambiguity-decisions.json")
 SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
+SCIENTIFIC_CHALLENGE_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_CHALLENGE.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
+PAPER_BLIND_PROMPT_PREFIX = (
+    "严格审核这份冻结 PDF。请全面审查内容、数学逻辑、结果可信度和排版，"
+    "并判断正文是否是一篇面向数学建模评委的学术论文，而非内部技术或审核报告。"
+    "独立指出问题并按 P0-P3 分级；除该 PDF 外不要读取任何文件或既有对话。论文 PDF："
+)
 FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
 RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
 _PACKET_ROOTS = {
@@ -90,6 +103,33 @@ _RED_TEAM_KINDS = {
 _SAFE_EVIDENCE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _REPORT_ARTIFACT_PATH = re.compile(r"review[\\/]red_team_artifacts[\\/][A-Za-z0-9._/\\-]+")
+
+
+def _competition_first_run(run_dir: Path) -> bool:
+    """判断运行是否使用 Competition-First v3.1 生产主链。"""
+    return is_competition_first_state(read_simple_state(run_dir))
+
+
+def _required_packet_roots(run_dir: Path, kind: str) -> frozenset[str]:
+    """返回当前运行版本必须冻结的审查包输入根。
+
+    Competition-First 只要求能复核题面、源码和当前结果的最小输入集，避免旧版
+    evidence/publication 双目录重新变成探索阶段的前置合同。
+
+    Args:
+        run_dir: 当前运行目录。
+        kind: 审查包类别。
+
+    Returns:
+        当前工作流版本对应的必需输入根集合。
+    """
+    if _competition_first_run(run_dir):
+        return {
+            "objective-semantics": frozenset(("problem",)),
+            "scientific": frozenset(("problem", "code", "results/raw")),
+            "paper-blind": frozenset(("paper/final.pdf",)),
+        }[kind]
+    return _REQUIRED_PACKET_ROOTS[kind]
 
 # 科学审查包文件名过滤：只排除明确的质量协议后缀文件，
 # 不使用 broad 子串匹配（会误杀 q5_best_so_far.json 等科学数据）
@@ -477,9 +517,20 @@ def _require_red_team_artifact_path(run_dir: Path, relative: str, *, must_exist:
 
 
 def _red_team_engine_command(run_dir: Path, engine: str) -> str:
-    """只接受能力路由已实际探测且选择的红队执行引擎。"""
+    """返回已实际可用的红队执行引擎。
+
+    Competition-First 在执行时探测所需引擎，不要求为此维护独立能力路由；旧运行
+    仍严格使用其冻结路由与烟雾测试记录。
+    """
     if engine not in {"python", "matlab", "octave"}:
         raise ContractError("红队证据仅支持 python、matlab 或 octave")
+    if _competition_first_run(run_dir):
+        if engine == "python":
+            return sys.executable
+        command = shutil.which(engine)
+        if command is None:
+            raise ContractError(f"当前环境未找到可执行的红队引擎: {engine}")
+        return command
     route = require_capability_route(run_dir)
     toolchain = route["toolchain"]
     selected = {toolchain["production_engine"]}
@@ -930,7 +981,17 @@ def _packet_files(
         if exclude_quality_labels and _packet_should_exclude(source):
             return []
         return [source]
-    files = sorted(path for path in source.rglob("*") if path.is_file())
+    source_root = source.resolve()
+    files: list[Path] = []
+    for path in sorted(source.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            path.resolve().relative_to(source_root)
+        except ValueError:
+            # Windows Junction 可能把运行时依赖映射到运行目录外；审查包只能冻结本 run 内的源码。
+            continue
+        files.append(path)
     if exclude_quality_labels:
         files = [path for path in files if not _packet_should_exclude(path)]
     if not exclude_visualization_scripts:
@@ -988,6 +1049,12 @@ def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
     pdf = root / "paper" / "final.pdf"
     if not pdf.is_file() or pdf.stat().st_size == 0:
         raise ContractError("标准提交包需要非空 paper/final.pdf")
+    docx = root / "paper" / "final.docx"
+    if not docx.is_file() or docx.stat().st_size == 0:
+        raise ContractError(
+            "标准提交包要求同时提供 paper/final.docx（Word 版本）。"
+            "请在 compile_paper 后确认 pandoc 已正常生成 .docx，或单独运行 compile_docx。"
+        )
     submission_dir = root / "paper" / "submission"
     submission_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = submission_dir / "manifest.json"
@@ -1014,7 +1081,10 @@ def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
             + ", ".join(sorted(unmanaged))
         )
 
-    sources: list[tuple[Path, str, str]] = [(pdf, "final.pdf", "final_pdf")]
+    sources: list[tuple[Path, str, str]] = [
+        (pdf, "final.pdf", "final_pdf"),
+        (docx, "final.docx", "final_docx"),
+    ]
     artifacts_dir = root / "artifacts"
     attachment_names = {
         path.name.casefold()
@@ -1161,6 +1231,71 @@ def _copy_packet_tree(
     }, copied
 
 
+def _build_competition_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
+    """冻结 v3.1 的最小审查包，不创建覆盖或终审生命周期。
+
+    Args:
+        run_dir: 当前 Competition-First 运行目录。
+        kind: 目标语义、科学挑战或 PDF 盲审。
+
+    Returns:
+        审查包清单。
+    """
+    allowed = {"objective-semantics", "scientific", "paper-blind"}
+    if kind not in allowed:
+        raise ContractError("Competition-First 不支持 final-audit；可创建 objective-semantics、scientific 或 paper-blind 审查包")
+    state = read_simple_state(run_dir)
+    required_phase = {
+        "objective-semantics": "analysis",
+        "scientific": "experiment",
+        "paper-blind": "paper_review",
+    }[kind]
+    if state["phase"] != required_phase:
+        raise ContractError(f"{kind} 审查包只能在 {required_phase} 阶段创建")
+    if kind == "paper-blind":
+        if not (run_dir / "paper" / "final.pdf").is_file():
+            raise ContractError("paper-blind 审查包需要已编译的 paper/final.pdf")
+
+    roots_by_kind = {
+        "objective-semantics": ("problem",),
+        "scientific": ("problem", "code", "results/raw"),
+        # 最终盲评只接收冻结 PDF，避免题面、源码、历史结论和作者解释污染评委视角。
+        "paper-blind": ("paper/final.pdf",),
+    }
+    existing_roots = [
+        relative for relative in roots_by_kind[kind] if _source_root(run_dir, relative) is not None
+    ]
+    if not existing_roots:
+        raise ContractError("审查包没有可冻结的题面、源码、结果或论文输入")
+    packet_id = _packet_identifier(kind, state["revision"])
+    packet_dir = run_dir / REVIEW_ROOT / "packet" / kind / packet_id
+    packet_dir.mkdir(parents=True, exist_ok=False)
+    roots: list[dict[str, Any]] = []
+    files: list[dict[str, str]] = []
+    for source_relative in existing_roots:
+        root, copied = _copy_packet_tree(
+            run_dir,
+            packet_dir,
+            source_relative,
+            _PACKET_DESTINATIONS[source_relative],
+            exclude_quality_labels=kind == "scientific",
+        )
+        if root is not None:
+            roots.append(root)
+            files.extend(copied)
+    manifest = {
+        "schema_version": "1.0",
+        "run_id": state["run_id"],
+        "packet_kind": kind,
+        "packet_id": packet_id,
+        "source_roots": roots,
+        "files": files,
+        "created_at": utc_now(),
+    }
+    atomic_json(packet_dir / "manifest.json", manifest)
+    return manifest
+
+
 def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
     """冻结供独立对话阅读的无质量标签审查包。
 
@@ -1174,6 +1309,8 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
     Raises:
         ContractError: 阶段、包类别或所需 PDF 不满足流程边界。
     """
+    if _competition_first_run(run_dir):
+        return _build_competition_review_packet(run_dir, kind=kind)
     if kind not in _PACKET_ROOTS:
         raise ContractError(
             "审查包类别必须为 objective-semantics、scientific、paper-blind 或 final-audit"
@@ -1287,7 +1424,7 @@ def _read_packet_manifest(run_dir: Path, manifest_relative: str) -> tuple[Path, 
         if source in roots_by_source:
             raise ContractError("审查包源树重复")
         roots_by_source[source] = root
-    missing_roots = _REQUIRED_PACKET_ROOTS[payload["packet_kind"]] - set(roots_by_source)
+    missing_roots = _required_packet_roots(run_dir, payload["packet_kind"]) - set(roots_by_source)
     if missing_roots:
         raise ContractError("审查包缺少必要源树: " + ", ".join(sorted(missing_roots)))
 
@@ -1315,6 +1452,33 @@ def _read_packet_manifest(run_dir: Path, manifest_relative: str) -> tuple[Path, 
             raise ContractError("审查包文件路径不属于对应冻结源树")
         _safe_packet_path(packet_dir, packet)
     return manifest_path, payload
+
+
+def paper_blind_review_prompt(run_dir: Path, manifest_relative: str) -> str:
+    """返回启动全新顶层盲审任务时必须原样使用的极简提示词。
+
+    Args:
+        run_dir: 当前运行目录。
+        manifest_relative: ``paper-blind`` 冻结包清单的运行内相对路径。
+
+    Returns:
+        只包含严格审核要求和冻结 PDF 绝对路径的提示词。
+
+    Raises:
+        ContractError: 清单类型错误或冻结 PDF 不存在。
+    """
+    manifest_path, manifest = _read_packet_manifest(run_dir, manifest_relative)
+    if manifest["packet_kind"] != "paper-blind":
+        raise ContractError("极简盲审提示词只能绑定 paper-blind 审查包")
+    frozen_pdf = manifest_path.parent / _PACKET_DESTINATIONS["paper/final.pdf"]
+    if not frozen_pdf.is_file():
+        raise ContractError("paper-blind 审查包缺少冻结 PDF")
+    return PAPER_BLIND_PROMPT_PREFIX + str(frozen_pdf.resolve())
+
+
+def paper_blind_review_prompt_sha256(run_dir: Path, manifest_relative: str) -> str:
+    """返回当前冻结 PDF 极简盲审提示词的 SHA-256。"""
+    return sha256_bytes(paper_blind_review_prompt(run_dir, manifest_relative).encode("utf-8"))
 
 
 def verify_review_packet(run_dir: Path, manifest_relative: str) -> dict[str, Any]:
@@ -2895,6 +3059,8 @@ def _review_task_reference(
     report_file: str,
     packet: dict[str, str],
     reviewer_thread_id: str,
+    expected_prompt_sha256: str | None = None,
+    require_fresh_thread: bool = False,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     """复验开放审核任务并返回可持久化的回执引用。"""
     from shumozizi.simple.review_tasks import validate_review_task_receipt
@@ -2905,6 +3071,8 @@ def _review_task_reference(
         expected_type=task_type,
         expected_report=report_file,
         expected_input_bindings={"packet": packet},
+        expected_prompt_sha256=expected_prompt_sha256,
+        require_fresh_thread=require_fresh_thread,
     )
     if receipt["thread_id"] != reviewer_thread_id:
         raise ContractError("审核任务回执 thread_id 与导入参数不一致")
@@ -2917,6 +3085,247 @@ def _review_task_reference(
         },
         receipt,
     )
+
+
+def _competition_review_reference(
+    run_dir: Path,
+    *,
+    manifest_file: str,
+    expected_kind: str,
+    receipt_file: str,
+    task_type: str,
+    report_file: Path,
+    reviewer_thread_id: str,
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """绑定 v3.1 单次审查的包、报告和真实任务回执。"""
+    manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
+    if manifest["packet_kind"] != expected_kind:
+        raise ContractError(f"审查结论必须绑定 {expected_kind} 审查包")
+    packet = verify_review_packet(run_dir, manifest_file)
+    if not packet["success"]:
+        raise ContractError("审查包已失效: " + "；".join(packet["errors"]))
+    report = _review_report(run_dir, report_file)
+    packet_binding = {
+        "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
+        "manifest_sha256": sha256_file(manifest_path),
+    }
+    expected_prompt_sha256 = None
+    if expected_kind == "paper-blind":
+        expected_prompt_sha256 = paper_blind_review_prompt_sha256(
+            run_dir, relative_inside(run_dir, manifest_path).as_posix()
+        )
+    task_reference, _ = _review_task_reference(
+        run_dir,
+        receipt_file=receipt_file,
+        task_type=task_type,
+        report_file=report["file"],
+        packet=packet_binding,
+        reviewer_thread_id=reviewer_thread_id,
+        expected_prompt_sha256=expected_prompt_sha256,
+        require_fresh_thread=True,
+    )
+    return packet_binding, report, task_reference
+
+
+def _competition_review_current(
+    run_dir: Path, review: dict[str, Any], *, expected_kind: str, task_type: str
+) -> tuple[bool, str]:
+    """复验 v3.1 单次审查及其全面审核后的结构化查漏。"""
+    try:
+        packet = verify_review_packet(run_dir, review["packet"]["manifest_file"])
+        if not packet["success"]:
+            return False, "；".join(packet["errors"])
+        if packet["manifest_sha256"] != review["packet"]["manifest_sha256"]:
+            return False, "审查包清单哈希已变化"
+        report = _safe_run_path(run_dir, review["report"]["file"])
+        if sha256_file(report) != review["report"]["sha256"]:
+            return False, "审查报告哈希已变化"
+        task = review.get("task_receipt")
+        if not isinstance(task, dict):
+            return False, "审查摘要缺少真实任务回执"
+        task_path = _safe_run_path(run_dir, task["file"])
+        if sha256_file(task_path) != task["sha256"]:
+            return False, "审核任务回执哈希已变化"
+        from shumozizi.simple.review_tasks import validate_review_task_receipt
+
+        receipt = validate_review_task_receipt(
+            run_dir,
+            task["file"],
+            expected_type=task_type,
+            expected_report=review["report"]["file"],
+            expected_input_bindings={"packet": review["packet"]},
+            require_fresh_thread=True,
+        )
+        if receipt["task_id"] != task["task_id"] or receipt["thread_id"] != review["reviewer"]["thread_id"]:
+            return False, "审核摘要与任务回执身份不一致"
+        if expected_kind in {"scientific", "paper-blind"}:
+            from shumozizi.simple.review_gaps import verify_review_gap_completion
+
+            gap = verify_review_gap_completion(
+                run_dir,
+                scope="scientific" if expected_kind == "scientific" else "paper",
+                review_report=review,
+            )
+            if not gap["allowed"]:
+                return False, "全面审核后的查漏未完成: " + gap["reason"]
+        return True, ""
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return False, str(exc)
+
+
+# 科学挑战报告必须包含这些话题关键词，防止空壳报告通过门禁。
+# 每个元组中所有关键词都必须出现在报告文本中（忽略大小写）。
+_CHALLENGE_REQUIRED_KEYWORDS: tuple[tuple[str, ...], ...] = (
+    ("独立", "目标"),          # 独立目标/变量/约束分析
+    ("风险",),                 # 风险识别（至少两次出现由长度约束隐含）
+    ("攻击",),                 # 对最大风险的实际攻击
+    ("竞争力",),               # 当前竞争力上限
+)
+_CHALLENGE_REPORT_MIN_CHARS = 500
+
+
+def _require_scientific_challenge_sections(report_path: Path) -> None:
+    """检查科学挑战报告包含必要的分析章节，阻止空壳报告通过门禁。
+
+    不替代自由文本判断，只阻断明显缺失核心章节的报告。
+
+    Args:
+        report_path: 科学挑战报告绝对路径。
+
+    Raises:
+        ContractError: 报告过短或缺少关键章节内容。
+    """
+    try:
+        text = report_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ContractError(f"科学挑战报告无法读取: {exc}") from exc
+    if len(text.strip()) < _CHALLENGE_REPORT_MIN_CHARS:
+        raise ContractError(
+            f"科学挑战报告过短（< {_CHALLENGE_REPORT_MIN_CHARS} 字符），"
+            "缺少独立目标分析、风险识别、攻击记录和竞争力上限的实质内容"
+        )
+    lower = text.lower()
+    missing: list[str] = []
+    for keywords in _CHALLENGE_REQUIRED_KEYWORDS:
+        if not all(kw in lower for kw in keywords):
+            missing.append("/".join(keywords))
+    if missing:
+        raise ContractError(
+            "科学挑战报告缺少以下核心章节内容（keyword check）: "
+            + "; ".join(missing)
+        )
+
+
+def _import_competition_scientific_review(
+    run_dir: Path,
+    *,
+    manifest_file: str,
+    verdict: str,
+    highest_severity: str,
+    competition_strength: str,
+    full_rerun_required: bool,
+    affected_questions: list[str],
+    reviewer_thread_id: str,
+    task_receipt_file: str,
+    report_file: Path,
+) -> dict[str, Any]:
+    """导入 v3.1 的自由科学挑战，保留 P0/P1 与真实回执边界。"""
+    state = read_simple_state(run_dir)
+    if state["phase"] != "experiment":
+        raise ContractError("科学挑战结论只能在 experiment 阶段导入")
+    packet, report, task = _competition_review_reference(
+        run_dir,
+        manifest_file=manifest_file,
+        expected_kind="scientific",
+        receipt_file=task_receipt_file,
+        task_type="scientific_open",
+        report_file=report_file,
+        reviewer_thread_id=reviewer_thread_id,
+    )
+    from shumozizi.simple.review_focus import verify_scientific_challenge_evidence
+
+    challenge_evidence = verify_scientific_challenge_evidence(run_dir)
+    if not challenge_evidence["valid"]:
+        raise ContractError("科学挑战缺少有效的实际攻击证据: " + "；".join(challenge_evidence["errors"]))
+    verification = verify_red_team_artifacts(run_dir)
+    if not verification["valid"]:
+        raise ContractError("科学挑战的已登记执行证据无效: " + "；".join(verification["errors"]))
+    if verification["evidence_records"]:
+        from shumozizi.simple.evidence_consequences import apply_independent_evidence_consequences
+
+        consequences = apply_independent_evidence_consequences(run_dir, verification["evidence_records"])
+        if consequences:
+            raise ContractError("独立负面证据已回退 experiment，不能导入挑战通过结论")
+    # v3.1/v3.2 Competition-First 的科学挑战不使用旧覆盖率查漏系统（review_gaps.py）。
+    # 隔离由"自由报告 + record_stronger_alternative 闭合 + 真实攻击证据"三者组合保证，
+    # 与 Capability-First 的 required_risks / coverage_declaration 体系互不兼容。
+    _require_scientific_challenge_sections(run_dir / report_file)
+    review = {
+        "verdict": verdict,
+        "highest_severity": highest_severity,
+        "competition_strength": competition_strength,
+        "full_rerun_required": full_rerun_required,
+        "affected_questions": list(dict.fromkeys(affected_questions)),
+        "packet": packet,
+        "report": report,
+        "task_receipt": task,
+        "challenge_evidence": challenge_evidence["evidence"],
+        "reviewer": _reviewer_scientific(reviewer_thread_id),
+        "reviewed_at": utc_now(),
+    }
+    summary = {
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "scientific_review": review,
+        "paper_blind_review": None,
+        "updated_at": utc_now(),
+    }
+    _require_summary(summary)
+    atomic_json(run_dir / SUMMARY_PATH, summary)
+    return summary
+
+
+def _import_competition_paper_blind_review(
+    run_dir: Path,
+    *,
+    manifest_file: str,
+    verdict: str,
+    highest_severity: str,
+    reviewer_thread_id: str,
+    task_receipt_file: str,
+    report_file: Path,
+) -> dict[str, Any]:
+    """导入 v3.1 的相对竞争力 PDF 盲评，不创建覆盖闭环。"""
+    if read_simple_state(run_dir)["phase"] != "paper_review":
+        raise ContractError("PDF 盲评结论只能在 paper_review 阶段导入")
+    packet, report, task = _competition_review_reference(
+        run_dir,
+        manifest_file=manifest_file,
+        expected_kind="paper-blind",
+        receipt_file=task_receipt_file,
+        task_type="paper_blind_open",
+        report_file=report_file,
+        reviewer_thread_id=reviewer_thread_id,
+    )
+    summary = read_review_summary(run_dir)
+    scientific_thread = summary["scientific_review"]["reviewer"]["thread_id"]
+    if reviewer_thread_id == scientific_thread:
+        raise ContractError("PDF 盲评必须使用不同于科学挑战的新对话")
+    # v3.1/v3.2 Competition-First 的 PDF 盲评不使用旧覆盖率查漏系统（review_gaps.py）；
+    # 盲评只负责论文相对竞争力和可读性，隔离由冻结 PDF + 独立任务回执 + fresh thread 保证。
+    summary["paper_blind_review"] = {
+        "verdict": verdict,
+        "highest_severity": highest_severity,
+        "packet": packet,
+        "report": report,
+        "task_receipt": task,
+        "reviewer": _reviewer_paper(reviewer_thread_id),
+        "reviewed_at": utc_now(),
+    }
+    summary["updated_at"] = utc_now()
+    _require_summary(summary)
+    atomic_json(run_dir / SUMMARY_PATH, summary)
+    return summary
 
 
 def import_scientific_review(
@@ -2946,6 +3355,19 @@ def import_scientific_review(
     if verdict == "pass" and (highest_severity in {"P0", "P1"} or full_rerun_required):
         raise ContractError("P0/P1 或全量重跑要求不能导入为 pass")
     state = read_simple_state(run_dir)
+    if is_competition_first_state(state):
+        return _import_competition_scientific_review(
+            run_dir,
+            manifest_file=manifest_file,
+            verdict=verdict,
+            highest_severity=highest_severity,
+            competition_strength=competition_strength,
+            full_rerun_required=full_rerun_required,
+            affected_questions=affected_questions,
+            reviewer_thread_id=reviewer_thread_id,
+            task_receipt_file=task_receipt_file,
+            report_file=report_file,
+        )
     if state["phase"] != "scientific_review":
         raise ContractError("科学审查结论只能在 scientific_review 阶段导入")
     # 有必答问题时逐问审查不可省略
@@ -3075,6 +3497,16 @@ def import_paper_blind_review(
         raise ContractError("盲审 verdict 或严重性不合法")
     if verdict == "pass" and highest_severity in {"P0", "P1"}:
         raise ContractError("盲审含 P0/P1 时不能导入为 pass")
+    if _competition_first_run(run_dir):
+        return _import_competition_paper_blind_review(
+            run_dir,
+            manifest_file=manifest_file,
+            verdict=verdict,
+            highest_severity=highest_severity,
+            reviewer_thread_id=reviewer_thread_id,
+            task_receipt_file=task_receipt_file,
+            report_file=report_file,
+        )
     if read_simple_state(run_dir)["phase"] != "paper_review":
         raise ContractError("PDF 盲审结论只能在 paper_review 阶段导入")
     require_paper_generation_allowed(run_dir)
@@ -3142,6 +3574,8 @@ def import_final_audit(
     report_file: Path = FINAL_AUDIT_REPORT_PATH,
 ) -> dict[str, Any]:
     """绑定第三个新对话完成的最终交付审核报告。"""
+    if _competition_first_run(run_dir):
+        raise ContractError("Competition-First v3.1 不再创建或导入 final-audit；请执行机械 QA")
     if verdict not in _VERDICTS or highest_severity not in _SEVERITIES:
         raise ContractError("最终交付审核 verdict 或严重性不合法")
     if verdict == "pass" and highest_severity in {"P0", "P1"}:
@@ -3281,12 +3715,215 @@ def _review_current(
     return True, ""
 
 
+def _competition_scientific_review_status(run_dir: Path) -> dict[str, Any]:
+    """返回 v3.1 单次科学挑战是否仍有效。"""
+    try:
+        summary = read_review_summary(run_dir)
+        review = summary["scientific_review"]
+        current, reason = _competition_review_current(
+            run_dir, review, expected_kind="scientific", task_type="scientific_open"
+        )
+        from shumozizi.simple.review_focus import verify_scientific_challenge_evidence
+
+        challenge_evidence = verify_scientific_challenge_evidence(run_dir)
+        if not challenge_evidence["valid"]:
+            current = False
+            reason = "科学挑战实际攻击证据已失效: " + "；".join(challenge_evidence["errors"])
+        elif review.get("challenge_evidence") != challenge_evidence["evidence"]:
+            current = False
+            reason = "科学挑战实际攻击证据绑定已变化"
+        allowed = bool(
+            current
+            and review["verdict"] == "pass"
+            and review["highest_severity"] not in {"P0", "P1"}
+            and not review["full_rerun_required"]
+        )
+        return {
+            "allowed": allowed,
+            "submission_ready": allowed,
+            "competition_strength": review.get("competition_strength", "unknown"),
+            "review": review,
+            "reason": reason if not allowed else "",
+        }
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return {
+            "allowed": False,
+            "submission_ready": False,
+            "competition_strength": "unknown",
+            "reason": str(exc),
+        }
+
+
+def _verify_v32_frozen_packet_copy(
+    run_dir: Path, packet_binding: dict[str, Any], *, expected_kind: str
+) -> dict[str, Any]:
+    """验证 v3.2 审查任务实际读取过的冻结副本未被改写。
+
+    v3.2 的当前性由建模单元和科学挑战证据中的生产结果负责；这里仅验证
+    当时交给独立对话的副本及其清单，避免工作簿导出等非评分脚本改动把已绑定
+    的数值攻击错误判成失效。
+    """
+    if not isinstance(packet_binding, dict):
+        raise ContractError("v3.2 科学挑战回执缺少冻结审查包绑定")
+    manifest_file = packet_binding.get("manifest_file")
+    manifest_sha256 = packet_binding.get("manifest_sha256")
+    if not isinstance(manifest_file, str) or not isinstance(manifest_sha256, str):
+        raise ContractError("v3.2 科学挑战冻结审查包绑定格式无效")
+    manifest_path, manifest = _read_packet_manifest(run_dir, manifest_file)
+    if manifest["packet_kind"] != expected_kind:
+        raise ContractError(f"v3.2 科学挑战绑定了 {manifest['packet_kind']} 审查包")
+    if sha256_file(manifest_path) != manifest_sha256:
+        raise ContractError("v3.2 科学挑战审查包清单已变化")
+    packet_dir = manifest_path.parent
+    for item in manifest["files"]:
+        if not isinstance(item, dict):
+            raise ContractError("v3.2 科学挑战审查包文件条目无效")
+        packet_relative = item.get("packet")
+        expected_sha256 = item.get("sha256")
+        if not isinstance(packet_relative, str) or not isinstance(expected_sha256, str):
+            raise ContractError("v3.2 科学挑战审查包文件缺少路径或哈希")
+        frozen_file = _safe_packet_path(packet_dir, packet_relative)
+        if not frozen_file.is_file() or sha256_file(frozen_file) != expected_sha256:
+            raise ContractError(f"v3.2 科学挑战冻结副本已变化: {packet_relative}")
+    return {
+        "manifest_file": relative_inside(run_dir, manifest_path).as_posix(),
+        "manifest_sha256": manifest_sha256,
+    }
+
+
+def _v32_unresolved_high_severities(report_text: str) -> list[str]:
+    """从挑战报告的风险清单中提取仍未关闭的 P0/P1 风险。
+
+    没有结构化风险清单时保持保守：只要报告提到 P0/P1，就不能把该运行标记为
+    可提交；这不会阻断论文生成或后续独立审稿。
+    """
+    entries = re.findall(
+        r"(?m)^\s*[-*]\s+\*\*(P[0-3])(?:-[^：:*]+)?[：:]\*\*\s*(.+)$",
+        report_text,
+    )
+    unresolved = {
+        severity
+        for severity, detail in entries
+        if severity in {"P0", "P1"}
+        and not re.search(r"(?:无|已修复|已关闭|resolved)", detail, flags=re.IGNORECASE)
+    }
+    if not entries and re.search(r"\bP[01](?:[-：:]|\b)", report_text):
+        unresolved.add("P0/P1（未结构化）")
+    return sorted(unresolved)
+
+
+def _v32_scientific_challenge_status(run_dir: Path) -> dict[str, Any]:
+    """返回 v3.2 科学挑战的证据状态，不依赖 v3.1 ``summary.json``。
+
+    已发现的高风险不会被此函数隐藏：它们允许透明论文进入盲评和网页审核，
+    但会持续令 ``submission_ready`` 为假，直到真实修复和重新挑战完成。
+    """
+    try:
+        report_file = SCIENTIFIC_CHALLENGE_REPORT_PATH.as_posix()
+        report_path = run_dir / SCIENTIFIC_CHALLENGE_REPORT_PATH
+        if not report_path.is_file() or not report_path.read_text(encoding="utf-8").strip():
+            raise ContractError("缺少非空的 review/SCIENTIFIC_CHALLENGE.md")
+
+        from shumozizi.simple.modeling_units import require_v32_experiment_evidence
+        from shumozizi.simple.review_focus import verify_scientific_challenge_evidence
+        from shumozizi.simple.review_tasks import validate_review_task_receipt
+
+        require_v32_experiment_evidence(run_dir)
+        challenge_evidence = verify_scientific_challenge_evidence(run_dir)
+        if not challenge_evidence["valid"]:
+            raise ContractError(
+                "科学挑战实际攻击证据已失效: " + "；".join(challenge_evidence["errors"])
+            )
+
+        receipts: list[dict[str, Any]] = []
+        receipt_errors: list[str] = []
+        tasks_root = run_dir / REVIEW_ROOT / "tasks"
+        for receipt_path in sorted(tasks_root.rglob("receipt.json")):
+            try:
+                candidate = load_json(receipt_path)
+                if (
+                    not isinstance(candidate, dict)
+                    or candidate.get("task_type") != "scientific_open"
+                    or candidate.get("report_file") != report_file
+                ):
+                    continue
+                bindings_path = receipt_path.parent / "input-bindings.json"
+                if not bindings_path.is_file():
+                    raise ContractError("科学挑战任务缺少 input-bindings.json")
+                bindings = load_json(bindings_path)
+                if not isinstance(bindings, dict):
+                    raise ContractError("科学挑战任务输入绑定格式无效")
+                packet = _verify_v32_frozen_packet_copy(
+                    run_dir, bindings.get("packet"), expected_kind="scientific"
+                )
+                receipt = validate_review_task_receipt(
+                    run_dir,
+                    receipt_path.relative_to(run_dir).as_posix(),
+                    expected_type="scientific_open",
+                    expected_report=report_file,
+                    expected_input_bindings=bindings,
+                    require_fresh_thread=True,
+                )
+                receipts.append(
+                    {
+                        "receipt": receipt,
+                        "receipt_file": receipt_path.relative_to(run_dir).as_posix(),
+                        "packet": packet,
+                    }
+                )
+            except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+                receipt_errors.append(str(exc))
+        if not receipts:
+            detail = "；".join(receipt_errors) if receipt_errors else "未找到绑定当前报告的 scientific_open 回执"
+            raise ContractError("缺少有效的 v3.2 科学挑战 fresh-thread 回执: " + detail)
+
+        selected = max(receipts, key=lambda item: item["receipt"]["completed_at"])
+        unresolved = _v32_unresolved_high_severities(report_path.read_text(encoding="utf-8"))
+        submission_ready = not unresolved
+        return {
+            "allowed": True,
+            "submission_ready": submission_ready,
+            "competition_strength": "limited" if unresolved else "not_assessed",
+            "unresolved_high_severities": unresolved,
+            "review": {
+                "report": {
+                    "file": report_file,
+                    "sha256": sha256_file(report_path),
+                },
+                "task_receipt": {
+                    "file": selected["receipt_file"],
+                    "task_id": selected["receipt"]["task_id"],
+                    "thread_id": selected["receipt"]["thread_id"],
+                },
+                "packet": selected["packet"],
+                "challenge_evidence": challenge_evidence["evidence"],
+            },
+            "reason": (
+                "科学挑战仍有未解决高风险: " + ", ".join(unresolved)
+                if unresolved
+                else ""
+            ),
+        }
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return {
+            "allowed": False,
+            "submission_ready": False,
+            "competition_strength": "unknown",
+            "unresolved_high_severities": [],
+            "reason": str(exc),
+        }
+
+
 def scientific_review_status(run_dir: Path) -> dict[str, Any]:
     """返回科学红队是否仍可作为论文放行依据。
 
     当逐问审查 (question_reviews) 存在时，全部必答问题 verdict=pass 才允许放行，
     单问证据不能替其他问题背书。
     """
+    if _competition_first_run(run_dir):
+        if is_competition_first_v32_state(read_simple_state(run_dir)):
+            return _v32_scientific_challenge_status(run_dir)
+        return _competition_scientific_review_status(run_dir)
     try:
         semantics = objective_semantics_review_status(run_dir)
         if not semantics["allowed"]:
@@ -3351,13 +3988,93 @@ def scientific_review_status(run_dir: Path) -> dict[str, Any]:
 
 def require_paper_generation_allowed(run_dir: Path) -> None:
     """要求当前源代码、输入和候选结果已通过独立科学红队。"""
+    if _competition_first_run(run_dir):
+        state = read_simple_state(run_dir)
+        from shumozizi.simple.results import read_result_index
+
+        current = {
+            item["question_id"]
+            for item in read_result_index(run_dir)["results"]
+            if item.get("status") == "current"
+            and item.get("execution_mode") == "production"
+            and item.get("execution_valid") is True
+        }
+        missing = sorted(set(state["required_questions"]) - current)
+        if missing:
+            raise ContractError("不能进入论文阶段：必答问题缺少 current production 结果: " + ", ".join(missing))
+        if is_competition_first_v32_state(state):
+            # v3.2 的真实路线竞争由 modeling units 的 compare 证据承载；
+            # 不能以 v3.1 的单一 route_tournament 元数据缺失阻断论文。
+            from shumozizi.simple.modeling_units import require_v32_experiment_evidence
+            from shumozizi.simple.objective_consequences import (
+                require_objective_consequences,
+            )
+
+            require_objective_consequences(run_dir)
+            require_v32_experiment_evidence(run_dir)
+            from shumozizi.simple.review_focus import stronger_alternative_status
+
+            alternative = stronger_alternative_status(run_dir)
+            if not alternative["allowed"]:
+                raise ContractError(
+                    "不能进入论文阶段：更强路线判断未闭合: " + alternative["reason"]
+                )
+        else:
+            from shumozizi.simple.competition import require_route_tournament_for_paper
+
+            require_route_tournament_for_paper(run_dir)
+        challenge = scientific_review_status(run_dir)
+        if not challenge["allowed"]:
+            raise ContractError("不能进入论文阶段：科学挑战未通过或已失效: " + challenge["reason"])
+        return
     status = scientific_review_status(run_dir)
     if not status["allowed"]:
         raise ContractError("不能进入论文阶段：独立科学红队未通过或已失效: " + status["reason"])
 
 
+def record_paper_blind_review_skip(run_dir: Path, reason: str) -> Path:
+    """显式记录无法执行 PDF 盲评的原因，避免静默跳过。
+
+    Args:
+        run_dir: 当前运行目录。
+        reason: 无法创建独立盲评的具体原因。
+
+    Returns:
+        已写入的跳过说明路径。
+    """
+    if not reason.strip():
+        raise ContractError("跳过 PDF 盲评必须记录具体原因")
+    path = run_dir / REVIEW_ROOT / "PAPER_BLIND_REVIEW_SKIP.md"
+    path.write_text("# PDF 盲评跳过说明\n\n" + reason.strip() + "\n", encoding="utf-8", newline="\n")
+    return path
+
+
+def _competition_paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
+    """返回 v3.1 PDF 盲评或其跳过说明是否允许继续机械 QA。
+
+    跳过说明只保留无法开展盲评时的可追溯性，不能作为 ``complete`` 放行依据。
+    """
+    try:
+        summary = read_review_summary(run_dir)
+        review = summary.get("paper_blind_review")
+        if review is None:
+            skip = run_dir / REVIEW_ROOT / "PAPER_BLIND_REVIEW_SKIP.md"
+            if skip.is_file() and len(skip.read_text(encoding="utf-8").strip()) > 32:
+                return {"allowed": True, "skipped": True, "reason": "已显式记录 PDF 盲评跳过原因"}
+            return {"allowed": False, "reason": "缺少独立 PDF 盲评或明确跳过原因"}
+        current, reason = _competition_review_current(
+            run_dir, review, expected_kind="paper-blind", task_type="paper_blind_open"
+        )
+        allowed = bool(current and review["verdict"] == "pass" and review["highest_severity"] not in {"P0", "P1"})
+        return {"allowed": allowed, "review": review, "reason": reason if not allowed else ""}
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return {"allowed": False, "reason": str(exc)}
+
+
 def paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
     """返回盲审是否仍可作为提交前放行依据。"""
+    if _competition_first_run(run_dir):
+        return _competition_paper_blind_review_status(run_dir)
     try:
         scientific = scientific_review_status(run_dir)
         if not scientific["allowed"]:
@@ -3378,7 +4095,7 @@ def paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
 
 
 def require_paper_blind_review_allowed(run_dir: Path) -> None:
-    """要求当前 PDF 已经由新的盲审对话放行。"""
+    """要求当前 PDF 已通过盲审，或已记录可继续机械 QA 的跳过原因。"""
     status = paper_blind_review_status(run_dir)
     if not status["allowed"]:
         raise ContractError("不能进入机械终检：独立 PDF 盲审未通过或已失效: " + status["reason"])
@@ -3390,13 +4107,14 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
     机械 QA 必须由正式检查器生成，不接受手写 synthetic 单条检查。
     """
     try:
+        state = read_simple_state(run_dir)
         mechanical = load_json(run_dir / "qa" / "mechanical-qa.json")
         pdf = run_dir / "paper" / "final.pdf"
         if (
             not isinstance(mechanical, dict)
             or mechanical.get("schema_version") != "1.0"
             or mechanical.get("run_id") != run_dir.name
-            or mechanical.get("workflow") != "capability-first-v3"
+            or mechanical.get("workflow") != state["workflow"]
             or mechanical.get("status") != "pass"
         ):
             return {"allowed": False, "reason": "机械 QA 未通过"}
@@ -3408,13 +4126,20 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
             return {"allowed": False, "reason": "机械 QA 缺少 generator_id 或 generated_at"}
         # 最低必要检查集合：与 run_final_checks.py 使用的稳定 ID 一致
         required_check_ids = {
-            "state-phase", "scientific-review-release",
-            "competition-submission-release", "visualization-contract",
-            "paper-template-manifest", "paper-compile-receipt",
+            "state-phase", "paper-template-manifest", "paper-compile-receipt",
             "paper-blind-review-release", "pdf", "paper-structure-signals",
             "placeholders", "result-references", "numeric-consistency",
             "current-result-files", "current-figure-files", "contact-sheet",
         }
+        if _competition_first_run(run_dir):
+            required_check_ids.add("scientific-challenge-release")
+            if is_competition_first_v32_state(state):
+                required_check_ids.add("web-paper-audit-release")
+        else:
+            required_check_ids |= {
+                "scientific-review-release", "competition-submission-release",
+                "visualization-contract",
+            }
         checks = mechanical.get("checks")
         if not isinstance(checks, list):
             return {"allowed": False, "reason": "机械 QA 缺少检查列表"}
@@ -3488,6 +4213,23 @@ def final_audit_status(run_dir: Path) -> dict[str, Any]:
 def competition_submission_status(run_dir: Path) -> dict[str, Any]:
     """区分科学可用与竞赛可提交，避免 weak 结果被标记为 complete。"""
     scientific = scientific_review_status(run_dir)
+    if _competition_first_run(run_dir):
+        submission_ready = bool(scientific.get("submission_ready", scientific["allowed"]))
+        return {
+            "scientific_valid": scientific["allowed"],
+            "competition_strength": scientific.get("competition_strength", "unknown"),
+            "submission_ready": submission_ready,
+            "status": (
+                "submission_ready"
+                if submission_ready
+                else (
+                    "scientifically_valid_but_not_submission_ready"
+                    if scientific["allowed"]
+                    else "scientific_challenge_unavailable"
+                )
+            ),
+            "reason": scientific.get("reason", ""),
+        }
     if not scientific["allowed"]:
         return {
             "scientific_valid": False,
@@ -3515,7 +4257,74 @@ def competition_submission_status(run_dir: Path) -> dict[str, Any]:
 
 
 def completion_status(run_dir: Path) -> dict[str, Any]:
-    """组合三轮独立审核与机械 QA，形成唯一的 complete 放行结论。"""
+    """组合当前审核、事实产物与机械 QA，形成唯一的 complete 放行结论。"""
+    if _competition_first_run(run_dir):
+        scientific = scientific_review_status(run_dir)
+        if not scientific["allowed"]:
+            return {
+                "allowed": False,
+                "reason": "科学挑战未通过或已因生产事实变化而失效: "
+                + scientific["reason"],
+                "scientific_valid": False,
+                "competition_strength": scientific.get("competition_strength", "unknown"),
+                "submission_ready": False,
+                "status": "scientific_challenge_unavailable",
+            }
+        if not scientific.get("submission_ready", scientific["allowed"]):
+            return {
+                "allowed": False,
+                "reason": "科学挑战存在未解决的提交风险: " + scientific.get("reason", ""),
+                "scientific_valid": True,
+                "competition_strength": scientific.get("competition_strength", "unknown"),
+                "submission_ready": False,
+                "status": "not_submission_ready",
+                "completion_status": "not_submission_ready",
+            }
+        paper = _competition_paper_blind_review_status(run_dir)
+        if not paper["allowed"]:
+            return {"allowed": False, "reason": paper["reason"]}
+        if paper.get("skipped") is True:
+            execution_mode = read_simple_state(run_dir)["execution_mode"]
+            if execution_mode == "production":
+                reason = "生产运行虽已记录 PDF 盲评跳过原因，但未完成独立盲评，不能标记 complete"
+            else:
+                reason = "探索运行已记录 PDF 盲评跳过原因，只能维持 unreviewed，不能标记 complete"
+            return {
+                "allowed": False,
+                "reason": reason,
+                "scientific_valid": True,
+                "competition_strength": scientific.get("competition_strength", "unknown"),
+                "submission_ready": False,
+                "status": "unreviewed",
+                "completion_status": "unreviewed",
+            }
+        if is_competition_first_v32_state(read_simple_state(run_dir)):
+            from shumozizi.knowledge.external_discussion import web_paper_audit_status
+
+            web_audit = web_paper_audit_status(run_dir)
+            if not web_audit["allowed"]:
+                return {"allowed": False, "reason": web_audit["reason"]}
+        mechanical = mechanical_qa_status(run_dir)
+        if not mechanical["allowed"]:
+            return {"allowed": False, "reason": mechanical["reason"]}
+        from shumozizi.simple.figures import verify_current_figure_files
+        from shumozizi.simple.results import verify_current_result_files
+
+        results = verify_current_result_files(run_dir)
+        if not results["success"]:
+            return {"allowed": False, "reason": "当前结果已漂移"}
+        figures = verify_current_figure_files(run_dir)
+        if not figures["success"]:
+            return {"allowed": False, "reason": "当前图表已漂移"}
+        return {
+            "allowed": True,
+            "reason": "",
+            "scientific_valid": True,
+            "competition_strength": scientific.get("competition_strength", "unknown"),
+            "submission_ready": True,
+            "status": "submission_ready",
+            "completion_status": "complete",
+        }
     review = final_audit_status(run_dir)
     if not review["allowed"]:
         return {"allowed": False, "reason": review["reason"]}

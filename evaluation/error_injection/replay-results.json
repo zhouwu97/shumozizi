@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "status": "executed",
+  "cases": [
+    {
+      "id": "continuous-midpoint-false-lower-bound",
+      "triggered": true,
+      "detected_by": "gap_detector",
+      "finding_severity": "P1",
+      "blocking": true,
+      "closure": "必须加入连续域证书或专项复算后重做全面审核。",
+      "reason": "以下中央风险未进入 gap 查漏: continuous-domain-certificate"
+    },
+    {
+      "id": "zero-action-activation",
+      "triggered": true,
+      "detected_by": "gap_detector",
+      "finding_severity": "P1",
+      "blocking": true,
+      "closure": "逐动作删除消融并重做审核。",
+      "reason": "以下中央风险未进入 gap 查漏: action-activation"
+    },
+    {
+      "id": "limited-search-competitive-claim",
+      "triggered": true,
+      "detected_by": "gap_detector",
+      "finding_severity": "P1",
+      "blocking": true,
+      "closure": "执行等预算搜索挑战并重做审核。",
+      "reason": "以下中央风险未进入 gap 查漏: search-sufficiency"
+    },
+    {
+      "id": "internal-report-language",
+      "triggered": true,
+      "detected_by": "paper_blind_full_review_adapter",
+      "finding_severity": "P2",
+      "blocking": true,
+      "closure": "重写为面向评委的学术论文，并重新执行 PDF 盲审。",
+      "reason": "检测到多个内部审核文体红旗。"
+    }
+  ],
+  "all_triggered": true
+}

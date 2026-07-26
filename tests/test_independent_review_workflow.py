@@ -18,6 +18,7 @@ from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.quality import assess_result_quality
 from shumozizi.simple.review import (
     _PACKET_CONTENT_EXCLUDE_KEYS,
+    _packet_files,
     build_review_packet,
     completion_status,
     final_audit_status,
@@ -671,6 +672,33 @@ class IndependentReviewWorkflowTests(unittest.TestCase):
                         }
                     ],
                 )
+
+    def test_packet_ignores_external_runtime_junction(self) -> None:
+        """运行内的外部运行时链接不能让科学审查包越过 run 边界。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            code_root = temporary_root / "code"
+            code_root.mkdir()
+            owned_source = code_root / "owned.py"
+            owned_source.write_text("OWNED_SOURCE = True\n", encoding="utf-8")
+            external_runtime = temporary_root / "external-runtime"
+            external_runtime.mkdir()
+            (external_runtime / "runtime_only.py").write_text(
+                "EXTERNAL_RUNTIME = True\n", encoding="utf-8"
+            )
+            runtime_link = code_root / "node_modules"
+            try:
+                runtime_link.symlink_to(external_runtime, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"当前平台不允许创建目录链接：{exc}")
+
+            files = _packet_files(
+                code_root,
+                exclude_visualization_scripts=True,
+            )
+            relative_files = {path.relative_to(code_root).as_posix() for path in files}
+
+            self.assertEqual({"owned.py"}, relative_files)
 
     def test_three_reviews_and_current_mechanical_qa_are_required_for_completion(self) -> None:
         """三轮审核和机械 QA 必须依次绑定同一套当前交付物。"""

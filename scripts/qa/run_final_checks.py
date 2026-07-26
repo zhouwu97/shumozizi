@@ -19,8 +19,13 @@ from scripts.qa.check_numeric_consistency import check_numeric_consistency
 from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.knowledge.external_discussion import (
+    validate_web_paper_audit_if_present,
+    web_paper_audit_status,
+)
 from shumozizi.paper.compiler import verify_paper_compile_receipt
 from shumozizi.paper.contributions import verify_contribution_ledger
+from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.references import verify_paper_references
 from shumozizi.paper.sufficiency import run_paper_structure_signal_check
 from shumozizi.paper.templates import require_materialized_template
@@ -31,7 +36,11 @@ from shumozizi.simple.review import (
     paper_blind_review_status,
     scientific_review_status,
 )
-from shumozizi.simple.state import read_simple_state
+from shumozizi.simple.state import (
+    is_competition_first_state,
+    is_competition_first_v32_state,
+    read_simple_state,
+)
 from shumozizi.simple.visualization import require_visualization_complete
 from tools.qa.make_contact_sheet import make_contact_sheet
 from tools.qa.pdf_qa import audit_pdf
@@ -126,6 +135,7 @@ def run_final_checks(
     """
     root = run_dir.resolve()
     state = read_simple_state(root)
+    competition_first = is_competition_first_state(state)
     pdf = root / "paper" / "final.pdf"
     checks: list[dict[str, Any]] = []
     checks.append(
@@ -136,41 +146,54 @@ def run_final_checks(
             "payload": {"phase": state["phase"]},
         }
     )
-    scientific_review = scientific_review_status(root)
-    checks.append(
-        _check(
-            "scientific-review-release",
-            {"success": scientific_review["allowed"], "reason": scientific_review["reason"]},
-            "独立科学红队的冻结输入、报告和隔离声明仍有效",
+    if competition_first:
+        scientific_challenge = scientific_review_status(root)
+        checks.append(
+            _check(
+                "scientific-challenge-release",
+                {
+                    "success": scientific_challenge["allowed"],
+                    "reason": scientific_challenge["reason"],
+                },
+                "自由科学挑战仍绑定当前生产结果、审查包和真实任务回执",
+            )
         )
-    )
-    completion_release = competition_submission_status(root)
-    checks.append(
-        _check(
-            "competition-submission-release",
-            {
-                "success": completion_release.get("submission_ready", False),
-                "competition_strength": completion_release.get("competition_strength"),
-                "reason": completion_release.get("reason", ""),
-            },
-            "生产模式仅允许 qualified 或 strong 的科学审查进入 complete",
+    else:
+        scientific_review = scientific_review_status(root)
+        checks.append(
+            _check(
+                "scientific-review-release",
+                {"success": scientific_review["allowed"], "reason": scientific_review["reason"]},
+                "独立科学红队的冻结输入、报告和隔离声明仍有效",
+            )
         )
-    )
-    try:
-        visualization = require_visualization_complete(root)
-        visualization_payload = {
-            "success": True,
-            "contract_count": len(visualization["contracts"]),
-        }
-    except (ContractError, OSError, TypeError, ValueError) as exc:
-        visualization_payload = {"success": False, "errors": [str(exc)]}
-    checks.append(
-        _check(
-            "visualization-contract",
-            visualization_payload,
-            "能力路由要求的模型与求解视觉证据已完成且输出未漂移",
+        completion_release = competition_submission_status(root)
+        checks.append(
+            _check(
+                "competition-submission-release",
+                {
+                    "success": completion_release.get("submission_ready", False),
+                    "competition_strength": completion_release.get("competition_strength"),
+                    "reason": completion_release.get("reason", ""),
+                },
+                "生产模式仅允许 qualified 或 strong 的科学审查进入 complete",
+            )
         )
-    )
+        try:
+            visualization = require_visualization_complete(root)
+            visualization_payload = {
+                "success": True,
+                "contract_count": len(visualization["contracts"]),
+            }
+        except (ContractError, OSError, TypeError, ValueError) as exc:
+            visualization_payload = {"success": False, "errors": [str(exc)]}
+        checks.append(
+            _check(
+                "visualization-contract",
+                visualization_payload,
+                "能力路由要求的模型与求解视觉证据已完成且输出未漂移",
+            )
+        )
     template: dict[str, Any] = {}
     try:
         template = require_materialized_template(root)
@@ -215,6 +238,22 @@ def run_final_checks(
             "独立 PDF 盲审的冻结输入、报告和隔离声明仍有效",
         )
     )
+    if is_competition_first_v32_state(state):
+        web_paper_audit_payload = web_paper_audit_status(root)
+        web_paper_audit_payload["success"] = web_paper_audit_payload.pop("allowed")
+    else:
+        try:
+            validate_web_paper_audit_if_present(root)
+            web_paper_audit_payload = {"success": True, "skipped": True}
+        except (ContractError, OSError, TypeError, ValueError) as exc:
+            web_paper_audit_payload = {"success": False, "errors": [str(exc)]}
+    checks.append(
+        _check(
+            "web-paper-audit-release",
+            web_paper_audit_payload,
+            "v3.2 当前 PDF 已完成仅 PDF、禁止检索、最多三轮的网页审核放行",
+        )
+    )
     pdf_report = audit_pdf(
         pdf,
         anonymous_required=anonymous_required,
@@ -222,7 +261,17 @@ def run_final_checks(
     )
     checks.append(_check("pdf", pdf_report, "PDF、空白页、裁切、文字重叠和重复编号"))
     try:
-        content_report = run_paper_structure_signal_check(root)
+        if competition_first:
+            readiness = check_paper_readiness(root)
+            content_report = {
+                "status": "signals_present" if readiness["ready"] else "missing_required_signals",
+                "mechanical_gate_passed": readiness["ready"],
+                "missing_required_signals": readiness["errors"],
+                "evidence_blockers": [],
+                "warnings": readiness.get("warnings", []),
+            }
+        else:
+            content_report = run_paper_structure_signal_check(root)
         content_payload = {
             "success": content_report["mechanical_gate_passed"] is True,
             "report": content_report,
@@ -299,7 +348,7 @@ def run_final_checks(
     report = {
         "schema_version": "1.0",
         "run_id": state["run_id"],
-        "workflow": "capability-first-v3",
+        "workflow": state["workflow"],
         "generator_id": "shumozizi.qa.run_final_checks",
         "generator_version": "1.0",
         "status": "pass" if not failed else "blocked",

@@ -25,6 +25,10 @@
           "output_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "output_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
           "metrics": {"type": "object"},
+          "method_facts": {
+            "type": "object",
+            "additionalProperties": {"enum": [true, false, "unknown"]}
+          },
           "metric_sources": {
             "type": "object",
             "additionalProperties": {

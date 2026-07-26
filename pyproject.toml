@@ -40,8 +40,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
-addopts = "--strict-config --strict-markers"
+addopts = "--strict-config --strict-markers -m 'not legacy_v3'"
 markers = [
+  "legacy_v3: Capability-First v3.0 冻结生命周期回归，需在 legacy-v3 CI 分片中显式运行",
+  "competition_first: Competition-First v3.1 生产主链回归",
   "template_matrix: 全模板动态章节矩阵，仅在定时或手动完整回归中运行",
   "paper_e2e: 真实论文编译与回执回归，仅在定时或手动完整回归中运行",
 ]

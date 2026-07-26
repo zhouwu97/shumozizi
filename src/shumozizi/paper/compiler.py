@@ -19,6 +19,7 @@ COMPILE_RECEIPT_PATH = Path("paper/compile-receipt.json")
 _GENERATED_PAPER_FILES = {
     "compile-receipt.json",
     "final.pdf",
+    "final.docx",
     "main.pdf",
     "main.aux",
     "main.bbl",
@@ -109,7 +110,9 @@ def _compiler_steps(engine: str) -> tuple[str, list[list[str]]]:
         return "typst", [[command, "compile", "main.typ", "final.pdf"]]
 
     latexmk = shutil.which("latexmk")
-    if latexmk is not None:
+    # latexmk 是 Perl 脚本包装器；MiKTeX 只安装了可执行入口而缺少 Perl 时，
+    # 直接调用它会阻断本可由 XeLaTeX 完成的受控双次编译。
+    if latexmk is not None and shutil.which("perl") is not None:
         return "latexmk", [
             [
                 latexmk,
@@ -177,6 +180,57 @@ def _require_pdf(path: Path) -> None:
         raise ContractError("论文编译输出不是有效 PDF 文件头")
 
 
+def compile_docx(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) -> Path:
+    """用 pandoc 从论文源文件生成 Word 格式（.docx）。
+
+    竞赛规定同时提交 Word 版本，本函数在 PDF 编译完成后由 ``compile_paper``
+    调用；也可单独调用以重新生成 .docx 而不重新编译 PDF。
+
+    Args:
+        paper_dir: 论文源文件目录（即 ``run_dir/paper/``）。
+        engine: 当前编译引擎，``"latex"`` 或 ``"typst"``。
+        timeout_seconds: pandoc 最长允许秒数。
+
+    Returns:
+        生成的 ``paper_dir/final.docx`` 路径。
+
+    Raises:
+        ContractError: pandoc 未安装、转换失败或产物为空。
+    """
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        raise ContractError(
+            "论文编译要求同时生成 Word（.docx）版本，但当前环境未检测到 pandoc。"
+            "请安装 pandoc（https://pandoc.org/installing.html）后重试。"
+        )
+    entrypoint = paper_dir / ("main.tex" if engine == "latex" else "main.typ")
+    if not entrypoint.is_file():
+        raise ContractError(f"pandoc 转换需要源文件 {entrypoint.name}，但文件不存在")
+    out = paper_dir / "final.docx"
+    command = [pandoc, str(entrypoint), "-o", str(out), "--quiet"]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=paper_dir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ContractError(f"pandoc 转换超时（{timeout_seconds} 秒）") from exc
+    except OSError as exc:
+        raise ContractError(f"无法启动 pandoc: {exc}") from exc
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout).strip().replace("\n", " ")[:600]
+        raise ContractError(f"pandoc 转换失败（退出码 {completed.returncode}）: {message}")
+    if not out.is_file() or out.stat().st_size == 0:
+        raise ContractError("pandoc 执行成功但未产生非空 final.docx")
+    return out
+
+
 def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any]:
     """按模板清单编译论文，优先执行已选择的 LaTeX 引擎。
 
@@ -219,6 +273,11 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     if _paper_source_sha256(paper_dir) != source_sha256:
         raise ContractError("论文源文件在编译期间发生变化，拒绝冻结不稳定产物")
 
+    # PDF 已冻结，生成同步交付的 Word 版本。
+    # compile_docx 在 pandoc 缺失时直接抛出 ContractError，让编译整体失败——
+    # 竞赛提交规定同时提供 .docx，不允许只有 PDF 通过门控。
+    final_docx = compile_docx(paper_dir, engine=manifest["engine"], timeout_seconds=timeout_seconds)
+
     manifest_path = root / MANIFEST_PATH
     receipt = {
         "schema_version": "1.0",
@@ -235,6 +294,8 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
         "paper_source_sha256": source_sha256,
         "final_pdf_path": "paper/final.pdf",
         "final_pdf_sha256": sha256_file(final_pdf),
+        "final_docx_path": "paper/final.docx",
+        "final_docx_sha256": sha256_file(final_docx),
         "executions": executions,
         "generated_at": utc_now(),
     }

@@ -27,7 +27,7 @@ from shumozizi.simple.method_profile import METHOD_PROFILE_PATH
 from shumozizi.simple.objective_semantics import objective_semantics_digest
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import read_simple_state
+from shumozizi.simple.state import is_competition_first_state, read_simple_state
 
 _APPENDIX_MODES = {"pdf", "attachment", "both"}
 
@@ -58,12 +58,15 @@ def _current_production_results(run_dir: Path) -> dict[str, dict[str, Any]]:
     """返回所有可作为论文事实的 current production 结果。"""
     index = read_result_index(run_dir)
     allowed: dict[str, dict[str, Any]] = {}
+    competition_first = is_competition_first_state(read_simple_state(run_dir))
     for result in index["results"]:
         if result.get("status") != "current":
             continue
         if result.get("execution_mode") != "production":
             continue
-        if not quality_allows_paper(run_dir, result["result_id"]):
+        if competition_first and result.get("execution_valid") is not True:
+            continue
+        if not competition_first and not quality_allows_paper(run_dir, result["result_id"]):
             continue
         allowed[result["result_id"]] = result
     return allowed
@@ -147,8 +150,276 @@ def _current_figure_ids(run_dir: Path) -> tuple[set[str], str | None]:
     return set(verification.get("checked_figure_ids", [])), None
 
 
+def _competition_answer_map(run_dir: Path) -> dict[str, Any] | None:
+    """读取 Competition-First 的逐问直接答案映射，兼容最终归档路径。"""
+    for relative in (Path("paper/answer-map.json"), Path("analysis/answer_map.json")):
+        path = run_dir / relative
+        if not path.is_file():
+            continue
+        try:
+            payload = load_json(path)
+        except (OSError, ValueError):
+            return None
+        if payload.get("run_id") not in {None, run_dir.name}:
+            return None
+        answers = payload.get("answers", payload)
+        return answers if isinstance(answers, dict) else None
+    return None
+
+
+def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
+    """从当前答案、结果和图表自动生成后台论证映射。
+
+    Args:
+        run_dir: 当前 Competition-First 运行目录。
+
+    Returns:
+        已写入 ``paper/generated/argument_map.json`` 的映射。
+
+    Raises:
+        ContractError: 缺少必答问题的答案映射或引用了非当前结果。
+    """
+    answers = _competition_answer_map(run_dir)
+    if answers is None:
+        raise ContractError("缺少 analysis/answer_map.json 或 paper/answer-map.json")
+    required = _question_ids_from_state(run_dir)
+    results = _current_production_results(run_dir)
+    claims: list[dict[str, Any]] = []
+    for question_id in required:
+        item = answers.get(question_id)
+        if not isinstance(item, dict):
+            raise ContractError(f"answer_map 缺少 {question_id}")
+        result_ids = item.get("result_ids")
+        location = item.get("direct_answer_location")
+        if not isinstance(result_ids, list) or not result_ids:
+            raise ContractError(f"{question_id} 未绑定 result_ids")
+        stale = [result_id for result_id in result_ids if result_id not in results]
+        if stale:
+            raise ContractError(f"{question_id} 引用了非 current production 结果: {', '.join(stale)}")
+        if not isinstance(location, str) or not location.strip():
+            raise ContractError(f"{question_id} 缺少 direct_answer_location")
+        claims.append(
+            {
+                "question_id": question_id,
+                "result_ids": result_ids,
+                "direct_answer_location": location,
+                "figure_ids": list(item.get("figure_ids", [])),
+            }
+        )
+    document = {
+        "schema_version": "3.1",
+        "run_id": run_dir.name,
+        "status": "current",
+        "accepted_results_digest": sha256_bytes(json_bytes([results[key] for key in sorted(results)])),
+        "figure_index_sha256": sha256_file(run_dir / "figures" / "index.json"),
+        "claims": claims,
+    }
+    from shumozizi.core.io import atomic_json
+
+    atomic_json(run_dir / "paper" / "generated" / "argument_map.json", document)
+    return document
+
+
+def _argument_plan_warnings(run_dir: Path) -> list[str]:
+    """检查核心问题是否在 ARGUMENT_PLAN.md 中有对应论证单元。
+
+    轻量 warning（不阻断）：核心问题存在但 ARGUMENT_PLAN.md 缺少或
+    没有该问题的论证单元标题时，提醒写作前填写，避免论文仍然流水账。
+    """
+    import re
+
+    try:
+        from shumozizi.simple.modeling_units import core_question_insights
+
+        available = core_question_insights(run_dir)
+    except Exception:  # noqa: BLE001
+        return []
+    if not available:
+        return []
+
+    plan_path = run_dir / "paper" / "ARGUMENT_PLAN.md"
+    if not plan_path.is_file():
+        core_ids = sorted(available)
+        return [
+            f"核心问题 {', '.join(core_ids)} 已提炼规律，但缺少 paper/ARGUMENT_PLAN.md；"
+            "建议写论文前为每个核心问题规划论证单元（判断→推导→证据→竞争解释→讨论）。"
+        ]
+
+    try:
+        text = plan_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    question_pat = re.compile(r"核心问题\s+(Q\w+)", re.MULTILINE)
+    found_in_plan = set(question_pat.findall(text))
+
+    missing = sorted(set(available) - found_in_plan)
+    if not missing:
+        return []
+    return [
+        f"核心问题 {', '.join(missing)} 已提炼规律，但 paper/ARGUMENT_PLAN.md "
+        "中没有对应论证单元；写论文前请补充这些问题的论证单元规划。"
+    ]
+
+
+def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]]:
+    """执行 Competition-First 最小论文硬门和可选写作警告。"""
+    errors: list[str] = []
+    warnings: list[str] = []
+    answers = _competition_answer_map(run_dir)
+    if answers is None:
+        return ["缺少 paper/answer-map.json 或 analysis/answer_map.json"], warnings
+    required = _question_ids_from_state(run_dir)
+    results = _current_production_results(run_dir)
+    for question_id in required:
+        item = answers.get(question_id)
+        if not isinstance(item, dict):
+            errors.append(f"必答问题 {question_id} 没有直接答案映射")
+            continue
+        result_ids = item.get("result_ids")
+        location = item.get("direct_answer_location")
+        if not isinstance(result_ids, list) or not result_ids:
+            errors.append(f"必答问题 {question_id} 没有绑定 current 结果")
+        else:
+            stale = [result_id for result_id in result_ids if result_id not in results]
+            if stale:
+                errors.append(f"必答问题 {question_id} 引用了非 current 或不可写入论文的结果: {', '.join(stale)}")
+        if not isinstance(location, str) or not location.strip():
+            errors.append(f"必答问题 {question_id} 缺少直接答案位置")
+        for figure_id in item.get("figure_ids", []):
+            if not isinstance(figure_id, str):
+                errors.append(f"{question_id} 的 figure_ids 含非法值")
+    try:
+        generated = build_argument_map_from_current_artifacts(run_dir)
+        figure_ids = {
+            figure_id
+            for claim in generated["claims"]
+            for figure_id in claim["figure_ids"]
+            if figure_id
+        }
+        if figure_ids:
+            current, figure_error = _current_figure_ids(run_dir)
+            if figure_error:
+                errors.append(figure_error)
+            else:
+                missing = sorted(figure_ids - current)
+                if missing:
+                    errors.append("答案映射引用了不存在或失效图表: " + ", ".join(missing))
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        errors.append(str(exc))
+    if not (run_dir / "paper" / "STORYBOARD.md").is_file():
+        warnings.append("缺少 paper/STORYBOARD.md；建议先明确最强问题、篇幅与核心图表。")
+    if not (run_dir / "paper" / "CONTRIBUTION_BRIEF.md").is_file():
+        warnings.append("缺少 paper/CONTRIBUTION_BRIEF.md；这不阻断普通问题的正确回答。")
+    warnings.extend(_insight_figure_warnings(run_dir))
+    warnings.extend(_argument_plan_warnings(run_dir))
+    errors.extend(_code_appendix_errors(run_dir))
+    errors.extend(_core_insight_usage_errors(run_dir, answers))
+    return errors, warnings
+
+
+def _core_insight_usage_errors(run_dir: Path, answers: dict[str, Any]) -> list[str]:
+    """要求核心问题在论文里真的用上已挖出的规律。
+
+    只生产不消费时，规律挖掘会退化成旁路产物：挖了、论文不写也能过门，于是
+    正文继续只讲参数与复核。
+    """
+    from shumozizi.simple.modeling_units import core_question_insights
+
+    try:
+        available = core_question_insights(run_dir)
+    except (ContractError, OSError, KeyError, TypeError, ValueError):
+        return []
+    errors: list[str] = []
+    for question_id, insights in sorted(available.items()):
+        item = answers.get(question_id)
+        if not isinstance(item, dict):
+            continue
+        used = item.get("insight_ids")
+        known = {insight["insight_id"] for insight in insights}
+        if not isinstance(used, list) or not used:
+            errors.append(
+                f"核心问题 {question_id} 已提炼机制或边际收益类规律，"
+                f"但 answer map 未引用任何 insight_id（可用: {', '.join(sorted(known))}）；"
+                "论文必须真的讲出这些规律"
+            )
+            continue
+        unknown = sorted({value for value in used if value not in known})
+        if unknown:
+            errors.append(
+                f"核心问题 {question_id} 的 answer map 引用了不存在的 insight_id: "
+                + ", ".join(unknown)
+            )
+    return errors
+
+
+def _insight_figure_warnings(run_dir: Path) -> list[str]:
+    """提示正文缺少洞察图：全是证据图会把论文写成技术审计报告。"""
+    index_path = run_dir / "figures" / "index.json"
+    if not index_path.is_file():
+        return []
+    try:
+        payload = load_json(index_path)
+    except (OSError, ValueError):
+        return []
+    figures = [
+        item
+        for item in payload.get("figures", [])
+        if isinstance(item, dict) and item.get("status") == "current"
+    ]
+    if not figures:
+        return []
+    roles = [item.get("role") for item in figures if item.get("role")]
+    if not roles:
+        return ["当前图未声明 role；建议区分模型理解图、决定性证据图与洞察图。"]
+    if not any(role in {"insight", "model_understanding"} for role in roles):
+        return [
+            "当前图全是证据或稳定性图，没有洞察图；"
+            "建议补充回答机制、阈值、边际收益或权衡的主图。"
+        ]
+    return []
+
+
+def _code_appendix_errors(run_dir: Path) -> list[str]:
+    """限制 PDF 内源码版面：代码的边际价值低于机制解释与权衡分析。
+
+    默认允许最多一页；确有赛事要求时必须显式写出 ``competition_requires_full``
+    与理由，否则整篇源码会挤掉结论和洞察。
+    """
+    blueprint_path = run_dir / "paper" / "content_blueprint.json"
+    if not blueprint_path.is_file():
+        return []
+    try:
+        blueprint = load_json(blueprint_path)
+    except (OSError, ValueError):
+        return []
+    appendix = blueprint.get("source_code_appendix")
+    if not isinstance(appendix, dict):
+        return []
+    if appendix.get("mode") == "attachment":
+        return []
+    if appendix.get("competition_requires_full") is True:
+        if not str(appendix.get("full_source_reason", "")).strip():
+            return ["source_code_appendix.competition_requires_full 为真时必须写明赛事依据"]
+        return []
+    budget = appendix.get("pdf_page_budget")
+    if budget is None:
+        return [
+            "source_code_appendix 缺少 pdf_page_budget；"
+            "PDF 内源码默认不超过 1 页，完整代码放附件"
+        ]
+    if not isinstance(budget, (int, float)) or isinstance(budget, bool) or budget > 1:
+        return [
+            f"source_code_appendix.pdf_page_budget={budget} 超过默认 1 页上限；"
+            "请把完整源码移入附件，或显式声明赛事要求"
+        ]
+    return []
+
+
 def _validate_readiness(run_dir: Path) -> list[str]:
     """执行所有轻量检查，返回阻断原因列表。"""
+    if is_competition_first_state(read_simple_state(run_dir)):
+        return _validate_competition_readiness(run_dir)[0]
     errors: list[str] = []
 
     # 1. 论证大纲：生产模式只接受结构化 argument_map.json，并按 schema 校验
@@ -280,9 +551,13 @@ def check_paper_readiness(run_dir: Path) -> dict[str, Any]:
     """返回就绪检查结果，不抛出异常。"""
     run_dir = run_dir.resolve()
     errors = _validate_readiness(run_dir)
+    warnings: list[str] = []
+    if is_competition_first_state(read_simple_state(run_dir)):
+        _, warnings = _validate_competition_readiness(run_dir)
     return {
         "ready": not errors,
         "errors": errors,
+        "warnings": warnings,
         "run_dir": str(run_dir),
     }
 

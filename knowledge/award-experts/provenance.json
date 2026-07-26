@@ -1,0 +1,5165 @@
+{
+  "schema_version": "1.0",
+  "library_id": "cumcm-ab-award-expert-structure",
+  "runtime_library_hash": "83524e00fb811cf6ad41d109ee7c4b68026c874fbaca3114f011e2ddec590148",
+  "source": {
+    "file_name": "award-expert-library.json",
+    "sha256": "40317d00a41d0581f2e6a54cf10970d22197282c9aea813d0d7f5489faa6ea83",
+    "declared_library_hash": "0d76e2c3e1fc4201480452f004d86fbae02ab5bc56c85cfa88a2f72709df0c38",
+    "provenance": {
+      "official_index": "https://dxs.moe.gov.cn/zx/hd/sxjm/sxjmlw/qkt_sxjm_lw_lwzs.shtml",
+      "accessed_at": "2026-07-20",
+      "manifest_sha256": "c26e8c246367087a5a08e1b7456c2f2a00e4842a287b5b37ce3152d328f8e316",
+      "analysis_sha256": "bc202fe8200b5dadc1231d6099c676e5946b961906276759e650c2583f7e037a",
+      "license": "permission-not-established",
+      "reuse_boundary": "仅保存结构统计、专家规则、来源 URL、哈希和证据页码，不复制论文原文、图表、公式、参数、结果或代码。"
+    }
+  },
+  "coverage": {
+    "discovered_ab_papers": 72,
+    "analyzed_papers": 72,
+    "analysis_failures": 0,
+    "by_question": {
+      "A": {
+        "discovered": 40,
+        "analyzed": 40,
+        "years": [
+          2012,
+          2013,
+          2014,
+          2015,
+          2016,
+          2017,
+          2018,
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025
+        ]
+      },
+      "B": {
+        "discovered": 32,
+        "analyzed": 32,
+        "years": [
+          2012,
+          2013,
+          2014,
+          2015,
+          2018,
+          2019,
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025
+        ]
+      }
+    }
+  },
+  "card_evidence_refs": {
+    "story-core-thread": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "story-question-progression": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "method-model-before-algorithm": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "a-state-predicate-optimizer": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          12,
+          13,
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          4,
+          28,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          16
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977935",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977935.shtml",
+        "pages": [
+          1,
+          3,
+          5,
+          14,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          2
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          1,
+          3,
+          10,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          20,
+          26
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          8,
+          27
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865112",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865112.shtml",
+        "pages": [
+          17,
+          21
+        ]
+      },
+      {
+        "paper_id": "2022-A-1820291",
+        "year": 2022,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820291.shtml",
+        "pages": [
+          3,
+          22
+        ]
+      },
+      {
+        "paper_id": "2021-A-1734060",
+        "year": 2021,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734060.shtml",
+        "pages": [
+          5,
+          10,
+          17
+        ]
+      },
+      {
+        "paper_id": "2021-A-1734062",
+        "year": 2021,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734062.shtml",
+        "pages": [
+          4,
+          7,
+          17
+        ]
+      }
+    ],
+    "a-reduction-boundary-proof": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          12,
+          13,
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          4,
+          28,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          16
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977935",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977935.shtml",
+        "pages": [
+          1,
+          3,
+          5,
+          14,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          2
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          1,
+          3,
+          10,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          20,
+          26
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          8,
+          27
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865112",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865112.shtml",
+        "pages": [
+          17,
+          21
+        ]
+      },
+      {
+        "paper_id": "2022-A-1820291",
+        "year": 2022,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820291.shtml",
+        "pages": [
+          3,
+          22
+        ]
+      },
+      {
+        "paper_id": "2021-A-1734060",
+        "year": 2021,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734060.shtml",
+        "pages": [
+          5,
+          10,
+          17
+        ]
+      },
+      {
+        "paper_id": "2021-A-1734062",
+        "year": 2021,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734062.shtml",
+        "pages": [
+          4,
+          7,
+          17
+        ]
+      }
+    ],
+    "b-stochastic-decision-chain": [
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          1,
+          3,
+          8,
+          9,
+          11,
+          15
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          12,
+          14,
+          15
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          4,
+          18,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          20,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          1,
+          3,
+          4,
+          6,
+          10
+        ]
+      },
+      {
+        "paper_id": "2023-B-1865116",
+        "year": 2023,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865116.shtml",
+        "pages": [
+          1,
+          3,
+          20,
+          21
+        ]
+      },
+      {
+        "paper_id": "2023-B-1865118",
+        "year": 2023,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865118.shtml",
+        "pages": [
+          2,
+          3,
+          9,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-B-1865120",
+        "year": 2023,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865120.shtml",
+        "pages": [
+          9
+        ]
+      },
+      {
+        "paper_id": "2022-B-1820285",
+        "year": 2022,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820285.shtml",
+        "pages": [
+          1,
+          4,
+          5,
+          16
+        ]
+      },
+      {
+        "paper_id": "2022-B-1820289",
+        "year": 2022,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820289.shtml",
+        "pages": [
+          1
+        ]
+      },
+      {
+        "paper_id": "2021-B-1734070",
+        "year": 2021,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734070.shtml",
+        "pages": [
+          3,
+          7,
+          10,
+          22,
+          23
+        ]
+      },
+      {
+        "paper_id": "2021-B-1734072",
+        "year": 2021,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734072.shtml",
+        "pages": [
+          1,
+          2,
+          5,
+          15,
+          16
+        ]
+      }
+    ],
+    "b-baseline-uncertainty": [
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          1,
+          3,
+          8,
+          9,
+          11,
+          15
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          12,
+          14,
+          15
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          4,
+          18,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          20,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          1,
+          3,
+          4,
+          6,
+          10
+        ]
+      },
+      {
+        "paper_id": "2023-B-1865116",
+        "year": 2023,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865116.shtml",
+        "pages": [
+          1,
+          3,
+          20,
+          21
+        ]
+      },
+      {
+        "paper_id": "2023-B-1865118",
+        "year": 2023,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865118.shtml",
+        "pages": [
+          2,
+          3,
+          9,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-B-1865120",
+        "year": 2023,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865120.shtml",
+        "pages": [
+          9
+        ]
+      },
+      {
+        "paper_id": "2022-B-1820285",
+        "year": 2022,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820285.shtml",
+        "pages": [
+          1,
+          4,
+          5,
+          16
+        ]
+      },
+      {
+        "paper_id": "2022-B-1820289",
+        "year": 2022,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820289.shtml",
+        "pages": [
+          1
+        ]
+      },
+      {
+        "paper_id": "2021-B-1734070",
+        "year": 2021,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734070.shtml",
+        "pages": [
+          3,
+          7,
+          10,
+          22,
+          23
+        ]
+      },
+      {
+        "paper_id": "2021-B-1734072",
+        "year": 2021,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734072.shtml",
+        "pages": [
+          1,
+          2,
+          5,
+          15,
+          16
+        ]
+      }
+    ],
+    "evidence-result-closure": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "innovation-same-budget-ablation": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "figure-argument-task": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "layout-evidence-page-budget": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "abstract-claim-audit": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "leakage-structure-only": [],
+    "writing-round-blueprint": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "writing-round-shared-model": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "writing-round-question-chapters": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "writing-round-evidence-limitations": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "writing-round-abstract-review": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "formula-context-contract": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "result-four-link-contract": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ],
+    "strict-review-return-loop": [
+      {
+        "paper_id": "2025-A-2022729",
+        "year": 2025,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+        "pages": [
+          1,
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "paper_id": "2025-B-2022733",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+        "pages": [
+          3,
+          8,
+          9,
+          11,
+          12,
+          14
+        ]
+      },
+      {
+        "paper_id": "2025-B-2023197",
+        "year": 2025,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+        "pages": [
+          1,
+          3,
+          6,
+          10,
+          11,
+          14
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977931",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+        "pages": [
+          7,
+          9,
+          26,
+          30
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977933",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+        "pages": [
+          1,
+          16,
+          28
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977937",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+        "pages": [
+          1,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2024-A-1977939",
+        "year": 2024,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+        "pages": [
+          9,
+          13,
+          16,
+          17,
+          26
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977943",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+        "pages": [
+          1,
+          2,
+          3,
+          21
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977945",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+        "pages": [
+          8,
+          14,
+          16,
+          18
+        ]
+      },
+      {
+        "paper_id": "2024-B-1977950",
+        "year": 2024,
+        "question": "B",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+        "pages": [
+          3,
+          4,
+          6,
+          10,
+          11,
+          17
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865104",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+        "pages": [
+          19,
+          26,
+          32
+        ]
+      },
+      {
+        "paper_id": "2023-A-1865106",
+        "year": 2023,
+        "question": "A",
+        "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+        "pages": [
+          25,
+          27
+        ]
+      }
+    ]
+  },
+  "expert_source_locations": [
+    {
+      "expert_id": "problem-architect",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "a-mechanism-modeler",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            12,
+            13,
+            14,
+            15,
+            16
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            4,
+            28,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            16
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977935",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977935.shtml",
+          "pages": [
+            1,
+            3,
+            5,
+            14,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            2
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            1,
+            3,
+            10,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            20,
+            26
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            8,
+            27
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865112",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865112.shtml",
+          "pages": [
+            17,
+            21
+          ]
+        },
+        {
+          "paper_id": "2022-A-1820291",
+          "year": 2022,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820291.shtml",
+          "pages": [
+            3,
+            22
+          ]
+        },
+        {
+          "paper_id": "2021-A-1734060",
+          "year": 2021,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734060.shtml",
+          "pages": [
+            5,
+            10,
+            17
+          ]
+        },
+        {
+          "paper_id": "2021-A-1734062",
+          "year": 2021,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734062.shtml",
+          "pages": [
+            4,
+            7,
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "b-decision-statistician",
+      "evidence": [
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            1,
+            3,
+            8,
+            9,
+            11,
+            15
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            12,
+            14,
+            15
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            4,
+            18,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            20,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            1,
+            3,
+            4,
+            6,
+            10
+          ]
+        },
+        {
+          "paper_id": "2023-B-1865116",
+          "year": 2023,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865116.shtml",
+          "pages": [
+            1,
+            3,
+            20,
+            21
+          ]
+        },
+        {
+          "paper_id": "2023-B-1865118",
+          "year": 2023,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865118.shtml",
+          "pages": [
+            2,
+            3,
+            9,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-B-1865120",
+          "year": 2023,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023btlw/231104/1865120.shtml",
+          "pages": [
+            9
+          ]
+        },
+        {
+          "paper_id": "2022-B-1820285",
+          "year": 2022,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820285.shtml",
+          "pages": [
+            1,
+            4,
+            5,
+            16
+          ]
+        },
+        {
+          "paper_id": "2022-B-1820289",
+          "year": 2022,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2022qgdxssxjmjslwzs/221106/1820289.shtml",
+          "pages": [
+            1
+          ]
+        },
+        {
+          "paper_id": "2021-B-1734070",
+          "year": 2021,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734070.shtml",
+          "pages": [
+            3,
+            7,
+            10,
+            22,
+            23
+          ]
+        },
+        {
+          "paper_id": "2021-B-1734072",
+          "year": 2021,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2021qgdxssxjmjslwzs/241212/1734072.shtml",
+          "pages": [
+            1,
+            2,
+            5,
+            15,
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "evidence-reviewer",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "paper-narrative-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "figure-layout-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "answer-firewall",
+      "evidence": []
+    },
+    {
+      "expert_id": "abstract-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "research-thread-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "model-derivation-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "algorithm-explanation-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "result-interpretation-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "figure-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "word-layout-editor",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    },
+    {
+      "expert_id": "strict-paper-reviewer",
+      "evidence": [
+        {
+          "paper_id": "2025-A-2022729",
+          "year": 2025,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025atlw/251101/2022729.shtml",
+          "pages": [
+            1,
+            14,
+            16,
+            18,
+            20
+          ]
+        },
+        {
+          "paper_id": "2025-B-2022733",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251101/2022733.shtml",
+          "pages": [
+            3,
+            8,
+            9,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "paper_id": "2025-B-2023197",
+          "year": 2025,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2025qgdxssxjmjslwzs_2025btlw/251107/2023197.shtml",
+          "pages": [
+            1,
+            3,
+            6,
+            10,
+            11,
+            14
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977931",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977931.shtml",
+          "pages": [
+            7,
+            9,
+            26,
+            30
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977933",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977933.shtml",
+          "pages": [
+            1,
+            16,
+            28
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977937",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977937.shtml",
+          "pages": [
+            1,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2024-A-1977939",
+          "year": 2024,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024atlw/241104/1977939.shtml",
+          "pages": [
+            9,
+            13,
+            16,
+            17,
+            26
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977943",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977943.shtml",
+          "pages": [
+            1,
+            2,
+            3,
+            21
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977945",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977945.shtml",
+          "pages": [
+            8,
+            14,
+            16,
+            18
+          ]
+        },
+        {
+          "paper_id": "2024-B-1977950",
+          "year": 2024,
+          "question": "B",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2024qgdxssxjmjslwzs_2024btlw/241104/1977950.shtml",
+          "pages": [
+            3,
+            4,
+            6,
+            10,
+            11,
+            17
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865104",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865104.shtml",
+          "pages": [
+            19,
+            26,
+            32
+          ]
+        },
+        {
+          "paper_id": "2023-A-1865106",
+          "year": 2023,
+          "question": "A",
+          "source_url": "https://dxs.moe.gov.cn/zx/a/hd_sxjm_sxjmlw_2023qgdxssxjmjslwzs_2023atlw/231104/1865106.shtml",
+          "pages": [
+            25,
+            27
+          ]
+        }
+      ]
+    }
+  ],
+  "access_boundary": {
+    "runtime_reads_provenance": false,
+    "note": "此文件只供离线溯源；运行期路由只读取 library.json。"
+  }
+}

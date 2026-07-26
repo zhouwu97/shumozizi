@@ -1,26 +1,18 @@
 ---
 name: mathmodel-experiment
-description: 在 Capability-First v3 中编写、实际运行和调试数学建模实验，保存可追溯结果、图表数据和按题型选择的验证；用于整题或已明确的子问题实验。
+description: 真实执行数学建模实验，比较路线、保存 current 结果、生成可验证图表数据并挖掘结果洞察。
 ---
 
-# 真实执行与有信息量的实验
+# 高价值实验
 
-实验回答题目并挑战关键主张，不是完成固定实验清单。
+代码写入 `code/`，输出写入 `results/raw/`，影响路线或论文的实验必须使用执行器登记。探索结果标为 diagnostic，不能进入论文。
 
-1. 读取当前状态、决策和建模报告。确认路由选定的本地知识已经有消费收据；从最低成本 baseline 或可行性 probe 开始，再决定是否投入主模型。
-2. 代码写入 `code/`，原始输出写入 `results/raw/`，独立结果证据写入 `results/evidence/`，用于科学核验的图写入 `figures/evidence/`。为后续图表保留真实参数、轨迹、几何事件和搜索诊断；不要把模板或模拟数据写成题目结果。
-3. 对需要用于论文或关键决策的运行，使用执行器登记真实命令、输出和指标：
+预算优先给搜索，不给复算。核心问题的搜索与深化耗时必须超过其验证与复算耗时，且核心搜索要占实际算力的 40% 以上——把复算跑成 exploration 不能稀释这条检查。建议分配：主路线深化与候选搜索 60%、竞争路线 15%、机制与敏感性 15%、独立复核 10%。
 
-   ```powershell
-   python scripts/runtime/run_simple_experiment.py runs/<run-id> `
-     --question Q2 --kind primary --result-id q2_primary `
-     --command "python code/q2.py" --expect results/raw/q2.json `
-     --input problem/attachments/data.xlsx --metrics-from results/raw/q2.json
-   ```
+优先 baseline、区分性 probe 与能推翻当前结论的实验。实验的价值来自改变路线、模型、主要结论、机制解释或贡献，不来自填满敏感性、多种子或收敛图清单。
 
-   非零退出、空输出或损坏 JSON 时先修复或如实记录，不能继续解释结果。
-4. 首轮真实 production 结果登记后、进入 `scientific_review` 前，运行 `scripts/simple/build_method_profile.py` 和 `scripts/simple/validate_critical_claims.py`。`method_profile` 只记录实际采用的方法、求解器、数据与数学属性，不规定必须使用什么模型；`critical_claims` 只保留高价值主张。此后的每项 production 结果必须绑定逐问 `objective_semantics_sha256`、`dependency_scope` 和受影响问题。
-5. 搜索型题目让候选探索、题目特定精确评分和独立搜索审计分工；它们必须从原始候选和真实输入复算，而不是互信布尔字段。脚本冻结详细来源和收据，主对话只说明数学评分、约束、覆盖/最优性证据和结果边界。不要让弱候选覆盖已验证的结果。
-6. 按主张选最低成本验证：预测关注切分/泄漏/误差；优化关注可行性、baseline、多初值、界或扰动；机理关注恢复、守恒或可辨识性；评价关注权重扰动与排名翻转。验证应能改变决策，而不是凑表格。任何独立引擎、反例、性质失败或更优候选都登记为通用 `independent_evidence_consequence`；负面证据必须先级联失效受污染的结果、图、论文与审核，再检查 verdict。
-7. 每问更新 `RESULTS_REPORT.md` 和 `DECISIONS.md`：当前结果、对照、是否直接回答题目、最可能失败原因、下一实验，以及继续、修复、切换或停止。探索结果明确标为 diagnostic，绝不写进正式图表、论文或提交。
-8. 图表阶段再决定最终视觉叙事。普通图足以回答问题时优先普通图；需要复杂科研图时按需读取 `skills/3coding-visual/SKILL.md`，并仅在真实数据接口匹配时使用 `skills/mathmodel-figure-templates/`。模板示例数据不得进入论文。
+比较必须真的判胜负：赢家由统一 exact scorer 的实测结果决定，核心问题的赢家还要相对 baseline 达到事前声明的显著改善阈值。达不到时继续搜索、换更强路线，或用 `baseline_near_bound` 加实际界证据说明已接近上限。深化后的最终结果不得比比较阶段的赢家更差。路线预期上限明显落空时登记 `upside_shortfall` 的原因与决定，不要继续按原声明叙述优势。
+
+真实结果后可以生成 `analysis/method_facts.json`。它的 true/false/unknown 只触发建议：随机求解器建议多种子，proxy 建议检查 exact 排序，时间切分检查泄漏，连续几何检查端点和离散误差。缺失或 unknown 绝不阻断。
+
+规律挖掘和实验同等重要。核心问题必须产出带 `insight_id` 的结构化规律，每项记录观察、机制、真实结果证据和边界；其中至少一条属于机制、边际收益、活跃约束或权衡——只有反直觉描述不算理解。同时写 `analysis/INSIGHTS.md` 作为可读版本。任何反例、独立复算冲突、不可行、性质失败或更优 incumbent 都先让相关结果、图表和论文失效。

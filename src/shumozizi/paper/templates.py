@@ -11,7 +11,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_tree
 from shumozizi.core.repo_root import resolve_repo_root
-from shumozizi.simple.state import read_simple_state, utc_now
+from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
 
 MANIFEST_PATH = Path("paper/template_manifest.json")
 _COMPETITION_ALIASES = {
@@ -208,14 +208,112 @@ def _require_dynamic_question_support(language: str, base: str, engine: str) -> 
         raise ContractError(f"模板 {template_id} 缺少安全的动态问题章节插入点{suffix}")
 
 
-def _question_section_content(language: str, engine: str, question_ids: list[str]) -> str:
-    """生成不携带旧示例文本的动态问题入口。"""
-    title = "问题" if language == "zh" else "Problem"
-    if engine == "typst":
-        lines = [f"= {title} {question_id}\n" for question_id in question_ids]
-    else:
-        lines = [f"\\section{{{title} {question_id}}}\n" for question_id in question_ids]
-    return "\n".join(lines)
+def _question_section_content(
+    language: str,
+    engine: str,
+    question_ids: list[str],
+    *,
+    core_question_ids: set[str] | None = None,
+    argument_plan_units: dict[str, list[str]] | None = None,
+) -> str:
+    """生成动态问题章节骨架，按 core_question 生成不同子节层级。
+
+    普通问题生成三个轻量子节；核心问题生成六个论证子节。
+    若提供 argument_plan_units，将每个论证单元标题写入注释，为写作阶段提供具体目标。
+
+    Args:
+        language: 语言代码，``"zh"`` 或 ``"en"``。
+        engine: 排版引擎，``"latex"`` 或 ``"typst"``。
+        question_ids: 必答问题 ID 列表。
+        core_question_ids: 标为核心问题的 ID 集合；为 None 时所有问题均按普通问题处理。
+        argument_plan_units: 以 question_id 为键的论证单元标题列表，来自 ARGUMENT_PLAN.md。
+    """
+    core_ids = core_question_ids or set()
+    plan = argument_plan_units or {}
+    title_prefix = "问题" if language == "zh" else "Problem"
+    parts: list[str] = []
+
+    for question_id in question_ids:
+        is_core = question_id in core_ids
+        units = plan.get(question_id, [])
+
+        if engine == "typst":
+            sec = f"= {title_prefix} {question_id}"
+            if is_core:
+                # 核心问题：六步论证骨架
+                subsections = [
+                    ("核心困难与建模判断" if language == "zh" else "Core Difficulty and Modeling Judgment",
+                     "// 为什么这道题需要特别建模？题面中什么事情需要被解释清楚？"),
+                    ("关键推导" if language == "zh" else "Key Derivation",
+                     "// 从哪些题面事实出发？哪些步骤是解析的，哪些依赖数值？"),
+                    ("求解与计算证据" if language == "zh" else "Solution and Computational Evidence",
+                     "// 算法如何实现推导？独立对照（MATLAB/替代实现）结果如何？"),
+                    ("竞争解释与区分性实验" if language == "zh" else "Competing Explanations",
+                     "// 还有哪种解释？什么实验能区分本文判断和竞争解释？"),
+                    ("结果机制与权衡" if language == "zh" else "Mechanism and Trade-offs",
+                     "// 最优解为何呈现当前结构？哪个约束活跃？资源增加后为何递减？"),
+                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
+                     "// 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
+                ]
+            else:
+                subsections = [
+                    ("模型选择与关键关系" if language == "zh" else "Model and Key Relations",
+                     "// 为何选择此模型而非候选替代？核心公式是什么？"),
+                    ("结果解释与机制" if language == "zh" else "Result and Mechanism",
+                     "// 数值意味着什么？主要驱动是什么？禁止只写空话总结。"),
+                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
+                     "// 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
+                ]
+            lines = [sec, ""]
+            for sub_title, comment in subsections:
+                lines.append(f"== {sub_title}")
+                lines.append(comment)
+                lines.append("")
+            if units:
+                lines.append("// 论证单元（来自 ARGUMENT_PLAN.md）：")
+                for unit_title in units:
+                    lines.append(f"// - {unit_title}")
+                lines.append("")
+        else:  # latex
+            sec = f"\\section{{{title_prefix} {question_id}}}"
+            if is_core:
+                subsections = [
+                    ("核心困难与建模判断" if language == "zh" else "Core Difficulty and Modeling Judgment",
+                     "% 为什么这道题需要特别建模？题面中什么事情需要被解释清楚？"),
+                    ("关键推导" if language == "zh" else "Key Derivation",
+                     "% 从哪些题面事实出发？哪些步骤是解析的，哪些依赖数值？"),
+                    ("求解与计算证据" if language == "zh" else "Solution and Computational Evidence",
+                     "% 算法如何实现推导？独立对照（MATLAB/替代实现）结果如何？"),
+                    ("竞争解释与区分性实验" if language == "zh" else "Competing Explanations",
+                     "% 还有哪种解释？什么实验能区分本文判断和竞争解释？"),
+                    ("结果机制与权衡" if language == "zh" else "Mechanism and Trade-offs",
+                     "% 最优解为何呈现当前结构？哪个约束活跃？资源增加后为何递减？"),
+                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
+                     "% 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
+                ]
+            else:
+                subsections = [
+                    ("模型选择与关键关系" if language == "zh" else "Model and Key Relations",
+                     "% 为何选择此模型而非候选替代？核心公式是什么？"),
+                    ("结果解释与机制" if language == "zh" else "Result and Mechanism",
+                     "% 数值意味着什么？主要驱动是什么？禁止只写空话总结。"),
+                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
+                     "% 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
+                ]
+            lines = [sec, ""]
+            for sub_title, comment in subsections:
+                lines.append(f"\\subsection{{{sub_title}}}")
+                lines.append(comment)
+                lines.append("")
+            if units:
+                lines.append("% 论证单元（来自 ARGUMENT_PLAN.md）：")
+                for unit_title in units:
+                    lines.append(f"% - {unit_title}")
+                lines.append("")
+
+        parts.append("\n".join(lines))
+
+    return "\n".join(parts)
 
 
 def _question_include_line(engine: str) -> str:
@@ -308,8 +406,44 @@ def _clear_template_references(paper_dir: Path, engine: str) -> None:
     target.write_text(marker, encoding="utf-8", newline="\n")
 
 
+def _argument_plan_units(run_dir: Path) -> dict[str, list[str]]:
+    """从 ARGUMENT_PLAN.md 提取每个核心问题的论证单元标题。
+
+    只做轻量文本扫描：识别 "## 论证单元 X" 或 "### 论证单元 X" 标题，
+    不解析完整结构。提取失败时静默返回空字典，不阻断模板实例化。
+    """
+    import re
+    path = run_dir / "paper" / "ARGUMENT_PLAN.md"
+    if not path.is_file():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    # 找到当前所属核心问题块（## 核心问题 Qx 或 ## 核心问题 Qx：...）
+    result: dict[str, list[str]] = {}
+    current_qid: str | None = None
+    question_pat = re.compile(r"^#{1,3}\s+核心问题\s+(Q\w+)", re.MULTILINE)
+    unit_pat = re.compile(r"^#{2,4}\s+论证单元\s+\w+", re.MULTILINE)
+    # 按行扫描，遇到核心问题标题切换当前 qid，遇到论证单元标题追加
+    for line in text.splitlines():
+        m_q = question_pat.match(line)
+        if m_q:
+            current_qid = m_q.group(1)
+            result.setdefault(current_qid, [])
+            continue
+        m_u = unit_pat.match(line)
+        if m_u and current_qid is not None:
+            result.setdefault(current_qid, []).append(m_u.group(0).strip("# ").strip())
+    return result
+
+
 def _install_question_layout(run_dir: Path, manifest: dict[str, Any]) -> None:
-    """按当前题目数实例化问题章节，并去除源模板的旧示例章节。"""
+    """按当前题目数实例化问题章节，并去除源模板的旧示例章节。
+
+    读取 MODELING_UNITS.json 以区分核心问题与普通问题，生成不同深度的子节骨架；
+    同时尝试读取 ARGUMENT_PLAN.md 中的论证单元标题作为写作提示注释。
+    """
     layout = manifest["question_layout"]
     question_ids = layout["question_ids"]
     if not question_ids:
@@ -319,9 +453,34 @@ def _install_question_layout(run_dir: Path, manifest: dict[str, Any]) -> None:
     section = paper_dir / layout["section_path"]
     if section.exists():
         raise ContractError("动态问题章节已存在，拒绝覆盖")
+
+    # 从 MODELING_UNITS.json 提取核心问题集合
+    core_ids: set[str] = set()
+    units_path = run_dir / "analysis" / "MODELING_UNITS.json"
+    if units_path.is_file():
+        try:
+            from shumozizi.core.io import load_json as _load_json
+            units_data = _load_json(units_path)
+            for unit in units_data.get("units", []):
+                if isinstance(unit, dict) and unit.get("core_question") is True:
+                    qid = unit.get("question_id")
+                    if isinstance(qid, str):
+                        core_ids.add(qid)
+        except (OSError, ValueError, KeyError):
+            pass  # 读取失败时降级为全普通问题骨架
+
+    # 尝试提取 ARGUMENT_PLAN.md 论证单元标题（只用作注释提示）
+    plan_units = _argument_plan_units(run_dir)
+
     _replace_question_includes(entry, manifest["engine"], manifest["language"])
     section.write_text(
-        _question_section_content(manifest["language"], manifest["engine"], question_ids),
+        _question_section_content(
+            manifest["language"],
+            manifest["engine"],
+            question_ids,
+            core_question_ids=core_ids,
+            argument_plan_units=plan_units,
+        ),
         encoding="utf-8",
         newline="\n",
     )
@@ -422,6 +581,8 @@ def select_paper_template(
         raise ContractError("未声明 competition，不能选择论文模板")
     if not state["required_questions"]:
         raise ContractError("未声明 required_questions，不能选择论文模板")
+    if is_competition_first_v32_state(state) and (engine or "auto").strip().casefold() != "latex":
+        raise ContractError("Competition-First v3.2 强制使用 LaTeX 学术论文，不能选择 auto 或 Typst")
     actual_engine, requested_engine, fallback_used, fallback_reason = _resolve_paper_engine(engine)
     base = _template_base(state["competition"], language)
     template_id, source = _source_dir(language, base, actual_engine)
@@ -506,6 +667,10 @@ def read_template_manifest(run_dir: Path) -> dict[str, Any]:
     )
     if payload["template_id"] != expected_id or source.resolve() != expected_source.resolve():
         raise ContractError("论文模板与比赛类型或排版引擎不匹配")
+    if is_competition_first_v32_state(state) and (
+        payload["engine"] != "latex" or payload["fallback_used"] is not False
+    ):
+        raise ContractError("Competition-First v3.2 的论文清单必须绑定无回退的 LaTeX 模板")
     if payload["schema_version"] in {"1.1", "1.2"}:
         _require_dynamic_question_support(
             payload["language"],

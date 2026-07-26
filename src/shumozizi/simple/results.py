@@ -241,6 +241,7 @@ def register_result(
     objective_semantics_sha256: str | None = None,
     dependency_scope: str = "question",
     affected_question_ids: list[str] | None = None,
+    method_facts: dict[str, bool | str] | None = None,
 ) -> dict[str, Any]:
     """登记一次执行，不把执行成功误写成科学结论。
 
@@ -264,6 +265,7 @@ def register_result(
         execution_mode: 产物用途边界；探索结果只能登记为 diagnostic。
         provisional: 为真时保留成功执行的诊断状态，等待上层质量协议决定是否提升。
         error: 失败原因。
+        method_facts: 本次执行显式登记的方法事实；由审查前的联合推断读取。
 
     Returns:
         新登记的结果条目。
@@ -298,6 +300,10 @@ def register_result(
         raise ContractError("execution_mode 必须为 production 或 exploration")
     if not isinstance(provisional, bool):
         raise ContractError("provisional 必须为布尔值")
+    if method_facts is not None and any(
+        value not in {True, False, "unknown"} for value in method_facts.values()
+    ):
+        raise ContractError("method_facts 的值必须为 true、false 或 unknown")
     status = (
         "current"
         if succeeded and execution_mode == "production" and not provisional
@@ -316,6 +322,7 @@ def register_result(
         "output_files": existing_outputs,
         "output_hashes": output_hashes,
         "metrics": metrics,
+        "method_facts": method_facts or {},
         "metric_sources": normalized_metric_sources,
         "status": status,
         "execution_mode": execution_mode,

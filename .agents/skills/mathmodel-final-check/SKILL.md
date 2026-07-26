@@ -1,25 +1,16 @@
 ---
 name: mathmodel-final-check
-description: 对已通过独立 PDF 盲审的 Capability-First v3 论文执行机械 QA、追溯复验，并准备第三轮最终交付审核；仅在 verify 和 final_review 阶段、完整论文即将提交时使用。
+description: 对 Competition-First v3.1 已编译论文执行机械 QA、当前事实复验和提交检查；不承担 final audit 或独立科学判断。
 ---
 
-# 最终机械检查
+# 机械终检
 
-机械 QA 复验提交物、当前结果、图表、模板和受控编译，不重新裁定数学正确性或比赛竞争力。
+在 `verify` 阶段运行：
 
-1. 只在独立科学红队、PDF 盲审和当前 PDF 都已准备好时运行：
+```powershell
+python scripts/qa/run_final_checks.py runs/<run-id>
+```
 
-   ```powershell
-   python scripts/qa/run_final_checks.py runs/<run-id>
-   ```
+它检查 PDF 可读性、匿名、占位符、乱码、裁切、空白页、当前结果与图表哈希、指标引用、数字一致性、模板和编译回执。通过只表示提交物和当前事实没有机械漂移，不证明数学正确性、最优性或论文说服力。
 
-2. 它会检查 `qa/paper-structure-signals.json`、PDF 可读性、空白页、裁切、占位符、题号/结果标记、数字一致性、图表和结果漂移、模板匹配、编译回执及可选离线论文卡/贡献账本。结构报告只能以 `signals_present` 或 `missing_required_signals` 表示最低非空壳信号；失败时先定位实际文件或事实问题，不要手工修改 QA JSON。
-3. `mechanical_gate_passed=true`、内容密度、图表数、公式数、引用数、120 字符、3 个句子和解释词都不能证明数学正确或论证质量。科学正确性由独立红队，模型合理性、推导有效性、结果解释和论文说服力由开放 PDF 盲审及动态查漏决定；没有有效盲审，机械 QA 通过也不得放行。
-4. 机械 QA 通过后进入 `final_review`，建立最终交付包：
-
-   ```powershell
-   python scripts/review/build_review_packet.py runs/<run-id> --kind final-audit
-   ```
-
-   协调任务必须实际调用 `create_thread` 新建第三个审核任务并用 `wait_threads` 等待。该任务调用 `$mathmodel-red-team`，只读冻结包且只能写 `review/FINAL_SUBMISSION_REVIEW.md`；协调任务使用新建任务返回的真实 `threadId` 导入，通过后才可进入 `complete`。不得由当前求解任务自行逐页检查后宣布终审通过。
-5. 生产模式只有科学审查强度为 `qualified` 或 `strong`，三轮独立审核、机械 QA 和当前交付包全部有效时才能完成；`weak` 只能表示科学上可写，不能伪装为竞赛交付完成。任何论文、图表、结果、报告、提交表、QA 或 PDF 修改都会使相应审核失效；修复并重新编译后重走受影响的后续阶段。
+PDF 盲评仍需存在或显式记录跳过原因；P0/P1、已验证反例、独立复算冲突、不可行和性质测试失败仍然阻断。不得创建 `final_review`、final-audit packet 或第三轮终审。

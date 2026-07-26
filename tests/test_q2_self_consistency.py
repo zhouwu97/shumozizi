@@ -25,6 +25,10 @@ def load_run_module(name: str):
     return module
 
 
+@unittest.skipUnless(
+    (RUN_CODE / "q2_self_consistency.py").is_file(),
+    "需要本地 cumcm-2025-a-v3-001 运行产物",
+)
 class Q2SelfConsistencyTests(unittest.TestCase):
     """覆盖双路径复核的真实评分与独立性不变量。"""
 
