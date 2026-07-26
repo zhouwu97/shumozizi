@@ -47,10 +47,38 @@ SCIENTIFIC_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_RED_TEAM.md"
 SCIENTIFIC_CHALLENGE_REPORT_PATH = REVIEW_ROOT / "SCIENTIFIC_CHALLENGE.md"
 PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
 PAPER_BLIND_PROMPT_PREFIX = (
-    "严格审核这份冻结 PDF。请全面审查内容、数学逻辑、结果可信度和排版，"
-    "并判断正文是否是一篇面向数学建模评委的学术论文，而非内部技术或审核报告。"
-    "独立指出问题并按 P0-P3 分级；除该 PDF 外不要读取任何文件或既有对话。论文 PDF："
+    "你是一位数学建模竞赛评委，现在做冷读盲评。你只收到这份冻结 PDF，"
+    "没有题面、源码、运行记录、作者解释或前序审核结论。\n\n"
+    "请按以下顺序作答，不要跳过任何部分：\n\n"
+    "【一、第一印象与竞争力定位】\n"
+    "作为评委翻开这篇论文的前 30 秒印象：主线是否清楚？能记住什么？"
+    "相对普通参赛论文，这篇处于什么档次（偏弱/中等/偏强/强）？"
+    "最有可能提升奖项层级的一处改动是什么？\n\n"
+    "【二、写作风格诊断】\n"
+    "检查以下 AI 生成文本的典型特征，发现后逐条指出位置和示例：\n"
+    "- 大量首先-其次-最后或(1)(2)(3)式无实质内容的分点列举；\n"
+    "- 固定开头模式，如：针对问题X，本文采用……方法，得到……结果，表明……；\n"
+    "- 空洞总结句，如：模型具有较强鲁棒性、结果表明方法有效、理论基础扎实；\n"
+    "- 结论节只重复各问数字，不解释为什么结果呈现这个形态；\n"
+    "- 连续多段均以本文/我们/该模型开头的同质句式。\n"
+    "如果存在这些特征，说明哪些段落读起来像流水账或技术报告，而非学术论文。\n\n"
+    "【三、可读性与论证清晰度】\n"
+    "评价读者能否顺畅理解建模思路：\n"
+    "- 核心建模判断是否在论文中清楚说明（为何选择这个模型而非其他）？\n"
+    "- 数学符号和公式是否在使用前定义？\n"
+    "- 图表是否真正支撑对应论点，还是仅为凑数？\n"
+    "- 结果数字是否有解释（原因），还是只是列出来？\n"
+    "- 读完之后，读者能否说清楚这篇论文发现了什么、为什么成立？\n\n"
+    "【四、P0/P1 阻断性问题】\n"
+    "只列出真正可能导致论文不达标的问题（P0：致命缺陷；P1：重大缺陷），"
+    "给出页码/位置、问题描述和影响。\n"
+    "P2/P3 小问题只在第五部分汇总，不要在这里展开。\n\n"
+    "【五、最高价值修改建议（不超过 5 条）】\n"
+    "按预期收益排序，允许指出需要重写某章节、替换主图、回到实验增加机制分析。"
+    "不要默认优先局部修补——只有不影响模型、结果和论证主线的问题才建议最小修改。\n\n"
+    "除该 PDF 外不要读取任何文件或既有对话。论文 PDF："
 )
+
 FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
 RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
 _PACKET_ROOTS = {
@@ -3173,27 +3201,28 @@ def _competition_review_current(
         return False, str(exc)
 
 
-# 科学挑战报告必须包含这些话题关键词，防止空壳报告通过门禁。
-# 每个元组中所有关键词都必须出现在报告文本中（忽略大小写）。
-_CHALLENGE_REQUIRED_KEYWORDS: tuple[tuple[str, ...], ...] = (
-    ("独立", "目标"),          # 独立目标/变量/约束分析
-    ("风险",),                 # 风险识别（至少两次出现由长度约束隐含）
-    ("攻击",),                 # 对最大风险的实际攻击
-    ("竞争力",),               # 当前竞争力上限
-)
-_CHALLENGE_REPORT_MIN_CHARS = 500
+# 科学挑战报告最低字符数。关键词门控已移除——检查"独立/目标""风险""攻击""竞争力"
+# 等词只能识别格式，不能区分真正的独立重建与复述当前实现。
+# 保留字符数作为"非空壳"的最低门槛：报告过短说明没有实质分析。
+_CHALLENGE_REPORT_MIN_CHARS = 300
 
 
 def _require_scientific_challenge_sections(report_path: Path) -> None:
-    """检查科学挑战报告包含必要的分析章节，阻止空壳报告通过门禁。
+    """检查科学挑战报告至少包含实质内容，阻止完全空壳的报告通过门禁。
 
-    不替代自由文本判断，只阻断明显缺失核心章节的报告。
+    关键词检查已移除：
+    - "独立/目标""风险""攻击""竞争力"这类词可以被机械填入而没有实质内容；
+    - 真正的独立重建不一定会使用这些词，而真正有价值的报告可能花大部分篇幅
+      在一个核心缺陷的深度推导上，不使用任何关键词分类。
+
+    只保留最低字符数检查，拦截明显的空文件或单行占位报告。
+    实质性判断由 PDF 盲评和 record_stronger_alternative 的二选一承担。
 
     Args:
         report_path: 科学挑战报告绝对路径。
 
     Raises:
-        ContractError: 报告过短或缺少关键章节内容。
+        ContractError: 报告不存在或过短。
     """
     try:
         text = report_path.read_text(encoding="utf-8")
@@ -3201,18 +3230,9 @@ def _require_scientific_challenge_sections(report_path: Path) -> None:
         raise ContractError(f"科学挑战报告无法读取: {exc}") from exc
     if len(text.strip()) < _CHALLENGE_REPORT_MIN_CHARS:
         raise ContractError(
-            f"科学挑战报告过短（< {_CHALLENGE_REPORT_MIN_CHARS} 字符），"
-            "缺少独立目标分析、风险识别、攻击记录和竞争力上限的实质内容"
-        )
-    lower = text.lower()
-    missing: list[str] = []
-    for keywords in _CHALLENGE_REQUIRED_KEYWORDS:
-        if not all(kw in lower for kw in keywords):
-            missing.append("/".join(keywords))
-    if missing:
-        raise ContractError(
-            "科学挑战报告缺少以下核心章节内容（keyword check）: "
-            + "; ".join(missing)
+            f"科学挑战报告过短（< {_CHALLENGE_REPORT_MIN_CHARS} 字符），缺少实质分析。"
+            "报告应包含独立重建的模型判断、对当前方案的具体比较和至少一次真实攻击，"
+            "而不是几行关键词占位。"
         )
 
 

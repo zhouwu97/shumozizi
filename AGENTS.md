@@ -55,7 +55,9 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 - **Codex 桌面端**：用 `create_thread` 新建独立顶层对话，禁止 fork 或续用任何已有对话。
 - **Claude.ai / Claude Code**：dispatch 一个子 Agent（Agent tool call），**不能新开浏览器页面**；子 Agent 不得接收任何当前 run 的上下文，只接收冻结 PDF 路径 + 提示词。子 Agent 的 agent ID 即为 `raw_thread_id`，`creation_mode` 为 `dispatch_agent`，`provider` 为 `claude`。
 
-无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，要严格检查内容、数学逻辑、结果可信度和排版格式，并给出相对普通参赛论文的判断。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。完成一版 PDF 后还应进行一次网页版 GPT 补充审核：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核只审 PDF 内部自洽性、可读性、论证、图表和版式；无法由 PDF 验证的地方必须转为本地复算或题面对照任务。将每项 P0/P1/P2/P3 写入 `WEB_PAPER_AUDIT.json`，用 `WEB_PAPER_REPAIR_PLAN.json` 逐项局部修复、重新编译并复核；不因一般问题整篇重写。同一运行最多三轮网页版终审；第三轮仍有 P0/P1 时，写 `WEB_PAPER_AUDIT_FAILURE.json`，按工作流、建模、证据、论文/图表与下一步复盘并保持 `not_submission_ready`，不得继续循环或标记完成。网页评价或循环完成均不能证明省一或任何奖项，只能降低已识别的质量风险。
+无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，报告结构：第一印象与竞争力定位 → 写作风格诊断（AI 句式、过度分点、空话总结）→ 可读性与论证清晰度 → P0/P1 阻断性问题 → 最高价值修改建议（不超过 5 条）。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
+
+**网页版 GPT 补充审核为可选环节**，只在论文主模型和结果已稳定、需要专项编辑审查时使用，不是每次 PDF 编译后的默认流程。使用时：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核聚焦写作风格（AI 句式 / 分点堆砌 / 空话）、可读性和论证表达，找出最高价值的修改建议；无法由 PDF 验证的内容标为”需要本地复算/对照题面”。发现需要重写章节、替换主图或回到实验的问题时，直接说明，不要降级为局部修补。将审核结果写入 `WEB_PAPER_AUDIT.json`；如有修复，重新编译并复核。最多使用一轮；确需再次审核时生成新提示。网页评价不能证明省一或任何奖项，只能降低已识别的质量风险。
 
 ## 图表与论文
 
