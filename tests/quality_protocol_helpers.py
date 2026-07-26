@@ -676,10 +676,24 @@ def record_passing_scientific_review(run_dir: Path) -> dict[str, Any]:
     report_path = SCIENTIFIC_CHALLENGE_REPORT_PATH if competition_first else Path("review/SCIENTIFIC_RED_TEAM.md")
     report = run_dir / report_path
     report.write_text(
-        "# 合成科学挑战报告\n\n## 实际攻击\n\n"
-        "已绑定独立复算、性质攻击和当前结果。证据：`"
-        + challenge_receipt["outputs"][0]["path"]
-        + "`。\n",
+        "# 合成科学挑战报告\n\n"
+        "## 1. 独立目标分析\n\n"
+        "本次挑战围绕当前最优目标值展开独立验证。独立复算在隔离环境中重建目标函数，"
+        "确认求解器输出与分析报告一致，未发现目标数值漂移。独立团队对目标约束条件逐一"
+        "核查，确认边界条件处理正确，最优解处梯度符号与预期一致。\n\n"
+        "## 2. 风险识别\n\n"
+        "识别出以下核心风险：(a) 超参数扰动导致目标退化 ±5%；(b) 输入数据分布漂移"
+        "时模型外推稳定性不足；(c) 并行执行时中间状态竞争风险。上述风险已通过参数"
+        "敏感性扫描和边界样本注入进行量化验证，当前结果对(a)和(b)均保持稳健。\n\n"
+        "## 3. 反例攻击\n\n"
+        "攻击1：构造极端边界输入，观察目标是否保持单调性 — 攻击失败，目标单调性成立。\n"
+        "攻击2：替换核心求解模块为基线贪心算法，攻击验证当前路线确实优于基线。\n"
+        "攻击3：对结果施加随机噪声扰动，确认结果统计显著性 p<0.01。\n\n"
+        "## 4. 竞争力上限评估\n\n"
+        "对比文献已知最优结果与理论下界，当前方案达到竞争力上限的 92%，"
+        "剩余差距来自离散化误差，属于方法固有限制而非实现缺陷。\n\n"
+        "## 附：证据路径\n\n"
+        "攻击脚本与输出：`" + challenge_receipt["outputs"][0]["path"] + "`\n",
         encoding="utf-8",
     )
     manifest_file = f"review/packet/scientific/{packet['packet_id']}/manifest.json"

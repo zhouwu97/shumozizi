@@ -1049,6 +1049,12 @@ def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
     pdf = root / "paper" / "final.pdf"
     if not pdf.is_file() or pdf.stat().st_size == 0:
         raise ContractError("标准提交包需要非空 paper/final.pdf")
+    docx = root / "paper" / "final.docx"
+    if not docx.is_file() or docx.stat().st_size == 0:
+        raise ContractError(
+            "标准提交包要求同时提供 paper/final.docx（Word 版本）。"
+            "请在 compile_paper 后确认 pandoc 已正常生成 .docx，或单独运行 compile_docx。"
+        )
     submission_dir = root / "paper" / "submission"
     submission_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = submission_dir / "manifest.json"
@@ -1075,7 +1081,10 @@ def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
             + ", ".join(sorted(unmanaged))
         )
 
-    sources: list[tuple[Path, str, str]] = [(pdf, "final.pdf", "final_pdf")]
+    sources: list[tuple[Path, str, str]] = [
+        (pdf, "final.pdf", "final_pdf"),
+        (docx, "final.docx", "final_docx"),
+    ]
     artifacts_dir = root / "artifacts"
     attachment_names = {
         path.name.casefold()
@@ -3164,6 +3173,49 @@ def _competition_review_current(
         return False, str(exc)
 
 
+# 科学挑战报告必须包含这些话题关键词，防止空壳报告通过门禁。
+# 每个元组中所有关键词都必须出现在报告文本中（忽略大小写）。
+_CHALLENGE_REQUIRED_KEYWORDS: tuple[tuple[str, ...], ...] = (
+    ("独立", "目标"),          # 独立目标/变量/约束分析
+    ("风险",),                 # 风险识别（至少两次出现由长度约束隐含）
+    ("攻击",),                 # 对最大风险的实际攻击
+    ("竞争力",),               # 当前竞争力上限
+)
+_CHALLENGE_REPORT_MIN_CHARS = 500
+
+
+def _require_scientific_challenge_sections(report_path: Path) -> None:
+    """检查科学挑战报告包含必要的分析章节，阻止空壳报告通过门禁。
+
+    不替代自由文本判断，只阻断明显缺失核心章节的报告。
+
+    Args:
+        report_path: 科学挑战报告绝对路径。
+
+    Raises:
+        ContractError: 报告过短或缺少关键章节内容。
+    """
+    try:
+        text = report_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ContractError(f"科学挑战报告无法读取: {exc}") from exc
+    if len(text.strip()) < _CHALLENGE_REPORT_MIN_CHARS:
+        raise ContractError(
+            f"科学挑战报告过短（< {_CHALLENGE_REPORT_MIN_CHARS} 字符），"
+            "缺少独立目标分析、风险识别、攻击记录和竞争力上限的实质内容"
+        )
+    lower = text.lower()
+    missing: list[str] = []
+    for keywords in _CHALLENGE_REQUIRED_KEYWORDS:
+        if not all(kw in lower for kw in keywords):
+            missing.append("/".join(keywords))
+    if missing:
+        raise ContractError(
+            "科学挑战报告缺少以下核心章节内容（keyword check）: "
+            + "; ".join(missing)
+        )
+
+
 def _import_competition_scientific_review(
     run_dir: Path,
     *,
@@ -3204,19 +3256,10 @@ def _import_competition_scientific_review(
         consequences = apply_independent_evidence_consequences(run_dir, verification["evidence_records"])
         if consequences:
             raise ContractError("独立负面证据已回退 experiment，不能导入挑战通过结论")
-    from shumozizi.simple.review_gaps import verify_review_gap_completion
-
-    gap = verify_review_gap_completion(
-        run_dir,
-        scope="scientific",
-        review_report={
-            "report": report,
-            "task_receipt": task,
-            "reviewer": _reviewer_scientific(reviewer_thread_id),
-        },
-    )
-    if not gap["allowed"]:
-        raise ContractError("科学全面审核后的查漏未完成: " + gap["reason"])
+    # v3.1/v3.2 Competition-First 的科学挑战不使用旧覆盖率查漏系统（review_gaps.py）。
+    # 隔离由"自由报告 + record_stronger_alternative 闭合 + 真实攻击证据"三者组合保证，
+    # 与 Capability-First 的 required_risks / coverage_declaration 体系互不兼容。
+    _require_scientific_challenge_sections(run_dir / report_file)
     review = {
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -3268,19 +3311,8 @@ def _import_competition_paper_blind_review(
     scientific_thread = summary["scientific_review"]["reviewer"]["thread_id"]
     if reviewer_thread_id == scientific_thread:
         raise ContractError("PDF 盲评必须使用不同于科学挑战的新对话")
-    from shumozizi.simple.review_gaps import verify_review_gap_completion
-
-    gap = verify_review_gap_completion(
-        run_dir,
-        scope="paper",
-        review_report={
-            "report": report,
-            "task_receipt": task,
-            "reviewer": _reviewer_paper(reviewer_thread_id),
-        },
-    )
-    if not gap["allowed"]:
-        raise ContractError("PDF 全面盲审后的查漏未完成: " + gap["reason"])
+    # v3.1/v3.2 Competition-First 的 PDF 盲评不使用旧覆盖率查漏系统（review_gaps.py）；
+    # 盲评只负责论文相对竞争力和可读性，隔离由冻结 PDF + 独立任务回执 + fresh thread 保证。
     summary["paper_blind_review"] = {
         "verdict": verdict,
         "highest_severity": highest_severity,

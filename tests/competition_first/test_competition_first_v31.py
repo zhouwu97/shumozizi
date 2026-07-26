@@ -476,8 +476,12 @@ def test_scientific_release_requires_current_gap_report(tmp_path: Path) -> None:
     assert "查漏" in status["reason"]
 
 
-def test_pdf_blind_review_import_requires_current_gap_report(tmp_path: Path) -> None:
-    """最终 PDF 盲审不能在全面审查后跳过中央风险查漏。"""
+def test_pdf_blind_review_import_accepts_when_contracts_met(tmp_path: Path) -> None:
+    """v3.1 PDF 盲评在满足所有合同条件时（不同对话 + 冻结 PDF + 独立任务回执）应直接通过。
+
+    v3.1/v3.2 Competition-First 的 PDF 盲评不使用旧覆盖率查漏体系；隔离由
+    冻结 PDF + 独立任务回执 + fresh thread 三者保证，故单纯缺少 gaps 文件不阻断。
+    """
     run_dir = _run_dir(tmp_path, "paper-gap-required")
     _register_current_result(run_dir)
     record_passing_scientific_review(run_dir)
@@ -517,15 +521,17 @@ def test_pdf_blind_review_import_requires_current_gap_report(tmp_path: Path) -> 
         creation_event_file=event.relative_to(run_dir).as_posix(),
     )
 
-    with pytest.raises(ContractError, match="查漏"):
-        review_module.import_paper_blind_review(
-            run_dir,
-            manifest_file=manifest_file,
-            verdict="pass",
-            highest_severity="none",
-            reviewer_thread_id="paper-open-thread",
-            task_receipt_file=receipt.relative_to(run_dir).as_posix(),
-        )
+    # 满足所有 v3.1 合同条件（fresh thread + 独立回执），应成功导入。
+    summary = review_module.import_paper_blind_review(
+        run_dir,
+        manifest_file=manifest_file,
+        verdict="pass",
+        highest_severity="none",
+        reviewer_thread_id="paper-open-thread",
+        task_receipt_file=receipt.relative_to(run_dir).as_posix(),
+    )
+    assert "paper_blind_review" in summary
+    assert summary["paper_blind_review"]["verdict"] == "pass"
 
 
 def test_mechanical_qa_requires_scientific_challenge_release(tmp_path: Path) -> None:
