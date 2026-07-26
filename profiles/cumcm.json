@@ -18,6 +18,7 @@
   "max_file_size_bytes": null,
   "anonymous_required": true,
   "required_submission_files": ["paper/final.pdf", "submission/supporting-materials.zip"],
+  "delivery": {"pdf_required": true, "docx_required": false},
   "judge_visible_roles": [
     "problem_source",
     "problem_attachments_manifest",

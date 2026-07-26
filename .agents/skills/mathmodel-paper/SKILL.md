@@ -145,13 +145,13 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 
 ## 编译产物规定
 
-`compile_paper` 在完成 PDF 后**必须同时生成** `paper/final.docx`（Word 版本），由 pandoc 从 LaTeX/Typst 源文件转换。
+`compile_paper` 在完成 PDF 后**尝试**生成 `paper/final.docx`（Word 版本），由 pandoc 从 LaTeX/Typst 源文件转换。PDF 是唯一始终必交的格式；Word 是否必交由竞赛交付配置（`profiles/<competition>.json` 的 `delivery.docx_required`）决定。
 
 | 文件 | 路径 | 用途 |
 |------|------|------|
-| PDF | `paper/final.pdf` | 主要提交格式，进入 paper-blind 审查包 |
-| Word | `paper/final.docx` | 同步交付，进入 `paper/submission/final.docx` |
+| PDF | `paper/final.pdf` | 主要提交格式，进入 paper-blind 审查包，始终必交 |
+| Word | `paper/final.docx` | 存在时同步进入 `paper/submission/final.docx`；是否必交见竞赛 `delivery` 配置 |
 
-**环境要求**：编译前须安装 [pandoc](https://pandoc.org/installing.html)。若 pandoc 不可用，`compile_paper` 抛出 `ContractError` 并拒绝冻结回执。
+**环境要求**：`delivery.docx_required=true` 的竞赛需安装 [pandoc](https://pandoc.org/installing.html)。若 pandoc 不可用，`compile_paper` 不阻断 PDF 冻结，而是在回执写入 `docx_skipped_reason`；补装 pandoc 后可重跑或单独调用 `compile_docx` 补生成。
 
-`materialize_submission_package` 亦要求 `paper/final.docx` 存在且非空；只有 PDF 而无 Word 版本会阻断提交包物化。
+`materialize_submission_package` 按竞赛 `delivery` 配置处理 Word：`docx_required=false`（当前所有内置 Profile 的默认值）时缺少 Word 不阻断提交包，仍产出纯 PDF 提交；Word 存在则一并纳入。仅当竞赛显式声明 `docx_required=true` 时，缺少非空 `paper/final.docx` 才阻断物化。

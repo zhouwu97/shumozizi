@@ -26,6 +26,7 @@ from shumozizi.core.io import (
 )
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import validate_document
+from shumozizi.profiles.delivery import delivery_requirements_for_competition
 from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.objective_semantics import build_question_objective_bindings
 from shumozizi.simple.results import read_result_index
@@ -1080,10 +1081,16 @@ def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
     pdf = root / "paper" / "final.pdf"
     if not pdf.is_file() or pdf.stat().st_size == 0:
         raise ContractError("标准提交包需要非空 paper/final.pdf")
+    # DOCX 是否必交由竞赛交付配置决定，而非全局硬编码。缺少 pandoc 的环境仍可提交
+    # 纯 PDF；只有显式声明 docx_required 的竞赛才在缺少 Word 时阻断。
+    delivery = delivery_requirements_for_competition(
+        read_simple_state(run_dir).get("competition", "")
+    )
     docx = root / "paper" / "final.docx"
-    if not docx.is_file() or docx.stat().st_size == 0:
+    docx_present = docx.is_file() and docx.stat().st_size > 0
+    if delivery["docx_required"] and not docx_present:
         raise ContractError(
-            "标准提交包要求同时提供 paper/final.docx（Word 版本）。"
+            "该竞赛交付配置要求同时提供 paper/final.docx（Word 版本）。"
             "请在 compile_paper 后确认 pandoc 已正常生成 .docx，或单独运行 compile_docx。"
         )
     submission_dir = root / "paper" / "submission"
@@ -1114,8 +1121,10 @@ def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
 
     sources: list[tuple[Path, str, str]] = [
         (pdf, "final.pdf", "final_pdf"),
-        (docx, "final.docx", "final_docx"),
     ]
+    # Word 版本仅在存在且非空时纳入提交包；缺失时通过下方 stale 清理移除历史副本。
+    if docx_present:
+        sources.append((docx, "final.docx", "final_docx"))
     artifacts_dir = root / "artifacts"
     attachment_names = {
         path.name.casefold()

@@ -207,8 +207,9 @@ def _require_pdf(path: Path) -> None:
 def compile_docx(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) -> Path:
     """用 pandoc 从论文源文件生成 Word 格式（.docx）。
 
-    竞赛规定同时提交 Word 版本，本函数在 PDF 编译完成后由 ``compile_paper``
-    调用；也可单独调用以重新生成 .docx 而不重新编译 PDF。
+    部分竞赛的交付配置要求同时提交 Word 版本；本函数在 PDF 编译完成后由
+    ``compile_paper`` 尝试调用，也可单独调用以重新生成 .docx 而不重新编译 PDF。
+    pandoc 缺失时由调用方决定是否降级（见 ``compile_paper`` 的 ``docx_skipped_reason``）。
 
     Args:
         paper_dir: 论文源文件目录（即 ``run_dir/paper/``）。
