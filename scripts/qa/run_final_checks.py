@@ -15,6 +15,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.qa.check_central_metric_coherence import (
+    check_central_metric_coherence,
+    write_reports,
+)
 from scripts.qa.check_numeric_consistency import check_numeric_consistency
 from scripts.qa.check_placeholders import check_placeholders
 from scripts.qa.check_result_references import check_result_references
@@ -322,6 +326,15 @@ def run_final_checks(
     checks.append(_check("result-references", references, "论文显式结果引用"))
     numeric = check_numeric_consistency(root)
     checks.append(_check("numeric-consistency", numeric, "论文显式关键指标"))
+    central_metric = check_central_metric_coherence(root)
+    write_reports(root, central_metric)
+    checks.append(
+        _check(
+            "central-metric-coherence",
+            central_metric,
+            "核心量在全文（摘要/各问/图注）不出现无法由舍入解释的矛盾值；缺账本时不阻断",
+        )
+    )
     current_files = verify_current_result_files(root)
     checks.append(_check("current-result-files", current_files, "current 结果哈希与指标来源"))
     current_figures = verify_current_figure_files(root)

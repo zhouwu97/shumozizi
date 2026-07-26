@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/metric_ledger.schema.json",
+  "title": "Paper Central Metric Ledger",
+  "description": "论文核心数值的单一来源：每条核心量指向结果索引中的一个 result_id.metric，并登记它在正文中的别名/单位/口径。数值本身不在此复制，而是编译检查时从 results/index.json 现取，故账本永远不会与真值漂移。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "metrics"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "note": {"type": "string"},
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["metric_id", "aliases", "source_result_id", "source_metric", "central"],
+        "properties": {
+          "metric_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "账本内唯一的稳定标识。"
+          },
+          "name": {
+            "type": "string",
+            "description": "人类可读名称，例如“最终推荐厚度”。"
+          },
+          "aliases": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1},
+            "description": "正文中指代同一核心量的措辞（如“厚度”“外延层厚度”）。检查器只在别名邻域内取数比对，避免误伤无关数字。"
+          },
+          "source_result_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "权威值所在的结果 ID（须为 results/index.json 中的 current 结果）。"
+          },
+          "source_metric": {
+            "type": "string",
+            "minLength": 1,
+            "description": "在该结果 metrics 下的键名，例如 d_um。"
+          },
+          "unit": {
+            "type": ["string", "null"],
+            "description": "权威值单位，例如 μm、mm、%、null（无量纲）。用于单位换算与“须带单位才算此量”的收紧。"
+          },
+          "central": {
+            "type": "boolean",
+            "description": "true 时该量参与硬门（矛盾即 FAIL）；false 仅告警。新播种账本默认 false，人工确认后再置 true。"
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "语义口径：用于区分“不同阶段/对象/方法”的合法多值，避免把初值与终值当矛盾。",
+            "properties": {
+              "question_id": {"type": "string"},
+              "stage": {"type": "string"},
+              "object": {"type": "string"},
+              "method": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
