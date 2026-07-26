@@ -1,9 +1,16 @@
-% 参考文献。注意：main.tex 中 \referencescn 已通过 thebibliography 自动生成
-% “参考文献”一级标题（不带编号），并已 \addcontentsline 进入目录，
-% 所以本文件**不要再写一级标题**，否则会出现两个“参考文献”标题。
-
-\begin{thebibliography}{99}
-\bibitem{ref1} 作者. 题名[J]. 刊名, 年, 卷(期): 起止页码.
-\bibitem{ref2} 作者. 题名[M]. 出版地: 出版社, 年.
-\bibitem{ref3} 作者. 题名[D]. 保存地: 保存单位, 年.
-\end{thebibliography}
+% 参考文献条目
+% ---------------------------------------------------------------------------
+% 说明：
+%   - 用 \begin{thebibliography}...\end{thebibliography} 环境放条目。
+%   - “参考文献”标题由 thebibliography 环境自动生成（且只此一处），
+%     本文件与 main.tex 的 \referencescn 都**不要**再手写“参考文献”标题，
+%     否则会出现两个“参考文献”标题。是否给标题编号由 main.tex 配置块的
+%     \ifnumberedreferences 控制。
+%   - 参考文献必须真实存在；不要为显得学术而编造条目。
+%
+% 格式示例（写作阶段替换为真实文献，删除本注释）：
+%
+% \begin{thebibliography}{99}
+% \bibitem{ref1} 作者. 题名[J]. 刊名, 年, 卷(期): 起止页码.
+% \bibitem{ref2} 作者. 题名[M]. 出版地: 出版社, 年.
+% \end{thebibliography}

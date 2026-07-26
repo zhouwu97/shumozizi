@@ -1,0 +1,18 @@
+% 演示附录代码。真实论文只放核心片段，完整代码作为支撑材料另附。
+\begin{lstlisting}[language=Python]
+import numpy as np
+from scipy.optimize import least_squares
+
+def phase_order_fit(nu_peaks, n_of_nu, theta_deg):
+    """双角度共享厚度的峰序号回归（演示）。"""
+    theta = np.deg2rad(theta_deg)
+    def g(nu):
+        n = n_of_nu(nu)
+        return n * nu * np.sqrt(1.0 - (np.sin(theta) / n) ** 2)
+    m = np.arange(len(nu_peaks))            # 峰序号
+    gvals = g(nu_peaks)
+    # m = a + 2 d g(nu)  -> 线性最小二乘求 d
+    A = np.vstack([np.ones_like(gvals), 2.0 * gvals]).T
+    (a, d), *_ = np.linalg.lstsq(A, m, rcond=None)
+    return d
+\end{lstlisting}

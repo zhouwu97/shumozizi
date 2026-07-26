@@ -1,181 +1,319 @@
 % !TEX program = xelatex
 % =============================================================================
-%  全国大学生数学建模竞赛（CUMCM）LaTeX 模板
-%  对应 Typst 模板 zh/cumcm/main.typ 的全部功能。
+%  全国大学生数学建模竞赛（CUMCM）LaTeX 论文模板
 %
-%  字体依赖（正文宋体 / 标题黑体 / 强调楷体）：
-%    - 规范字体：SimSun（宋体）、SimHei（黑体）、KaiTi（楷体）。
-%    - 本模板默认使用 ctex 的 fontset=mac，在 macOS 上自动选用同族等价字体
-%      Songti SC / Heiti SC / Kaiti SC，确保开箱即用。
-%    - 若系统已安装 SimSun/SimHei/KaiTi（如 Windows 或手动安装），可将下方
-%      \documentclass 选项 fontset=mac 改为 fontset=windows，即可使用规范字体。
-%    - 西文正文：Times New Roman；代码等宽：Menlo（缺失时回退到默认字体）。
-%  编译方式：xelatex main.tex （需运行两遍以生成目录）
+%  设计目标：可靠、干净、可复用的 XeLaTeX 数学建模论文模板。
+%    - A4、四边 2.5 cm、摘要即第 1 页、正文无目录、黑白学术排版。
+%    - 跨平台字体自动回退（Windows / macOS / Linux），最终兜底 Fandol。
+%    - 缺少正文 sections/questions.tex 时明确报错，不静默产出空白论文。
+%    - 缺少可选内容（参考文献 / 附录）时不产生空白页或伪造内容。
+%
+%  编译方式：xelatex main.tex（含交叉引用时编译两遍）。
+%
+%  与工作流的关系：本文件是「正式模板」。可编译的演示样例在
+%    skills/5writing/examples/cumcm-xelatex/（不随模板实例化进入每个 run）。
+%    模板实例化时会自动生成 sections/questions.tex 文件（题目数决定的正文骨架），
+%    因此本目录的 sections/ 不应预置 questions.tex。
 % =============================================================================
-\documentclass[fontset=mac, 12pt, a4paper]{ctexart}
+\documentclass[UTF8,fontset=none,12pt,a4paper]{ctexart}
 
-% ---------- 页面：A4，上下左右 2.5cm ----------
-\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
+% =========================================================================
+%  论文配置块（写作阶段按本题填写 / 切换开关）
+% =========================================================================
+% 标题占位符：写作阶段替换为本题标题（占位符会被终检当作必填项检测）。
+\newcommand{\PaperTitle}{论文标题}
+% 是否包含参考文献。为真时缺 references.tex 会明确报错，而非静默留空。
+\newif\ifpaperhasreferences   \paperhasreferencestrue
+% 参考文献标题是否参与章节编号（true → “六、参考文献”；false → 无编号）。
+\newif\ifnumberedreferences   \numberedreferencesfalse
+% 是否输出附录。为假时完全不产生附录标题与附录页。
+\newif\ifshowappendix         \showappendixtrue
 
-% ---------- 数学 ----------
-\usepackage{amsmath}
+% =========================================================================
+%  字体：Windows / macOS / Linux 自动回退，最终兜底 Fandol（TeX 发行版自带）
+% =========================================================================
+\usepackage{fontspec}
+\usepackage{xeCJK}
 
-% ---------- 字体（fontspec + ctex，xelatex 编译） ----------
-% 中文宋体/黑体/楷体由 ctex 的 fontset=mac 自动设置（Songti SC / Heiti SC / Kaiti SC），
-% 并自动定义 \songti / \heiti / \kaishu 等字体命令。
-% 西文正文与代码等宽字体：
-\IfFontExistsTF{Times New Roman}{\setmainfont{Times New Roman}}{}
-\IfFontExistsTF{Menlo}{\setmonofont{Menlo}}{}
+% 逐字体探测：优先级从低到高依次覆盖，最后被赋值的（存在的最高优先级）胜出。
+% 顺序：Fandol 兜底 → Linux(Noto) → macOS → Windows。
+\def\zhSong{FandolSong}\def\zhHei{FandolHei}\def\zhKai{FandolKai}\def\zhFang{FandolFang}
+\IfFontExistsTF{Noto Serif CJK SC}{\def\zhSong{Noto Serif CJK SC}}{}
+\IfFontExistsTF{Noto Sans CJK SC}{\def\zhHei{Noto Sans CJK SC}}{}
+\IfFontExistsTF{Songti SC}{\def\zhSong{Songti SC}}{}
+\IfFontExistsTF{Heiti SC}{\def\zhHei{Heiti SC}}{}
+\IfFontExistsTF{Kaiti SC}{\def\zhKai{Kaiti SC}}{}
+\IfFontExistsTF{STFangsong}{\def\zhFang{STFangsong}}{}
+\IfFontExistsTF{SimSun}{\def\zhSong{SimSun}}{}
+\IfFontExistsTF{SimHei}{\def\zhHei{SimHei}}{}
+\IfFontExistsTF{KaiTi}{\def\zhKai{KaiTi}}{}
+\IfFontExistsTF{FangSong}{\def\zhFang{FangSong}}{}
 
-% ---------- 正文：12.05pt，首行缩进 2em，两端对齐，行距 0.72em ----------
-% 12pt 字号近似 12.05pt；0.72em 行距 => 行高 = 1.72 * 字号，\linespread 因子 ≈ 1.43
-\linespread{1.43}
-\setlength{\parindent}{2em}
+% 默认中文字体（正文宋体、无衬线黑体、等宽仿宋）与四个具名字族。
+\setCJKmainfont{\zhSong}
+\setCJKsansfont{\zhHei}
+\setCJKmonofont{\zhFang}
+\newCJKfontfamily\paperSong{\zhSong}
+\newCJKfontfamily\paperHei{\zhHei}
+\newCJKfontfamily\paperKai{\zhKai}
+\newCJKfontfamily\paperFang{\zhFang}
 
-% ---------- 标题编号（\ctexset 配置） ----------
-% 一级标题用中文数字“一、二、三、”，二级及以下用 1.1 / 1.1.1
-\ctexset{
-  section/number       = \chinese{section},
-  subsection/number    = \arabic{section}.\arabic{subsection},
-  subsubsection/number = \arabic{section}.\arabic{subsection}.\arabic{subsubsection},
+% 兼容命令：fontset=none 下 ctex 不保证 \heiti/\kaishu 等可用，这里显式绑定，
+% 使标题格式（\ctexset 用 \heiti）与旧正文（\kaishu 等）在任何平台都成立。
+\let\songti\paperSong
+\let\heiti\paperHei
+\let\kaishu\paperKai
+\let\fangsong\paperFang
+
+% 西文正文与等宽字体：存在则用，缺失回退，最终回退到 fontspec 默认（不报错）。
+\IfFontExistsTF{Times New Roman}{\setmainfont{Times New Roman}}{%
+  \IfFontExistsTF{Liberation Serif}{\setmainfont{Liberation Serif}}{}%
+}
+\IfFontExistsTF{Consolas}{\setmonofont{Consolas}}{%
+  \IfFontExistsTF{Liberation Mono}{\setmonofont{Liberation Mono}}{}%
 }
 
-% ---------- 标题格式（titlesec 配置） ----------
-\usepackage{titlesec}
-\titleformat{\section}
-  {\centering\fontsize{17.3pt}{20.8pt}\heiti\bfseries}
-  {\chinese{section}、}{1em}{}
-\titleformat{\subsection}
-  {\fontsize{14.45pt}{17.4pt}\heiti\bfseries}
-  {\arabic{section}.\arabic{subsection}}{1em}{}
-\titleformat{\subsubsection}
-  {\fontsize{12.05pt}{14.5pt}\heiti\bfseries}
-  {\arabic{section}.\arabic{subsection}.\arabic{subsubsection}}{1em}{}
-\titlespacing{\section}       {0pt}{1.25em}{0.82em}
-\titlespacing{\subsection}    {0pt}{1.15em}{0.55em}
-\titlespacing{\subsubsection} {0pt}{1.15em}{0.55em}
+% =========================================================================
+%  页面与正文
+% =========================================================================
+\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm, footskip=1.2cm]{geometry}
+\usepackage{setspace}
+\setstretch{1.40}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0pt}
+\raggedbottom
 
-% ---------- 目录（tocloft 点线引导） ----------
-\usepackage{tocloft}
-\renewcommand{\cftsecfont}{\heiti\bfseries}
-\renewcommand{\cftsecpagefont}{\heiti\bfseries}
-\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
-\renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
-\renewcommand{\cftsubsubsecleader}{\cftdotfill{\cftdotsep}}
+% ---------- 页码：摘要首页即第 1 页；无页眉，底部居中 ----------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\fontsize{10.5pt}{12pt}\selectfont\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
 
-% ---------- 表格与代码 ----------
-\usepackage{booktabs}
-\usepackage{array}
+% ---------- 数学 ----------
+\usepackage{amsmath,amssymb,mathtools,bm}
+\allowdisplaybreaks[2]
+
+% ---------- 图表 ----------
+\usepackage{graphicx}
+% 兼容独立编译（figures/）与实例化 run 布局（../figures/current/）。
+\graphicspath{{figures/}{figures/current/}{../figures/current/}}
+\usepackage{booktabs,tabularx,longtable,array,multirow}
+\usepackage{float}
+% placeins 不用 [section]：不自动在每节末尾拦截浮动体，交由手写 \FloatBarrier 控制。
+\usepackage{placeins}
+\usepackage{caption}
+\DeclareCaptionFont{cncaption}{\fontsize{10.5pt}{14pt}\selectfont}
+\captionsetup{
+  font=cncaption,
+  labelfont=bf,
+  labelsep=space,
+  justification=centering,
+  singlelinecheck=true
+}
+\captionsetup[figure]{position=bottom,skip=6pt}
+\captionsetup[table]{position=top,skip=6pt}
+\renewcommand{\arraystretch}{1.20}
+\setlength{\tabcolsep}{6pt}
+
+% ---------- 列表 ----------
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=2em}
+\setlist[enumerate,1]{label=\arabic*、}
+
+% ---------- 标题：一级居中，二三级左对齐 ----------
+\ctexset{
+  section = {
+    name    = {,、},
+    number  = \chinese{section},
+    format  = \centering\heiti\fontsize{15pt}{20pt}\selectfont,
+    aftername   = \hspace{0.5em},
+    beforeskip  = 18pt,
+    afterskip   = 10pt,
+    afterindent = false
+  },
+  subsection = {
+    name    = {,},
+    number  = \arabic{section}.\arabic{subsection},
+    format  = \heiti\fontsize{12pt}{18pt}\selectfont,
+    aftername   = \hspace{0.5em},
+    beforeskip  = 10pt,
+    afterskip   = 2pt,
+    afterindent = false
+  },
+  subsubsection = {
+    name    = {,},
+    number  = \arabic{section}.\arabic{subsection}.\arabic{subsubsection},
+    format  = \heiti\fontsize{12pt}{18pt}\selectfont,
+    aftername   = \hspace{0.5em},
+    beforeskip  = 8pt,
+    afterskip   = 2pt,
+    afterindent = false
+  }
+}
+
+% ---------- 代码：只用黑白，避免彩色编辑器截图式排版 ----------
 \usepackage{xcolor}
 \usepackage{listings}
 \lstset{
-  basicstyle=\ttfamily\small,
-  backgroundcolor=\color{black!3},
+  basicstyle=\ttfamily\fontsize{9pt}{11pt}\selectfont,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  numbers=left,
+  numberstyle=\tiny,
+  numbersep=8pt,
   frame=single,
-  framesep=6pt,
-  rulecolor=\color{black!30},
-  framerule=0.8pt,
+  rulecolor=\color{black!40},
+  framerule=0.4pt,
+  framesep=5pt,
   breaklines=true,
+  breakatwhitespace=false,
   showstringspaces=false,
   columns=fullflexible,
   keepspaces=true,
+  tabsize=4,
+  aboveskip=8pt,
+  belowskip=8pt
 }
 
-% ---------- 页码：底部居中 ----------
-\pagestyle{plain}
+% ---------- 黑白超链接 ----------
+\usepackage[hidelinks]{hyperref}
 
-% ---------- 自定义命令（对应 Typst 函数） ----------
-% \papertitle{标题}：居中 17.3pt 加粗标题
+% ---------- 参考文献标题：单一来源，避免双标题 ----------
+% thebibliography 默认自行输出 \section*{参考文献}（不编号）。
+% 若 \ifnumberedreferences 为真，则把它就地改成编号的 \section{参考文献}。
+% 无论哪种情形，“参考文献”标题都只此一处，\referencescn 不再另行输出标题。
+\usepackage{etoolbox}
+\AtBeginDocument{%
+  \ifnumberedreferences
+    \patchcmd{\thebibliography}{\section*{\refname}}{\section{\refname}}{}{%
+      \PackageWarning{cumcm-template}{无法为参考文献标题加编号：thebibliography 结构与预期不符}%
+    }%
+  \fi
+}
+
+% =========================================================================
+%  自定义命令
+% =========================================================================
+% \papertitle{标题}：首页居中大标题（首页不是独立封面）。
 \newcommand{\papertitle}[1]{%
-  \thispagestyle{empty}%
+  \vspace*{0.55cm}%
   \begin{center}
-    {\fontsize{17.3pt}{22pt}\bfseries #1}
+    {\heiti\fontsize{18pt}{24pt}\selectfont #1\par}
   \end{center}
-  \vspace{1em}
+  \vspace{0.65cm}%
 }
-% \abstractcn{摘要正文}{关键词}：居中“摘要”标题（14pt 加粗）+ 正文 + “关键字：”加粗 + 关键词 + 换页
+
+% \abstractcn{摘要正文}{关键词}：居中“摘要”标题 + 正文 + 加粗“关键词：” + 换页。
+% 摘要建议按叙述逻辑组织（背景与困难 → 建模结构 → 主方法 → 关键数值结果 →
+% 规律与决策含义 → 可信边界），不要机械按“问题一/二/三”逐句点名。
 \newcommand{\abstractcn}[2]{%
-  \thispagestyle{empty}%
-  \begin{center}{\fontsize{14pt}{17pt}\bfseries 摘要}\end{center}
-  #1\par
-  \vspace{1em}
-  {\heiti\bfseries 关键字：}#2\par
-  \newpage
-}
-% \tocpage：目录页，标题“目录”居中 17.3pt 黑体加粗，点线引导
-\makeatletter
-\newcommand{\tocpage}{%
-  \setcounter{page}{1}%
   \begin{center}
-    {\fontsize{17.3pt}{20.8pt}\heiti\bfseries 目录}
+    {\heiti\fontsize{15pt}{20pt}\selectfont 摘要\par}
   \end{center}
-  \vspace{0.5em}
-  \@starttoc{toc}%
-  \newpage
+  \vspace{0.35em}%
+  \begingroup
+    \setstretch{1.32}%
+    \fontsize{12pt}{18pt}\selectfont
+    #1\par
+    \vspace{0.65em}%
+    \noindent{\heiti 关键词：}#2\par
+  \endgroup
+  \clearpage
 }
-\makeatother
-% \referencescn：参考文献节，标题“参考文献”（不带编号但进目录）
-\newcommand{\referencescn}{%
-  \addcontentsline{toc}{section}{参考文献}%
-  \input{references}%
-}
-% \appendixcn：附录节，标题“附录 A  核心代码”
-\newcommand{\appendixcn}{%
-  \section*{附录 A\quad 核心代码}%
-  \addcontentsline{toc}{section}{附录 A\quad 核心代码}%
-  \input{sections/A_code}%
-}
-% \threelinetable{标题}{列定义}{表头}{表格内容}：三线表，标题在表格上方居中 10.5pt 黑体加粗
-% 调用示例：\threelinetable{表 1 示例}{ccc}{A & B & C}{1 & 2 & 3 \\ 4 & 5 & 6}
-\newcommand{\threelinetable}[4]{%
-  \begin{center}
-    {\fontsize{10.5pt}{12.6pt}\heiti\bfseries #1}\par
-    \vspace{0.6em}
-    \begin{tabular}{#2}
+
+% \threelinetable{表题}{列定义}{表头}{表体}：三线表。
+% 表题只写内容，不要手写“表 1”；需要交叉引用时优先直接用 table 环境并加 \label。
+% 使用 [htbp] 让浮动体正常参与排版，避免 [H] 造成的大片空白与越界。
+% 可选参数为交叉引用标签：\threelinetable[tab:key]{标题}{列格式}{表头}{表体}。
+% 省略 [tab:key] 时不产生标签，向后兼容旧调用。
+\newcommand{\threelinetable}[5][]{%
+  \begin{table}[htbp]
+    \centering
+    \caption{#2}%
+    \if\relax\detokenize{#1}\relax\else\label{#1}\fi
+    \begin{tabular}{#3}
       \toprule
-      #3 \\
-      \midrule
       #4 \\
+      \midrule
+      #5 \\
       \bottomrule
     \end{tabular}
-  \end{center}
+  \end{table}
+}
+
+% \appendixsection{标题}：附录小节，自动编号“附录 A / 附录 B / …”。
+% 支持单附录与多附录：单附录调用一次，多附录多次调用即可。不自动 \appendix。
+\newcounter{paperappendix}
+\newcommand{\appendixsection}[1]{%
+  \stepcounter{paperappendix}%
+  \phantomsection%
+  \section*{附录~\Alph{paperappendix}\quad #1}%
+}
+
+% \referencescn：参考文献节。references.tex 用 thebibliography 环境放条目。
+% 关键：标题“参考文献”只由 thebibliography 自动输出一次，本命令**不再手写标题**，
+% 否则会与 thebibliography 的内置标题叠加出现两个“参考文献”。
+% 是否编号由 \ifnumberedreferences 控制（见下方 \AtBeginDocument 补丁）。
+% 缺 references.tex 且 \ifpaperhasreferences 为真时明确报错（不伪造条目）。
+\newcommand{\referencescn}{%
+  \ifpaperhasreferences
+    \FloatBarrier
+    \IfFileExists{references.tex}{%
+      \begingroup
+        \setstretch{1.18}%
+        \fontsize{10.5pt}{14pt}\selectfont
+        \input{references.tex}%
+      \endgroup
+    }{%
+      \PackageError{cumcm-template}%
+        {references.tex is required when paperhasreferences is true}%
+        {Provide references.tex, or set \noexpand\paperhasreferencesfalse in the config block.}%
+    }%
+  \fi
+}
+
+% \appendixcn：默认附录（核心代码）。sections/A_code.tex 不存在时不产生任何附录页。
+\newcommand{\appendixcn}{%
+  \FloatBarrier
+  \IfFileExists{sections/A_code.tex}{%
+    \clearpage
+    \appendixsection{核心代码}%
+    \input{sections/A_code}%
+  }{}%
 }
 
 \begin{document}
+\setcounter{page}{1}
 
-% 封面（不编号）
-\papertitle{论文标题}
+% 首页不是独立封面：标题、摘要、关键词均位于第 1 页。
+\papertitle{\PaperTitle}
 
-% 摘要结构（完成后删除本注释块）：
-% 背景与核心困难 → 关键建模定义 → 主方法 →
-% 最重要 2-3 个结果（含数字） → 规律与决策含义 → 可信边界
-% 禁止按"问题一/二/三"逐句点名，禁止用"建立了完整的数学模型体系"开头。
 \abstractcn{%
   [背景：核心困难是什么，使这道题非显然]。本文将[问题的核心困难]定义为[建模结构]，
   以[主方法]求解。得到[最重要数值结果，含具体数字，如：最优策略总收益为 X，
   较单动作基线提升 Y\%]。分析发现[核心规律，如：存在边际收益递减，
-  瓶颈来自[约束名称]]，据此[决策含义]。模型在[参数范围]内鲁棒；
+  瓶颈来自[约束名称]]，据此[决策含义]。模型在[参数范围]内保持稳定；
   当[关键假设改变]时结论可能随之调整。%
 }{%
-  关键词1 \quad 关键词2 \quad 关键词3 \quad 关键词4%
+  关键词一\quad 关键词二\quad 关键词三\quad 关键词四%
 }
 
-% 目录页（页码从 1 开始）
-\tocpage
+% 正文入口：优先读取实例化生成的 sections/questions.tex 文件；缺失时明确报错。
+% 正文不设目录。
+\IfFileExists{sections/questions.tex}{%
+  \input{sections/questions.tex}%
+}{%
+  \PackageError{cumcm-template}%
+    {sections/questions.tex is required (paper body missing)}%
+    {Create sections/questions.tex with the paper body, then recompile.}%
+}
 
-\input{sections/1_restatement}
-\input{sections/2_analysis}
-\input{sections/3_assumptions}
-\input{sections/4_symbols}
-\input{sections/5_problem1}
-\input{sections/6_problem2}
-\input{sections/7_problem3}
-\input{sections/8_sensitivity}
-\input{sections/9_evaluation}
-
-\newpage
 \referencescn
-\newpage
-\appendixcn
+
+\ifshowappendix
+  \appendixcn
+\fi
 
 \end{document}

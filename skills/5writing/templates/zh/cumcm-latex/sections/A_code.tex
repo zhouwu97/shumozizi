@@ -1,18 +1,18 @@
-\vspace{1.1em}
+% 附录：核心代码 / 支撑材料清单
+% ---------------------------------------------------------------------------
+% 本文件由写作阶段填写。此处只放论文正文引用到的“核心”代码片段或关键伪代码，
+% 完整可复现代码建议作为支撑材料另附，不要把整个工程粘贴进正文附录。
+%
+% 说明：
+%   - 模板入口通过 \appendixcn 引入本文件；若本文件不存在，则完全不产生附录页。
+%   - 代码用 lstlisting 环境排版（已配置为黑白、带行号、可断行）。
+%   - 需要多个附录小节时，在 main.tex 正文调用 \appendixsection{标题} 生成
+%     “附录 A / 附录 B / …”，本文件对应第一个附录小节“核心代码”。
 
 \begin{lstlisting}[language=Python]
 import numpy as np
-import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
 
-data = pd.read_csv('data.csv')
-X = data.drop('target', axis=1); y = data['target']
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-model = RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-print(f'R2: {r2_score(y_test, model.predict(X_test)):.4f}')
+# 写作阶段替换为本题核心求解代码或关键算法。
+def solve():
+    raise NotImplementedError
 \end{lstlisting}

@@ -1,0 +1,89 @@
+% 演示正文：展示公式、三线表、跨页长表、示意图、代码、交叉引用等模板能力。
+
+\section{问题重述与分析}
+本演示以红外干涉测厚为例。给定不同入射角下的反射谱，需反演外延层厚度 $d$，
+并评估折射率色散与多光束效应对结果的影响。核心变量为厚度 $d$、折射率 $n(\nu)$
+与波数 $\nu$；难点在于三者在谱形上的耦合。整体求解路线见图~\ref{fig:roadmap}。
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    node distance=8mm,
+    box/.style={draw, rounded corners, align=center, inner sep=4pt, font=\small},
+    arr/.style={-latex, thick}]
+    \node[box] (a) {反射谱\\预处理};
+    \node[box, right=of a] (b) {峰检测与\\级次分配};
+    \node[box, right=of b] (c) {双角度\\联合回归};
+    \node[box, right=of c] (d) {厚度 $d$\\与不确定度};
+    \draw[arr] (a) -- (b);
+    \draw[arr] (b) -- (c);
+    \draw[arr] (c) -- (d);
+  \end{tikzpicture}
+  \caption{总体求解路线示意图}
+  \label{fig:roadmap}
+\end{figure}
+
+\section{模型的建立与求解}
+
+\subsection{相位—波数关系}
+设界面反射系数为 $r_1,r_2$，相位差 $\delta(\nu)=4\pi d\, n(\nu)\nu\cos\theta'$。
+双光束近似下反射率为
+\begin{equation}
+  R_{2b}(\nu)=A(\nu)+B(\nu)\cos\delta(\nu),
+  \label{eq:twobeam}
+\end{equation}
+其中 $A,B$ 为慢变包络。式~\eqref{eq:twobeam} 中相邻同类极值满足相位差 $2\pi$，
+据此可由峰序号回归稳健地估计 $d$。作为对照，完整 Airy 反射率为
+\begin{equation}
+  R_{A}(\nu)=\frac{r_1^2+r_2^2+2r_1r_2\cos\delta}{1+r_1^2r_2^2+2r_1r_2\cos\delta}.
+  \label{eq:airy}
+\end{equation}
+式~\eqref{eq:airy} 的分母正是多次反射求和的结果，与式~\eqref{eq:twobeam} 的双光束近似
+在物理含义上必须区分，不能混用。
+
+\subsection{结果与检验}
+演示数据上的主结果汇总于表~\ref{tab:main}。可见两角度点估计一致，
+联合区间较单角度显著收窄。
+
+\threelinetable[tab:main]{主结果汇总（演示数据）}{lccc}
+{方法 & 角度 & 点估计 $d/\mu\mathrm{m}$ & 95\% CI $/\mu\mathrm{m}$}
+{峰序号回归 & $10^\circ$ & 8.09 & $[7.36,\,8.53]$ \\
+ 峰序号回归 & $15^\circ$ & 8.14 & $[7.33,\,9.38]$ \\
+ 双角联合 & 共享 & 8.11 & $[7.77,\,8.25]$}
+
+为检验分段一致性，将全谱划分为若干波段分别估计厚度，结果见表~\ref{tab:seg}
+（长表演示，可跨页）。
+
+\begin{longtable}{cccc}
+  \caption{分段一致性检验（演示数据，长表跨页示例）}\label{tab:seg}\\
+  \toprule
+  波段编号 & 波段中心 $/\mathrm{cm^{-1}}$ & 厚度 $d/\mu\mathrm{m}$ & 相对偏差 \\
+  \midrule
+  \endfirsthead
+  \multicolumn{4}{l}{\small（续表~\ref{tab:seg}）}\\
+  \toprule
+  波段编号 & 波段中心 $/\mathrm{cm^{-1}}$ & 厚度 $d/\mu\mathrm{m}$ & 相对偏差 \\
+  \midrule
+  \endhead
+  \midrule
+  \multicolumn{4}{r}{\small 接下页}\\
+  \endfoot
+  \bottomrule
+  \endlastfoot
+  1 & 1050 & 8.02 & $-1.1\%$ \\
+  2 & 1150 & 8.09 & $-0.2\%$ \\
+  3 & 1250 & 8.13 & $+0.2\%$ \\
+  4 & 1350 & 8.15 & $+0.5\%$ \\
+  5 & 1450 & 8.10 & $-0.1\%$ \\
+  6 & 1550 & 8.07 & $-0.5\%$ \\
+  7 & 1650 & 8.12 & $+0.1\%$ \\
+  8 & 1750 & 8.14 & $+0.4\%$ \\
+\end{longtable}
+
+核心求解步骤的代码见附录~A。
+
+\section{模型评价、改进与推广}
+本模型的优点是以相位—波数关系为统一约束，避免了逐峰读数对色散的敏感；
+双角度联合回归在不牺牲物理可解释性的前提下收窄了区间。局限在于假设界面平行、
+无吸收，若样品存在明显吸收带或界面倾斜，需引入 $A(\nu),B(\nu)$ 的更高阶描述。
+该框架可推广至多层结构的分层反演，以及其它基于干涉条纹的测厚场景。
