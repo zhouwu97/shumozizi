@@ -271,6 +271,9 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         return ["缺少 paper/answer-map.json 或 analysis/answer_map.json"], warnings
     required = _question_ids_from_state(run_dir)
     results = _current_production_results(run_dir)
+    from shumozizi.simple.modeling_units import final_answer_selections
+
+    selections = final_answer_selections(run_dir)
     for question_id in required:
         item = answers.get(question_id)
         if not isinstance(item, dict):
@@ -286,6 +289,21 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
                 errors.append(f"必答问题 {question_id} 引用了非 current 或不可写入论文的结果: {', '.join(stale)}")
         if not isinstance(location, str) or not location.strip():
             errors.append(f"必答问题 {question_id} 缺少直接答案位置")
+        selection = selections.get(question_id)
+        if selection is not None:
+            if selection["status"] == "redesign_required":
+                errors.append(
+                    f"必答问题 {question_id} 仍为 redesign_required，不能生成论文主答案"
+                )
+                continue
+            primary_result_id = item.get("primary_result_id")
+            if primary_result_id != selection["result_id"]:
+                errors.append(
+                    f"必答问题 {question_id} 的 primary_result_id 必须使用路线晋级/回退决定"
+                    f"选中的 {selection['result_id']}"
+                )
+            elif isinstance(result_ids, list) and primary_result_id not in result_ids:
+                errors.append(f"必答问题 {question_id} 的 primary_result_id 未列入 result_ids")
         for figure_id in item.get("figure_ids", []):
             if not isinstance(figure_id, str):
                 errors.append(f"{question_id} 的 figure_ids 含非法值")

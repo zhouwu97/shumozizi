@@ -48,8 +48,23 @@ ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
     "chosen_objective": re.compile(
         r"目标解释|目标函数|优化目标|选定目标|objective\s*(?:semantics|function)", re.IGNORECASE
     ),
+    "question_inheritance": re.compile(
+        r"问题继承|承接前问|沿用前问|共享模型|在前问.{0,16}基础上|"
+        r"question\s*inheritance|builds?\s+on\s+(?:the\s+)?previous",
+        re.IGNORECASE,
+    ),
     "model_choice_rationale": re.compile(
         r"模型选择理由|选模理由|为何采用|选择该模型|model\s*(?:choice|rationale)", re.IGNORECASE
+    ),
+    "mathematical_object_derivation": re.compile(
+        r"数学对象|关键推导|模型推导|状态变量|决策变量|约束推导|"
+        r"mathematical\s*object|key\s*derivation|model\s*derivation",
+        re.IGNORECASE,
+    ),
+    "algorithm_steps": re.compile(
+        r"算法步骤|求解流程|伪代码|算法流程|迭代步骤|"
+        r"algorithm\s*steps?|pseudocode|solution\s*procedure",
+        re.IGNORECASE,
     ),
     "core_proof_obligations": re.compile(
         r"证明义务|关键证明|正确性条件|不变量|边界条件|proof\s*obligation", re.IGNORECASE
@@ -138,7 +153,10 @@ def _question_sections(
         "evidence_result_ids": result_ids,
         "required_elements": [
             "chosen_objective",
+            "question_inheritance",
             "model_choice_rationale",
+            "mathematical_object_derivation",
+            "algorithm_steps",
             "core_proof_obligations",
             "production_result_refs",
             "comparison_route",
@@ -148,7 +166,10 @@ def _question_sections(
         ],
         "argument_contract": {
             "chosen_objective": f"{question_id} 的主目标及聚合口径必须与目标语义收据一致。",
+            "question_inheritance": "说明本问从前问继承了什么，以及新增了哪个数学对象或约束。",
             "model_choice_rationale": "说明模型为何匹配题意、约束和可验证性。",
+            "mathematical_object_derivation": "定义本问数学对象，并给出从题面到核心关系的必要推导。",
+            "algorithm_steps": "给出可复现的求解步骤；复杂算法使用伪代码或等价的清楚流程。",
             "core_proof_obligations": [
                 "列出本问必须满足的约束、边界或正确性条件。"
             ],

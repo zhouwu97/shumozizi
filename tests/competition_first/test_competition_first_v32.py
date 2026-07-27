@@ -127,7 +127,7 @@ def _semantic_reconstruction(run_dir: Path, suffix: str) -> dict[str, str]:
 def _plan(run_dir: Path) -> dict[str, object]:
     """构造一个最小 compare 单元，覆盖 v3.2 的关键决策事实。"""
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": run_dir.name,
         "semantic_reconstructions": [
             _semantic_reconstruction(run_dir, "A"),
@@ -149,13 +149,33 @@ def _plan(run_dir: Path) -> dict[str, object]:
                 "question_id": "Q1",
                 "core_question": True,
                 "mode": "compare",
+                "answer_contract": {
+                    "required_output": "给出总成本最小的可执行方案及其成本。",
+                    "decision_scope": "当前数据覆盖的全部任务与规划时段。",
+                    "natural_baseline": "按题面优先级逐项构造的规则方案。",
+                    "fallback_rule": "晋级失败时使用已通过稳定性检查的 R1。",
+                    "primary_endpoint": {
+                        "name": "objective",
+                        "definition": "所有任务完成后的精确总成本。",
+                        "exact_metric_alignment": "与 exact scorer 的 objective 字段完全一致。",
+                    },
+                    "primary_criterion": "方案可行且相对自然 baseline 至少改善 10%。",
+                    "endpoint_resolution": {
+                        "status": "comparison_planned",
+                        "basis": "聚合目标先通过候选后果 probe 冻结，主 endpoint 不变。",
+                    },
+                },
                 "objective": {
                     "exact_metric": "objective",
                     "direction": "minimize",
                     "significant_improvement_ratio": 0.1,
                 },
                 "budget": {"kind": "wall_seconds", "tolerance_ratio": 0.1},
-                "baseline": {"route_id": "R0", "mathematical_structure": "可解释规则模型"},
+                "baseline": {
+                    "route_id": "R0",
+                    "mathematical_structure": "可解释规则模型",
+                    "natural_rationale": "直接按题面优先级构造，是无需复杂优化的自然参照。",
+                },
                 "competitive_routes": [
                     {
                         "route_id": "R1",
@@ -259,6 +279,17 @@ def _actual(plan: dict[str, object]) -> None:
             "route_result_ids": {"R0": "baseline", "R1": "structural", "R2": "global"},
             "winner_route_id": "R2",
         },
+        "promotion_decision": {
+            "status": "promoted",
+            "selected_route_id": "R2",
+            "selected_result_id": "final",
+            "route_upgrade_passed": True,
+            "endpoint_consistent": True,
+            "guard_constraints_passed": True,
+            "decision_stable": True,
+            "evidence_result_ids": ["global", "final", "sensitivity", "robustness"],
+            "rationale": "R2 达到升级阈值，且 endpoint、guard 与扰动下行动均保持稳定。",
+        },
         "first_batch_attack": {"result_ids": ["attack"], "conclusion": "未发现排序翻转。"},
         "refinement": {
             "first_feasible_result_id": "first-feasible",
@@ -356,6 +387,121 @@ def test_v32_rejects_first_feasible_as_final_result(tmp_path: Path) -> None:
 
     with pytest.raises(ContractError, match="首个可行解"):
         require_v32_experiment_evidence(run_dir)
+
+
+def test_v32_requires_direct_answer_contract_before_experiment(tmp_path: Path) -> None:
+    """路线比较前必须先冻结本问要回答什么，不能实验后倒推 endpoint。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-answer-contract",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit.pop("answer_contract")
+
+    with pytest.raises(ContractError, match="answer_contract"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_v32_failed_stability_cannot_promote_exact_winner(tmp_path: Path) -> None:
+    """exact 最优但决策不稳定时必须回退或重设计，不能直接成为主答案。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-promotion-stability",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _actual(plan)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    decision = unit["actual"]["promotion_decision"]
+    decision["decision_stable"] = False
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="不能标记 promoted"):
+        require_v32_experiment_evidence(run_dir)
+
+
+def test_answer_map_must_follow_selected_fallback(tmp_path: Path) -> None:
+    """赢家未晋级而启用 fallback 后，论文不能继续把失败赢家列为主答案。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-fallback-answer",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _actual(plan)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["actual"]["promotion_decision"] = {
+        "status": "fallback_selected",
+        "selected_route_id": "R1",
+        "selected_result_id": "structural",
+        "route_upgrade_passed": False,
+        "endpoint_consistent": True,
+        "guard_constraints_passed": True,
+        "decision_stable": True,
+        "failed_winner_checks": ["decision_stable"],
+        "fallback_trigger": "R2 的行动在预登记扰动下翻转。",
+        "evidence_result_ids": ["global", "structural", "sensitivity"],
+        "rationale": "选择在 endpoint、guard 和行动上稳定的事前 fallback。",
+    }
+    write_modeling_units(run_dir, plan)
+    require_v32_experiment_evidence(run_dir)
+
+    with pytest.raises(ContractError, match="必须等于路线晋级/回退决定"):
+        write_answer_map(
+            run_dir,
+            {
+                "Q1": {
+                    "result_ids": ["global", "final"],
+                    "primary_result_id": "final",
+                    "direct_answer_location": "paper/sections/q1.tex",
+                }
+            },
+        )
+
+    answer_map = write_answer_map(
+        run_dir,
+        {
+            "Q1": {
+                "result_ids": ["structural"],
+                "primary_result_id": "structural",
+                "direct_answer_location": "paper/sections/q1.tex",
+            }
+        },
+    )
+    assert answer_map["answers"]["Q1"]["primary_result_id"] == "structural"
 
 
 def test_v32_rejects_typst_even_when_a_template_engine_is_available(tmp_path: Path) -> None:

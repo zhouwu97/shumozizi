@@ -89,7 +89,10 @@
       "additionalProperties": false,
       "required": [
         "chosen_objective",
+        "question_inheritance",
         "model_choice_rationale",
+        "mathematical_object_derivation",
+        "algorithm_steps",
         "core_proof_obligations",
         "production_result_refs",
         "comparison_route",
@@ -99,7 +102,10 @@
       ],
       "properties": {
         "chosen_objective": {"type": "string", "minLength": 10},
+        "question_inheritance": {"type": "string", "minLength": 10},
         "model_choice_rationale": {"type": "string", "minLength": 10},
+        "mathematical_object_derivation": {"type": "string", "minLength": 10},
+        "algorithm_steps": {"type": "string", "minLength": 10},
         "core_proof_obligations": {
           "type": "array", "minItems": 1,
           "items": {"type": "string", "minLength": 3}

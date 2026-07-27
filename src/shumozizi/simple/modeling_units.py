@@ -33,6 +33,16 @@ STOP_REASON_WHITELIST = frozenset(
 )
 _OBJECTIVE_DIRECTIONS = frozenset({"minimize", "maximize"})
 _EXPECTATION_STATUSES = frozenset({"confirmed", "revised", "contradicted"})
+_ENDPOINT_RESOLUTION_STATUSES = frozenset({"determined", "comparison_planned"})
+_PROMOTION_STATUSES = frozenset({"promoted", "fallback_selected", "redesign_required"})
+_PROMOTION_CHECKS = frozenset(
+    {
+        "route_upgrade_passed",
+        "endpoint_consistent",
+        "guard_constraints_passed",
+        "decision_stable",
+    }
+)
 _INSIGHT_KINDS = frozenset(
     {
         "mechanism",
@@ -166,7 +176,35 @@ def _route_definition(
     )
 
 
-def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict[str, Any]:
+def _validate_answer_contract(value: object, label: str) -> None:
+    """验证实验前逐问直接答案合同，避免先跑模型再倒推回答口径。"""
+    contract = _require_mapping(value, label)
+    _require_text(contract.get("required_output"), f"{label}.required_output")
+    _require_text(contract.get("decision_scope"), f"{label}.decision_scope")
+    _require_text(contract.get("natural_baseline"), f"{label}.natural_baseline")
+    _require_text(contract.get("fallback_rule"), f"{label}.fallback_rule")
+    endpoint = _require_mapping(contract.get("primary_endpoint"), f"{label}.primary_endpoint")
+    _require_text(endpoint.get("name"), f"{label}.primary_endpoint.name")
+    _require_text(endpoint.get("definition"), f"{label}.primary_endpoint.definition")
+    _require_text(
+        endpoint.get("exact_metric_alignment"),
+        f"{label}.primary_endpoint.exact_metric_alignment",
+    )
+    _require_text(contract.get("primary_criterion"), f"{label}.primary_criterion")
+    resolution = _require_mapping(
+        contract.get("endpoint_resolution"), f"{label}.endpoint_resolution"
+    )
+    status = resolution.get("status")
+    if status not in _ENDPOINT_RESOLUTION_STATUSES:
+        raise ContractError(
+            f"{label}.endpoint_resolution.status 必须为 determined 或 comparison_planned"
+        )
+    _require_text(resolution.get("basis"), f"{label}.endpoint_resolution.basis")
+
+
+def _validate_unit_plan(
+    unit: dict[str, Any], *, question_ids: set[str], require_decision_contract: bool
+) -> dict[str, Any]:
     """验证一个建模单元在实验前已经声明比较、回退和验证边界。"""
     unit_id = _require_text(unit.get("unit_id"), "unit.unit_id")
     question_id = _require_text(unit.get("question_id"), f"{unit_id}.question_id")
@@ -181,6 +219,8 @@ def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict
     mode = unit.get("mode")
     if mode not in {"compare", "oracle_only"}:
         raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
+    if require_decision_contract:
+        _validate_answer_contract(unit.get("answer_contract"), f"{unit_id}.answer_contract")
     objective = _require_mapping(unit.get("objective"), f"{unit_id}.objective")
     _require_text(objective.get("exact_metric"), f"{unit_id}.objective.exact_metric")
     if objective.get("direction") not in _OBJECTIVE_DIRECTIONS:
@@ -246,10 +286,16 @@ def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict
 
     route_ids: list[str] = []
     expected_upsides: dict[str, float] = {}
+    fallback_route: str | None = None
     if mode == "compare":
+        baseline = _require_mapping(unit.get("baseline"), f"{unit_id}.baseline")
         baseline_id, baseline_structure, _ = _route_definition(
-            unit.get("baseline"), f"{unit_id}.baseline", require_potential=False
+            baseline, f"{unit_id}.baseline", require_potential=False
         )
+        if require_decision_contract:
+            _require_text(
+                baseline.get("natural_rationale"), f"{unit_id}.baseline.natural_rationale"
+            )
         candidates_raw = unit.get("competitive_routes")
         if not isinstance(candidates_raw, list) or len(candidates_raw) < 2:
             raise ContractError(f"{unit_id}.competitive_routes 至少需要两条机制不同的路线")
@@ -288,6 +334,8 @@ def _validate_unit_plan(unit: dict[str, Any], *, question_ids: set[str]) -> dict
         "improvement_threshold": improvement_threshold,
         "budget_tolerance_ratio": float(tolerance),
         "route_ids": route_ids,
+        "fallback_route": fallback_route,
+        "require_decision_contract": require_decision_contract,
         "expected_upsides": expected_upsides,
         "families": families,
         "stop_reasons": set(reasons),
@@ -380,11 +428,20 @@ def _validate_comparison_actual(
         for duration in durations[1:]
     ):
         raise ContractError(f"{plan['unit_id']} 的路线实际预算不公平")
-    _validate_winner_and_improvement(comparison, plan, scores)
+    _validate_winner_and_improvement(
+        comparison,
+        plan,
+        scores,
+        promotion_decision=actual.get("promotion_decision"),
+    )
 
 
 def _validate_winner_and_improvement(
-    comparison: dict[str, Any], plan: dict[str, Any], scores: dict[str, float]
+    comparison: dict[str, Any],
+    plan: dict[str, Any],
+    scores: dict[str, float],
+    *,
+    promotion_decision: object,
 ) -> None:
     """要求赢家由实测 exact 决定，且核心问题真的比 baseline 更强。
 
@@ -416,6 +473,13 @@ def _validate_winner_and_improvement(
     threshold = plan["improvement_threshold"]
     ratio = _improvement_ratio(scores[baseline_route], scores[winner], direction)
     if ratio < threshold:
+        if (
+            isinstance(promotion_decision, dict)
+            and promotion_decision.get("status") == "fallback_selected"
+            and promotion_decision.get("route_upgrade_passed") is False
+        ):
+            # 弱赢家没有资格成为主答案，但可以触发事前声明的可靠 fallback。
+            return
         if comparison.get("baseline_near_bound") is not True:
             raise ContractError(
                 f"{unit_id} 是核心问题，但赢家相对 baseline 仅改善 {ratio:.1%}，"
@@ -430,6 +494,105 @@ def _validate_winner_and_improvement(
         )
         return
     _validate_route_upside_expectations(comparison, plan, scores, baseline_route)
+
+
+def _require_boolean(value: object, label: str) -> bool:
+    """读取显式布尔结论，拒绝用缺失字段把失败检查默认为通过。"""
+    if not isinstance(value, bool):
+        raise ContractError(f"{label} 必须是布尔值")
+    return value
+
+
+def _validate_promotion_decision(
+    actual: dict[str, Any], plan: dict[str, Any], results: dict[str, dict[str, Any]]
+) -> None:
+    """验证比较赢家是否有资格晋级为主答案，或是否正确启用回退。"""
+    if plan["mode"] != "compare":
+        return
+    unit_id = plan["unit_id"]
+    label = f"{unit_id}.actual.promotion_decision"
+    decision = _require_mapping(actual.get("promotion_decision"), label)
+    status = decision.get("status")
+    if status not in _PROMOTION_STATUSES:
+        raise ContractError(
+            f"{label}.status 必须为 promoted、fallback_selected 或 redesign_required"
+        )
+    checks = {
+        name: _require_boolean(decision.get(name), f"{label}.{name}")
+        for name in _PROMOTION_CHECKS
+    }
+    _production_result_ids(
+        results,
+        value=decision.get("evidence_result_ids"),
+        question_id=plan["question_id"],
+        label=f"{label}.evidence_result_ids",
+    )
+    _require_text(decision.get("rationale"), f"{label}.rationale")
+
+    comparison = actual["comparison"]
+    refinement = actual["refinement"]
+    winner = comparison["winner_route_id"]
+    if status == "promoted":
+        if not all(checks.values()):
+            failed = ", ".join(sorted(name for name, passed in checks.items() if not passed))
+            raise ContractError(
+                f"{unit_id} 的主路线晋级检查失败 ({failed})，不能标记 promoted；"
+                "应选择可靠 fallback，或返回 analysis/experiment 重设计"
+            )
+        selected_route = _require_text(decision.get("selected_route_id"), f"{label}.selected_route_id")
+        selected_result = _require_text(
+            decision.get("selected_result_id"), f"{label}.selected_result_id"
+        )
+        if selected_route != winner or selected_result != refinement["final_result_id"]:
+            raise ContractError(
+                f"{unit_id} 的 promoted 主答案必须使用 exact 赢家及其深化后的 final 结果"
+            )
+        _production_result(
+            results,
+            result_id=selected_result,
+            question_id=plan["question_id"],
+            label=f"{label}.selected_result_id",
+        )
+        return
+
+    if status == "fallback_selected":
+        selected_route = _require_text(decision.get("selected_route_id"), f"{label}.selected_route_id")
+        selected_result = _require_text(
+            decision.get("selected_result_id"), f"{label}.selected_result_id"
+        )
+        expected_result = comparison["route_result_ids"].get(plan["fallback_route"])
+        if selected_route != plan["fallback_route"] or selected_result != expected_result:
+            raise ContractError(f"{unit_id} 只能启用事前声明且已真实比较的 fallback")
+        if not all(
+            checks[name]
+            for name in ("endpoint_consistent", "guard_constraints_passed", "decision_stable")
+        ):
+            raise ContractError(
+                f"{unit_id} 的 fallback 仍有端点、guard 或决策稳定性失败，必须返回重设计"
+            )
+        failed_winner_checks = _require_text_list(
+            decision.get("failed_winner_checks"), f"{label}.failed_winner_checks"
+        )
+        unknown = sorted(set(failed_winner_checks) - _PROMOTION_CHECKS)
+        if unknown:
+            raise ContractError(f"{label}.failed_winner_checks 含未知检查: {', '.join(unknown)}")
+        _require_text(decision.get("fallback_trigger"), f"{label}.fallback_trigger")
+        _production_result(
+            results,
+            result_id=selected_result,
+            question_id=plan["question_id"],
+            label=f"{label}.selected_result_id",
+        )
+        return
+
+    rollback_target = decision.get("rollback_target")
+    if rollback_target not in {"analysis", "experiment"}:
+        raise ContractError(f"{label}.rollback_target 必须为 analysis 或 experiment")
+    if all(checks.values()):
+        raise ContractError(f"{unit_id} 的所有晋级检查均通过，不能标记 redesign_required")
+    raise ContractError(
+        f"{unit_id} 的主答案尚未冻结：晋级检查失败，必须返回 {rollback_target} 重设计"
+    )
 
 
 def _validate_route_upside_expectations(
@@ -607,6 +770,8 @@ def _validate_actual_unit(
         _validate_comparison_actual(actual, plan, results)
         route_result_ids = actual["comparison"]["route_result_ids"]
         search_ids.update(str(route_result_ids[route_id]) for route_id in plan["route_ids"])
+        if plan["require_decision_contract"]:
+            _validate_promotion_decision(actual, plan, results)
     else:
         verify_ids.update(
             _production_result_ids(
@@ -669,7 +834,8 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     state = read_simple_state(run_dir)
     if not is_competition_first_v32_state(state):
         raise ContractError("MODELING_UNITS 只适用于 Competition-First v3.2 运行")
-    if payload.get("schema_version") != "1.0" or payload.get("run_id") != state["run_id"]:
+    schema_version = payload.get("schema_version")
+    if schema_version not in {"1.0", "1.1"} or payload.get("run_id") != state["run_id"]:
         raise ContractError("MODELING_UNITS 的 schema_version 或 run_id 不匹配")
     # 网页讨论不是阶段门；但一旦选择登记，就必须保持本地先行和延迟揭示边界。
     validate_external_discussion_protocol_if_present(run_dir)
@@ -686,7 +852,11 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     covered_questions: set[str] = set()
     for raw in raw_units:
         unit = _require_mapping(raw, "units[]")
-        plan = _validate_unit_plan(unit, question_ids=question_ids)
+        plan = _validate_unit_plan(
+            unit,
+            question_ids=question_ids,
+            require_decision_contract=schema_version == "1.1",
+        )
         if plan["unit_id"] in seen_units:
             raise ContractError("MODELING_UNITS 的 unit_id 不得重复")
         seen_units.add(plan["unit_id"])
@@ -736,6 +906,11 @@ def _require_core_budget_share(run_dir: Path, budgets: list[dict[str, Any]]) -> 
 
 def write_modeling_units(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """原子保存已完成分析冻结的 v3.2 建模单元合同。"""
+    existing_path = run_dir / MODELING_UNITS_PATH
+    if existing_path.is_file():
+        existing = load_json(existing_path)
+        if existing.get("schema_version") == "1.1" and payload.get("schema_version") != "1.1":
+            raise ContractError("新 v3.2 运行的 MODELING_UNITS 不得降级到 1.0 绕过决策合同")
     validate_modeling_units(run_dir, payload, require_actual=False)
     document = dict(payload)
     document["updated_at"] = utc_now()
@@ -803,3 +978,48 @@ def require_v32_experiment_evidence(run_dir: Path) -> None:
     if not path.is_file():
         raise ContractError("进入论文前缺少 analysis/MODELING_UNITS.json")
     validate_modeling_units(run_dir, load_json(path), require_actual=True)
+
+
+def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
+    """读取已晋级或已回退的逐问主答案，供论文答案映射保持一致。
+
+    Args:
+        run_dir: 当前运行目录。
+
+    Returns:
+        以问题 ID 为键的主路线、主结果和决策状态；未完成决策的单元不返回。
+    """
+    path = run_dir / MODELING_UNITS_PATH
+    if not path.is_file():
+        return {}
+    try:
+        payload = load_json(path)
+    except (OSError, ValueError):
+        return {}
+    selections: dict[str, dict[str, str]] = {}
+    for unit in payload.get("units", []):
+        if not isinstance(unit, dict):
+            continue
+        actual = unit.get("actual")
+        question_id = unit.get("question_id")
+        if not isinstance(actual, dict) or not isinstance(question_id, str):
+            continue
+        decision = actual.get("promotion_decision")
+        if not isinstance(decision, dict):
+            continue
+        status = decision.get("status")
+        route_id = decision.get("selected_route_id")
+        result_id = decision.get("selected_result_id")
+        if status == "redesign_required":
+            selections[question_id] = {"status": status}
+        elif (
+            status in {"promoted", "fallback_selected"}
+            and isinstance(route_id, str)
+            and isinstance(result_id, str)
+        ):
+            selections[question_id] = {
+                "status": status,
+                "route_id": route_id,
+                "result_id": result_id,
+            }
+    return selections

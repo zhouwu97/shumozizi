@@ -344,6 +344,9 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     missing = sorted(questions - set(mapping))
     if missing:
         raise ContractError("answer_map 缺少必答问题: " + ", ".join(missing))
+    from shumozizi.simple.modeling_units import final_answer_selections
+
+    selections = final_answer_selections(run_dir)
     for question_id in questions:
         item = mapping[question_id]
         if not isinstance(item, dict):
@@ -353,6 +356,22 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(result_ids, list) or not result_ids or not all(isinstance(value, str) for value in result_ids):
             raise ContractError(f"{question_id} 必须绑定至少一个 result_id")
         _require_text(location, f"{question_id}.direct_answer_location")
+        selection = selections.get(question_id)
+        if selection is not None:
+            if selection["status"] == "redesign_required":
+                raise ContractError(
+                    f"{question_id} 的实验决定为 redesign_required，必须返回分析/实验后再写论文"
+                )
+            primary_result_id = _require_text(
+                item.get("primary_result_id"), f"{question_id}.primary_result_id"
+            )
+            if primary_result_id != selection["result_id"]:
+                raise ContractError(
+                    f"{question_id}.primary_result_id 必须等于路线晋级/回退决定选中的 "
+                    f"{selection['result_id']}"
+                )
+            if primary_result_id not in result_ids:
+                raise ContractError(f"{question_id}.primary_result_id 必须列入 result_ids")
         insight_ids = item.get("insight_ids")
         if insight_ids is not None and (
             not isinstance(insight_ids, list)

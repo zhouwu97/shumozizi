@@ -241,7 +241,7 @@ def _reconstruction(run_dir: Path, suffix: str) -> dict[str, str]:
 def _units(run_dir: Path, *, core: bool = True) -> dict[str, Any]:
     """构造一个核心 compare 单元及其实际证据。"""
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": run_dir.name,
         "semantic_reconstructions": [
             _reconstruction(run_dir, "A"),
@@ -259,13 +259,33 @@ def _units(run_dir: Path, *, core: bool = True) -> dict[str, Any]:
                 "question_id": "Q1",
                 "core_question": core,
                 "mode": "compare",
+                "answer_contract": {
+                    "required_output": "给出总体收益与瓶颈保障兼顾的方案。",
+                    "decision_scope": "当前任务集合内的全部被保障实体。",
+                    "natural_baseline": "逐步选择当前增益最大项的贪心规则。",
+                    "fallback_rule": "逆向指派失败时切换到已比较的事件区间覆盖路线。",
+                    "primary_endpoint": {
+                        "name": "objective",
+                        "definition": "按冻结目标计算的精确总体收益。",
+                        "exact_metric_alignment": "直接读取 production 结果的 objective。",
+                    },
+                    "primary_criterion": "可行且相对自然 baseline 改善达到预设阈值。",
+                    "endpoint_resolution": {
+                        "status": "comparison_planned",
+                        "basis": "先比较总量与瓶颈目标的真实策略后果。",
+                    },
+                },
                 "objective": {
                     "exact_metric": "objective",
                     "direction": "maximize",
                     "significant_improvement_ratio": 0.1,
                 },
                 "budget": {"kind": "wall_seconds", "tolerance_ratio": 0.1},
-                "baseline": {"route_id": "R0", "mathematical_structure": "贪心规则"},
+                "baseline": {
+                    "route_id": "R0",
+                    "mathematical_structure": "贪心规则",
+                    "natural_rationale": "逐步选择当前增益最大项，是题目最直接的可解释规则。",
+                },
                 "competitive_routes": [
                     {
                         "route_id": "R1",
@@ -311,6 +331,17 @@ def _fill_actual(units: dict[str, Any], *, insights: list[dict[str, Any]] | None
         "comparison": {
             "route_result_ids": {"R0": "baseline", "R1": "interval", "R2": "reverse"},
             "winner_route_id": "R1",
+        },
+        "promotion_decision": {
+            "status": "promoted",
+            "selected_route_id": "R1",
+            "selected_result_id": "final",
+            "route_upgrade_passed": True,
+            "endpoint_consistent": True,
+            "guard_constraints_passed": True,
+            "decision_stable": True,
+            "evidence_result_ids": ["interval", "final"],
+            "rationale": "R1 达到改善阈值，且未触发 endpoint、guard 或稳定性失败。",
         },
         "first_batch_attack": {"result_ids": ["attack"], "conclusion": "排序未翻转。"},
         "refinement": {

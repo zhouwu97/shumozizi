@@ -268,6 +268,40 @@ def test_question_section_needs_its_own_current_production_result(
     assert "本问" in q1["blocked_reason"]
 
 
+def test_blueprint_requires_full_question_exposition_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """逐问蓝图必须包含继承、数学推导和算法步骤，避免论文退化成结果摘要。"""
+    run_dir = tmp_path / "full-question-exposition"
+    _write_production_state(run_dir, ["Q1"])
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.quality_allows_paper",
+        lambda _run_dir, result_id: result_id == "Q1-R1",
+    )
+    monkeypatch.setattr(
+        "shumozizi.paper.sufficiency.read_result_index",
+        lambda _run_dir: {"results": [{"result_id": "Q1-R1", "question_id": "Q1"}]},
+    )
+
+    blueprint = build_content_blueprint(
+        run_dir,
+        evidence_by_question={"Q1": ["Q1-R1"]},
+    )
+    question = next(
+        section for section in blueprint["sections"] if section["section_id"] == "question_Q1"
+    )
+
+    assert {
+        "question_inheritance",
+        "mathematical_object_derivation",
+        "algorithm_steps",
+    } <= set(question["required_elements"])
+    assert "前问" in question["argument_contract"]["question_inheritance"]
+    assert "推导" in question["argument_contract"]["mathematical_object_derivation"]
+    assert "求解步骤" in question["argument_contract"]["algorithm_steps"]
+
+
 def test_blueprint_materializes_full_python_and_matlab_source(tmp_path: Path, monkeypatch) -> None:
     """论文蓝图必须冻结实际源码文本副本，而不是只登记路径。"""
     run_dir = tmp_path / "source-appendix"
