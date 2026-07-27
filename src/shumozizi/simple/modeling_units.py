@@ -1322,6 +1322,24 @@ def write_modeling_units(run_dir: Path, payload: dict[str, Any]) -> dict[str, An
     existing_path = run_dir / MODELING_UNITS_PATH
     if existing_path.is_file():
         existing = load_json(existing_path)
+        old_routes = {
+            route.get("route_id")
+            for unit in existing.get("units", [])
+            if isinstance(unit, dict)
+            for route in [unit.get("baseline"), *unit.get("competitive_routes", [])]
+            if isinstance(route, dict) and isinstance(route.get("route_id"), str)
+        }
+        new_routes = {
+            route.get("route_id")
+            for unit in payload.get("units", [])
+            if isinstance(unit, dict)
+            for route in [unit.get("baseline"), *unit.get("competitive_routes", [])]
+            if isinstance(route, dict) and isinstance(route.get("route_id"), str)
+        }
+        if new_routes - old_routes:
+            from shumozizi.simple.delivery import require_delivery_action_allowed
+
+            require_delivery_action_allowed(run_dir, "add_new_route")
         existing_version = existing.get("schema_version")
         requested_version = payload.get("schema_version")
         if existing_version == "1.2" and requested_version != "1.2":

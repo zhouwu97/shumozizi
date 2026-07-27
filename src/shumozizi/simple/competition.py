@@ -326,6 +326,52 @@ def validate_next_experiments(payload: dict[str, Any]) -> list[str]:
     return warnings
 
 
+def write_next_experiments(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """受控保存只包含决策价值实验的下一实验队列。
+
+    Args:
+        run_dir: 当前运行目录。
+        payload: 包含 ``experiments`` 数组的实验计划。
+
+    Returns:
+        已写入的规范对象。
+
+    Raises:
+        ContractError: 计划结构非法，或首版截止后尝试新增实验。
+    """
+    warnings = validate_next_experiments(payload)
+    experiments = payload.get("experiments")
+    if not isinstance(experiments, list):
+        raise ContractError("NEXT_EXPERIMENTS 的 experiments 必须是数组")
+    path = run_dir / NEXT_EXPERIMENTS_PATH
+    old_ids: set[str] = set()
+    if path.is_file():
+        existing = load_json(path)
+        old_ids = {
+            item.get("experiment_id")
+            for item in existing.get("experiments", [])
+            if isinstance(item, dict) and isinstance(item.get("experiment_id"), str)
+        }
+    new_ids = {
+        item.get("experiment_id")
+        for item in experiments
+        if isinstance(item, dict) and isinstance(item.get("experiment_id"), str)
+    }
+    if new_ids - old_ids:
+        from shumozizi.simple.delivery import require_delivery_action_allowed
+
+        require_delivery_action_allowed(run_dir, "add_experiment_plan")
+    document = {
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "experiments": experiments,
+        "warnings": warnings,
+        "updated_at": utc_now(),
+    }
+    atomic_json(path, document)
+    return document
+
+
 def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """保存逐问直接答案映射，不把它提升为贡献主张合同。
 

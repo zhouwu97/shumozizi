@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,10 +18,24 @@ from shumozizi.paper.templates import MANIFEST_PATH, require_materialized_templa
 from shumozizi.simple.state import read_simple_state, utc_now
 
 COMPILE_RECEIPT_PATH = Path("paper/compile-receipt.json")
+REVIEWABLE_DRAFT_RECEIPT_PATH = Path("paper/reviewable-draft-receipt.json")
+_REVIEWABLE_DRAFT_STATUS_PATHS = {
+    "latex": Path("paper/generated/reviewable-draft-status.tex"),
+    "typst": Path("paper/generated/reviewable-draft-status.typ"),
+}
+_REVIEWABLE_DRAFT_ENTRYPOINTS = {
+    "latex": Path("paper/reviewable-draft.tex"),
+    "typst": Path("paper/reviewable-draft.typ"),
+}
 _GENERATED_PAPER_FILES = {
     "compile-receipt.json",
     "final.pdf",
     "final.docx",
+    "draft-1.pdf",
+    "reviewable-draft-receipt.json",
+    "reviewable-draft.tex",
+    "reviewable-draft.typ",
+    "reviewable-draft.pdf",
     "main.pdf",
     "main.aux",
     "main.bbl",
@@ -65,6 +80,14 @@ _GENERATED_PAPER_SUFFIXES = (
     ".vrb",
     ".xdv",
 )
+
+
+def _atomic_text(path: Path, value: str) -> None:
+    """在同目录写入临时文件后原子替换文本产物。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(value, encoding="utf-8", newline="\n")
+    temporary.replace(path)
 
 
 def _schema() -> dict[str, Any]:
@@ -203,6 +226,229 @@ def _require_pdf(path: Path) -> None:
         raise ContractError("论文编译没有产生非空 PDF")
     if not path.read_bytes().startswith(b"%PDF"):
         raise ContractError("论文编译输出不是有效 PDF 文件头")
+
+
+def _require_text_list(name: str, values: list[str]) -> list[str]:
+    """校验草稿披露字段，拒绝空白或非字符串条目。"""
+    if not isinstance(values, list) or any(
+        not isinstance(value, str) or not value.strip() for value in values
+    ):
+        raise ContractError(f"可审阅草稿的 {name} 必须是非空字符串数组")
+    return [value.strip() for value in values]
+
+
+def _latex_escape(value: str) -> str:
+    """转义草稿状态页中的普通文本，避免披露内容破坏 LaTeX。"""
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    return "".join(replacements.get(char, char) for char in value)
+
+
+def _render_reviewable_disclosure(
+    *,
+    engine: str,
+    completed_content: list[str],
+    unfinished_questions: list[str],
+    remaining_experiments: list[str],
+    provisional_conclusions: list[str],
+) -> str:
+    """生成会被实际编入首版 PDF 的状态披露页。"""
+    sections = (
+        ("当前已完成内容", completed_content),
+        ("暂未完成的问题", unfinished_questions),
+        ("仍需补的实验", remaining_experiments),
+        ("当前候选结论", provisional_conclusions),
+    )
+    if engine == "latex":
+        lines = [
+            r"\clearpage",
+            r"\section*{可审阅草稿状态说明}",
+            r"\textbf{本稿不可作为最终提交。}",
+        ]
+        for heading, items in sections:
+            lines.extend([rf"\subsection*{{{heading}}}", r"\begin{itemize}"])
+            visible = items or ["暂无；该项尚未形成可由当前真实证据支持的内容。"]
+            lines.extend(rf"\item {_latex_escape(item)}" for item in visible)
+            lines.append(r"\end{itemize}")
+        return "\n".join(lines) + "\n"
+    lines = [
+        "#pagebreak()",
+        "= 可审阅草稿状态说明",
+        "*本稿不可作为最终提交。*",
+    ]
+    for heading, items in sections:
+        lines.append(f"== {heading}")
+        visible = items or ["暂无；该项尚未形成可由当前真实证据支持的内容。"]
+        lines.extend(f"- {item}" for item in visible)
+    return "\n".join(lines) + "\n"
+
+
+def _draft_steps(engine: str, entrypoint_name: str) -> tuple[str, list[list[str]]]:
+    """把正式编译器命令改写为独立草稿入口，保持测试和工具探测兼容。"""
+    compiler, steps = _compiler_steps(engine)
+    rewritten: list[list[str]] = []
+    for command in steps:
+        rewritten.append(
+            [
+                entrypoint_name
+                if item in {"main.tex", "main.typ"}
+                else "reviewable-draft.pdf"
+                if item == "final.pdf"
+                else item
+                for item in command
+            ]
+        )
+    return compiler, rewritten
+
+
+def compile_reviewable_draft(
+    run_dir: Path,
+    *,
+    completed_content: list[str],
+    unfinished_questions: list[str],
+    remaining_experiments: list[str],
+    provisional_conclusions: list[str],
+    timeout_seconds: int = 300,
+) -> dict[str, Any]:
+    """在正式答案尚未全部合格时编译带显式披露的首版草稿。
+
+    该入口只放宽正式答案、科学挑战和图表闭环门禁，不放宽模板、编译器、
+    PDF 有效性和来源绑定。调用方只能写已有内容；没有真实证据支持的候选结论
+    应保持为空，函数会在披露页明确显示“暂无”，而不会补造数字或结论。
+
+    Args:
+        run_dir: 当前 v3.2 运行目录。
+        completed_content: 已完成且可供审阅的内容说明。
+        unfinished_questions: 尚未完成的必答问题 ID。
+        remaining_experiments: 仍需真实执行的实验说明。
+        provisional_conclusions: 由当前真实证据支持、但尚未冻结的候选结论。
+        timeout_seconds: 单次编译命令允许的最长秒数。
+
+    Returns:
+        已写入独立草稿回执的内容。
+
+    Raises:
+        ContractError: 披露、模板、编译器或 PDF 产物不满足草稿边界。
+    """
+    if timeout_seconds < 1 or timeout_seconds > 3600:
+        raise ContractError("论文编译 timeout_seconds 必须在 1 至 3600 之间")
+    completed = _require_text_list("completed_content", completed_content)
+    unfinished = _require_text_list("unfinished_questions", unfinished_questions)
+    remaining = _require_text_list("remaining_experiments", remaining_experiments)
+    provisional = _require_text_list("provisional_conclusions", provisional_conclusions)
+    state = read_simple_state(run_dir)
+    unknown_questions = sorted(set(unfinished) - set(state["required_questions"]))
+    if unknown_questions:
+        raise ContractError("草稿未完成问题不属于必答问题: " + ", ".join(unknown_questions))
+    manifest = require_materialized_template(run_dir)
+    engine = manifest["engine"]
+    root = run_dir.resolve()
+    paper_dir = root / "paper"
+    formal_entrypoint = paper_dir / manifest["question_layout"]["entrypoint_path"]
+    if not formal_entrypoint.is_file():
+        raise ContractError("论文模板入口缺失，不能编译可审阅草稿")
+    status_relative = _REVIEWABLE_DRAFT_STATUS_PATHS[engine]
+    status_path = root / status_relative
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_text = _render_reviewable_disclosure(
+        engine=engine,
+        completed_content=completed,
+        unfinished_questions=unfinished,
+        remaining_experiments=remaining,
+        provisional_conclusions=provisional,
+    )
+    _atomic_text(status_path, status_text)
+    entry_relative = _REVIEWABLE_DRAFT_ENTRYPOINTS[engine]
+    draft_entrypoint = root / entry_relative
+    source = formal_entrypoint.read_text(encoding="utf-8")
+    if engine == "latex":
+        marker = r"\end{document}"
+        if marker not in source:
+            raise ContractError("LaTeX 模板缺少 \\end{document}，无法插入草稿披露页")
+        draft_source = source.replace(
+            marker,
+            r"\input{generated/reviewable-draft-status.tex}" + "\n" + marker,
+            1,
+        )
+    else:
+        draft_source = source + '\n#include("generated/reviewable-draft-status.typ")\n'
+    _atomic_text(draft_entrypoint, draft_source)
+    source_sha256 = _paper_source_sha256(paper_dir)
+    compiler, steps = _draft_steps(engine, draft_entrypoint.name)
+    executions = _run_compiler_steps(paper_dir, steps, timeout_seconds=timeout_seconds)
+    compiled_pdf = paper_dir / "reviewable-draft.pdf"
+    _require_pdf(compiled_pdf)
+    artifact = paper_dir / "draft-1.pdf"
+    shutil.copy2(compiled_pdf, artifact)
+    _require_pdf(artifact)
+    receipt = {
+        "schema_version": "1.0",
+        "run_id": state["run_id"],
+        "artifact_path": "paper/draft-1.pdf",
+        "artifact_sha256": sha256_file(artifact),
+        "entrypoint_path": entry_relative.as_posix(),
+        "entrypoint_sha256": sha256_file(draft_entrypoint),
+        "status_path": status_relative.as_posix(),
+        "status_sha256": sha256_file(status_path),
+        "template_manifest_sha256": sha256_file(root / MANIFEST_PATH),
+        "paper_source_sha256": source_sha256,
+        "compiler": compiler,
+        "executions": executions,
+        "disclosure": {
+            "completed_content": completed,
+            "unfinished_questions": unfinished,
+            "remaining_experiments": remaining,
+            "provisional_conclusions": provisional,
+        },
+        "not_for_final_submission": True,
+        "generated_at": utc_now(),
+    }
+    atomic_json(root / REVIEWABLE_DRAFT_RECEIPT_PATH, receipt)
+    from shumozizi.simple.delivery import freeze_pdf_milestone
+
+    freeze_pdf_milestone(root, "first_reviewable")
+    return receipt
+
+
+def verify_reviewable_draft_receipt(run_dir: Path) -> dict[str, Any]:
+    """复验首版草稿、披露页、草稿入口与独立回执仍相互绑定。"""
+    root = run_dir.resolve()
+    receipt_path = root / REVIEWABLE_DRAFT_RECEIPT_PATH
+    errors: list[str] = []
+    try:
+        receipt = load_json(receipt_path)
+        if receipt.get("run_id") != read_simple_state(root)["run_id"]:
+            errors.append("草稿编译回执 run_id 与当前运行不一致")
+        if receipt.get("not_for_final_submission") is not True:
+            errors.append("草稿编译回执没有明确禁止最终提交")
+        for path_key, hash_key, label in (
+            ("artifact_path", "artifact_sha256", "草稿 PDF"),
+            ("entrypoint_path", "entrypoint_sha256", "草稿入口"),
+            ("status_path", "status_sha256", "草稿披露页"),
+        ):
+            path = root / receipt[path_key]
+            if not path.is_file() or receipt.get(hash_key) != sha256_file(path):
+                errors.append(f"{label}缺失或已变化")
+        artifact = root / receipt["artifact_path"]
+        try:
+            _require_pdf(artifact)
+        except ContractError as exc:
+            errors.append(str(exc))
+        if receipt.get("template_manifest_sha256") != sha256_file(root / MANIFEST_PATH):
+            errors.append("草稿编译回执未绑定当前模板清单")
+    except (ContractError, KeyError, OSError, ValueError) as exc:
+        errors.append(str(exc))
+    return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}
 
 
 def compile_docx(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) -> Path:

@@ -19,6 +19,7 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.repo_root import resolve_repo_root
+from shumozizi.core.schema import require_valid
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import (
@@ -29,6 +30,7 @@ from shumozizi.simple.state import (
 )
 
 INDEX_PATH = Path("figures/index.json")
+FIGURE_PLAN_PATH = Path("figures/FIGURE_PLAN.json")
 # 图的三种正当角色。stability 单列，因为舍入、采样层级和数值稳定性图是内部
 # 审计产物：它们对评委的边际价值远低于机制、阈值和权衡，不该占据正文版面。
 FIGURE_ROLES = frozenset({"model_understanding", "decisive_evidence", "insight", "stability"})
@@ -70,6 +72,44 @@ def read_figure_index(run_dir: Path) -> dict[str, Any]:
     """
     payload = load_json(run_dir / INDEX_PATH)
     require_figure_index(payload)
+    return payload
+
+
+def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """受控保存 v3.2 正文图表计划与逐问视觉决策。
+
+    Args:
+        run_dir: 当前运行目录。
+        payload: ``FIGURE_PLAN`` 2.1 文档。
+
+    Returns:
+        已原子写入的图表计划。
+
+    Raises:
+        ContractError: Schema 不合法，或首版截止后扩张图表集合。
+    """
+    require_valid(payload, "figure_plan")
+    if payload.get("run_id") != run_dir.name:
+        raise ContractError("FIGURE_PLAN 的 run_id 与当前运行不一致")
+    path = run_dir / FIGURE_PLAN_PATH
+    old_ids: set[str] = set()
+    if path.is_file():
+        existing = load_json(path)
+        old_ids = {
+            item.get("figure_id")
+            for item in existing.get("figures", [])
+            if isinstance(item, dict) and isinstance(item.get("figure_id"), str)
+        }
+    new_ids = {
+        item.get("figure_id")
+        for item in payload.get("figures", [])
+        if isinstance(item, dict) and isinstance(item.get("figure_id"), str)
+    }
+    if new_ids - old_ids:
+        from shumozizi.simple.delivery import require_delivery_action_allowed
+
+        require_delivery_action_allowed(run_dir, "expand_figure_plan")
+    atomic_json(path, payload)
     return payload
 
 

@@ -15,6 +15,7 @@ import pytest
 from shumozizi.core.io import ContractError
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.simple.competition import write_answer_map
+from shumozizi.simple.figures import write_figure_plan
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import core_question_insights
 from shumozizi.simple.results import register_result
@@ -278,6 +279,22 @@ def test_paper_blocks_when_core_insight_is_produced_but_never_used(tmp_path: Pat
             }
         },
     )
+    write_figure_plan(
+        run_dir,
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.1",
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "question_id": "Q1",
+                    "status": "waived",
+                    "reason": "本夹具的核心规律可由公式和直接答案完整表达，不需要额外主图。",
+                }
+            ],
+            "figures": [],
+        },
+    )
 
     status = check_paper_readiness(run_dir)
 
@@ -299,6 +316,22 @@ def test_paper_passes_when_the_answer_map_cites_the_insight(tmp_path: Path) -> N
                 "direct_answer_location": "paper/sections/q1.tex",
                 "insight_ids": ["Q1-mechanism"],
             }
+        },
+    )
+    write_figure_plan(
+        run_dir,
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.1",
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "question_id": "Q1",
+                    "status": "waived",
+                    "reason": "本夹具的核心规律可由公式和直接答案完整表达，不需要额外主图。",
+                }
+            ],
+            "figures": [],
         },
     )
 

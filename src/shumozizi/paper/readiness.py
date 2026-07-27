@@ -188,18 +188,67 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
     旧 2.0 图表计划继续只服务兼容收据；只有 v3.2 主动写入 2.1 时才启用
     生成、current 来源、插图、交叉引用和解释闭环。
     """
+    core_questions: set[str] = set()
+    units_path = run_dir / "analysis" / "MODELING_UNITS.json"
+    if units_path.is_file():
+        try:
+            units = load_json(units_path).get("units", [])
+            core_questions = {
+                item.get("question_id")
+                for item in units
+                if isinstance(item, dict)
+                and item.get("core_question") is True
+                and isinstance(item.get("question_id"), str)
+            }
+        except (OSError, ValueError):
+            core_questions = set()
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
-        return []
+        return [
+            f"核心问题 {question_id} 缺少显式视觉决策：必须选择 required 或 waived"
+            for question_id in sorted(core_questions)
+        ]
     try:
         plan = load_json(plan_path)
         if plan.get("schema_version") != "2.1":
-            return []
+            return [
+                f"核心问题 {question_id} 必须使用 FIGURE_PLAN 2.1 声明显式视觉决策"
+                for question_id in sorted(core_questions)
+            ]
         errors = validate_document(plan, "figure_plan")
         if errors:
             return errors
         if plan.get("run_id") != run_dir.name:
             return ["FIGURE_PLAN 2.1 的 run_id 与当前运行不一致"]
+        decisions = plan.get("visual_decisions", [])
+        decision_map = {
+            item.get("question_id"): item
+            for item in decisions
+            if isinstance(item, dict) and isinstance(item.get("question_id"), str)
+        }
+        decision_errors: list[str] = []
+        for question_id in sorted(core_questions):
+            decision = decision_map.get(question_id)
+            if decision is None:
+                decision_errors.append(
+                    f"核心问题 {question_id} 缺少显式视觉决策：必须选择 required 或 waived"
+                )
+                continue
+            if decision.get("status") == "required":
+                main_figures = [
+                    item
+                    for item in plan.get("figures", [])
+                    if item.get("question_id") == question_id
+                    and item.get("required") is True
+                    and item.get("role") != "stability"
+                ]
+                if not main_figures:
+                    decision_errors.append(
+                        f"核心问题 {question_id} 的视觉决策为 required，"
+                        "但没有至少一张 required=true 的正文主图"
+                    )
+        if decision_errors:
+            return decision_errors
         verification = verify_current_figure_files(run_dir, figure_stage="current")
         if not verification.get("success"):
             detail = "；".join(

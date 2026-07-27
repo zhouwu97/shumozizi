@@ -9,11 +9,19 @@ description: 从 Competition-First v3.2 的当前真实结果组织、编译和�
 
 ## 第零步：确认可以写论文
 
-逐问读取 `MODELING_UNITS.json` 由真实结果指标系统派生的答案资格：只有 `promoted` 或 `fallback_selected` 才能成为主答案，`redesign_required` 必须按 `rollback_target` 回到分析/实验。`answer_map.primary_result_id` 必须等于系统最终晋级或回退选中的结果。任一必答问题没有合格答案时，不开始完整初稿。
+逐问读取 `MODELING_UNITS.json` 由真实结果指标系统派生的答案资格：只有 `promoted` 或 `fallback_selected` 才能成为正式主答案，`redesign_required` 必须按 `rollback_target` 回到分析/实验。`answer_map.primary_result_id` 必须等于系统最终晋级或回退选中的结果。任一必答问题没有合格答案时，不得编译正式候选版，但可以按下述专用通道形成带披露的可审阅草稿。
 
 科学挑战中的发现必须绑定 `action_type`、`rollback_target`、`invalidates`、`required_action` 和关闭证据。未关闭的 `MODEL_REPAIR`、`OBJECTIVE_REDESIGN`、`ANSWER_REJECTION` 阻断论文；只有 `WRITING_FIX` 和已说明不可修复原因的 `DATA_LIMITATION` 可留在 paper 阶段。正式论文检查自然论证内容，不要求出现 `result_id`、实验收据、证明义务或“问题继承”等内部工作流术语。
 
-进入 paper 后先查看 `delivery_control.py status`。第一版截止前必须受控编译 `paper/final.pdf` 并冻结为 `paper/draft-1.pdf`；候选截止前重新编译并冻结为 `paper/candidate.pdf`。候选 PDF 缺失、回执失效或与当前 `final.pdf` 不一致时，不得进入 `paper_review`。不要为了补充新框架或非阻断性实验而推迟第一版可审阅 PDF。
+进入写作后先查看 `delivery_control.py status`。第一版截止前，把当前已完成内容、未完成问题、剩余实验和有真实证据的候选结论写成披露 JSON，执行：
+
+```text
+python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
+```
+
+该专用入口生成 `paper/draft-1.pdf` 和独立草稿回执，允许正式答案资格或科学挑战尚未全部完成，但不允许虚构数字，且 PDF 必须明确“本稿不可作为最终提交”。没有证据支持的候选结论保持空数组，由状态页显示“暂无”。不要用正式 `compile_paper` 冒充首版草稿。
+
+候选截止前必须先闭合所有正式答案资格与科学挑战，再执行严格 `compile_paper.py` 生成当前 `paper/final.pdf`，并冻结为 `paper/candidate.pdf`。候选 PDF 缺失、正式编译回执失效或与当前 `final.pdf` 不一致时，不得进入 `paper_review`；草稿 PDF 和草稿回执永远不能替代候选门禁。不要为了补充新框架或非阻断性实验而推迟第一版可审阅 PDF。
 
 ---
 
@@ -142,7 +150,7 @@ description: 从 Competition-First v3.2 的当前真实结果组织、编译和�
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
-对于 `FIGURE_PLAN.json` 2.1 中 `required=true` 的图，必须有 current 真实结果、实际绘图脚本和输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
+每个核心问题必须在 `FIGURE_PLAN.json` 2.1 中显式选择 `required` 或 `waived`。`required` 至少有一张非 `stability` 且 `required=true` 的正文主图；`waived` 必须说明为什么公式、表格或文字足以传达核心关系。计划通过 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 受控写入。对于 `required=true` 的图，必须有 current 真实结果、实际绘图脚本和输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
 
 ---
 

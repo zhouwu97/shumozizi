@@ -7,18 +7,30 @@ from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.paper.readiness import validate_required_figure_consumption
+from shumozizi.simple import review as simple_review
+from shumozizi.simple.competition import write_next_experiments
 from shumozizi.simple.delivery import (
     DELIVERY_CONTROL_PATH,
     WORK_LOG_PATH,
     advance_delivery_phase,
     approve_workflow_p0_patch,
+    freeze_pdf_milestone,
     next_required_action,
     record_work_session,
+    require_delivery_action_allowed,
+    start_work_session,
+    stop_work_session,
     verify_workflow_source_lock,
+    work_log_summary,
 )
+from shumozizi.simple.figures import write_figure_plan
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.review_tasks import (
+    create_review_task_receipt,
+    persist_review_task_creation_event,
+)
 
 
 def _run(
@@ -44,6 +56,50 @@ def _at(started_at: str, minutes: float) -> str:
     return (start + timedelta(minutes=minutes)).astimezone(UTC).isoformat().replace(
         "+00:00", "Z"
     )
+
+
+def _move_past_first_pdf_deadline(run_dir: Path) -> None:
+    """把交付时钟移到首版 PDF 截止后一刻。"""
+    control = load_json(run_dir / DELIVERY_CONTROL_PATH)
+    control["started_at"] = _at(control["started_at"], -481)
+    atomic_json(run_dir / DELIVERY_CONTROL_PATH, control)
+
+
+def _figure_plan(run_dir: Path) -> dict[str, object]:
+    """构造含一张正文主图的最小 FIGURE_PLAN 2.1。"""
+    return {
+        "schema_name": "figure_plan",
+        "schema_version": "2.1",
+        "run_id": run_dir.name,
+        "visual_decisions": [
+            {
+                "question_id": "Q1",
+                "status": "required",
+                "reason": "核心路线差异需要由统一指标比较图直接展示。",
+            }
+        ],
+        "figures": [
+            {
+                "figure_id": "q1-main",
+                "preferred": "skills/mathmodel-figure-templates",
+                "fallback": "skills/3coding-visual",
+                "selected_skill": "skills/3coding-visual",
+                "template_id": "custom",
+                "selection_reason": "直接展示核心问题的决定性结果。",
+                "question_id": "Q1",
+                "role": "decisive_evidence",
+                "claim": "主路线相对自然基线取得稳定改善。",
+                "source_result_ids": ["q1-final"],
+                "script": "code/figures/q1.py",
+                "output": "figures/current/q1-main.pdf",
+                "paper_section": "paper/sections/q1.tex",
+                "caption": "主路线与自然基线的统一指标比较",
+                "latex_label": "fig:q1-main",
+                "explanation_anchor": "改善来自约束激活后的方案重排",
+                "required": True,
+            }
+        ],
+    }
 
 
 def test_v32_initialization_freezes_delivery_plan_and_work_log(tmp_path: Path) -> None:
@@ -78,6 +134,255 @@ def test_first_pdf_deadline_overrides_normal_experiment_work(tmp_path: Path) -> 
     assert action["priority"] == "P0_DELIVERY"
     assert "add_new_route" in action["forbidden_actions"]
     assert "modify_workflow_schema" in action["forbidden_actions"]
+
+
+def test_delivery_action_permission_is_enforced_after_first_pdf_deadline(
+    tmp_path: Path,
+) -> None:
+    """截止后范围冻结必须是公共硬门，而不只是 status 中的建议。"""
+    run_dir = _run(tmp_path)
+    control = load_json(run_dir / DELIVERY_CONTROL_PATH)
+    control["started_at"] = _at(control["started_at"], -481)
+    atomic_json(run_dir / DELIVERY_CONTROL_PATH, control)
+
+    with pytest.raises(ContractError, match="add_new_route"):
+        require_delivery_action_allowed(run_dir, "add_new_route")
+
+    require_delivery_action_allowed(run_dir, "paper_write")
+
+
+def test_delivery_cutoff_blocks_new_experiments_but_allows_existing_plan_repairs(
+    tmp_path: Path,
+) -> None:
+    """截止后只能修订既有实验计划，不能追加新的实验 ID。"""
+    run_dir = _run(tmp_path)
+    plan = {
+        "experiments": [
+            {"experiment_id": "probe-q1", "decision": "决定 Q1 是否启用结构路线。"}
+        ]
+    }
+    write_next_experiments(run_dir, plan)
+    _move_past_first_pdf_deadline(run_dir)
+
+    plan["experiments"][0]["decision"] = "修正 Q1 既有 probe 的执行说明。"
+    assert write_next_experiments(run_dir, plan)["experiments"][0]["experiment_id"] == "probe-q1"
+
+    plan["experiments"].append(
+        {"experiment_id": "probe-q1-extra", "decision": "增加新的非阻断性搜索。"}
+    )
+    with pytest.raises(ContractError, match="add_experiment_plan"):
+        write_next_experiments(run_dir, plan)
+
+
+def test_delivery_cutoff_blocks_new_figures_but_allows_existing_figure_repairs(
+    tmp_path: Path,
+) -> None:
+    """截止后可修图和图注，但不能扩大正文图表集合。"""
+    run_dir = _run(tmp_path)
+    plan = _figure_plan(run_dir)
+    write_figure_plan(run_dir, plan)
+    _move_past_first_pdf_deadline(run_dir)
+
+    plan["figures"][0]["caption"] = "修订后的主路线与自然基线比较"
+    assert write_figure_plan(run_dir, plan)["figures"][0]["figure_id"] == "q1-main"
+
+    added = dict(plan["figures"][0])
+    added["figure_id"] = "q1-extra"
+    added["latex_label"] = "fig:q1-extra"
+    plan["figures"].append(added)
+    with pytest.raises(ContractError, match="expand_figure_plan"):
+        write_figure_plan(run_dir, plan)
+
+
+def test_delivery_cutoff_blocks_extra_reviews_but_keeps_blind_review_available(
+    tmp_path: Path,
+) -> None:
+    """截止后拒绝扩张审核任务，但主链 PDF 盲评仍必须可创建。"""
+    run_dir = _run(tmp_path)
+    report = run_dir / "review/PAPER_BLIND_REVIEW.md"
+    report.write_text("# PDF 盲评\n\n当前没有确认的 P0/P1。\n", encoding="utf-8")
+    _move_past_first_pdf_deadline(run_dir)
+    common = {
+        "model_id": "fixture-model",
+        "prompt_sha256": "a" * 64,
+        "input_bindings": {},
+        "report_file": "review/PAPER_BLIND_REVIEW.md",
+        "thread_id": "fixture-thread",
+    }
+
+    with pytest.raises(ContractError, match="create_extra_review_task"):
+        create_review_task_receipt(
+            run_dir,
+            task_id="extra-follow-up",
+            task_type="scientific_follow_up",
+            **common,
+        )
+
+    receipt = create_review_task_receipt(
+        run_dir,
+        task_id="required-paper-blind",
+        task_type="paper_blind_open",
+        **common,
+    )
+    assert receipt.is_file()
+
+
+def test_delivery_controller_reaches_submission_and_invalidates_stale_blind_review(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """公开推进器必须贯通草稿、候选、盲评、终检与提交包。"""
+    run_dir = _run(tmp_path)
+    control_path = run_dir / DELIVERY_CONTROL_PATH
+    original_started_at = load_json(control_path)["started_at"]
+
+    # 本测试聚焦交付控制器；建模证据、科学挑战和编译器细节由各自测试覆盖。
+    monkeypatch.setattr(
+        "shumozizi.simple.objective_consequences.require_objective_candidate_plan",
+        lambda _run: None,
+    )
+    monkeypatch.setattr(
+        "shumozizi.simple.modeling_units.require_v32_modeling_plan", lambda _run: None
+    )
+    monkeypatch.setattr(
+        "shumozizi.simple.objective_semantics.objective_semantics_review_required",
+        lambda _run: False,
+    )
+    assert advance_delivery_phase(run_dir)["to_phase"] == "experiment"
+
+    _move_past_first_pdf_deadline(run_dir)
+    assert next_required_action(run_dir)["next_action"] == "generate_first_reviewable_pdf"
+    (run_dir / "paper/draft-1.pdf").write_bytes(b"%PDF-1.4\nreviewable-draft\n")
+    atomic_json(run_dir / "paper/reviewable-draft-receipt.json", {"fixture": True})
+    monkeypatch.setattr(
+        "shumozizi.paper.compiler.verify_reviewable_draft_receipt",
+        lambda _run: {"valid": True, "errors": []},
+    )
+    freeze_pdf_milestone(run_dir, "first_reviewable")
+    control = load_json(control_path)
+    control["started_at"] = original_started_at
+    atomic_json(control_path, control)
+
+    monkeypatch.setattr(
+        "scripts.qa.metric_ledger.require_v32_metric_ledger_for_paper", lambda _run: None
+    )
+    monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
+    monkeypatch.setattr(
+        "shumozizi.simple.objective_consequences.require_objective_consequences",
+        lambda _run: None,
+    )
+    monkeypatch.setattr(
+        "shumozizi.simple.modeling_units.require_v32_experiment_evidence",
+        lambda _run: None,
+    )
+    monkeypatch.setattr(
+        "shumozizi.paper.templates.require_materialized_template", lambda _run: {}
+    )
+    assert advance_delivery_phase(run_dir)["to_phase"] == "paper"
+
+    with pytest.raises(ContractError, match="final.pdf"):
+        freeze_pdf_milestone(run_dir, "candidate")
+    final_pdf = run_dir / "paper/final.pdf"
+    original_pdf = b"%PDF-1.4\nstrict-candidate\n"
+    final_pdf.write_bytes(original_pdf)
+    atomic_json(run_dir / "paper/compile-receipt.json", {"fixture": True})
+    monkeypatch.setattr(
+        "shumozizi.paper.compiler.verify_paper_compile_receipt",
+        lambda _run: {"valid": True, "errors": []},
+    )
+    freeze_pdf_milestone(run_dir, "candidate")
+    assert advance_delivery_phase(run_dir)["to_phase"] == "paper_review"
+
+    missing_review = advance_delivery_phase(run_dir)
+    assert missing_review["advanced"] is False
+    assert "盲审" in missing_review["blocked_by"][0]
+
+    packet = simple_review.build_review_packet(run_dir, kind="paper-blind")
+    manifest_file = (
+        f"review/packet/paper-blind/{packet['packet_id']}/manifest.json"
+    )
+    report = run_dir / "review/PAPER_BLIND_REVIEW.md"
+    report.write_text("# PDF 盲评\n\n未发现 P0/P1，论文可进入机械终检。\n", encoding="utf-8")
+    bindings = {
+        "packet": {
+            "manifest_file": manifest_file,
+            "manifest_sha256": sha256_file(run_dir / manifest_file),
+        }
+    }
+    event = persist_review_task_creation_event(
+        run_dir,
+        event_file="review/tasks/creation-events/e2e-paper-blind.json",
+        raw_event={
+            "schema_name": "review_task_creation_event",
+            "schema_version": "1.0",
+            "provider": "codex",
+            "raw_task_id": "e2e-paper-blind-task",
+            "raw_thread_id": "e2e-paper-blind-thread",
+            "creation_mode": "create_thread",
+            "parent_context_inherited": False,
+            "created_at": "2026-07-27T00:00:00Z",
+        },
+    )
+    receipt = create_review_task_receipt(
+        run_dir,
+        task_id="e2e-paper-blind",
+        task_type="paper_blind_open",
+        model_id="fixture-model",
+        prompt_sha256=simple_review.paper_blind_review_prompt_sha256(
+            run_dir, manifest_file
+        ),
+        input_bindings=bindings,
+        report_file="review/PAPER_BLIND_REVIEW.md",
+        creation_event_file=event.relative_to(run_dir).as_posix(),
+    )
+    monkeypatch.setattr(
+        simple_review,
+        "_v32_scientific_challenge_status",
+        lambda _run: {
+            "allowed": True,
+            "review": {"task_receipt": {"thread_id": "e2e-scientific-thread"}},
+        },
+    )
+    simple_review.import_paper_blind_review(
+        run_dir,
+        manifest_file=manifest_file,
+        verdict="pass",
+        highest_severity="none",
+        reviewer_thread_id="e2e-paper-blind-thread",
+        task_receipt_file=receipt.relative_to(run_dir).as_posix(),
+    )
+    assert simple_review.paper_blind_review_status(run_dir)["allowed"] is True
+
+    final_pdf.write_bytes(b"%PDF-1.4\nchanged-after-review\n")
+    stale = simple_review.paper_blind_review_status(run_dir)
+    assert stale["allowed"] is False
+    assert "重新盲评" in stale["reason"]
+    final_pdf.write_bytes(original_pdf)
+    assert simple_review.paper_blind_review_status(run_dir)["allowed"] is True
+    assert advance_delivery_phase(run_dir)["to_phase"] == "verify"
+
+    monkeypatch.setattr(
+        simple_review,
+        "scientific_review_status",
+        lambda _run: {
+            "allowed": True,
+            "submission_ready": True,
+            "competition_strength": "strong",
+        },
+    )
+    monkeypatch.setattr(simple_review, "mechanical_qa_status", lambda _run: {"allowed": True})
+    monkeypatch.setattr(
+        "shumozizi.simple.results.verify_current_result_files",
+        lambda _run: {"success": True},
+    )
+    monkeypatch.setattr(
+        "shumozizi.simple.figures.verify_current_figure_files",
+        lambda _run: {"success": True},
+    )
+    assert advance_delivery_phase(run_dir)["to_phase"] == "complete"
+
+    submission = simple_review.materialize_submission_package(run_dir)
+    assert {item["role"] for item in submission["files"]} == {"final_pdf"}
+    assert (run_dir / "paper/submission/final.pdf").is_file()
 
 
 def test_delivery_deadline_blocks_phase_advance(tmp_path: Path) -> None:
@@ -242,6 +547,45 @@ def test_invalid_or_overlapping_work_sessions_are_rejected(tmp_path: Path) -> No
         )
 
 
+def test_start_stop_work_tracks_one_active_session_and_coverage(tmp_path: Path) -> None:
+    """start/stop 必须持久化唯一活动会话并暴露覆盖率与墙钟缺口。"""
+    run_dir = _run(tmp_path)
+    started_at = load_json(run_dir / DELIVERY_CONTROL_PATH)["started_at"]
+
+    session = start_work_session(
+        run_dir, category="problem_analysis", started_at=_at(started_at, 0)
+    )
+    with pytest.raises(ContractError, match="active_session"):
+        start_work_session(
+            run_dir, category="paper_writing", started_at=_at(started_at, 1)
+        )
+    open_summary = work_log_summary(run_dir, now=_at(started_at, 121))
+    assert session["category"] == "problem_analysis"
+    assert open_summary["active_session_long_running"] is True
+    assert open_summary["logged_time_coverage_ratio"] == pytest.approx(1.0)
+
+    entry = stop_work_session(
+        run_dir,
+        summary="完成题意与候选目标分析。",
+        finished_at=_at(started_at, 120),
+    )
+    assert entry["duration_minutes"] == pytest.approx(120)
+    assert load_json(run_dir / WORK_LOG_PATH)["active_session"] is None
+
+    start_work_session(
+        run_dir, category="paper_writing", started_at=_at(started_at, 145)
+    )
+    stop_work_session(
+        run_dir,
+        summary="形成首版逐问正文。",
+        finished_at=_at(started_at, 160),
+    )
+    summary = work_log_summary(run_dir, now=_at(started_at, 200))
+    assert summary["coverage_warning"] is True
+    assert summary["logged_time_coverage_ratio"] == pytest.approx(0.675)
+    assert summary["unexplained_gaps"][0]["duration_minutes"] == pytest.approx(25)
+
+
 def test_required_figure_must_be_consumed_by_latex(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """必需图只有生成文件还不够，正文必须插入、标号、引用并解释。"""
     from shumozizi.core.io import atomic_json
@@ -278,6 +622,13 @@ def test_required_figure_must_be_consumed_by_latex(monkeypatch: pytest.MonkeyPat
             "schema_name": "figure_plan",
             "schema_version": "2.1",
             "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "question_id": "Q1",
+                    "status": "required",
+                    "reason": "核心路线差异需要由统一指标比较图直接展示。",
+                }
+            ],
             "figures": [plan_item],
         },
     )
@@ -318,3 +669,38 @@ def test_required_figure_must_be_consumed_by_latex(monkeypatch: pytest.MonkeyPat
         encoding="utf-8",
     )
     assert validate_required_figure_consumption(run_dir) == []
+
+
+def test_core_question_requires_explicit_visual_decision(tmp_path: Path) -> None:
+    """核心问题不能通过省略 2.1 计划或把所有图设为可选而静默零图。"""
+    run_dir = _run(tmp_path)
+    modeling = load_json(run_dir / "analysis/MODELING_UNITS.json")
+    modeling["units"] = [{"unit_id": "U1", "question_id": "Q1", "core_question": True}]
+    atomic_json(run_dir / "analysis/MODELING_UNITS.json", modeling)
+
+    errors = validate_required_figure_consumption(run_dir)
+    assert any("核心问题 Q1" in error and "视觉决策" in error for error in errors)
+
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.1",
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "question_id": "Q1",
+                    "status": "waived",
+                    "reason": "核心关系由闭式公式与一张参数表完整表达，无额外空间或趋势结构需要图示。",
+                }
+            ],
+            "figures": [],
+        },
+    )
+    assert validate_required_figure_consumption(run_dir) == []
+
+    plan = load_json(run_dir / "figures/FIGURE_PLAN.json")
+    plan["visual_decisions"][0]["status"] = "required"
+    atomic_json(run_dir / "figures/FIGURE_PLAN.json", plan)
+    errors = validate_required_figure_consumption(run_dir)
+    assert any("至少一张 required=true" in error for error in errors)

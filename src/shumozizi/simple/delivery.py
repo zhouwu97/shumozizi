@@ -40,10 +40,25 @@ _LOCK_ROOTS = (
 _IGNORED_SOURCE_SUFFIXES = {".pyc", ".pyo"}
 _DELIVERY_FREEZE_ACTIONS = [
     "add_new_route",
+    "add_experiment_plan",
+    "create_extra_review_task",
+    "expand_figure_plan",
     "modify_workflow_schema",
+    "migrate_protocol",
     "expand_review_protocol",
     "refactor_executor",
 ]
+_DELIVERY_ALLOWED_ACTIONS = frozenset(
+    {
+        "paper_write",
+        "figure_fix",
+        "compile_pdf",
+        "review_fix",
+        "mechanical_verify",
+        "blocking_delivery_repair",
+        "record_existing_experiment",
+    }
+)
 
 
 def _parse_time(value: str | datetime) -> datetime:
@@ -123,7 +138,12 @@ def initialize_delivery_control(
     atomic_json(run_dir / DELIVERY_CONTROL_PATH, control)
     atomic_json(
         run_dir / WORK_LOG_PATH,
-        {"schema_version": "1.0", "run_id": run_dir.name, "entries": []},
+        {
+            "schema_version": "1.0",
+            "run_id": run_dir.name,
+            "entries": [],
+            "active_session": None,
+        },
     )
     atomic_json(
         run_dir / PDF_MILESTONES_PATH,
@@ -154,6 +174,37 @@ def _control(run_dir: Path) -> dict[str, Any]:
     if deadlines != sorted(deadlines) or deadlines[-1] != plan.get("total_minutes"):
         raise ContractError("delivery_plan 截止点必须单调且 final_deadline 等于 total_minutes")
     return control
+
+
+def require_delivery_action_allowed(
+    run_dir: Path, action_kind: str, *, now: str | datetime | None = None
+) -> None:
+    """在首版 PDF 截止后拒绝扩大路线、协议或执行器范围。
+
+    Args:
+        run_dir: 当前 v3.2 运行目录。
+        action_kind: 调用入口准备执行的语义动作。
+        now: 可选的确定性当前时间，主要供测试和恢复工具使用。
+
+    Raises:
+        ContractError: 截止后请求了禁止动作，或动作类型不属于公开许可表。
+    """
+    if not isinstance(action_kind, str) or not action_kind.strip():
+        raise ContractError("delivery action_kind 必须是非空文本")
+    action = action_kind.strip()
+    known = set(_DELIVERY_FREEZE_ACTIONS) | set(_DELIVERY_ALLOWED_ACTIONS)
+    if action not in known:
+        raise ContractError(f"未知 delivery action_kind: {action}")
+    control = _control(run_dir)
+    current = _parse_time(now or utc_now())
+    started = _parse_time(control["started_at"])
+    elapsed = max(0.0, (current - started).total_seconds() / 60)
+    cutoff = float(control["delivery_plan"]["first_reviewable_pdf_deadline"])
+    if elapsed >= cutoff and action in _DELIVERY_FREEZE_ACTIONS:
+        raise ContractError(
+            f"交付首版截止后禁止动作 {action}；只能继续论文、图表修复、编译、"
+            "审核修复、机械验证或已登记的阻断性交付修复"
+        )
 
 
 def record_work_session(
@@ -208,8 +259,85 @@ def record_work_session(
     return entry
 
 
-def work_log_summary(run_dir: Path) -> dict[str, Any]:
-    """按类别汇总真实工作时长及协议开销比例。"""
+def start_work_session(
+    run_dir: Path, *, category: str, started_at: str | None = None
+) -> dict[str, Any]:
+    """开始唯一活动工时段，避免代理工作后忘记补记起点。
+
+    Args:
+        run_dir: 当前运行目录。
+        category: 九类真实工作之一。
+        started_at: 可选的显式开始时间。
+
+    Returns:
+        已持久化的活动会话。
+    """
+    if category not in WORK_CATEGORIES:
+        raise ContractError(f"work_log category 不受支持: {category}")
+    document = load_json(run_dir / WORK_LOG_PATH)
+    if document.get("active_session") is not None:
+        raise ContractError("已有未关闭的 active_session，必须先 stop-work")
+    started = started_at or utc_now()
+    _parse_time(started)
+    session = {"category": category, "started_at": started}
+    document["active_session"] = session
+    atomic_json(run_dir / WORK_LOG_PATH, document)
+    return session
+
+
+def stop_work_session(
+    run_dir: Path,
+    *,
+    summary: str,
+    finished_at: str | None = None,
+    blocking_delivery_repair: bool = False,
+) -> dict[str, Any]:
+    """关闭活动会话并原子转成正式工时条目。
+
+    Args:
+        run_dir: 当前运行目录。
+        summary: 本段实际产出。
+        finished_at: 可选的显式结束时间。
+        blocking_delivery_repair: 是否为当前交付 P0 的阻断修复。
+
+    Returns:
+        已写入的正式工时条目。
+    """
+    document = load_json(run_dir / WORK_LOG_PATH)
+    active = document.get("active_session")
+    if not isinstance(active, dict):
+        raise ContractError("没有可关闭的 active_session")
+    if not summary.strip():
+        raise ContractError("work_log summary 不能为空")
+    start = _parse_time(active["started_at"])
+    finish_text = finished_at or utc_now()
+    finish = _parse_time(finish_text)
+    if finish <= start:
+        raise ContractError("stop-work 时间必须晚于 start-work")
+    for existing in document.get("entries", []):
+        old_start = _parse_time(existing["started_at"])
+        old_finish = _parse_time(existing["finished_at"])
+        if start < old_finish and finish > old_start:
+            raise ContractError("active_session 与已有工时区间重叠")
+    entry = {
+        "category": active["category"],
+        "started_at": active["started_at"],
+        "finished_at": finish_text,
+        "duration_minutes": (finish - start).total_seconds() / 60,
+        "summary": summary.strip(),
+        "blocking_delivery_repair": bool(blocking_delivery_repair),
+    }
+    document.setdefault("entries", []).append(entry)
+    document["entries"].sort(key=lambda item: item["started_at"])
+    document["active_session"] = None
+    atomic_json(run_dir / WORK_LOG_PATH, document)
+    return entry
+
+
+def work_log_summary(
+    run_dir: Path, *, now: str | datetime | None = None
+) -> dict[str, Any]:
+    """汇总真实工时、活动会话、墙钟覆盖率和较长未解释缺口。"""
     document = load_json(run_dir / WORK_LOG_PATH)
     totals = {category: 0.0 for category in sorted(WORK_CATEGORIES)}
     for entry in document.get("entries", []):
@@ -219,11 +347,48 @@ def work_log_summary(run_dir: Path) -> dict[str, Any]:
         totals[category] += float(entry["duration_minutes"])
     total = sum(totals.values())
     protocol = sum(totals[category] for category in _PROTOCOL_CATEGORIES)
+    current = _parse_time(now or utc_now())
+    started = _parse_time(_control(run_dir)["started_at"])
+    wall_minutes = max(0.0, (current - started).total_seconds() / 60)
+    active = document.get("active_session")
+    active_minutes = 0.0
+    if isinstance(active, dict):
+        active_minutes = max(
+            0.0, (current - _parse_time(active["started_at"])).total_seconds() / 60
+        )
+    intervals = sorted(
+        (
+            _parse_time(entry["started_at"]),
+            _parse_time(entry["finished_at"]),
+        )
+        for entry in document.get("entries", [])
+    )
+    unexplained_gaps: list[dict[str, Any]] = []
+    for (_, previous_finish), (next_start, _) in zip(
+        intervals, intervals[1:], strict=False
+    ):
+        gap = (next_start - previous_finish).total_seconds() / 60
+        if gap >= 20:
+            unexplained_gaps.append(
+                {
+                    "started_at": previous_finish.isoformat().replace("+00:00", "Z"),
+                    "finished_at": next_start.isoformat().replace("+00:00", "Z"),
+                    "duration_minutes": gap,
+                }
+            )
+    coverage = min(1.0, (total + active_minutes) / wall_minutes) if wall_minutes else 1.0
     return {
         "total_minutes": total,
         "category_minutes": totals,
         "protocol_overhead_minutes": protocol,
         "protocol_overhead_ratio": protocol / total if total else 0.0,
+        "active_session": active,
+        "active_session_minutes": active_minutes,
+        "active_session_long_running": active_minutes >= 120,
+        "elapsed_wall_minutes": wall_minutes,
+        "logged_time_coverage_ratio": coverage,
+        "coverage_warning": bool(document.get("entries") or active) and coverage < 0.8,
+        "unexplained_gaps": unexplained_gaps,
     }
 
 
@@ -301,6 +466,15 @@ def _milestone_current(run_dir: Path, name: str) -> bool:
     path = run_dir / milestone.get("path", "")
     if not (_valid_pdf(path) and milestone.get("sha256") == sha256_file(path)):
         return False
+    receipt_path = milestone.get("compile_receipt_path")
+    if receipt_path:
+        receipt = run_dir / receipt_path
+        if not receipt.is_file() or milestone.get("compile_receipt_sha256") != sha256_file(receipt):
+            return False
+    if name == "first_reviewable" and receipt_path == "paper/reviewable-draft-receipt.json":
+        from shumozizi.paper.compiler import verify_reviewable_draft_receipt
+
+        return verify_reviewable_draft_receipt(run_dir)["valid"]
     if name == "candidate":
         final_pdf = run_dir / "paper/final.pdf"
         return _valid_pdf(final_pdf) and milestone.get("source_pdf_sha256") == sha256_file(final_pdf)
@@ -318,6 +492,25 @@ def freeze_pdf_milestone(run_dir: Path, milestone: str) -> dict[str, Any]:
     targets = {"first_reviewable": "paper/draft-1.pdf", "candidate": "paper/candidate.pdf"}
     if milestone not in targets:
         raise ContractError("PDF milestone 必须为 first_reviewable 或 candidate")
+    if milestone == "first_reviewable":
+        from shumozizi.paper.compiler import verify_reviewable_draft_receipt
+
+        verification = verify_reviewable_draft_receipt(run_dir)
+        if verification["valid"]:
+            target = run_dir / targets[milestone]
+            receipt_path = run_dir / "paper/reviewable-draft-receipt.json"
+            document = load_json(run_dir / PDF_MILESTONES_PATH)
+            record = {
+                "path": targets[milestone],
+                "sha256": sha256_file(target),
+                "source_pdf_sha256": sha256_file(target),
+                "compile_receipt_path": "paper/reviewable-draft-receipt.json",
+                "compile_receipt_sha256": sha256_file(receipt_path),
+                "frozen_at": utc_now(),
+            }
+            document.setdefault("milestones", {})[milestone] = record
+            atomic_json(run_dir / PDF_MILESTONES_PATH, document)
+            return record
     source = run_dir / "paper" / "final.pdf"
     if not _valid_pdf(source):
         raise ContractError("冻结 PDF 里程碑前必须先生成有效 paper/final.pdf")
@@ -335,6 +528,8 @@ def freeze_pdf_milestone(run_dir: Path, milestone: str) -> dict[str, Any]:
         "path": targets[milestone],
         "sha256": sha256_file(target),
         "source_pdf_sha256": sha256_file(source),
+        "compile_receipt_path": "paper/compile-receipt.json",
+        "compile_receipt_sha256": sha256_file(run_dir / "paper/compile-receipt.json"),
         "frozen_at": utc_now(),
     }
     document.setdefault("milestones", {})[milestone] = record

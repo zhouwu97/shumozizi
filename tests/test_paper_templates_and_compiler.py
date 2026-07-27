@@ -14,7 +14,12 @@ import shumozizi.paper.templates as paper_templates
 import shumozizi.simple.review as simple_review
 from scripts.qa.check_placeholders import check_placeholders
 from shumozizi.core.io import ContractError, atomic_json, load_json
-from shumozizi.paper.compiler import compile_paper, verify_paper_compile_receipt
+from shumozizi.paper.compiler import (
+    compile_paper,
+    compile_reviewable_draft,
+    verify_paper_compile_receipt,
+    verify_reviewable_draft_receipt,
+)
 from shumozizi.paper.templates import (
     materialize_selected_template,
     require_materialized_template,
@@ -373,6 +378,78 @@ def test_latex_compile_receipt_uses_selected_latex_entrypoint(
     assert receipt["final_pdf_path"] == "paper/final.pdf"
     assert (run_dir / "paper/final.pdf").is_file()
     assert verify_paper_compile_receipt(run_dir)["valid"] is True
+
+
+def test_reviewable_draft_compiles_before_answer_qualification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未完成答案可生成显式披露的草稿，但不能绕过正式编译门禁。"""
+    _set_engines(monkeypatch, latex=True, typst=True)
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "reviewable-draft",
+        competition="cumcm",
+        required_questions=["Q1", "Q2"],
+        workflow_version="3.2",
+        total_hours=12,
+    )
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="latex",
+        selection_reason="测试首个可审阅 PDF 与正式候选门禁相互隔离。",
+    )
+    materialize_selected_template(run_dir)
+    monkeypatch.setattr(
+        paper_readiness,
+        "require_paper_readiness",
+        lambda _run: (_ for _ in ()).throw(ContractError("Q2 尚未形成答案资格")),
+    )
+    monkeypatch.setattr(
+        simple_review,
+        "require_paper_generation_allowed",
+        lambda _run: None,
+    )
+    fake_compiler = tmp_path / "fake_draft_xelatex.py"
+    fake_compiler.write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "entry = Path(sys.argv[-1])\n"
+        "entry.with_suffix('.pdf').write_bytes(b'%PDF-1.4\\nreviewable draft')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        paper_compiler,
+        "_compiler_steps",
+        lambda engine: (
+            "xelatex",
+            [[sys.executable, str(fake_compiler), "main.tex"]] if engine == "latex" else [],
+        ),
+    )
+
+    with pytest.raises(ContractError, match="Q2 尚未形成答案资格"):
+        compile_paper(run_dir)
+
+    receipt = compile_reviewable_draft(
+        run_dir,
+        completed_content=["Q1 已完成自然基线与主路线比较。"],
+        unfinished_questions=["Q2"],
+        remaining_experiments=["完成 Q2 fallback 的统一 exact scorer 复算。"],
+        provisional_conclusions=[],
+    )
+
+    disclosure = (run_dir / "paper/generated/reviewable-draft-status.tex").read_text(
+        encoding="utf-8"
+    )
+    assert receipt["artifact_path"] == "paper/draft-1.pdf"
+    assert receipt["not_for_final_submission"] is True
+    assert "当前已完成内容" in disclosure
+    assert "暂未完成的问题" in disclosure
+    assert "仍需补的实验" in disclosure
+    assert "当前候选结论" in disclosure
+    assert "不可作为最终提交" in disclosure
+    assert verify_reviewable_draft_receipt(run_dir)["valid"] is True
 
 
 @pytest.mark.paper_e2e

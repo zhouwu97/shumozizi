@@ -20,6 +20,16 @@ from shumozizi.core.io import (
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.state import utc_now
 
+_EXTRA_REVIEW_TASK_TYPES = frozenset(
+    {
+        "coverage_extract",
+        "scientific_follow_up",
+        "paper_coverage_extract",
+        "paper_follow_up",
+        "final_audit",
+    }
+)
+
 
 def review_input_manifest_sha256(bindings: dict[str, Any]) -> str:
     """返回审核任务输入绑定的规范摘要。"""
@@ -93,6 +103,10 @@ def create_review_task_receipt(
     新生产回执必须传入 ``creation_event_file``。保留 ``thread_id`` 仅用于读取
     历史回执；这类 v1.0 回执不能通过 ``require_fresh_thread`` 放行门。
     """
+    if task_type in _EXTRA_REVIEW_TASK_TYPES and (run_dir / "state/delivery-control.json").is_file():
+        from shumozizi.simple.delivery import require_delivery_action_allowed
+
+        require_delivery_action_allowed(run_dir, "create_extra_review_task")
     report = resolve_inside(run_dir, report_file, must_exist=True)
     event: dict[str, Any] | None = None
     if creation_event_file is not None:

@@ -1,6 +1,11 @@
 """论文主张使用权限与证据门禁。"""
 
-from .compiler import compile_paper, verify_paper_compile_receipt
+from .compiler import (
+    compile_paper,
+    compile_reviewable_draft,
+    verify_paper_compile_receipt,
+    verify_reviewable_draft_receipt,
+)
 from .contributions import (
     build_contribution_ledger,
     require_math_innovation_allowed,
@@ -42,5 +47,7 @@ __all__ = [
     "verify_paper_build_receipt",
     "verify_production_receipts",
     "compile_paper",
+    "compile_reviewable_draft",
     "verify_paper_compile_receipt",
+    "verify_reviewable_draft_receipt",
 ]

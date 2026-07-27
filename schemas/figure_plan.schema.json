@@ -8,6 +8,20 @@
     "schema_name": {"const": "figure_plan"},
     "schema_version": {"enum": ["2.0", "2.1"]},
     "run_id": {"type": "string", "minLength": 1},
+    "visual_decisions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_id", "status", "reason"],
+        "properties": {
+          "question_id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["required", "waived"]},
+          "reason": {"type": "string", "minLength": 16}
+        }
+      }
+    },
     "figures": {
       "type": "array",
       "items": {
@@ -55,6 +69,7 @@
     {
       "if": {"properties": {"schema_version": {"const": "2.1"}}},
       "then": {
+        "required": ["visual_decisions"],
         "properties": {
           "figures": {
             "items": {

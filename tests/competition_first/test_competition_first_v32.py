@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -394,6 +395,41 @@ def test_v32_requires_two_fresh_reconstructions_then_real_comparison_evidence(tm
 
     require_v32_experiment_evidence(run_dir)
     require_objective_consequences(run_dir)
+
+
+def test_modeling_units_cannot_add_route_after_delivery_cutoff(tmp_path: Path) -> None:
+    """首版 PDF 截止后不得借更新建模单元继续扩张候选路线。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-late-route",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+        total_hours=12,
+    )
+    plan = _plan(run_dir)
+    write_modeling_units(run_dir, plan)
+    control_path = run_dir / "state/delivery-control.json"
+    control = load_json(control_path)
+    start = datetime.fromisoformat(control["started_at"].replace("Z", "+00:00"))
+    control["started_at"] = (start - timedelta(minutes=481)).isoformat().replace("+00:00", "Z")
+    atomic_json(control_path, control)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    routes = unit["competitive_routes"]
+    assert isinstance(routes, list)
+    routes.append(
+        {
+            "route_id": "R3",
+            "mathematical_structure": "混合整数规划",
+            "structure_exploited": "显式利用离散决策结构。",
+            "expected_upside": "检查新的精确路线是否改善结果。",
+            "expected_improvement_ratio": 0.2,
+        }
+    )
+
+    with pytest.raises(ContractError, match="add_new_route"):
+        write_modeling_units(run_dir, plan)
 
 
 def test_v32_rejects_first_feasible_as_final_result(tmp_path: Path) -> None:

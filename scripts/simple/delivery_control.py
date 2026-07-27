@@ -16,6 +16,8 @@ from shumozizi.simple.delivery import (
     freeze_pdf_milestone,
     next_required_action,
     record_work_session,
+    start_work_session,
+    stop_work_session,
     verify_workflow_source_lock,
     work_log_summary,
 )
@@ -34,6 +36,15 @@ def main() -> int:
     log.add_argument("--finished-at", required=True)
     log.add_argument("--summary", required=True)
     log.add_argument("--blocking-delivery-repair", action="store_true")
+    start = subparsers.add_parser("start-work", help="开始唯一活动工时段")
+    start.add_argument("run_dir", type=Path)
+    start.add_argument("--category", required=True)
+    start.add_argument("--started-at")
+    stop = subparsers.add_parser("stop-work", help="关闭活动工时段并登记产出")
+    stop.add_argument("run_dir", type=Path)
+    stop.add_argument("--summary", required=True)
+    stop.add_argument("--finished-at")
+    stop.add_argument("--blocking-delivery-repair", action="store_true")
     freeze = subparsers.add_parser("freeze-pdf", help="冻结第一版或候选 PDF")
     freeze.add_argument("run_dir", type=Path)
     freeze.add_argument("milestone", choices=("first_reviewable", "candidate"))
@@ -55,6 +66,17 @@ def main() -> int:
                 started_at=args.started_at,
                 finished_at=args.finished_at,
                 summary=args.summary,
+                blocking_delivery_repair=args.blocking_delivery_repair,
+            )
+        elif args.command == "start-work":
+            document = start_work_session(
+                args.run_dir, category=args.category, started_at=args.started_at
+            )
+        elif args.command == "stop-work":
+            document = stop_work_session(
+                args.run_dir,
+                summary=args.summary,
+                finished_at=args.finished_at,
                 blocking_delivery_repair=args.blocking_delivery_repair,
             )
         elif args.command == "freeze-pdf":
