@@ -57,7 +57,13 @@ def _register(
 ) -> None:
     """登记一个真实执行结果，默认 production。"""
     (run_dir / "code" / f"{result_id}.py").write_text("print('ok')\n", encoding="utf-8")
-    metrics: dict[str, float | bool] = {"objective": objective, "feasible": True}
+    metrics: dict[str, float | bool] = {
+        "objective": objective,
+        "feasible": True,
+        "endpoint_action_shift": 0.0,
+        "max_action_shift": 0.0,
+        "guard_pass_rate": 1.0,
+    }
     metrics.update(extra or {})
     (run_dir / "results" / "raw" / f"{result_id}.json").write_text(
         json.dumps({"metrics": metrics}), encoding="utf-8"
@@ -241,7 +247,7 @@ def _reconstruction(run_dir: Path, suffix: str) -> dict[str, str]:
 def _units(run_dir: Path, *, core: bool = True) -> dict[str, Any]:
     """构造一个核心 compare 单元及其实际证据。"""
     return {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "run_id": run_dir.name,
         "semantic_reconstructions": [
             _reconstruction(run_dir, "A"),
@@ -265,6 +271,7 @@ def _units(run_dir: Path, *, core: bool = True) -> dict[str, Any]:
                     "natural_baseline": "逐步选择当前增益最大项的贪心规则。",
                     "fallback_rule": "逆向指派失败时切换到已比较的事件区间覆盖路线。",
                     "primary_endpoint": {
+                        "endpoint_id": "objective",
                         "name": "objective",
                         "definition": "按冻结目标计算的精确总体收益。",
                         "exact_metric_alignment": "直接读取 production 结果的 objective。",
@@ -273,6 +280,19 @@ def _units(run_dir: Path, *, core: bool = True) -> dict[str, Any]:
                     "endpoint_resolution": {
                         "status": "comparison_planned",
                         "basis": "先比较总量与瓶颈目标的真实策略后果。",
+                        "candidate_endpoints": [
+                            {
+                                "endpoint_id": "objective",
+                                "definition": "按冻结目标计算的精确总体收益。",
+                                "problem_text_basis": "题面要求提高总体收益。",
+                            },
+                            {
+                                "endpoint_id": "bottleneck",
+                                "definition": "最弱实体的最低收益。",
+                                "problem_text_basis": "题面要求每个实体均受保障。",
+                            },
+                        ],
+                        "decision_rule": "若合理 endpoint 导致路线翻转则返回 analysis。",
                     },
                 },
                 "objective": {
@@ -332,16 +352,38 @@ def _fill_actual(units: dict[str, Any], *, insights: list[dict[str, Any]] | None
             "route_result_ids": {"R0": "baseline", "R1": "interval", "R2": "reverse"},
             "winner_route_id": "R1",
         },
-        "promotion_decision": {
-            "status": "promoted",
-            "selected_route_id": "R1",
-            "selected_result_id": "final",
-            "route_upgrade_passed": True,
-            "endpoint_consistent": True,
-            "guard_constraints_passed": True,
-            "decision_stable": True,
-            "evidence_result_ids": ["interval", "final"],
-            "rationale": "R1 达到改善阈值，且未触发 endpoint、guard 或稳定性失败。",
+        "actual_endpoint_resolution": {
+            "status": "determined",
+            "selected_endpoint_id": "objective",
+            "problem_text_basis": "总体收益是题面直接目标，瓶颈收益作为 guard。",
+            "evidence_result_ids": ["interval"],
+            "winner_route_ids": {"objective": "R1", "bottleneck": "R1"},
+        },
+        "qualification_evidence": {
+            "endpoint_checks": [
+                {
+                    "result_id": "interval",
+                    "metric": "endpoint_action_shift",
+                    "operator": "<=",
+                    "threshold": 1.0,
+                }
+            ],
+            "guards": [
+                {
+                    "result_id": "interval",
+                    "metric": "guard_pass_rate",
+                    "operator": ">=",
+                    "threshold": 0.8,
+                }
+            ],
+            "decision_stability": [
+                {
+                    "result_id": "interval",
+                    "metric": "max_action_shift",
+                    "operator": "<=",
+                    "threshold": 1.0,
+                }
+            ],
         },
         "first_batch_attack": {"result_ids": ["attack"], "conclusion": "排序未翻转。"},
         "refinement": {
@@ -545,7 +587,7 @@ def test_result_worse_than_baseline_cannot_reach_the_paper(tmp_path: Path) -> No
     )
     write_modeling_units(run_dir, units)
 
-    with pytest.raises(ContractError, match="低于计划声明的"):
+    with pytest.raises(ContractError, match="search_insufficient.*experiment"):
         require_v32_experiment_evidence(run_dir)
 
 

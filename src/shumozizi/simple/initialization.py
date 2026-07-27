@@ -187,7 +187,7 @@ def initialize_simple_run(
         atomic_json(
             run_dir / "analysis" / "MODELING_UNITS.json",
             {
-                "schema_version": "1.1",
+                "schema_version": "1.2",
                 "run_id": identifier,
                 "semantic_reconstructions": [],
                 "research_story": {

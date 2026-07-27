@@ -4016,6 +4016,13 @@ def _v32_scientific_challenge_status(run_dir: Path) -> dict[str, Any]:
             raise ContractError(
                 "科学挑战实际攻击证据已失效: " + "；".join(challenge_evidence["errors"])
             )
+        blocking_findings = challenge_evidence.get("blocking_findings", [])
+        if blocking_findings:
+            detail = ", ".join(
+                f"{item['finding_id']}→{item['rollback_target']}"
+                for item in blocking_findings
+            )
+            raise ContractError("科学挑战发现要求回退，不能进入 paper: " + detail)
 
         receipts: list[dict[str, Any]] = []
         receipt_errors: list[str] = []

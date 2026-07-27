@@ -43,6 +43,19 @@ _PROMOTION_CHECKS = frozenset(
         "decision_stable",
     }
 )
+_QUALIFICATION_FAILURE_KINDS = frozenset(
+    {
+        "model_repair",
+        "objective_redesign",
+        "endpoint_unresolved",
+        "search_insufficient",
+        "validation_insufficient",
+        "answer_rejected",
+        "missing_natural_baseline",
+    }
+)
+_ROLLBACK_TARGETS = frozenset({"analysis", "experiment"})
+_CHECK_OPERATORS = frozenset({"<", "<=", "==", "!=", ">=", ">"})
 _INSIGHT_KINDS = frozenset(
     {
         "mechanism",
@@ -176,7 +189,9 @@ def _route_definition(
     )
 
 
-def _validate_answer_contract(value: object, label: str) -> None:
+def _validate_answer_contract(
+    value: object, label: str, *, derive_qualification: bool
+) -> dict[str, Any]:
     """验证实验前逐问直接答案合同，避免先跑模型再倒推回答口径。"""
     contract = _require_mapping(value, label)
     _require_text(contract.get("required_output"), f"{label}.required_output")
@@ -184,6 +199,9 @@ def _validate_answer_contract(value: object, label: str) -> None:
     _require_text(contract.get("natural_baseline"), f"{label}.natural_baseline")
     _require_text(contract.get("fallback_rule"), f"{label}.fallback_rule")
     endpoint = _require_mapping(contract.get("primary_endpoint"), f"{label}.primary_endpoint")
+    endpoint_id = endpoint.get("endpoint_id")
+    if derive_qualification:
+        endpoint_id = _require_text(endpoint_id, f"{label}.primary_endpoint.endpoint_id")
     _require_text(endpoint.get("name"), f"{label}.primary_endpoint.name")
     _require_text(endpoint.get("definition"), f"{label}.primary_endpoint.definition")
     _require_text(
@@ -200,10 +218,54 @@ def _validate_answer_contract(value: object, label: str) -> None:
             f"{label}.endpoint_resolution.status 必须为 determined 或 comparison_planned"
         )
     _require_text(resolution.get("basis"), f"{label}.endpoint_resolution.basis")
+    candidate_ids = [endpoint_id] if isinstance(endpoint_id, str) else []
+    if derive_qualification and status == "comparison_planned":
+        candidates = resolution.get("candidate_endpoints")
+        if not isinstance(candidates, list) or len(candidates) < 2:
+            raise ContractError(
+                f"{label}.endpoint_resolution.candidate_endpoints 至少需要两个候选 endpoint"
+            )
+        candidate_ids: list[str] = []
+        for index, raw in enumerate(candidates):
+            item = _require_mapping(
+                raw, f"{label}.endpoint_resolution.candidate_endpoints[{index}]"
+            )
+            candidate_ids.append(
+                _require_text(
+                    item.get("endpoint_id"),
+                    f"{label}.endpoint_resolution.candidate_endpoints[{index}].endpoint_id",
+                )
+            )
+            _require_text(
+                item.get("definition"),
+                f"{label}.endpoint_resolution.candidate_endpoints[{index}].definition",
+            )
+            _require_text(
+                item.get("problem_text_basis"),
+                f"{label}.endpoint_resolution.candidate_endpoints[{index}].problem_text_basis",
+            )
+        if len(set(candidate_ids)) != len(candidate_ids):
+            raise ContractError(f"{label}.endpoint_resolution 的候选 endpoint_id 不得重复")
+        if endpoint_id not in candidate_ids:
+            raise ContractError(
+                f"{label}.primary_endpoint.endpoint_id 必须出现在候选 endpoint 中"
+            )
+        _require_text(
+            resolution.get("decision_rule"), f"{label}.endpoint_resolution.decision_rule"
+        )
+    return {
+        "primary_endpoint_id": endpoint_id,
+        "endpoint_candidate_ids": candidate_ids,
+        "endpoint_resolution_status": status,
+    }
 
 
 def _validate_unit_plan(
-    unit: dict[str, Any], *, question_ids: set[str], require_decision_contract: bool
+    unit: dict[str, Any],
+    *,
+    question_ids: set[str],
+    require_decision_contract: bool,
+    schema_version: str,
 ) -> dict[str, Any]:
     """验证一个建模单元在实验前已经声明比较、回退和验证边界。"""
     unit_id = _require_text(unit.get("unit_id"), "unit.unit_id")
@@ -219,8 +281,13 @@ def _validate_unit_plan(
     mode = unit.get("mode")
     if mode not in {"compare", "oracle_only"}:
         raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
+    answer_contract: dict[str, Any] = {}
     if require_decision_contract:
-        _validate_answer_contract(unit.get("answer_contract"), f"{unit_id}.answer_contract")
+        answer_contract = _validate_answer_contract(
+            unit.get("answer_contract"),
+            f"{unit_id}.answer_contract",
+            derive_qualification=schema_version == "1.2",
+        )
     objective = _require_mapping(unit.get("objective"), f"{unit_id}.objective")
     _require_text(objective.get("exact_metric"), f"{unit_id}.objective.exact_metric")
     if objective.get("direction") not in _OBJECTIVE_DIRECTIONS:
@@ -336,6 +403,8 @@ def _validate_unit_plan(
         "route_ids": route_ids,
         "fallback_route": fallback_route,
         "require_decision_contract": require_decision_contract,
+        "derive_qualification": schema_version == "1.2",
+        **answer_contract,
         "expected_upsides": expected_upsides,
         "families": families,
         "stop_reasons": set(reasons),
@@ -385,9 +454,283 @@ def _improvement_ratio(baseline: float, winner: float, direction: str) -> float:
     return (winner - baseline) / denominator
 
 
+def _finite_metric(result: dict[str, Any], metric: str, label: str) -> float:
+    """读取登记结果中的有限数值指标。"""
+    value = result.get("metrics", {}).get(metric)
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(float(value))
+    ):
+        raise ContractError(f"{label} 引用的指标 {metric} 不是有限数")
+    return float(value)
+
+
+def _compare_metric(value: float, operator: str, threshold: float) -> bool:
+    """执行预登记阈值比较，不接受任意表达式。"""
+    if operator == "<":
+        return value < threshold
+    if operator == "<=":
+        return value <= threshold
+    if operator == "==":
+        return math.isclose(value, threshold, rel_tol=0.0, abs_tol=1e-12)
+    if operator == "!=":
+        return not math.isclose(value, threshold, rel_tol=0.0, abs_tol=1e-12)
+    if operator == ">=":
+        return value >= threshold
+    return value > threshold
+
+
+def _evaluate_metric_checks(
+    checks: object,
+    *,
+    results: dict[str, dict[str, Any]],
+    question_id: str,
+    label: str,
+    minimum: int = 1,
+) -> tuple[bool, list[str]]:
+    """从真实结果指标计算一组 guard 或稳定性检查。"""
+    if not isinstance(checks, list) or len(checks) < minimum:
+        raise ContractError(f"{label} 至少需要 {minimum} 项结果指标检查")
+    failed: list[str] = []
+    for index, raw in enumerate(checks):
+        check_label = f"{label}[{index}]"
+        check = _require_mapping(raw, check_label)
+        result_id = _require_text(check.get("result_id"), f"{check_label}.result_id")
+        metric = _require_text(check.get("metric"), f"{check_label}.metric")
+        operator = check.get("operator")
+        if operator not in _CHECK_OPERATORS:
+            raise ContractError(
+                f"{check_label}.operator 必须属于 {', '.join(sorted(_CHECK_OPERATORS))}"
+            )
+        threshold_raw = check.get("threshold")
+        if (
+            not isinstance(threshold_raw, (int, float))
+            or isinstance(threshold_raw, bool)
+            or not math.isfinite(float(threshold_raw))
+        ):
+            raise ContractError(f"{check_label}.threshold 必须是有限数")
+        result = _production_result(
+            results,
+            result_id=result_id,
+            question_id=question_id,
+            label=f"{check_label}.result_id",
+        )
+        value = _finite_metric(result, metric, check_label)
+        if not _compare_metric(value, str(operator), float(threshold_raw)):
+            failed.append(
+                f"{result_id}.{metric}={value:g} 未满足 {operator} {float(threshold_raw):g}"
+            )
+    return not failed, failed
+
+
+def evaluate_route_upgrade(
+    plan: dict[str, Any],
+    scores: dict[str, float],
+    winner_route_id: str,
+    comparison: dict[str, Any],
+) -> dict[str, Any]:
+    """由 exact 分数、事前阈值和真实界证据计算路线晋级价值。"""
+    baseline_route = plan["route_ids"][0]
+    ratio = _improvement_ratio(
+        scores[baseline_route], scores[winner_route_id], plan["direction"]
+    )
+    passed = ratio >= plan["improvement_threshold"]
+    near_bound = comparison.get("baseline_near_bound") is True
+    near_bound_evidence: str | None = None
+    if near_bound and not passed:
+        near_bound_evidence = _require_text(
+            comparison.get("near_bound_evidence"),
+            f"{plan['unit_id']}.actual.comparison.near_bound_evidence",
+        )
+        # 当自然 baseline 已接近真实可证界时，改善很小是问题上限而非搜索失败。
+        passed = True
+    return {
+        "passed": passed,
+        "measured_improvement_ratio": ratio,
+        "required_improvement_ratio": plan["improvement_threshold"],
+        "baseline_near_bound": near_bound,
+        "near_bound_evidence": near_bound_evidence,
+    }
+
+
+def evaluate_endpoint_consistency(
+    actual: dict[str, Any],
+    plan: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+    checks: object,
+    *,
+    label: str,
+) -> dict[str, Any]:
+    """裁决 endpoint 是否最终确定且未导致合理口径下的路线翻转。"""
+    resolution = _require_mapping(actual.get("actual_endpoint_resolution"), label)
+    status = resolution.get("status")
+    selected = resolution.get("selected_endpoint_id")
+    _require_text(resolution.get("problem_text_basis"), f"{label}.problem_text_basis")
+    _production_result_ids(
+        results,
+        value=resolution.get("evidence_result_ids"),
+        question_id=plan["question_id"],
+        label=f"{label}.evidence_result_ids",
+    )
+    winners = _require_mapping(resolution.get("winner_route_ids"), f"{label}.winner_route_ids")
+    expected_endpoint_ids = set(plan["endpoint_candidate_ids"])
+    if not winners or set(winners) != expected_endpoint_ids:
+        raise ContractError(
+            f"{label}.winner_route_ids 必须完整覆盖预登记候选 endpoint: "
+            + ", ".join(sorted(expected_endpoint_ids))
+        )
+    winner_values: set[str] = set()
+    for endpoint_id, value in winners.items():
+        route_id = _require_text(value, f"{label}.winner_route_ids.{endpoint_id}")
+        if route_id not in plan["route_ids"]:
+            raise ContractError(
+                f"{label}.winner_route_ids.{endpoint_id} 必须引用已真实比较的路线"
+            )
+        winner_values.add(route_id)
+    metrics_passed, failures = _evaluate_metric_checks(
+        checks,
+        results=results,
+        question_id=plan["question_id"],
+        label=f"{label}.checks",
+    )
+    if len(winner_values) > 1:
+        failures.append("合理 endpoint 下赢家路线翻转")
+    if status != "determined":
+        failures.append("actual endpoint 尚未裁决为 determined")
+    if selected != plan.get("primary_endpoint_id"):
+        failures.append("最终 endpoint 与事前 primary endpoint 不一致")
+    return {
+        "passed": metrics_passed and not failures,
+        "selected_endpoint_id": selected,
+        "failures": failures,
+    }
+
+
+def evaluate_guards(
+    checks: object,
+    *,
+    results: dict[str, dict[str, Any]],
+    question_id: str,
+    label: str,
+) -> dict[str, Any]:
+    """由登记结果中的 guard 指标计算约束是否通过。"""
+    passed, failures = _evaluate_metric_checks(
+        checks, results=results, question_id=question_id, label=label
+    )
+    return {"passed": passed, "failures": failures}
+
+
+def evaluate_decision_stability(
+    checks: object,
+    *,
+    results: dict[str, dict[str, Any]],
+    question_id: str,
+    label: str,
+) -> dict[str, Any]:
+    """由行动漂移或翻转率等真实指标计算决策稳定性。"""
+    passed, failures = _evaluate_metric_checks(
+        checks, results=results, question_id=question_id, label=label
+    )
+    return {"passed": passed, "failures": failures}
+
+
+def derive_answer_qualification(
+    actual: dict[str, Any],
+    plan: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+    scores: dict[str, float],
+) -> dict[str, Any]:
+    """从生产结果派生唯一逐问答案资格，不信任作者填写的结论。"""
+    label = f"{plan['unit_id']}.actual.qualification_evidence"
+    evidence = _require_mapping(actual.get("qualification_evidence"), label)
+    comparison = _require_mapping(actual.get("comparison"), f"{plan['unit_id']}.actual.comparison")
+    winner = _require_text(
+        comparison.get("winner_route_id"),
+        f"{plan['unit_id']}.actual.comparison.winner_route_id",
+    )
+    upgrade = evaluate_route_upgrade(plan, scores, winner, comparison)
+    endpoint = evaluate_endpoint_consistency(
+        actual, plan, results, evidence.get("endpoint_checks"),
+        label=f"{plan['unit_id']}.actual.actual_endpoint_resolution",
+    )
+    guards = evaluate_guards(
+        evidence.get("guards"), results=results, question_id=plan["question_id"],
+        label=f"{label}.guards",
+    )
+    stability = evaluate_decision_stability(
+        evidence.get("decision_stability"),
+        results=results, question_id=plan["question_id"],
+        label=f"{label}.decision_stability",
+    )
+    checks = {
+        "route_upgrade_passed": upgrade["passed"],
+        "endpoint_consistent": endpoint["passed"],
+        "guard_constraints_passed": guards["passed"],
+        "decision_stable": stability["passed"],
+    }
+    details = {
+        "route_upgrade": upgrade,
+        "endpoint": endpoint,
+        "guards": guards,
+        "decision_stability": stability,
+    }
+    if all(checks.values()):
+        return {
+            "status": "promoted",
+            "route_id": winner,
+            "result_id": actual["refinement"]["final_result_id"],
+            "checks": checks,
+            "details": details,
+        }
+
+    fallback_evidence = evidence.get("fallback")
+    fallback_passed = False
+    fallback_details: dict[str, Any] = {}
+    if isinstance(fallback_evidence, dict) and endpoint["passed"]:
+        fallback_guards = evaluate_guards(
+            fallback_evidence.get("guards"),
+            results=results, question_id=plan["question_id"],
+            label=f"{label}.fallback.guards",
+        )
+        fallback_stability = evaluate_decision_stability(
+            fallback_evidence.get("decision_stability"),
+            results=results, question_id=plan["question_id"],
+            label=f"{label}.fallback.decision_stability",
+        )
+        fallback_details = {
+            "guards": fallback_guards,
+            "decision_stability": fallback_stability,
+        }
+        fallback_passed = fallback_guards["passed"] and fallback_stability["passed"]
+    if fallback_passed:
+        fallback_route = plan["fallback_route"]
+        return {
+            "status": "fallback_selected",
+            "route_id": fallback_route,
+            "result_id": comparison["route_result_ids"][fallback_route],
+            "checks": checks,
+            "details": {**details, "fallback": fallback_details},
+        }
+
+    if not endpoint["passed"]:
+        failure_kind, rollback_target = "endpoint_unresolved", "analysis"
+    elif not guards["passed"] or not stability["passed"]:
+        failure_kind, rollback_target = "validation_insufficient", "experiment"
+    else:
+        failure_kind, rollback_target = "search_insufficient", "experiment"
+    return {
+        "status": "redesign_required",
+        "failure_kind": failure_kind,
+        "rollback_target": rollback_target,
+        "checks": checks,
+        "details": details,
+    }
+
+
 def _validate_comparison_actual(
     actual: dict[str, Any], plan: dict[str, Any], results: dict[str, dict[str, Any]]
-) -> None:
+) -> dict[str, float]:
     """用统一 exact、实际预算和可行性事实复验 compare 单元。
 
     这里必须真正比较分数，而不只是确认每条路线都跑过：只验证"可行且预算公平"
@@ -432,8 +775,13 @@ def _validate_comparison_actual(
         comparison,
         plan,
         scores,
-        promotion_decision=actual.get("promotion_decision"),
+        promotion_decision=(
+            actual.get("promotion_decision")
+            if not plan["derive_qualification"]
+            else None
+        ),
     )
+    return scores
 
 
 def _validate_winner_and_improvement(
@@ -473,6 +821,9 @@ def _validate_winner_and_improvement(
     threshold = plan["improvement_threshold"]
     ratio = _improvement_ratio(scores[baseline_route], scores[winner], direction)
     if ratio < threshold:
+        if plan["derive_qualification"]:
+            # 1.2 由答案资格派生器决定 fallback 或回退，比较层只保留实测事实。
+            return
         if (
             isinstance(promotion_decision, dict)
             and promotion_decision.get("status") == "fallback_selected"
@@ -593,6 +944,41 @@ def _validate_promotion_decision(
     raise ContractError(
         f"{unit_id} 的主答案尚未冻结：晋级检查失败，必须返回 {rollback_target} 重设计"
     )
+
+
+def _validate_derived_qualification(
+    actual: dict[str, Any],
+    plan: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+    scores: dict[str, float],
+) -> dict[str, Any]:
+    """验证可选人工快照与系统派生答案资格完全一致。"""
+    qualification = derive_answer_qualification(actual, plan, results, scores)
+    declared = actual.get("promotion_decision")
+    if declared is None:
+        return qualification
+    decision = _require_mapping(
+        declared, f"{plan['unit_id']}.actual.promotion_decision"
+    )
+    expected = {
+        "status": qualification["status"],
+        "selected_route_id": qualification.get("route_id"),
+        "selected_result_id": qualification.get("result_id"),
+        "rollback_target": qualification.get("rollback_target"),
+        "failure_kind": qualification.get("failure_kind"),
+    }
+    actual_snapshot = {key: decision.get(key) for key in expected}
+    if actual_snapshot != expected:
+        raise ContractError(
+            f"{plan['unit_id']}.actual.promotion_decision 与系统派生答案资格不一致；"
+            "不得人工覆盖 route upgrade、endpoint、guard 或稳定性结论"
+        )
+    for name, passed in qualification["checks"].items():
+        if decision.get(name) != passed:
+            raise ContractError(
+                f"{plan['unit_id']}.actual.promotion_decision.{name} 与系统计算不一致"
+            )
+    return qualification
 
 
 def _validate_route_upside_expectations(
@@ -767,11 +1153,22 @@ def _validate_actual_unit(
                 )
             )
     if plan["mode"] == "compare":
-        _validate_comparison_actual(actual, plan, results)
+        scores = _validate_comparison_actual(actual, plan, results)
         route_result_ids = actual["comparison"]["route_result_ids"]
         search_ids.update(str(route_result_ids[route_id]) for route_id in plan["route_ids"])
         if plan["require_decision_contract"]:
-            _validate_promotion_decision(actual, plan, results)
+            if plan["derive_qualification"]:
+                qualification = _validate_derived_qualification(
+                    actual, plan, results, scores
+                )
+                if qualification["status"] == "redesign_required":
+                    raise ContractError(
+                        f"{plan['unit_id']} 尚无可提交答案："
+                        f"{qualification['failure_kind']}，必须返回 "
+                        f"{qualification['rollback_target']}"
+                    )
+            else:
+                _validate_promotion_decision(actual, plan, results)
     else:
         verify_ids.update(
             _production_result_ids(
@@ -835,7 +1232,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     if not is_competition_first_v32_state(state):
         raise ContractError("MODELING_UNITS 只适用于 Competition-First v3.2 运行")
     schema_version = payload.get("schema_version")
-    if schema_version not in {"1.0", "1.1"} or payload.get("run_id") != state["run_id"]:
+    if schema_version not in {"1.0", "1.1", "1.2"} or payload.get("run_id") != state["run_id"]:
         raise ContractError("MODELING_UNITS 的 schema_version 或 run_id 不匹配")
     # 网页讨论不是阶段门；但一旦选择登记，就必须保持本地先行和延迟揭示边界。
     validate_external_discussion_protocol_if_present(run_dir)
@@ -850,20 +1247,36 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     plans: list[dict[str, Any]] = []
     seen_units: set[str] = set()
     covered_questions: set[str] = set()
+    question_unit_counts: dict[str, int] = {}
     for raw in raw_units:
         unit = _require_mapping(raw, "units[]")
         plan = _validate_unit_plan(
             unit,
             question_ids=question_ids,
-            require_decision_contract=schema_version == "1.1",
+            require_decision_contract=schema_version in {"1.1", "1.2"},
+            schema_version=schema_version,
         )
         if plan["unit_id"] in seen_units:
             raise ContractError("MODELING_UNITS 的 unit_id 不得重复")
         seen_units.add(plan["unit_id"])
         covered_questions.add(plan["question_id"])
+        question_unit_counts[plan["question_id"]] = (
+            question_unit_counts.get(plan["question_id"], 0) + 1
+        )
         plans.append(plan)
     if covered_questions != question_ids:
         raise ContractError("MODELING_UNITS 必须覆盖每个必答问题")
+    if schema_version == "1.2":
+        duplicates = sorted(
+            question_id
+            for question_id, count in question_unit_counts.items()
+            if count != 1
+        )
+        if duplicates:
+            raise ContractError(
+                "MODELING_UNITS 1.2 每个必答问题必须恰有一个答案单元: "
+                + ", ".join(duplicates)
+            )
     if not any(plan["core_question"] for plan in plans):
         raise ContractError(
             "MODELING_UNITS 必须至少标记一个核心问题；"
@@ -909,8 +1322,12 @@ def write_modeling_units(run_dir: Path, payload: dict[str, Any]) -> dict[str, An
     existing_path = run_dir / MODELING_UNITS_PATH
     if existing_path.is_file():
         existing = load_json(existing_path)
-        if existing.get("schema_version") == "1.1" and payload.get("schema_version") != "1.1":
-            raise ContractError("新 v3.2 运行的 MODELING_UNITS 不得降级到 1.0 绕过决策合同")
+        existing_version = existing.get("schema_version")
+        requested_version = payload.get("schema_version")
+        if existing_version == "1.2" and requested_version != "1.2":
+            raise ContractError("新 v3.2 运行的 MODELING_UNITS 不得降级绕过系统派生答案资格")
+        if existing_version == "1.1" and requested_version == "1.0":
+            raise ContractError("MODELING_UNITS 不得降级到 1.0 绕过决策合同")
     validate_modeling_units(run_dir, payload, require_actual=False)
     document = dict(payload)
     document["updated_at"] = utc_now()
@@ -996,7 +1413,60 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
         payload = load_json(path)
     except (OSError, ValueError):
         return {}
-    selections: dict[str, dict[str, str]] = {}
+    schema_version = payload.get("schema_version")
+    if schema_version == "1.2":
+        state = read_simple_state(run_dir)
+        question_ids = set(state["required_questions"])
+        results = {
+            item["result_id"]: item for item in read_result_index(run_dir)["results"]
+        }
+        selections: dict[str, dict[str, str]] = {}
+        for raw in payload.get("units", []):
+            unit = _require_mapping(raw, "units[]")
+            plan = _validate_unit_plan(
+                unit,
+                question_ids=question_ids,
+                require_decision_contract=True,
+                schema_version="1.2",
+            )
+            actual = _require_mapping(
+                unit.get("actual"), f"{plan['unit_id']}.actual"
+            )
+            comparison = _require_mapping(
+                actual.get("comparison"), f"{plan['unit_id']}.actual.comparison"
+            )
+            route_result_ids = _require_mapping(
+                comparison.get("route_result_ids"),
+                f"{plan['unit_id']}.actual.comparison.route_result_ids",
+            )
+            scores = {
+                route_id: _finite_metric(
+                    _production_result(
+                        results,
+                        result_id=route_result_ids[route_id],
+                        question_id=plan["question_id"],
+                        label=f"{plan['unit_id']}.actual.comparison.{route_id}",
+                    ),
+                    plan["exact_metric"],
+                    f"{plan['unit_id']}.actual.comparison.{route_id}",
+                )
+                for route_id in plan["route_ids"]
+            }
+            qualification = derive_answer_qualification(actual, plan, results, scores)
+            selection: dict[str, str] = {"status": qualification["status"]}
+            for source, target in (
+                ("route_id", "route_id"),
+                ("result_id", "result_id"),
+                ("failure_kind", "failure_kind"),
+                ("rollback_target", "rollback_target"),
+            ):
+                value = qualification.get(source)
+                if isinstance(value, str):
+                    selection[target] = value
+            selections[plan["question_id"]] = selection
+        return selections
+
+    selections = {}
     for unit in payload.get("units", []):
         if not isinstance(unit, dict):
             continue

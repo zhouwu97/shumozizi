@@ -15,12 +15,107 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import utc_now
+from shumozizi.simple.state import (
+    is_competition_first_v32_state,
+    read_simple_state,
+    utc_now,
+)
 
 FOCUSED_FOLLOWUP_PATH = Path("review/FOCUSED_FOLLOWUP.md")
 SCIENTIFIC_CHALLENGE_EVIDENCE_PATH = Path("review/scientific-challenge-evidence.json")
 STRONGER_ALTERNATIVE_PATH = Path("review/stronger-alternative.json")
 _ALTERNATIVE_RESOLUTIONS = frozenset({"attempted", "infeasible_in_schedule"})
+_FINDING_ACTIONS = frozenset(
+    {
+        "WRITING_FIX",
+        "MODEL_REPAIR",
+        "OBJECTIVE_REDESIGN",
+        "DATA_LIMITATION",
+        "ANSWER_REJECTION",
+    }
+)
+_BLOCKING_FINDING_ACTIONS = frozenset(
+    {"MODEL_REPAIR", "OBJECTIVE_REDESIGN", "ANSWER_REJECTION"}
+)
+_FINDING_STATUSES = frozenset({"open", "closed"})
+
+
+def _normalize_scientific_findings(
+    run_dir: Path,
+    findings: object,
+    current_results: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """验证科学挑战发现的动作、回退阶段和关闭证据。"""
+    if not isinstance(findings, list):
+        raise ContractError("科学挑战 findings 必须是数组")
+    question_ids = set(read_simple_state(run_dir)["required_questions"])
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    rollback_by_action: dict[str, set[str]] = {
+        "WRITING_FIX": {"paper"},
+        "MODEL_REPAIR": {"experiment"},
+        "OBJECTIVE_REDESIGN": {"analysis"},
+        "DATA_LIMITATION": {"paper"},
+        "ANSWER_REJECTION": {"analysis", "experiment"},
+    }
+    for index, raw in enumerate(findings):
+        if not isinstance(raw, dict):
+            raise ContractError(f"scientific findings[{index}] 必须是对象")
+        item = dict(raw)
+        finding_id = item.get("finding_id")
+        if not isinstance(finding_id, str) or not finding_id.strip() or finding_id in seen:
+            raise ContractError("scientific finding_id 必须是唯一非空文本")
+        seen.add(finding_id)
+        question_id = item.get("question_id")
+        if question_id not in question_ids:
+            raise ContractError(f"{finding_id}.question_id 不是必答问题")
+        if item.get("severity") not in {"P0", "P1", "P2", "P3"}:
+            raise ContractError(f"{finding_id}.severity 必须为 P0-P3")
+        if not isinstance(item.get("finding"), str) or not item["finding"].strip():
+            raise ContractError(f"{finding_id}.finding 必须是非空文本")
+        action = item.get("action_type")
+        if action not in _FINDING_ACTIONS:
+            raise ContractError(f"{finding_id}.action_type 不受支持")
+        rollback = item.get("rollback_target")
+        if rollback not in rollback_by_action[action]:
+            raise ContractError(
+                f"{finding_id}.{action} 必须回退到 "
+                + "/".join(sorted(rollback_by_action[action]))
+            )
+        invalidates = item.get("invalidates")
+        if (
+            not isinstance(invalidates, list)
+            or not invalidates
+            or not all(isinstance(value, str) and value.strip() for value in invalidates)
+        ):
+            raise ContractError(f"{finding_id}.invalidates 必须是非空文本数组")
+        if not isinstance(item.get("required_action"), str) or not item["required_action"].strip():
+            raise ContractError(f"{finding_id}.required_action 必须是非空文本")
+        status = item.get("status")
+        if status not in _FINDING_STATUSES:
+            raise ContractError(f"{finding_id}.status 必须为 open 或 closed")
+        closure_ids = item.get("closure_evidence_result_ids")
+        if not isinstance(closure_ids, list) or not all(
+            isinstance(value, str) and value.strip() for value in closure_ids
+        ):
+            raise ContractError(f"{finding_id}.closure_evidence_result_ids 必须是文本数组")
+        missing = [value for value in closure_ids if value not in current_results]
+        if missing:
+            raise ContractError(
+                f"{finding_id} 绑定了非 current production 关闭证据: "
+                + ", ".join(missing)
+            )
+        if status == "closed" and action in _BLOCKING_FINDING_ACTIONS and not closure_ids:
+            raise ContractError(f"{finding_id} 不能没有真实结果证据就关闭 {action}")
+        if action == "DATA_LIMITATION" and (
+            not isinstance(item.get("why_not_repairable"), str)
+            or not item["why_not_repairable"].strip()
+        ):
+            raise ContractError(
+                f"{finding_id}.DATA_LIMITATION 必须说明为何无法通过模型或实验修复"
+            )
+        normalized.append(item)
+    return normalized
 
 
 def record_stronger_alternative(
@@ -196,6 +291,7 @@ def record_scientific_challenge_evidence(
     result_ids: list[str],
     attack_description: str,
     comparison_result_ids: list[str] | None = None,
+    findings: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """绑定科学挑战的当前结论与保留对照执行结果。
 
@@ -265,13 +361,21 @@ def record_scientific_challenge_evidence(
         }
         for result_id in comparison_ids
     )
+    is_v32 = is_competition_first_v32_state(read_simple_state(run_dir))
+    normalized_findings = _normalize_scientific_findings(
+        run_dir, findings or [], current_results
+    ) if is_v32 or findings is not None else None
     payload = {
-        "schema_version": "1.2" if comparison_ids else "1.0",
+        "schema_version": (
+            "1.3" if normalized_findings is not None else "1.2" if comparison_ids else "1.0"
+        ),
         "run_id": run_dir.name,
         "attack_description": attack_description.strip(),
         "results": records,
         "recorded_at": utc_now(),
     }
+    if normalized_findings is not None:
+        payload["findings"] = normalized_findings
     atomic_json(run_dir / SCIENTIFIC_CHALLENGE_EVIDENCE_PATH, payload)
     return payload
 
@@ -293,7 +397,7 @@ def verify_scientific_challenge_evidence(run_dir: Path) -> dict[str, Any]:
         if payload.get("run_id") != run_dir.name or not payload.get("attack_description"):
             raise ContractError("科学挑战证据 run_id 或攻击描述无效")
         schema_version = payload.get("schema_version", "1.0")
-        if schema_version not in {"1.0", "1.1", "1.2"}:
+        if schema_version not in {"1.0", "1.1", "1.2", "1.3"}:
             raise ContractError("科学挑战证据 schema_version 不受支持")
         results = {
             item["result_id"]: item
@@ -308,12 +412,12 @@ def verify_scientific_challenge_evidence(run_dir: Path) -> dict[str, Any]:
             evidence_role = item.get("evidence_role", "current") if isinstance(item, dict) else None
             allowed_statuses = (
                 {"current", "superseded"}
-                if schema_version == "1.2" and evidence_role == "comparison"
+                if schema_version in {"1.2", "1.3"} and evidence_role == "comparison"
                 else {"current"}
             )
             if (
                 evidence_role not in {"current", "comparison"}
-                or (evidence_role == "comparison" and schema_version != "1.2")
+                or (evidence_role == "comparison" and schema_version not in {"1.2", "1.3"})
                 or result is None
                 or result.get("status") not in allowed_statuses
                 or not isinstance(item, dict)
@@ -361,6 +465,28 @@ def verify_scientific_challenge_evidence(run_dir: Path) -> dict[str, Any]:
                 errors.append(f"科学挑战结果已失效或漂移: {result_id}")
         if not payload.get("results"):
             errors.append("科学挑战没有绑定任何执行结果")
-        return {"valid": not errors, "errors": errors, "evidence": payload}
+        blocking_findings: list[dict[str, Any]] = []
+        if schema_version == "1.3":
+            try:
+                normalized = _normalize_scientific_findings(
+                    run_dir, payload.get("findings"), {
+                        key: value
+                        for key, value in results.items()
+                        if value.get("status") == "current"
+                    }
+                )
+                blocking_findings = [
+                    item for item in normalized
+                    if item["status"] == "open"
+                    and item["action_type"] in _BLOCKING_FINDING_ACTIONS
+                ]
+            except ContractError as exc:
+                errors.append(str(exc))
+        return {
+            "valid": not errors,
+            "errors": errors,
+            "evidence": payload,
+            "blocking_findings": blocking_findings,
+        }
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         return {"valid": False, "errors": [str(exc)]}

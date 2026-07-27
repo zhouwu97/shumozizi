@@ -9,7 +9,9 @@ description: 从 Competition-First v3.2 的当前真实结果组织、编译和�
 
 ## 第零步：确认可以写论文
 
-逐问检查 `MODELING_UNITS.json` 的 `promotion_decision`：只有 `promoted` 或 `fallback_selected` 才能成为主答案，`redesign_required` 必须回到分析/实验。`answer_map.primary_result_id` 必须等于最终晋级或回退选中的结果。没有主答案与明确 fallback 时，不开始完整初稿。
+逐问读取 `MODELING_UNITS.json` 由真实结果指标系统派生的答案资格：只有 `promoted` 或 `fallback_selected` 才能成为主答案，`redesign_required` 必须按 `rollback_target` 回到分析/实验。`answer_map.primary_result_id` 必须等于系统最终晋级或回退选中的结果。任一必答问题没有合格答案时，不开始完整初稿。
+
+科学挑战中的发现必须绑定 `action_type`、`rollback_target`、`invalidates`、`required_action` 和关闭证据。未关闭的 `MODEL_REPAIR`、`OBJECTIVE_REDESIGN`、`ANSWER_REJECTION` 阻断论文；只有 `WRITING_FIX` 和已说明不可修复原因的 `DATA_LIMITATION` 可留在 paper 阶段。正式论文检查自然论证内容，不要求出现 `result_id`、实验收据、证明义务或“问题继承”等内部工作流术语。
 
 ---
 

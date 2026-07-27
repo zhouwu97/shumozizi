@@ -34,7 +34,7 @@ description: 对 Competition-First v3.1 运行执行条件目标语义审查、�
 4. 是否存在值得真实尝试的更强路线或目标定义？
 5. 下一项实验中，哪一项最可能提升模型结果、机制洞察或论文竞争力？
 
-每个发现必须判断修复层级。只涉及措辞、图表说明、证据边界或章节组织的，进入 paper 修订；会改变 endpoint、目标、模型、代码、结果、主路线、fallback 或行动建议的，必须返回 analysis/experiment，并让旧结果、图表和论文口径失效。不得把模型与结果缺陷降级成“在局限性中说明”。
+每个发现必须写入 `scientific-challenge-evidence.json.findings`，登记 `finding_id`、问题、严重度、`action_type`、`rollback_target`、`invalidates`、`required_action`、状态和真实关闭证据。只涉及措辞、图表说明、证据边界或章节组织的用 `WRITING_FIX`；确实无法用当前数据或实验修复且说明原因的用 `DATA_LIMITATION`。会改变模型或结果的用 `MODEL_REPAIR` 返回 experiment，会改变 endpoint 或目标的用 `OBJECTIVE_REDESIGN` 返回 analysis，当前问没有正式答案时用 `ANSWER_REJECTION`。后三类未关闭时阻断 paper，不得降级成“在局限性中说明”。
 
 风险数量不做硬性要求——问题相互关联时可以合并分析，足够关键的单一缺陷值得全部精力。
 

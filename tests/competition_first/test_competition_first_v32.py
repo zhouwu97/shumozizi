@@ -46,7 +46,13 @@ def _register_result(
     source = run_dir / "code" / f"{result_id}.py"
     output = run_dir / "results" / "raw" / f"{result_id}.json"
     source.write_text("print('ok')\n", encoding="utf-8")
-    metrics: dict[str, float | bool] = {"objective": objective, "feasible": True}
+    metrics: dict[str, float | bool] = {
+        "objective": objective,
+        "feasible": True,
+        "endpoint_action_shift": 0.5,
+        "max_action_shift": 0.5,
+        "guard_pass_rate": 0.9,
+    }
     metrics.update(extra_metrics or {})
     output.write_text(json.dumps({"metrics": metrics}), encoding="utf-8")
     now = utc_now()
@@ -127,7 +133,7 @@ def _semantic_reconstruction(run_dir: Path, suffix: str) -> dict[str, str]:
 def _plan(run_dir: Path) -> dict[str, object]:
     """构造一个最小 compare 单元，覆盖 v3.2 的关键决策事实。"""
     return {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "run_id": run_dir.name,
         "semantic_reconstructions": [
             _semantic_reconstruction(run_dir, "A"),
@@ -155,6 +161,7 @@ def _plan(run_dir: Path) -> dict[str, object]:
                     "natural_baseline": "按题面优先级逐项构造的规则方案。",
                     "fallback_rule": "晋级失败时使用已通过稳定性检查的 R1。",
                     "primary_endpoint": {
+                        "endpoint_id": "objective",
                         "name": "objective",
                         "definition": "所有任务完成后的精确总成本。",
                         "exact_metric_alignment": "与 exact scorer 的 objective 字段完全一致。",
@@ -163,6 +170,19 @@ def _plan(run_dir: Path) -> dict[str, object]:
                     "endpoint_resolution": {
                         "status": "comparison_planned",
                         "basis": "聚合目标先通过候选后果 probe 冻结，主 endpoint 不变。",
+                        "candidate_endpoints": [
+                            {
+                                "endpoint_id": "objective",
+                                "definition": "所有任务完成后的精确总成本。",
+                                "problem_text_basis": "题面要求总成本最小。",
+                            },
+                            {
+                                "endpoint_id": "worst_case",
+                                "definition": "最坏任务的最大成本。",
+                                "problem_text_basis": "题面同时要求任务全部可行。",
+                            },
+                        ],
+                        "decision_rule": "若合理口径导致路线翻转或行动漂移超过 1，则返回分析。",
                     },
                 },
                 "objective": {
@@ -279,16 +299,38 @@ def _actual(plan: dict[str, object]) -> None:
             "route_result_ids": {"R0": "baseline", "R1": "structural", "R2": "global"},
             "winner_route_id": "R2",
         },
-        "promotion_decision": {
-            "status": "promoted",
-            "selected_route_id": "R2",
-            "selected_result_id": "final",
-            "route_upgrade_passed": True,
-            "endpoint_consistent": True,
-            "guard_constraints_passed": True,
-            "decision_stable": True,
-            "evidence_result_ids": ["global", "final", "sensitivity", "robustness"],
-            "rationale": "R2 达到升级阈值，且 endpoint、guard 与扰动下行动均保持稳定。",
+        "actual_endpoint_resolution": {
+            "status": "determined",
+            "selected_endpoint_id": "objective",
+            "problem_text_basis": "总成本最小是题面直接目标。",
+            "evidence_result_ids": ["sensitivity"],
+            "winner_route_ids": {"objective": "R2", "worst_case": "R2"},
+        },
+        "qualification_evidence": {
+            "endpoint_checks": [
+                {
+                    "result_id": "sensitivity",
+                    "metric": "endpoint_action_shift",
+                    "operator": "<=",
+                    "threshold": 1.0,
+                }
+            ],
+            "guards": [
+                {
+                    "result_id": "robustness",
+                    "metric": "guard_pass_rate",
+                    "operator": ">=",
+                    "threshold": 0.8,
+                }
+            ],
+            "decision_stability": [
+                {
+                    "result_id": "sensitivity",
+                    "metric": "max_action_shift",
+                    "operator": "<=",
+                    "threshold": 1.0,
+                }
+            ],
         },
         "first_batch_attack": {"result_ids": ["attack"], "conclusion": "未发现排序翻转。"},
         "refinement": {
@@ -427,15 +469,112 @@ def test_v32_failed_stability_cannot_promote_exact_winner(tmp_path: Path) -> Non
         ("sensitivity", 7.2),
         ("robustness", 7.3),
     ):
+        extra = {"max_action_shift": 2.0} if result_id == "sensitivity" else None
+        _register_result(run_dir, result_id, objective=objective, extra_metrics=extra)
+    _actual(plan)
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="validation_insufficient.*experiment"):
+        require_v32_experiment_evidence(run_dir)
+
+
+def test_v32_promotion_checks_ignore_manual_override(tmp_path: Path) -> None:
+    """人工填写的通过结论不能覆盖由真实指标计算出的答案资格。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-derived-promotion",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
         _register_result(run_dir, result_id, objective=objective)
     _actual(plan)
     unit = plan["units"][0]
-    assert isinstance(unit, dict)
-    decision = unit["actual"]["promotion_decision"]
-    decision["decision_stable"] = False
+    unit["actual"]["promotion_decision"] = {
+        "status": "fallback_selected",
+        "selected_route_id": "R1",
+        "selected_result_id": "structural",
+        "rollback_target": None,
+        "failure_kind": None,
+        "route_upgrade_passed": False,
+        "endpoint_consistent": True,
+        "guard_constraints_passed": True,
+        "decision_stable": True,
+    }
     write_modeling_units(run_dir, plan)
 
-    with pytest.raises(ContractError, match="不能标记 promoted"):
+    with pytest.raises(ContractError, match="系统派生答案资格不一致"):
+        require_v32_experiment_evidence(run_dir)
+
+
+def test_v32_endpoint_ranking_reversal_returns_to_analysis(tmp_path: Path) -> None:
+    """合理 endpoint 导致赢家翻转时必须回到 analysis，不能降级为敏感性说明。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-endpoint-reversal",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _actual(plan)
+    unit = plan["units"][0]
+    unit["actual"]["actual_endpoint_resolution"]["winner_route_ids"]["worst_case"] = "R1"
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="endpoint_unresolved.*analysis"):
+        require_v32_experiment_evidence(run_dir)
+
+
+def test_v32_endpoint_resolution_must_cover_all_planned_candidates(tmp_path: Path) -> None:
+    """endpoint 裁决不能用空赢家映射伪造已完成候选后果比较。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-endpoint-evidence-empty",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _actual(plan)
+    unit = plan["units"][0]
+    unit["actual"]["actual_endpoint_resolution"]["winner_route_ids"] = {}
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="完整覆盖预登记候选 endpoint"):
         require_v32_experiment_evidence(run_dir)
 
 
@@ -463,18 +602,24 @@ def test_answer_map_must_follow_selected_fallback(tmp_path: Path) -> None:
     _actual(plan)
     unit = plan["units"][0]
     assert isinstance(unit, dict)
-    unit["actual"]["promotion_decision"] = {
-        "status": "fallback_selected",
-        "selected_route_id": "R1",
-        "selected_result_id": "structural",
-        "route_upgrade_passed": False,
-        "endpoint_consistent": True,
-        "guard_constraints_passed": True,
-        "decision_stable": True,
-        "failed_winner_checks": ["decision_stable"],
-        "fallback_trigger": "R2 的行动在预登记扰动下翻转。",
-        "evidence_result_ids": ["global", "structural", "sensitivity"],
-        "rationale": "选择在 endpoint、guard 和行动上稳定的事前 fallback。",
+    unit["objective"]["significant_improvement_ratio"] = 0.5
+    unit["actual"]["qualification_evidence"]["fallback"] = {
+        "guards": [
+            {
+                "result_id": "structural",
+                "metric": "guard_pass_rate",
+                "operator": ">=",
+                "threshold": 0.8,
+            }
+        ],
+        "decision_stability": [
+            {
+                "result_id": "structural",
+                "metric": "max_action_shift",
+                "operator": "<=",
+                "threshold": 1.0,
+            }
+        ],
     }
     write_modeling_units(run_dir, plan)
     require_v32_experiment_evidence(run_dir)
@@ -524,8 +669,8 @@ def test_v32_rejects_typst_even_when_a_template_engine_is_available(tmp_path: Pa
     assert read_simple_state(run_dir)["workflow"] == "competition-first-v3.2"
 
 
-def test_v32_uses_competition_answer_map_for_paper_readiness(tmp_path: Path) -> None:
-    """v3.2 继续使用逐问答案映射，而不是误落入旧 argument_map 协议。"""
+def test_v32_answer_map_alone_cannot_bypass_derived_qualification(tmp_path: Path) -> None:
+    """v3.2 即使已有 answer map，也必须先形成系统派生答案资格。"""
     run_dir = initialize_simple_run(
         tmp_path,
         "v32-paper-readiness",
@@ -541,7 +686,8 @@ def test_v32_uses_competition_answer_map_for_paper_readiness(tmp_path: Path) -> 
 
     status = check_paper_readiness(run_dir)
 
-    assert status["ready"], status
+    assert not status["ready"]
+    assert any("系统派生的答案资格" in error for error in status["errors"])
 
 
 def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
@@ -631,6 +777,21 @@ def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
             "robustness",
         ],
         attack_description="独立攻击当前生产结果。",
+        findings=[
+            {
+                "finding_id": "P1-01",
+                "question_id": "Q1",
+                "severity": "P1",
+                "finding": "有限样本不能证明全部连续边界。",
+                "action_type": "DATA_LIMITATION",
+                "rollback_target": "paper",
+                "invalidates": ["全域外推"],
+                "required_action": "正文明确有限样本的适用边界。",
+                "status": "open",
+                "closure_evidence_result_ids": [],
+                "why_not_repairable": "当前题目附件没有总体分布，赛程内无法取得新数据。",
+            }
+        ],
     )
     record_stronger_alternative(run_dir, found=False)
 
@@ -641,6 +802,32 @@ def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
     assert status["unresolved_high_severities"] == ["P1"]
     assert not (run_dir / "review" / "summary.json").exists()
     simple_review.require_paper_generation_allowed(run_dir)
+
+    record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=[
+            "baseline", "structural", "global", "attack",
+            "first-feasible", "final", "sensitivity", "robustness",
+        ],
+        attack_description="发现可通过补算修复的模型缺陷。",
+        findings=[
+            {
+                "finding_id": "P1-02",
+                "question_id": "Q1",
+                "severity": "P1",
+                "finding": "缺少可直接补算的参数置信带。",
+                "action_type": "MODEL_REPAIR",
+                "rollback_target": "experiment",
+                "invalidates": ["primary_result", "answer_map", "paper_section"],
+                "required_action": "重新拟合并登记置信带结果。",
+                "status": "open",
+                "closure_evidence_result_ids": [],
+            }
+        ],
+    )
+    blocked = simple_review.scientific_review_status(run_dir)
+    assert not blocked["allowed"]
+    assert "P1-02→experiment" in blocked["reason"]
 
 
 def test_v32_paper_generation_uses_modeling_evidence_not_legacy_tournament(

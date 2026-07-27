@@ -67,10 +67,12 @@ ELEMENT_PATTERNS: dict[str, re.Pattern[str]] = {
         re.IGNORECASE,
     ),
     "core_proof_obligations": re.compile(
-        r"证明义务|关键证明|正确性条件|不变量|边界条件|proof\s*obligation", re.IGNORECASE
+        r"模型检验|有效性检验|正确性检验|约束检查|边界条件|"
+        r"model\s*validation|validity\s*check", re.IGNORECASE
     ),
     "production_result_refs": re.compile(
-        r"生产结果|当前结果|结果依据|实验收据|sealed\s*result|result[_ -]?id", re.IGNORECASE
+        r"结果分析|数值结果|实验结果|比较结果|result\s*analysis|numerical\s*results?",
+        re.IGNORECASE,
     ),
     "comparison_route": re.compile(
         r"基线|替代路线|备选方法|对比方法|路线比较|comparison|alternative\s*route", re.IGNORECASE

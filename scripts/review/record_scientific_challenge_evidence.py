@@ -22,12 +22,17 @@ def main() -> int:
     parser.add_argument("--result-id", action="append", required=True)
     parser.add_argument("--comparison-result-id", action="append", default=[])
     parser.add_argument("--attack", required=True)
+    parser.add_argument("--findings-file", type=Path)
     args = parser.parse_args()
+    findings = None
+    if args.findings_file is not None:
+        findings = json.loads(args.findings_file.read_text(encoding="utf-8"))
     payload = record_scientific_challenge_evidence(
         args.run_dir.resolve(),
         result_ids=args.result_id,
         comparison_result_ids=args.comparison_result_id,
         attack_description=args.attack,
+        findings=findings,
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0

@@ -16,7 +16,7 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 - 自然 baseline 及其合理性；
 - fallback 与可执行切换条件。
 
-主终点必须在正式路线比较前显式声明。若 endpoint/聚合口径仍有合理歧义，标记 `comparison_planned` 并运行候选后果 probe；不能在看到路线结果后悄悄改成更有利的 endpoint。
+主终点必须在正式路线比较前显式声明。若 endpoint/聚合口径仍有合理歧义，标记 `comparison_planned`，登记至少两个候选 endpoint、题面依据和裁决规则，并运行候选后果 probe。实验结束必须写出 `actual_endpoint_resolution`；合理 endpoint 下路线翻转、行动漂移越界或缺少题意裁决依据时，答案资格由系统判为 `redesign_required / analysis`，不能降级成普通敏感性说明。
 
 目标不要在实验前冻结。题面留有解释空间时，在 `analysis/OBJECTIVE_CANDIDATES.json` 保留至少两个候选目标，各自写出公式、预期偏好的策略和题面依据，并声明一组共同的后果度量：至少一个效率指标，以及至少一个公平、瓶颈或安全指标。只有跑过低成本后果 probe、看清各候选会产生什么策略之后才冻结。若冻结的目标让某个 guard 指标跌破可接受下限而其它候选没有，必须写出显式权衡裁决并绑定至少两点真实 Pareto 证据。题意歧义仍未决时不得声明 `determined` 跳过比较。
 
@@ -24,7 +24,7 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 
 每题至少提出一个 baseline 和一条数学结构不同的竞争或反证路线。不要把只更换求解器的 GA、PSO、DE 当成不同路线。每条路线说明结构差异、最低成本 probe、潜在上限、失败方式和切换条件，写入 `analysis/ROUTE_COMPETITION.md`。
 
-将有决策价值的实验排进 `analysis/NEXT_EXPERIMENTS.md`：它必须明确成功或失败会改变什么，以及失败后回到 analysis 还是 experiment。优先运行区分性 probe，再冻结主路线与 fallback。连续两轮不能超过 baseline、复杂度上升没有实质收益、优势只在 proxy、endpoint 排序翻转、guard 跌破下限或行动方案不稳定时，不得把弱赢家包装成最终建议；应切换 fallback、重设可靠性约束，或重设计目标与策略。
+将有决策价值的实验排进 `analysis/NEXT_EXPERIMENTS.md`：它必须明确成功或失败会改变什么，以及失败后回到 analysis 还是 experiment。优先运行区分性 probe，再冻结主路线与 fallback。只登记用于资格计算的真实指标和阈值，不手填晋级结论。连续两轮不能超过 baseline、复杂度上升没有实质收益、优势只在 proxy、endpoint 排序翻转、guard 跌破下限或行动方案不稳定时，不得把弱赢家包装成最终建议；系统应选择已验证 fallback，或返回 analysis/experiment 重设计。
 
 当单一加权分数掩盖效率、公平、瓶颈或安全冲突时，优先报告可靠性约束下的最优解、真实 Pareto 后果，或稳健/最小后悔决策。最终只保留一个主答案和一个明确 fallback，不并列多个同等地位答案让评委替作者决策。
 

@@ -36,25 +36,54 @@ def _run(tmp_path: Path, name: str) -> Path:
     )
 
 
-def _register(run_dir: Path, result_id: str = "q1-primary") -> None:
+def _register(
+    run_dir: Path, result_id: str = "q1-primary", *, objective: float = 1.0
+) -> None:
     """登记一个真实生产结果。"""
     (run_dir / "code" / f"{result_id}.py").write_text("print('ok')\n", encoding="utf-8")
     (run_dir / "results" / "raw" / f"{result_id}.json").write_text(
-        json.dumps({"metrics": {"objective": 1.0}}), encoding="utf-8"
+        json.dumps(
+            {
+                "metrics": {
+                    "objective": objective,
+                    "feasible": True,
+                    "endpoint_action_shift": 0.0,
+                    "max_action_shift": 0.0,
+                    "guard_pass_rate": 1.0,
+                }
+            }
+        ),
+        encoding="utf-8",
     )
     now = utc_now()
     register_result(
         run_dir,
         result_id=result_id,
         question_id="Q1",
-        kind="primary",
+        kind=result_id,
         command=f"python code/{result_id}.py",
         source_script=f"code/{result_id}.py",
         input_files=[f"code/{result_id}.py"],
         output_files=[f"results/raw/{result_id}.json"],
-        metrics={"objective": 1.0},
+        metrics={
+            "objective": objective,
+            "feasible": True,
+            "endpoint_action_shift": 0.0,
+            "max_action_shift": 0.0,
+            "guard_pass_rate": 1.0,
+        },
         metric_sources={
-            "objective": {"file": f"results/raw/{result_id}.json", "json_path": "metrics.objective"}
+            name: {
+                "file": f"results/raw/{result_id}.json",
+                "json_path": f"metrics.{name}",
+            }
+            for name in (
+                "objective",
+                "feasible",
+                "endpoint_action_shift",
+                "max_action_shift",
+                "guard_pass_rate",
+            )
         },
         exit_code=0,
         stdout_path=f"results/{result_id}.stdout.log",
@@ -67,22 +96,142 @@ def _register(run_dir: Path, result_id: str = "q1-primary") -> None:
 
 
 def _units_with_insight(run_dir: Path, insight_id: str = "Q1-mechanism") -> None:
-    """写入一个带核心规律的最小建模单元文件。
-
-    这里直接落盘而不经过完整校验：本组测试只关心论文阶段是否消费规律。
-    """
+    """写入带系统答案资格与核心规律的最小 1.2 建模单元。"""
+    _register(run_dir, "q1-baseline", objective=2.0)
+    _register(run_dir, "q1-challenger", objective=1.5)
     (run_dir / "analysis").mkdir(parents=True, exist_ok=True)
     (run_dir / "analysis" / "MODELING_UNITS.json").write_text(
         json.dumps(
             {
-                "schema_version": "1.0",
+                "schema_version": "1.2",
                 "run_id": run_dir.name,
                 "units": [
                     {
                         "unit_id": "Q1-core",
                         "question_id": "Q1",
                         "core_question": True,
+                        "mode": "compare",
+                        "answer_contract": {
+                            "required_output": "给出目标值最小的可执行方案。",
+                            "decision_scope": "当前题面数据覆盖的全部对象。",
+                            "natural_baseline": "按题面顺序逐项选择的直接规则。",
+                            "fallback_rule": "主路线失效时使用已比较的 R1。",
+                            "primary_endpoint": {
+                                "endpoint_id": "objective",
+                                "name": "objective",
+                                "definition": "方案的精确目标值。",
+                                "exact_metric_alignment": "对应结果中的 objective。",
+                            },
+                            "primary_criterion": "可行且相对自然 baseline 至少改善 10%。",
+                            "endpoint_resolution": {
+                                "status": "comparison_planned",
+                                "basis": "比较主目标与瓶颈口径的行动后果。",
+                                "candidate_endpoints": [
+                                    {
+                                        "endpoint_id": "objective",
+                                        "definition": "方案的精确目标值。",
+                                        "problem_text_basis": "题面要求目标最小。",
+                                    },
+                                    {
+                                        "endpoint_id": "bottleneck",
+                                        "definition": "最坏对象的目标值。",
+                                        "problem_text_basis": "题面要求全部对象可行。",
+                                    },
+                                ],
+                                "decision_rule": "路线翻转则返回 analysis。",
+                            },
+                        },
+                        "objective": {
+                            "exact_metric": "objective",
+                            "direction": "minimize",
+                            "significant_improvement_ratio": 0.1,
+                        },
+                        "budget": {"kind": "wall_seconds", "tolerance_ratio": 0.1},
+                        "baseline": {
+                            "route_id": "R0",
+                            "mathematical_structure": "题面直接规则",
+                            "natural_rationale": "无需复杂模型即可执行。",
+                        },
+                        "competitive_routes": [
+                            {
+                                "route_id": "R1",
+                                "mathematical_structure": "局部结构优化",
+                                "structure_exploited": "利用局部可分结构。",
+                                "expected_upside": "相对基线降低目标。",
+                                "expected_improvement_ratio": 0.2,
+                            },
+                            {
+                                "route_id": "R2",
+                                "mathematical_structure": "全局离散优化",
+                                "structure_exploited": "联合搜索全部决策。",
+                                "expected_upside": "找到更低的全局候选。",
+                                "expected_improvement_ratio": 0.4,
+                            },
+                        ],
+                        "fallback": {
+                            "route_id": "R1",
+                            "switch_condition": "主路线资格失败时。",
+                        },
+                        "expected_outcome": "R2 相对自然 baseline 有实质改善。",
+                        "first_batch_attack": {
+                            "attack": "检查小实例排序。",
+                            "decision": "翻转则返回 analysis。",
+                        },
+                        "refinement": {
+                            "strategy_families": ["局部精化", "全局搜索"],
+                            "stop_reason_whitelist": ["budget_exhausted"],
+                        },
+                        "validation": {
+                            "oracle": {"required": False},
+                            "sensitivity": {"required": False},
+                            "robustness": {"required": False},
+                        },
                         "actual": {
+                            "comparison": {
+                                "route_result_ids": {
+                                    "R0": "q1-baseline",
+                                    "R1": "q1-challenger",
+                                    "R2": "q1-primary",
+                                },
+                                "winner_route_id": "R2",
+                            },
+                            "actual_endpoint_resolution": {
+                                "status": "determined",
+                                "selected_endpoint_id": "objective",
+                                "problem_text_basis": "题面直接要求精确目标最小。",
+                                "evidence_result_ids": ["q1-primary"],
+                                "winner_route_ids": {
+                                    "objective": "R2",
+                                    "bottleneck": "R2",
+                                },
+                            },
+                            "qualification_evidence": {
+                                "endpoint_checks": [
+                                    {
+                                        "result_id": "q1-primary",
+                                        "metric": "endpoint_action_shift",
+                                        "operator": "<=",
+                                        "threshold": 1.0,
+                                    }
+                                ],
+                                "guards": [
+                                    {
+                                        "result_id": "q1-primary",
+                                        "metric": "guard_pass_rate",
+                                        "operator": ">=",
+                                        "threshold": 0.8,
+                                    }
+                                ],
+                                "decision_stability": [
+                                    {
+                                        "result_id": "q1-primary",
+                                        "metric": "max_action_shift",
+                                        "operator": "<=",
+                                        "threshold": 1.0,
+                                    }
+                                ],
+                            },
+                            "refinement": {"final_result_id": "q1-primary"},
                             "insights": [
                                 {
                                     "insight_id": insight_id,
@@ -121,7 +270,13 @@ def test_paper_blocks_when_core_insight_is_produced_but_never_used(tmp_path: Pat
     _units_with_insight(run_dir)
     write_answer_map(
         run_dir,
-        {"Q1": {"result_ids": ["q1-primary"], "direct_answer_location": "paper/sections/q1.tex"}},
+        {
+            "Q1": {
+                "result_ids": ["q1-primary"],
+                "primary_result_id": "q1-primary",
+                "direct_answer_location": "paper/sections/q1.tex",
+            }
+        },
     )
 
     status = check_paper_readiness(run_dir)
@@ -140,6 +295,7 @@ def test_paper_passes_when_the_answer_map_cites_the_insight(tmp_path: Path) -> N
         {
             "Q1": {
                 "result_ids": ["q1-primary"],
+                "primary_result_id": "q1-primary",
                 "direct_answer_location": "paper/sections/q1.tex",
                 "insight_ids": ["Q1-mechanism"],
             }
@@ -159,10 +315,11 @@ def test_answer_map_cannot_cite_an_unknown_insight(tmp_path: Path) -> None:
     write_answer_map(
         run_dir,
         {
-            "Q1": {
-                "result_ids": ["q1-primary"],
-                "direct_answer_location": "paper/sections/q1.tex",
-                "insight_ids": ["Q1-imagined"],
+                "Q1": {
+                    "result_ids": ["q1-primary"],
+                    "primary_result_id": "q1-primary",
+                    "direct_answer_location": "paper/sections/q1.tex",
+                    "insight_ids": ["Q1-imagined"],
             }
         },
     )

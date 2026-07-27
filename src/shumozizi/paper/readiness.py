@@ -27,7 +27,11 @@ from shumozizi.simple.method_profile import METHOD_PROFILE_PATH
 from shumozizi.simple.objective_semantics import objective_semantics_digest
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import is_competition_first_state, read_simple_state
+from shumozizi.simple.state import (
+    is_competition_first_state,
+    is_competition_first_v32_state,
+    read_simple_state,
+)
 
 _APPENDIX_MODES = {"pdf", "attachment", "both"}
 
@@ -275,6 +279,9 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
 
     selections = final_answer_selections(run_dir)
     for question_id in required:
+        selection = selections.get(question_id)
+        if is_competition_first_v32_state(read_simple_state(run_dir)) and selection is None:
+            errors.append(f"必答问题 {question_id} 尚未形成系统派生的答案资格")
         item = answers.get(question_id)
         if not isinstance(item, dict):
             errors.append(f"必答问题 {question_id} 没有直接答案映射")
@@ -289,7 +296,6 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
                 errors.append(f"必答问题 {question_id} 引用了非 current 或不可写入论文的结果: {', '.join(stale)}")
         if not isinstance(location, str) or not location.strip():
             errors.append(f"必答问题 {question_id} 缺少直接答案位置")
-        selection = selections.get(question_id)
         if selection is not None:
             if selection["status"] == "redesign_required":
                 errors.append(

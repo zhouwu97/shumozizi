@@ -235,6 +235,47 @@ def test_question_labels_without_argument_are_blocked() -> None:
     assert not coverage["content_signals"]["explanation_marker_present"]
 
 
+def test_natural_argument_language_does_not_require_workflow_terms() -> None:
+    """正式论文可用自然论证覆盖要求，不必暴露内部协议词。"""
+    blueprint = deepcopy(_blueprint(["Q1"]))
+    question = next(
+        section for section in blueprint["sections"] if section["section_id"] == "question_Q1"
+    )
+    question["required_elements"] = [
+        "chosen_objective",
+        "question_inheritance",
+        "model_choice_rationale",
+        "mathematical_object_derivation",
+        "algorithm_steps",
+        "core_proof_obligations",
+        "production_result_refs",
+        "comparison_route",
+        "evidence_interpretation",
+        "unproved_boundary",
+        "direct_answer",
+    ]
+    paper_text = """
+    摘要
+    问题重述与假设
+    共享模型
+    Q1
+    问题分析与直接答案：推荐在第 12 周执行检测，最坏组失败率为 8.0%。
+    优化目标是在可靠性约束下尽量提前；在前问建立的概率模型基础上，本问增加分组决策变量。
+    为何采用区间删失模型：它能对应观测窗口。关键推导给出似然与约束，求解流程采用动态规划。
+    模型检验显示约束全部满足。结果分析中，该方案相对基线提前 1.2 周；原因在于瓶颈组约束首先活跃。
+    适用边界为当前 BMI 与孕周范围，当样本分布改变时需要重新估计。
+    全局稳健性：已完成敏感性检验。
+    结论
+    参考文献
+    """
+    for forbidden in ("production result", "result_id", "实验收据", "证明义务", "问题继承"):
+        assert forbidden not in paper_text
+
+    report = assess_paper_structure_signals(blueprint, pdf_text=paper_text, page_count=8)
+
+    assert report["status"] == "signals_present", report
+
+
 def test_question_section_needs_its_own_current_production_result(
     tmp_path: Path,
     monkeypatch,
