@@ -28,6 +28,11 @@ def main() -> int:
     parser.add_argument("--total-hours", type=float)
     parser.add_argument("--token-soft-cap", type=int)
     parser.add_argument(
+        "--require-web-review",
+        action="store_true",
+        help="将 ChatGPT 网页普通新对话 PDF 审核设为交付必需项。",
+    )
+    parser.add_argument(
         "--workflow-version",
         choices=("3.1", "3.2"),
         default="3.2",
@@ -47,6 +52,7 @@ def main() -> int:
         total_hours=args.total_hours,
         token_soft_cap=args.token_soft_cap,
         workflow_version=args.workflow_version,
+        require_web_review=args.require_web_review,
     )
     print(
         json.dumps(

@@ -1,6 +1,6 @@
 ---
 name: mathmodel-red-team
-description: 对 Competition-First v3.1 运行执行条件目标语义审查、一次两阶段科学挑战或相对竞争力 PDF 盲评。
+description: 对 Competition-First v3.2 运行执行条件目标语义审查、一次两阶段科学挑战、独立 PDF 盲评或按需网页 PDF 编辑审核。
 ---
 
 # 薄验证壳
@@ -64,3 +64,11 @@ PDF 盲评需要独立上下文，**不能新开浏览器页面**，平台区分
 无论哪种平台，新上下文只读取冻结 PDF，提示词由 `scripts/review/show_paper_blind_prompt.py` 生成并原样传入；不读取题面、源码、历史 run、求解上下文、作者说明或前序审核结论。盲评写 `review/PAPER_BLIND_REVIEW.md`，报告结构见提示词（第一印象与竞争力 → 写作风格诊断 → 可读性 → P0/P1 → 最高价值修改）。审查报告绑定冻结 PDF、固定提示词哈希与真实任务回执。
 
 不得创建 coverage declaration、逐风险 follow-up、final audit 或仅以 pass/fail 代替自由判断。已执行反例、独立复算冲突、不可行和性质失败始终阻断。
+
+---
+
+## 按需网页 PDF 审核
+
+这不是 PDF 盲评的替代品。只有运行初始化时显式要求网页审核，或论文稳定后需要一轮专项编辑审查时，生成 `WEB_PAPER_AUDIT_PROMPT`，由用户在网页版普通新对话中只上传当前 PDF 和固定提示词。记录 `provider=chatgpt_web`、`creation_mode=manual_new_chat` 与 `waiting_external_review`，等待结果导入；不得用当前对话、联网检索、题面、代码或作者解释替代该输入边界。
+
+导入后只把意见用于写作风格、可读性、图表说明与论证表达的风险定位。P0/P1 必须写入局部修复计划并重新编译；若意见要求改变模型、主结果、主图或章节主线，返回 paper 或 experiment，不要降级成文字润色。未显式要求网页审核时，它保持可选，不能阻断纯 Codex 盲评路径。

@@ -168,6 +168,11 @@ def test_web_paper_audit_is_pdf_only_and_requires_targeted_p0_p1_repairs(tmp_pat
     prompt = create_web_paper_audit_prompt(run_dir)
     assert prompt["only_pdf_and_prompt"] is True
     assert prompt["fresh_web_chat_required"] is True
+    assert prompt["provider"] == "chatgpt_web"
+    assert prompt["creation_mode"] == "manual_new_chat"
+    assert prompt["status"] == "waiting_external_review"
+    waiting = web_paper_audit_status(run_dir)
+    assert waiting["status"] == "waiting_external_review"
 
     audit = record_web_paper_audit(
         run_dir,
@@ -205,6 +210,9 @@ def test_web_paper_audit_is_pdf_only_and_requires_targeted_p0_p1_repairs(tmp_pat
         },
     )
     assert audit["online_answer_search_used"] is False
+    assert audit["provider"] == "chatgpt_web"
+    assert audit["creation_mode"] == "manual_new_chat"
+    assert audit["status"] == "review_received"
     status = web_paper_audit_status(run_dir)
     assert status["allowed"] is False
     assert status["blocking_findings"] == ["web-p1-evidence"]
@@ -257,6 +265,43 @@ def test_web_paper_audit_is_pdf_only_and_requires_targeted_p0_p1_repairs(tmp_pat
     final_pdf.write_bytes(b"%PDF-1.4\nchanged\n")
     with pytest.raises(ContractError, match="PDF 已发生变化"):
         validate_web_paper_audit_if_present(run_dir)
+
+
+def test_legacy_web_paper_audit_files_remain_compatible(tmp_path: Path) -> None:
+    """新增人工等待状态后，旧 v3.2 网页审核文件仍可继续复验。"""
+    from shumozizi.core.io import atomic_json
+    from shumozizi.knowledge.external_discussion import (
+        WEB_PAPER_AUDIT_PATH,
+        WEB_PAPER_AUDIT_PROMPT_PATH,
+        create_web_paper_audit_prompt,
+        record_web_paper_audit,
+        validate_web_paper_audit_if_present,
+        web_paper_audit_status,
+    )
+
+    run_dir = _run(tmp_path)
+    (run_dir / "paper/final.pdf").write_bytes(b"%PDF-1.4\nlegacy-web-audit\n")
+    prompt = create_web_paper_audit_prompt(run_dir)
+    for field in ("provider", "creation_mode", "status"):
+        prompt.pop(field)
+    atomic_json(run_dir / WEB_PAPER_AUDIT_PROMPT_PATH, prompt)
+    audit = record_web_paper_audit(
+        run_dir,
+        {
+            "web_chat_id": "legacy-web-paper",
+            "report": "未发现新的 P0/P1，建议继续机械 QA。",
+            "findings": [],
+        },
+    )
+    for field in ("provider", "creation_mode", "status"):
+        audit.pop(field)
+    atomic_json(run_dir / WEB_PAPER_AUDIT_PATH, audit)
+
+    validate_web_paper_audit_if_present(run_dir)
+    status = web_paper_audit_status(run_dir)
+
+    assert status["allowed"] is True
+    assert status["status"] == "review_closed"
 
 
 def test_web_paper_audit_stops_after_max_unresolved_rounds(tmp_path: Path) -> None:

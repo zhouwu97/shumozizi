@@ -494,6 +494,9 @@ def create_web_paper_audit_prompt(run_dir: Path, pdf_path: str = "paper/final.pd
     document = {
         "schema_version": "1.0",
         "run_id": state["run_id"],
+        "provider": "chatgpt_web",
+        "creation_mode": "manual_new_chat",
+        "status": "waiting_external_review",
         "purpose": "网页版 GPT 的补充 PDF 审核，不替代 fresh-thread 盲评或本地复算。",
         "attachment_scope": [pdf],
         "online_answer_search_prohibited": True,
@@ -530,6 +533,12 @@ def _validate_web_paper_audit(run_dir: Path, payload: dict[str, Any]) -> list[di
     prompt = load_json(prompt_path)
     if payload.get("schema_version") != "1.0" or payload.get("run_id") != state["run_id"]:
         raise ContractError("WEB_PAPER_AUDIT 的 schema_version 或 run_id 不匹配")
+    if payload.get("provider", "chatgpt_web") != "chatgpt_web":
+        raise ContractError("WEB_PAPER_AUDIT.provider 必须为 chatgpt_web")
+    if payload.get("creation_mode", "manual_new_chat") != "manual_new_chat":
+        raise ContractError("WEB_PAPER_AUDIT.creation_mode 必须为 manual_new_chat")
+    if payload.get("status", "review_received") != "review_received":
+        raise ContractError("WEB_PAPER_AUDIT.status 必须为 review_received")
     if payload.get("fresh_web_chat") is not True:
         raise ContractError("网页版论文审核必须使用全新网页对话")
     if payload.get("online_answer_search_used") is not False:
@@ -585,6 +594,9 @@ def record_web_paper_audit(run_dir: Path, payload: dict[str, Any]) -> dict[str, 
     document = {
         "schema_version": "1.0",
         "run_id": state["run_id"],
+        "provider": prompt.get("provider", "chatgpt_web"),
+        "creation_mode": prompt.get("creation_mode", "manual_new_chat"),
+        "status": "review_received",
         "web_chat_id": _text(payload.get("web_chat_id"), "web_chat_id"),
         "fresh_web_chat": True,
         "online_answer_search_used": False,
@@ -712,7 +724,10 @@ def validate_web_paper_audit_if_present(run_dir: Path) -> None:
     prompt_text = prompt.get("prompt")
     _text(prompt_text, "prompt")
     if (
-        prompt.get("online_answer_search_prohibited") is not True
+        prompt.get("provider", "chatgpt_web") != "chatgpt_web"
+        or prompt.get("creation_mode", "manual_new_chat") != "manual_new_chat"
+        or prompt.get("status", "waiting_external_review") != "waiting_external_review"
+        or prompt.get("online_answer_search_prohibited") is not True
         or prompt.get("fresh_web_chat_required") is not True
         or prompt.get("only_pdf_and_prompt") is not True
         or not isinstance(prompt_text, str)
@@ -816,7 +831,15 @@ def web_paper_audit_status(run_dir: Path) -> dict[str, Any]:
         audit_path = root / WEB_PAPER_AUDIT_PATH
         plan_path = root / WEB_PAPER_REPAIR_PLAN_PATH
         if not prompt_path.is_file() or not audit_path.is_file():
-            return {"allowed": False, "reason": "当前 PDF 缺少网页版 GPT 审核报告"}
+            return {
+                "allowed": False,
+                "status": "waiting_external_review",
+                "provider": "chatgpt_web",
+                "creation_mode": "manual_new_chat",
+                "reason": "当前 PDF 已生成网页审核包，正在等待普通新对话审核结果"
+                if prompt_path.is_file()
+                else "当前 PDF 缺少网页版 GPT 审核报告",
+            }
         validate_web_paper_audit_if_present(root)
         findings = _validate_web_paper_audit(root, load_json(audit_path))
         rounds = _web_paper_audit_round_count(root)
@@ -842,6 +865,9 @@ def web_paper_audit_status(run_dir: Path) -> dict[str, Any]:
             return {"allowed": False, "reason": "网页版 GPT 审核发现尚未写入局部修复计划"}
         return {
             "allowed": True,
+            "status": "review_closed",
+            "provider": "chatgpt_web",
+            "creation_mode": "manual_new_chat",
             "reason": "",
             "finding_count": len(findings),
             "round_count": rounds,

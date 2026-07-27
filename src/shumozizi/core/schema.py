@@ -25,6 +25,7 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
     if expected_name is not None and name != expected_name:
         return [f"schema_name 应为 {expected_name}，实际为 {name}"]
     supported_non_v2 = {
+        ("figure_plan", "2.1"),
         ("argument_map", "3.0"),
         ("red_team_coverage_declaration", "3.0"),
         ("paper_structure_signal_report", "1.0"),

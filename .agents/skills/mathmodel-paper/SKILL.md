@@ -13,6 +13,8 @@ description: 从 Competition-First v3.2 的当前真实结果组织、编译和�
 
 科学挑战中的发现必须绑定 `action_type`、`rollback_target`、`invalidates`、`required_action` 和关闭证据。未关闭的 `MODEL_REPAIR`、`OBJECTIVE_REDESIGN`、`ANSWER_REJECTION` 阻断论文；只有 `WRITING_FIX` 和已说明不可修复原因的 `DATA_LIMITATION` 可留在 paper 阶段。正式论文检查自然论证内容，不要求出现 `result_id`、实验收据、证明义务或“问题继承”等内部工作流术语。
 
+进入 paper 后先查看 `delivery_control.py status`。第一版截止前必须受控编译 `paper/final.pdf` 并冻结为 `paper/draft-1.pdf`；候选截止前重新编译并冻结为 `paper/candidate.pdf`。候选 PDF 缺失、回执失效或与当前 `final.pdf` 不一致时，不得进入 `paper_review`。不要为了补充新框架或非阻断性实验而推迟第一版可审阅 PDF。
+
 ---
 
 ## 第一步：填写 ARGUMENT_PLAN.md
@@ -139,6 +141,8 @@ description: 从 Competition-First v3.2 的当前真实结果组织、编译和�
 `role=stability` 的图（舍入、采样层级、数值稳定性审计）一律进附录。
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
+
+对于 `FIGURE_PLAN.json` 2.1 中 `required=true` 的图，必须有 current 真实结果、实际绘图脚本和输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
 
 ---
 

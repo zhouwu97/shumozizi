@@ -1,0 +1,523 @@
+"""管理 Competition-First v3.2 的交付节奏、真实工时与运行期范围。"""
+
+from __future__ import annotations
+
+import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
+from shumozizi.simple.state import read_simple_state, utc_now
+
+DELIVERY_CONTROL_PATH = Path("state/delivery-control.json")
+WORK_LOG_PATH = Path("state/work-log.json")
+PDF_MILESTONES_PATH = Path("state/pdf-milestones.json")
+DEFAULT_TOTAL_MINUTES = 720.0
+DEFAULT_PROTOCOL_PATCH_BUDGET_MINUTES = 30.0
+DEFAULT_PROTOCOL_OVERHEAD_RATIO_LIMIT = 0.10
+WORK_CATEGORIES = frozenset(
+    {
+        "problem_analysis",
+        "experiment_search",
+        "experiment_validation",
+        "workflow_protocol",
+        "executor_debugging",
+        "paper_writing",
+        "figure_generation",
+        "external_review",
+        "verification",
+    }
+)
+_PROTOCOL_CATEGORIES = frozenset({"workflow_protocol", "executor_debugging"})
+_LOCK_ROOTS = (
+    Path("src/shumozizi"),
+    Path("scripts"),
+    Path("schemas"),
+    Path("tools"),
+    Path(".agents/skills"),
+)
+_IGNORED_SOURCE_SUFFIXES = {".pyc", ".pyo"}
+_DELIVERY_FREEZE_ACTIONS = [
+    "add_new_route",
+    "modify_workflow_schema",
+    "expand_review_protocol",
+    "refactor_executor",
+]
+
+
+def _parse_time(value: str | datetime) -> datetime:
+    """将 RFC 3339 字符串或 datetime 规整为 UTC 时间。"""
+    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ContractError("时间必须包含时区")
+    return parsed.astimezone(UTC)
+
+
+def _source_manifest(repo_root: Path) -> dict[str, str]:
+    """计算运行期间禁止静默修改的工作流源码清单。"""
+    root = repo_root.resolve()
+    manifest: dict[str, str] = {}
+    for relative_root in _LOCK_ROOTS:
+        source_root = root / relative_root
+        if not source_root.is_dir():
+            continue
+        for path in sorted(item for item in source_root.rglob("*") if item.is_file()):
+            if "__pycache__" in path.parts or path.suffix.lower() in _IGNORED_SOURCE_SUFFIXES:
+                continue
+            manifest[path.relative_to(root).as_posix()] = sha256_file(path)
+    return manifest
+
+
+def _delivery_plan(total_minutes: float) -> dict[str, float]:
+    """按总赛程生成单调、可缩放的交付时间表。"""
+    return {
+        "total_minutes": total_minutes,
+        "analysis_soft_limit": total_minutes / 8,
+        "experiment_soft_limit": total_minutes * 5 / 12,
+        "first_reviewable_pdf_deadline": total_minutes * 2 / 3,
+        "candidate_pdf_deadline": total_minutes * 5 / 6,
+        "blind_review_deadline": total_minutes * 11 / 12,
+        "final_deadline": total_minutes,
+    }
+
+
+def initialize_delivery_control(
+    run_dir: Path,
+    repo_root: Path,
+    *,
+    total_hours: float | None,
+    require_web_review: bool = False,
+    started_at: str | None = None,
+) -> dict[str, Any]:
+    """为新 v3.2 运行冻结交付计划、源码基线和工时账本。
+
+    Args:
+        run_dir: 新建运行目录。
+        repo_root: 工作流仓库根目录。
+        total_hours: 比赛总时长；未提供时使用 12 小时可覆盖默认值。
+        require_web_review: 是否把网页版 GPT 人工新对话设为交付必需项。
+        started_at: 可选的确定性开始时间，主要用于迁移和测试。
+
+    Returns:
+        已写入的交付控制对象。
+    """
+    if total_hours is not None and total_hours <= 0:
+        raise ContractError("交付总时长必须大于零")
+    total_minutes = float(total_hours * 60 if total_hours is not None else DEFAULT_TOTAL_MINUTES)
+    control = {
+        "schema_version": "1.0",
+        "run_id": run_dir.name,
+        "started_at": started_at or utc_now(),
+        "delivery_plan": _delivery_plan(total_minutes),
+        "workflow_source_locked": True,
+        "workflow_source_manifest": _source_manifest(repo_root),
+        "protocol_patch_budget_minutes": DEFAULT_PROTOCOL_PATCH_BUDGET_MINUTES,
+        "protocol_overhead_ratio_limit": DEFAULT_PROTOCOL_OVERHEAD_RATIO_LIMIT,
+        "web_review": {
+            "required": require_web_review,
+            "provider": "chatgpt_web",
+            "creation_mode": "manual_new_chat",
+        },
+    }
+    atomic_json(run_dir / DELIVERY_CONTROL_PATH, control)
+    atomic_json(
+        run_dir / WORK_LOG_PATH,
+        {"schema_version": "1.0", "run_id": run_dir.name, "entries": []},
+    )
+    atomic_json(
+        run_dir / PDF_MILESTONES_PATH,
+        {"schema_version": "1.0", "run_id": run_dir.name, "milestones": {}},
+    )
+    return control
+
+
+def _control(run_dir: Path) -> dict[str, Any]:
+    """读取并执行交付控制的最小结构校验。"""
+    control = load_json(run_dir / DELIVERY_CONTROL_PATH)
+    if control.get("schema_version") != "1.0" or control.get("run_id") != run_dir.name:
+        raise ContractError("delivery-control 的 schema_version 或 run_id 不匹配")
+    _parse_time(control.get("started_at", ""))
+    plan = control.get("delivery_plan")
+    if not isinstance(plan, dict):
+        raise ContractError("delivery-control 缺少 delivery_plan")
+    deadlines = [
+        plan.get("analysis_soft_limit"),
+        plan.get("experiment_soft_limit"),
+        plan.get("first_reviewable_pdf_deadline"),
+        plan.get("candidate_pdf_deadline"),
+        plan.get("blind_review_deadline"),
+        plan.get("final_deadline"),
+    ]
+    if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in deadlines):
+        raise ContractError("delivery_plan 的截止点必须是分钟数")
+    if deadlines != sorted(deadlines) or deadlines[-1] != plan.get("total_minutes"):
+        raise ContractError("delivery_plan 截止点必须单调且 final_deadline 等于 total_minutes")
+    return control
+
+
+def record_work_session(
+    run_dir: Path,
+    *,
+    category: str,
+    started_at: str,
+    finished_at: str,
+    summary: str,
+    blocking_delivery_repair: bool = False,
+) -> dict[str, Any]:
+    """原子登记一段真实工作时间并拒绝重叠或模糊分类。
+
+    Args:
+        run_dir: 当前运行目录。
+        category: 九类工作之一。
+        started_at: 工作开始时间。
+        finished_at: 工作结束时间。
+        summary: 该时段的实际产出。
+        blocking_delivery_repair: 协议工作是否仅用于修复当前交付 P0。
+
+    Returns:
+        新增的账本条目。
+    """
+    if category not in WORK_CATEGORIES:
+        raise ContractError(f"work_log category 不受支持: {category}")
+    if not summary.strip():
+        raise ContractError("work_log summary 不能为空")
+    start = _parse_time(started_at)
+    finish = _parse_time(finished_at)
+    if finish <= start:
+        raise ContractError("work_log finished_at 必须晚于 started_at")
+    document = load_json(run_dir / WORK_LOG_PATH)
+    if document.get("schema_version") != "1.0" or document.get("run_id") != run_dir.name:
+        raise ContractError("work-log 的 schema_version 或 run_id 不匹配")
+    for existing in document.get("entries", []):
+        old_start = _parse_time(existing["started_at"])
+        old_finish = _parse_time(existing["finished_at"])
+        if start < old_finish and finish > old_start:
+            raise ContractError("work_log 时间区间不得重叠")
+    entry = {
+        "category": category,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_minutes": (finish - start).total_seconds() / 60,
+        "summary": summary.strip(),
+        "blocking_delivery_repair": bool(blocking_delivery_repair),
+    }
+    document.setdefault("entries", []).append(entry)
+    document["entries"].sort(key=lambda item: item["started_at"])
+    atomic_json(run_dir / WORK_LOG_PATH, document)
+    return entry
+
+
+def work_log_summary(run_dir: Path) -> dict[str, Any]:
+    """按类别汇总真实工作时长及协议开销比例。"""
+    document = load_json(run_dir / WORK_LOG_PATH)
+    totals = {category: 0.0 for category in sorted(WORK_CATEGORIES)}
+    for entry in document.get("entries", []):
+        category = entry.get("category")
+        if category not in WORK_CATEGORIES:
+            raise ContractError(f"work_log category 不受支持: {category}")
+        totals[category] += float(entry["duration_minutes"])
+    total = sum(totals.values())
+    protocol = sum(totals[category] for category in _PROTOCOL_CATEGORIES)
+    return {
+        "total_minutes": total,
+        "category_minutes": totals,
+        "protocol_overhead_minutes": protocol,
+        "protocol_overhead_ratio": protocol / total if total else 0.0,
+    }
+
+
+def verify_workflow_source_lock(run_dir: Path) -> dict[str, Any]:
+    """比较运行初始化时的工作流源码基线与当前仓库。"""
+    control = _control(run_dir)
+    if control.get("workflow_source_locked") is not True:
+        return {"valid": False, "changed_files": [], "reason": "workflow_source_locked 未启用"}
+    repo_root = run_dir.resolve().parents[1]
+    expected = control.get("workflow_source_manifest", {})
+    current = _source_manifest(repo_root)
+    changed = sorted(
+        path
+        for path in set(expected) | set(current)
+        if expected.get(path) != current.get(path)
+    )
+    return {"valid": not changed, "changed_files": changed, "reason": "" if not changed else "运行期间工作流源码发生变化"}
+
+
+def approve_workflow_p0_patch(run_dir: Path, *, reason: str) -> dict[str, Any]:
+    """登记唯一允许的运行期源码变更：修复当前交付的阻断性 P0。"""
+    if not reason.strip():
+        raise ContractError("P0 工作流修补必须说明当前交付阻断原因")
+    control = _control(run_dir)
+    verification = verify_workflow_source_lock(run_dir)
+    if verification["valid"]:
+        raise ContractError("当前源码没有漂移，不能登记 P0 工作流修补")
+    summary = work_log_summary(run_dir)
+    if summary["protocol_overhead_minutes"] > control["protocol_patch_budget_minutes"]:
+        raise ContractError("协议修补已超过预算，不能继续扩展工作流")
+    patches = control.setdefault("approved_p0_patches", [])
+    used_entries = {
+        patch.get("work_log_entry_index")
+        for patch in patches
+        if isinstance(patch, dict)
+    }
+    work_log = load_json(run_dir / WORK_LOG_PATH)
+    repair_entry_index = next(
+        (
+            index
+            for index in range(len(work_log.get("entries", [])) - 1, -1, -1)
+            if index not in used_entries
+            and work_log["entries"][index].get("category") in _PROTOCOL_CATEGORIES
+            and work_log["entries"][index].get("blocking_delivery_repair") is True
+        ),
+        None,
+    )
+    if repair_entry_index is None:
+        raise ContractError("P0 工作流修补必须先登记 blocking_delivery_repair=true 的协议工时")
+    patches.append(
+        {
+            "reason": reason.strip(),
+            "changed_files": verification["changed_files"],
+            "work_log_entry_index": repair_entry_index,
+            "approved_at": utc_now(),
+        }
+    )
+    repo_root = run_dir.resolve().parents[1]
+    control["workflow_source_manifest"] = _source_manifest(repo_root)
+    atomic_json(run_dir / DELIVERY_CONTROL_PATH, control)
+    return patches[-1]
+
+
+def _valid_pdf(path: Path) -> bool:
+    """判断文件是否为非空 PDF 产物。"""
+    return path.is_file() and path.stat().st_size > 8 and path.read_bytes()[:4] == b"%PDF"
+
+
+def _milestone_current(run_dir: Path, name: str) -> bool:
+    """复验 PDF 里程碑文件与冻结哈希仍一致。"""
+    document = load_json(run_dir / PDF_MILESTONES_PATH)
+    milestone = document.get("milestones", {}).get(name)
+    if not isinstance(milestone, dict):
+        return False
+    path = run_dir / milestone.get("path", "")
+    if not (_valid_pdf(path) and milestone.get("sha256") == sha256_file(path)):
+        return False
+    if name == "candidate":
+        final_pdf = run_dir / "paper/final.pdf"
+        return _valid_pdf(final_pdf) and milestone.get("source_pdf_sha256") == sha256_file(final_pdf)
+    return True
+
+
+def require_current_pdf_milestone(run_dir: Path, milestone: str) -> None:
+    """要求第一版或候选 PDF 里程碑仍绑定当前受控编译产物。"""
+    if not _milestone_current(run_dir, milestone):
+        raise ContractError(f"交付里程碑 {milestone} 缺失、损坏或已不再绑定当前 PDF")
+
+
+def freeze_pdf_milestone(run_dir: Path, milestone: str) -> dict[str, Any]:
+    """把当前受控编译 PDF 冻结为第一版或候选版里程碑。"""
+    targets = {"first_reviewable": "paper/draft-1.pdf", "candidate": "paper/candidate.pdf"}
+    if milestone not in targets:
+        raise ContractError("PDF milestone 必须为 first_reviewable 或 candidate")
+    source = run_dir / "paper" / "final.pdf"
+    if not _valid_pdf(source):
+        raise ContractError("冻结 PDF 里程碑前必须先生成有效 paper/final.pdf")
+    from shumozizi.paper.compiler import verify_paper_compile_receipt
+
+    receipt = verify_paper_compile_receipt(run_dir)
+    if not receipt["valid"]:
+        raise ContractError("冻结 PDF 里程碑前必须先通过受控编译回执复验: " + "；".join(receipt["errors"]))
+    target = run_dir / targets[milestone]
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    shutil.copy2(source, temporary)
+    temporary.replace(target)
+    document = load_json(run_dir / PDF_MILESTONES_PATH)
+    record = {
+        "path": targets[milestone],
+        "sha256": sha256_file(target),
+        "source_pdf_sha256": sha256_file(source),
+        "frozen_at": utc_now(),
+    }
+    document.setdefault("milestones", {})[milestone] = record
+    atomic_json(run_dir / PDF_MILESTONES_PATH, document)
+    return record
+
+
+def web_review_required(run_dir: Path) -> bool:
+    """返回本运行是否明确要求人工网页 PDF 审核。"""
+    return bool(_control(run_dir).get("web_review", {}).get("required"))
+
+
+def advance_delivery_phase(run_dir: Path) -> dict[str, Any]:
+    """在真实阶段门通过时推进一格，不以状态字段替代证据。"""
+    action = next_required_action(run_dir)
+    if action["priority"] in {"P0_SCOPE", "P0_DELIVERY"}:
+        blocked_by = action["blocked_by"] or [
+            f"最高优先级动作尚未完成: {action['next_action']}"
+        ]
+        return {"advanced": False, "action": action, "blocked_by": blocked_by}
+    state = read_simple_state(run_dir)
+    targets = {
+        "analysis": "experiment",
+        "experiment": "paper",
+        "paper": "paper_review",
+        "paper_review": "verify",
+        "verify": "complete",
+    }
+    target = targets.get(state["phase"])
+    if target is None:
+        return {"advanced": False, "action": action, "blocked_by": ["当前阶段不需要自动推进"]}
+    try:
+        if state["phase"] == "paper":
+            require_current_pdf_milestone(run_dir, "candidate")
+        if state["phase"] == "paper_review" and web_review_required(run_dir):
+            from shumozizi.knowledge.external_discussion import require_web_paper_audit_release
+
+            require_web_paper_audit_release(run_dir)
+        from shumozizi.simple.state import update_simple_state
+
+        updated = update_simple_state(run_dir, phase=target)
+    except ContractError as exc:
+        return {"advanced": False, "action": action, "blocked_by": [str(exc)]}
+    return {"advanced": True, "from_phase": state["phase"], "to_phase": updated["phase"], "state": updated}
+
+
+def _action(
+    state: dict[str, Any],
+    *,
+    next_action: str,
+    priority: str,
+    elapsed: float,
+    remaining: float,
+    blocked_by: list[str] | None = None,
+    forbidden_actions: list[str] | None = None,
+    work_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """构造统一、机器可消费的下一动作。"""
+    return {
+        "current_phase": state["phase"],
+        "next_action": next_action,
+        "priority": priority,
+        "elapsed_minutes": elapsed,
+        "remaining_minutes": max(0.0, remaining),
+        "blocked_by": blocked_by or [],
+        "forbidden_actions": forbidden_actions or [],
+        "work_summary": work_summary or {},
+    }
+
+
+def next_required_action(
+    run_dir: Path, *, now: str | datetime | None = None
+) -> dict[str, Any]:
+    """返回当前唯一最高优先级动作，并让交付截止点覆盖普通阶段工作。"""
+    state = read_simple_state(run_dir)
+    control = _control(run_dir)
+    current = _parse_time(now or utc_now())
+    started = _parse_time(control["started_at"])
+    elapsed = max(0.0, (current - started).total_seconds() / 60)
+    plan = control["delivery_plan"]
+    remaining = float(plan["final_deadline"]) - elapsed
+    summary = work_log_summary(run_dir)
+    source_lock = verify_workflow_source_lock(run_dir)
+    if not source_lock["valid"]:
+        return _action(
+            state,
+            next_action="restore_workflow_source_or_record_p0_patch",
+            priority="P0_SCOPE",
+            elapsed=elapsed,
+            remaining=remaining,
+            blocked_by=source_lock["changed_files"],
+            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+            work_summary=summary,
+        )
+    if (
+        summary["protocol_overhead_minutes"] > control["protocol_patch_budget_minutes"]
+        or summary["protocol_overhead_ratio"] > control["protocol_overhead_ratio_limit"]
+    ):
+        return _action(
+            state,
+            next_action="return_to_competition_mainline",
+            priority="P0_SCOPE",
+            elapsed=elapsed,
+            remaining=remaining,
+            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+            work_summary=summary,
+        )
+    if elapsed >= plan["first_reviewable_pdf_deadline"] and not _milestone_current(
+        run_dir, "first_reviewable"
+    ):
+        return _action(
+            state,
+            next_action="generate_first_reviewable_pdf",
+            priority="P0_DELIVERY",
+            elapsed=elapsed,
+            remaining=remaining,
+            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+            work_summary=summary,
+        )
+    if elapsed >= plan["candidate_pdf_deadline"] and not _milestone_current(run_dir, "candidate"):
+        return _action(
+            state,
+            next_action="freeze_candidate_pdf",
+            priority="P0_DELIVERY",
+            elapsed=elapsed,
+            remaining=remaining,
+            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+            work_summary=summary,
+        )
+    if elapsed >= plan["blind_review_deadline"]:
+        from shumozizi.simple.review import paper_blind_review_status
+
+        blind = paper_blind_review_status(run_dir)
+        if not blind["allowed"]:
+            return _action(
+                state,
+                next_action="create_or_resume_independent_blind_review",
+                priority="P0_DELIVERY",
+                elapsed=elapsed,
+                remaining=remaining,
+                blocked_by=[blind.get("reason", "独立 PDF 盲评未完成")],
+                forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+                work_summary=summary,
+            )
+    if state["phase"] == "analysis":
+        next_action = "freeze_route_and_start_experiment" if elapsed >= plan["analysis_soft_limit"] else "complete_problem_analysis"
+    elif state["phase"] == "experiment":
+        next_action = "qualify_answers_and_start_paper" if elapsed >= plan["experiment_soft_limit"] else "complete_answer_qualification"
+    elif state["phase"] == "paper":
+        if not _milestone_current(run_dir, "first_reviewable"):
+            next_action = "write_compile_and_freeze_first_reviewable_pdf"
+        elif not _milestone_current(run_dir, "candidate"):
+            next_action = "revise_and_freeze_candidate_pdf"
+        else:
+            next_action = "advance_to_paper_review"
+    elif state["phase"] == "paper_review":
+        from shumozizi.knowledge.external_discussion import (
+            web_paper_audit_started,
+            web_paper_audit_status,
+        )
+        from shumozizi.simple.review import paper_blind_review_status
+
+        blind = paper_blind_review_status(run_dir)
+        if not blind["allowed"]:
+            next_action = "create_or_resume_independent_blind_review"
+        elif web_paper_audit_started(run_dir) and not web_paper_audit_status(run_dir)["allowed"]:
+            next_action = "wait_for_or_close_manual_web_review"
+        elif control["web_review"]["required"] and not web_paper_audit_started(run_dir):
+            next_action = "start_manual_web_review"
+        else:
+            next_action = "advance_to_verify"
+    elif state["phase"] == "verify":
+        next_action = "run_mechanical_qa_and_complete"
+    elif state["phase"] == "complete":
+        next_action = "none"
+    else:
+        next_action = "repair_blocking_delivery_failure"
+    return _action(
+        state,
+        next_action=next_action,
+        priority="P0_DELIVERY" if elapsed >= plan["final_deadline"] else "P1_MAINLINE",
+        elapsed=elapsed,
+        remaining=remaining,
+        forbidden_actions=_DELIVERY_FREEZE_ACTIONS if elapsed >= plan["first_reviewable_pdf_deadline"] else [],
+        work_summary=summary,
+    )

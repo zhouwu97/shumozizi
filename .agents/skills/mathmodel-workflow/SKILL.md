@@ -7,6 +7,12 @@ description: 以 Competition-First v3.2 完成整道数学建模赛题的分析�
 
 只在完整赛题任务中创建运行。主链为 `analysis -> experiment -> paper -> paper_review -> verify -> complete`；不要创建 `capability_route`、`scientific_review`、`visualization` 或 `final_review` 阶段。
 
+## 交付控制
+
+初始化 v3.2 运行后，先执行 `python scripts/simple/delivery_control.py status <run_dir>`，并在每次阶段切换、开始新一段工作或准备扩展协议前重查。用 `log-work` 记录实际、不重叠的工作时段；将协议和执行器修复明确归到对应类别，不能用实验耗时掩盖它们。
+
+交付状态返回的唯一最高优先级动作覆盖普通探索：第一版 PDF 截止后先编译并用 `freeze-pdf first_reviewable` 冻结；候选截止后先修订并冻结 `candidate`；盲评截止后先创建或恢复盲评。到截止点后不得新增路线、改 Schema、扩审核协议或重构执行器。运行初始化后的工作流源码已经锁定；只有确实阻断当前实验或 PDF 交付的 P0 修补，才可在登记 `blocking_delivery_repair=true` 的真实工时后执行 `approve-p0-patch`。其余通用改进写入 backlog，赛题结束后再改仓库。
+
 1. 分析先逐问冻结直接答案合同：题目最终要求交付什么、决策对象/总体是谁、主终点如何定义、什么判据决定答案、哪个是自然 baseline、何时切换 fallback。开放目标仍在 `OBJECTIVE_CANDIDATES.json` 保留候选集合与共同后果度量；主终点必须预先声明，目标聚合有歧义时登记全部候选 endpoint、题面依据和裁决规则，不得看完结果再更换 endpoint。随后比较 baseline、实质不同路线与区分性 probe，标出核心问题，写 `ROUTE_COMPETITION.md` 和 `NEXT_EXPERIMENTS.md`。
 2. 只有未决且会改变主结果的题意歧义才创建目标语义审查；歧义未决时不得用 `determined` 跳过候选比较。能力选择属于分析/实验中的按需动作。
 3. 实验只登记原始结果指标，把预算优先投给核心问题的搜索深化——核心搜索耗时须超过其验证耗时且占实际算力 40% 以上。exact 赢家还不是主答案：系统根据事前改善阈值、最终 endpoint 裁决、guard 和行动稳定性派生 `promoted`、`fallback_selected` 或 `redesign_required`；不得手填四个通过布尔值覆盖失败事实。fallback 也不可靠时，endpoint/目标问题返回 analysis，其余模型、搜索或验证问题返回 experiment。所有论文事实必须由执行器真实登记；生成 `method_facts.json` 只为建议，不得等待它放行。

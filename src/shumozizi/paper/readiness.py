@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from shumozizi.simple.state import (
 )
 
 _APPENDIX_MODES = {"pdf", "attachment", "both"}
+_FIGURE_PLAN_PATH = Path("figures/FIGURE_PLAN.json")
 
 
 def _argument_map_path(run_dir: Path) -> Path:
@@ -169,6 +171,95 @@ def _competition_answer_map(run_dir: Path) -> dict[str, Any] | None:
         answers = payload.get("answers", payload)
         return answers if isinstance(answers, dict) else None
     return None
+
+
+def _normalized_latex_path(value: str) -> str:
+    """规整 LaTeX 图路径，忽略扩展名和相对目录写法差异。"""
+    normalized = value.strip().replace("\\", "/")
+    while normalized.startswith("../"):
+        normalized = normalized[3:]
+    suffix = Path(normalized).suffix.lower()
+    return normalized[: -len(suffix)] if suffix in {".pdf", ".png", ".jpg", ".jpeg"} else normalized
+
+
+def validate_required_figure_consumption(run_dir: Path) -> list[str]:
+    """复验 FIGURE_PLAN 2.1 的必需图已生成并在 LaTeX 正文中消费。
+
+    旧 2.0 图表计划继续只服务兼容收据；只有 v3.2 主动写入 2.1 时才启用
+    生成、current 来源、插图、交叉引用和解释闭环。
+    """
+    plan_path = run_dir / _FIGURE_PLAN_PATH
+    if not plan_path.is_file():
+        return []
+    try:
+        plan = load_json(plan_path)
+        if plan.get("schema_version") != "2.1":
+            return []
+        errors = validate_document(plan, "figure_plan")
+        if errors:
+            return errors
+        if plan.get("run_id") != run_dir.name:
+            return ["FIGURE_PLAN 2.1 的 run_id 与当前运行不一致"]
+        verification = verify_current_figure_files(run_dir, figure_stage="current")
+        if not verification.get("success"):
+            detail = "；".join(
+                str(item.get("message", item))
+                for item in verification.get("errors", [])
+            )
+            return ["FIGURE_PLAN 2.1 存在失效 current 图: " + detail]
+        index = load_json(run_dir / "figures/index.json")
+        current = {
+            item.get("figure_id"): item
+            for item in index.get("figures", [])
+            if isinstance(item, dict) and item.get("status") == "current"
+        }
+        errors = []
+        for item in plan.get("figures", []):
+            if item.get("required") is not True:
+                continue
+            figure_id = item["figure_id"]
+            registered = current.get(figure_id)
+            if registered is None:
+                errors.append(f"必需图 {figure_id} 未登记为 current 图")
+                continue
+            if registered.get("question_id") != item["question_id"]:
+                errors.append(f"必需图 {figure_id} 的 question_id 与计划不一致")
+            if registered.get("role") != item["role"]:
+                errors.append(f"必需图 {figure_id} 的 role 与计划不一致")
+            if set(registered.get("source_result_ids", [])) != set(item["source_result_ids"]):
+                errors.append(f"必需图 {figure_id} 未绑定计划声明的 current 结果")
+            renderer = registered.get("renderer_script", {})
+            if renderer.get("path") != item["script"]:
+                errors.append(f"必需图 {figure_id} 的实际绘图脚本与计划不一致")
+            output_paths = {record.get("path") for record in registered.get("outputs", [])}
+            if item["output"] not in output_paths:
+                errors.append(f"必需图 {figure_id} 的计划输出未由登记脚本实际生成")
+            section = run_dir / item["paper_section"]
+            if not section.is_file() or section.suffix.lower() != ".tex":
+                errors.append(f"必需图 {figure_id} 缺少 LaTeX 正文章节: {item['paper_section']}")
+                continue
+            text = section.read_text(encoding="utf-8")
+            includes = [
+                _normalized_latex_path(value)
+                for value in re.findall(r"\\includegraphics(?:\[[^]]*\])?\{([^}]+)\}", text)
+            ]
+            expected_output = _normalized_latex_path(item["output"])
+            if not any(value.endswith(expected_output) or expected_output.endswith(value) for value in includes):
+                errors.append(f"必需图 {figure_id} 未在声明章节中使用 \\includegraphics")
+            label = item["latex_label"]
+            if f"\\label{{{label}}}" not in text:
+                errors.append(f"必需图 {figure_id} 缺少 LaTeX label {label}")
+            if f"\\ref{{{label}}}" not in text and f"\\autoref{{{label}}}" not in text:
+                errors.append(f"必需图 {figure_id} 正文没有交叉引用 {label}")
+            if item["caption"] not in text:
+                errors.append(f"必需图 {figure_id} 图注与 FIGURE_PLAN 不一致")
+            if item["explanation_anchor"] not in text:
+                errors.append(f"必需图 {figure_id} 缺少正文解释锚点")
+            if item["role"] == "stability" and "appendix" not in item["paper_section"].casefold():
+                errors.append(f"稳定性图 {figure_id} 必须放入附录章节")
+        return errors
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return ["FIGURE_PLAN 2.1 闭环校验失败: " + str(exc)]
 
 
 def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
@@ -339,6 +430,8 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     warnings.extend(_argument_plan_warnings(run_dir))
     errors.extend(_code_appendix_errors(run_dir))
     errors.extend(_core_insight_usage_errors(run_dir, answers))
+    if is_competition_first_v32_state(read_simple_state(run_dir)):
+        errors.extend(validate_required_figure_consumption(run_dir))
     return errors, warnings
 
 

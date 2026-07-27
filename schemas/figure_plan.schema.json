@@ -6,7 +6,7 @@
   "required": ["schema_name", "schema_version", "run_id", "figures"],
   "properties": {
     "schema_name": {"const": "figure_plan"},
-    "schema_version": {"const": "2.0"},
+    "schema_version": {"enum": ["2.0", "2.1"]},
     "run_id": {"type": "string", "minLength": 1},
     "figures": {
       "type": "array",
@@ -25,7 +25,18 @@
             "grouped-corr-split-violin", "grouped-circular-heatmap", "urban-park-cooling-combo",
             "nature-chord-diagram", "custom"
           ]},
-          "selection_reason": {"type": "string", "minLength": 1}
+          "selection_reason": {"type": "string", "minLength": 1},
+          "question_id": {"type": "string", "minLength": 1},
+          "role": {"enum": ["model_understanding", "decisive_evidence", "insight", "stability"]},
+          "claim": {"type": "string", "minLength": 1},
+          "source_result_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "script": {"type": "string", "minLength": 1},
+          "output": {"type": "string", "minLength": 1},
+          "paper_section": {"type": "string", "minLength": 1},
+          "caption": {"type": "string", "minLength": 1},
+          "latex_label": {"type": "string", "pattern": "^fig:[A-Za-z0-9._:-]+$"},
+          "explanation_anchor": {"type": "string", "minLength": 4},
+          "required": {"type": "boolean"}
         },
         "allOf": [
           {
@@ -39,5 +50,19 @@
         ]
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "2.1"}}},
+      "then": {
+        "properties": {
+          "figures": {
+            "items": {
+              "required": ["question_id", "role", "claim", "source_result_ids", "script", "output", "paper_section", "caption", "latex_label", "explanation_anchor", "required"]
+            }
+          }
+        }
+      }
+    }
+  ]
 }

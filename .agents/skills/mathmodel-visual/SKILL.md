@@ -11,4 +11,6 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 图表默认输出到 `figures/current/`，登记真实 `source`、`question`、`takeaway` 和可选 `limitations`。使用 `register_insight_figure` 绑定当前生产结果、输入、渲染脚本与 PNG/PDF 输出。结果或脚本变化后，图必须重新生成。
 
+需要作为正文论证证据的图，写入 `FIGURE_PLAN.json` 2.1 并声明 `question_id`、`role`、`claim`、`source_result_ids`、`script`、`output`、`paper_section`、`caption`、`latex_label`、`explanation_anchor` 和 `required=true`。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
+
 按题目需要选择图种。不要默认要求每问有图、3D、收敛图、敏感性图、多种子图、雷达图或 evidence/publication 双份，也不靠输出份数凑数量。模板示例数据绝不能进入论文。

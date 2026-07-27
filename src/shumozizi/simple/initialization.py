@@ -107,6 +107,7 @@ def initialize_simple_run(
     total_hours: float | None = None,
     token_soft_cap: int | None = None,
     workflow_version: str = "3.1",
+    require_web_review: bool = False,
 ) -> Path:
     """创建可独立恢复的 v3 运行目录。
 
@@ -120,6 +121,7 @@ def initialize_simple_run(
         total_hours: 可选的总时间预算。
         token_soft_cap: 可选的 token 软上限。
         workflow_version: ``3.1`` 保持兼容；``3.2`` 启用建模单元和 LaTeX 主链。
+        require_web_review: 是否把网页版 GPT 人工新对话审核设为必需交付步骤。
 
     Returns:
         新建运行目录。
@@ -184,6 +186,15 @@ def initialize_simple_run(
         newline="\n",
     )
     if workflow_version == "3.2":
+        from shumozizi.simple.delivery import initialize_delivery_control
+
+        initialize_delivery_control(
+            run_dir,
+            root,
+            total_hours=total_hours,
+            require_web_review=require_web_review,
+            started_at=now,
+        )
         atomic_json(
             run_dir / "analysis" / "MODELING_UNITS.json",
             {
