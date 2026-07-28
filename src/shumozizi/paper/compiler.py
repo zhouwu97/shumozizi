@@ -547,6 +547,7 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     require_paper_generation_allowed(run_dir)
     require_paper_readiness(run_dir)
     state = read_simple_state(run_dir)
+    previous_render_revision = int(state.get("paper_render_revision", 0))
     manifest = require_materialized_template(run_dir)
     root = run_dir.resolve()
     paper_dir = root / "paper"
@@ -619,6 +620,8 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
         "executions": executions,
         "generated_at": utc_now(),
     }
+    if state.get("schema_version") == "3.2":
+        receipt["paper_render_revision"] = previous_render_revision + 1
     if final_docx is not None:
         receipt["final_docx_path"] = "paper/final.docx"
         receipt["final_docx_sha256"] = sha256_file(final_docx)
@@ -628,6 +631,10 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
         receipt["docx_skipped_reason"] = docx_skipped_reason
     _require_schema(receipt)
     atomic_json(root / COMPILE_RECEIPT_PATH, receipt)
+    if state.get("schema_version") == "3.2":
+        from shumozizi.simple.state import record_paper_render
+
+        record_paper_render(root, previous_revision=previous_render_revision)
     return receipt
 
 
@@ -643,6 +650,11 @@ def verify_paper_compile_receipt(run_dir: Path) -> dict[str, Any]:
         manifest = require_materialized_template(root)
         if receipt["run_id"] != state["run_id"]:
             errors.append("编译回执 run_id 与当前运行不一致")
+        receipt_revision = receipt.get("paper_render_revision")
+        if receipt_revision is not None and receipt_revision != state.get(
+            "paper_render_revision", 0
+        ):
+            errors.append("编译回执未绑定当前论文渲染修订")
         manifest_path = root / MANIFEST_PATH
         if receipt["template_manifest_sha256"] != sha256_file(manifest_path):
             errors.append("编译回执未绑定当前模板清单")

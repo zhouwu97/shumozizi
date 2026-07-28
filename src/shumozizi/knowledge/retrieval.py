@@ -28,6 +28,7 @@ FORBIDDEN_TRANSFER = (
 )
 _MIN_STRUCTURAL_SIMILARITY = 0.30
 _PLACEHOLDER_PATTERN = re.compile(r"待判断|待填写|待补充|TODO|TBD", re.IGNORECASE)
+_MANUSCRIPT_SUFFIXES = frozenset({".tex", ".typ"})
 _UNSAFE_PATTERN = re.compile(
     r"\d|```|`{3}|[$=∑∫]|\\(?:begin|end|frac|sum|int)|"
     r"\b(?:import|from|def|class|return|function|select)\b",
@@ -382,6 +383,8 @@ def write_paper_knowledge_application(run_dir: Path, *, overwrite: bool = False)
         "",
         "## 候选模式判断",
         "",
+        "写作阶段最多采用来自 2 张论文卡的模式；其余候选应明确拒绝，不得为凑形式强行迁移。",
+        "",
     ]
     patterns = [
         (card["paper_id"], pattern)
@@ -408,6 +411,8 @@ def write_paper_knowledge_application(run_dir: Path, *, overwrite: bool = False)
                 "- 理由：待填写",
                 "- 应用位置：待填写",
                 "- 当前题证据：待填写",
+                "- 正文源码：待填写",
+                "- 兑现锚点：待填写",
                 "",
             ]
         )
@@ -430,8 +435,10 @@ def _paper_sections(text: str) -> dict[str, str]:
     return sections
 
 
-def require_paper_knowledge_application(run_dir: Path) -> Path:
-    """要求首版可审阅论文前逐项完成写作迁移判断。"""
+def _validated_paper_knowledge_application(
+    run_dir: Path,
+) -> tuple[Path, dict[str, Any]]:
+    """校验写作迁移判断并返回可供本地成稿审计使用的结构。"""
     analysis = require_analysis_knowledge_retrieval(run_dir)
     path = run_dir / PAPER_APPLICATION_PATH
     if not path.is_file():
@@ -446,12 +453,20 @@ def require_paper_knowledge_application(run_dir: Path) -> Path:
             raise ContractError(f"KNOWLEDGE_APPLICATION.md 缺少禁止迁移边界：{boundary}")
 
     sections = _paper_sections(text)
+    adopted_patterns: list[dict[str, str]] = []
+    rejected_patterns: list[dict[str, str]] = []
     for card in analysis["matched_cards"]:
         for pattern in card["candidate_patterns"]:
             pattern_id = pattern["pattern_id"]
             section = sections.get(pattern_id)
             if section is None:
                 raise ContractError(f"KNOWLEDGE_APPLICATION.md 缺少候选模式 {pattern_id}")
+            source_card = _field(section, "来源卡片")
+            recorded_pattern = _field(section, "候选模式")
+            if source_card is None or source_card.strip("`") != card["paper_id"]:
+                raise ContractError(f"候选模式 {pattern_id} 的来源卡片与分析检索不一致")
+            if recorded_pattern != pattern["pattern"]:
+                raise ContractError(f"候选模式 {pattern_id} 的安全模式文本已漂移")
             decision = _field(section, "写作决定")
             reason = _field(section, "理由")
             if decision not in {"采用", "拒绝"}:
@@ -461,6 +476,8 @@ def require_paper_knowledge_application(run_dir: Path) -> Path:
             if decision == "采用":
                 application = _field(section, "应用位置")
                 evidence = _field(section, "当前题证据")
+                source_path = _field(section, "正文源码")
+                realization_anchor = _field(section, "兑现锚点")
                 if (
                     application is None
                     or len(application) < 4
@@ -474,4 +491,175 @@ def require_paper_knowledge_application(run_dir: Path) -> Path:
                     or not re.search(r"当前题|当前运行|题面|数据|实验|结果|模型", evidence)
                 ):
                     raise ContractError(f"采用模式 {pattern_id} 必须绑定当前题证据")
+                if source_path is None or _PLACEHOLDER_PATTERN.search(source_path):
+                    raise ContractError(f"采用模式 {pattern_id} 必须声明实际正文源码")
+                source_path = source_path.strip("`")
+                source = resolve_inside(run_dir, source_path, must_exist=False)
+                source_relative = relative_inside(run_dir, source).as_posix()
+                if (
+                    not source_relative.startswith("paper/")
+                    or Path(source_relative).suffix.casefold() not in _MANUSCRIPT_SUFFIXES
+                ):
+                    raise ContractError(
+                        f"采用模式 {pattern_id} 的正文源码必须是 paper/ 下的实际稿件源文件"
+                    )
+                if (
+                    realization_anchor is None
+                    or len(realization_anchor) < 4
+                    or _PLACEHOLDER_PATTERN.search(realization_anchor)
+                ):
+                    raise ContractError(f"采用模式 {pattern_id} 必须声明正文兑现锚点")
+                adopted_patterns.append(
+                    {
+                        "pattern_id": pattern_id,
+                        "paper_id": card["paper_id"],
+                        "pattern": pattern["pattern"],
+                        "reason": reason,
+                        "planned_location": application,
+                        "current_evidence": evidence,
+                        "source_path": source_relative,
+                        "realization_anchor": realization_anchor,
+                    }
+                )
+            else:
+                rejected_patterns.append(
+                    {
+                        "pattern_id": pattern_id,
+                        "paper_id": card["paper_id"],
+                        "pattern": pattern["pattern"],
+                        "reason": reason,
+                    }
+                )
+    selected_cards = list(
+        dict.fromkeys(item["paper_id"] for item in adopted_patterns)
+    )
+    if len(selected_cards) > 2:
+        raise ContractError("写作阶段最多采用 2 张论文卡中的可迁移模式")
+    return path, {
+        "analysis_status": analysis["status"],
+        "selected_cards": selected_cards,
+        "adopted_patterns": adopted_patterns,
+        "rejected_patterns": rejected_patterns,
+        "evidence_boundary": "knowledge_cards_are_not_current_evidence",
+    }
+
+
+def require_paper_knowledge_application(run_dir: Path) -> Path:
+    """要求首版可审阅论文前逐项完成写作迁移判断。"""
+    path, _application = _validated_paper_knowledge_application(run_dir)
     return path
+
+
+def read_paper_knowledge_application(run_dir: Path) -> dict[str, Any]:
+    """读取已验证的写作迁移决定，供本地论文兑现审计使用。
+
+    Args:
+        run_dir: 当前 Competition-First v3.2 运行目录。
+
+    Returns:
+        选中的卡片、采用/拒绝模式、计划位置与当前题证据边界。
+    """
+    _path, application = _validated_paper_knowledge_application(run_dir)
+    return application
+
+
+def _manuscript_source_closure(run_dir: Path) -> set[str]:
+    """解析主稿递归包含的 LaTeX/Typst 源文件集合。"""
+    paper_dir = (run_dir / "paper").resolve()
+    relative_inside(run_dir, paper_dir)
+    if not paper_dir.is_dir():
+        raise ContractError("运行目录缺少 paper/ 稿件目录")
+    entrypoint = next(
+        (path for path in (paper_dir / "main.tex", paper_dir / "main.typ") if path.is_file()),
+        None,
+    )
+    if entrypoint is None:
+        raise ContractError("paper/ 下缺少 main.tex 或 main.typ 主稿入口")
+    closure: set[str] = set()
+    pending = [entrypoint]
+    while pending:
+        source = pending.pop()
+        relative = relative_inside(run_dir, source).as_posix()
+        if relative in closure:
+            continue
+        closure.add(relative)
+        try:
+            text = source.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise ContractError(f"无法读取稿件源码 {relative}: {exc}") from exc
+        if source.suffix.casefold() == ".tex":
+            text = re.sub(r"(?m)(?<!\\)%.*$", "", text)
+            references = re.findall(
+                r"\\(?:input|include|subfile)\s*\{([^}]+)\}", text
+            )
+            default_suffix = ".tex"
+        else:
+            text = re.sub(r"(?m)//.*$", "", text)
+            # import 只加载定义，不能证明其中的叙事文本会进入 PDF。
+            references = re.findall(r'#include\s+"([^"]+)"', text)
+            default_suffix = ".typ"
+        for reference in references:
+            value = Path(reference.strip())
+            if not value.suffix:
+                value = value.with_suffix(default_suffix)
+            candidates = (source.parent / value, paper_dir / value)
+            target = next((item for item in candidates if item.is_file()), None)
+            if target is None:
+                continue
+            resolved = resolve_inside(paper_dir, target, must_exist=True)
+            if resolved.suffix.casefold() in _MANUSCRIPT_SUFFIXES:
+                pending.append(resolved)
+    return closure
+
+
+def evaluate_paper_knowledge_consumption(run_dir: Path) -> dict[str, Any]:
+    """核对采用的论文卡模式已经进入实际稿件源码。
+
+    Args:
+        run_dir: 当前 Competition-First v3.2 运行目录。
+
+    Returns:
+        每个采用模式的源码锚点检查及阻断错误。
+    """
+    application = read_paper_knowledge_application(run_dir)
+    checks: list[dict[str, Any]] = []
+    errors: list[str] = []
+    try:
+        source_closure = _manuscript_source_closure(run_dir)
+        closure_error = None
+    except ContractError as exc:
+        source_closure = set()
+        closure_error = str(exc)
+    for item in application["adopted_patterns"]:
+        issue: str | None = closure_error
+        if issue is None and item["source_path"] not in source_closure:
+            issue = "声明的正文源码未进入 main.tex/main.typ 编译包含链"
+        if issue is None:
+            try:
+                source = resolve_inside(run_dir, item["source_path"], must_exist=True)
+                text = source.read_text(encoding="utf-8")
+                if source.suffix.casefold() == ".tex":
+                    text = re.sub(r"(?m)(?<!\\)%.*$", "", text)
+                else:
+                    text = re.sub(r"(?s)/\*.*?\*/", "", text)
+                    text = re.sub(r"(?m)//.*$", "", text)
+                normalized_text = re.sub(r"\s+", "", text).casefold()
+                normalized_anchor = re.sub(
+                    r"\s+", "", item["realization_anchor"]
+                ).casefold()
+                if normalized_anchor not in normalized_text:
+                    issue = "实际稿件源码中未找到声明的兑现锚点"
+            except (ContractError, OSError, UnicodeError) as exc:
+                issue = f"无法读取声明的实际稿件源码: {exc}"
+        checks.append(
+            {
+                "pattern_id": item["pattern_id"],
+                "source_path": item["source_path"],
+                "realization_anchor": item["realization_anchor"],
+                "status": "present" if issue is None else "missing",
+                "issue": issue,
+            }
+        )
+        if issue is not None:
+            errors.append(f"知识模式 {item['pattern_id']} 未被正文消费: {issue}")
+    return {"checks": checks, "errors": errors}

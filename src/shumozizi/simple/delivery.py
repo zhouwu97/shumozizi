@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
-from shumozizi.simple.state import read_simple_state, utc_now
+from shumozizi.simple.state import paper_revision_status, read_simple_state, utc_now
 
 DELIVERY_CONTROL_PATH = Path("state/delivery-control.json")
 WORK_LOG_PATH = Path("state/work-log.json")
@@ -684,6 +684,7 @@ def _action(
     """构造统一、机器可消费的下一动作。"""
     return {
         "current_phase": state["phase"],
+        "paper_revision": paper_revision_status(state),
         "next_action": next_action,
         "priority": priority,
         "elapsed_minutes": elapsed,

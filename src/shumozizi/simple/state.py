@@ -172,9 +172,105 @@ def read_simple_state(run_dir: Path) -> dict[str, Any]:
     payload = load_json(run_dir / STATE_PATH)
     # 旧 v3 运行尚未记录用途边界；只在内存中按保守生产语义解释，避免静默改写历史运行。
     payload.setdefault("execution_mode", "production")
+    if payload.get("schema_version") == "3.2":
+        payload.setdefault("paper_render_revision", 0)
+        payload.setdefault("paper_reviewed_revision", 0)
+        payload.setdefault("layout_audited_revision", 0)
     mapped = _map_legacy_state(payload)
     require_simple_state(mapped)
     return mapped
+
+
+def paper_revision_status(state: dict[str, Any]) -> dict[str, Any]:
+    """返回当前论文渲染、盲评和版面审计的可读新鲜度。
+
+    Args:
+        state: 已读取的 Competition-First 状态。
+
+    Returns:
+        包含三个修订号和用户可见状态的摘要。
+    """
+    render = int(state.get("paper_render_revision", 0))
+    reviewed = int(state.get("paper_reviewed_revision", 0))
+    audited = int(state.get("layout_audited_revision", 0))
+    if render == 0:
+        status = "NOT_RENDERED"
+    elif render != reviewed:
+        status = "UNREVIEWED_DRAFT"
+    elif str(state.get("competition", "")).strip().casefold() == "cumcm" and audited != render:
+        status = "REVIEWED_LAYOUT_PENDING"
+    else:
+        status = "REVIEWED"
+    return {
+        "status": status,
+        "render_revision": render,
+        "reviewed_revision": reviewed,
+        "layout_audited_revision": audited,
+    }
+
+
+def _record_paper_revision(
+    run_dir: Path,
+    *,
+    field: str,
+    value: int,
+    expected_render_revision: int | None = None,
+) -> dict[str, Any]:
+    """原子记录论文子流程修订号，避免调用方任意改写其他状态。"""
+    allowed = {
+        "paper_render_revision",
+        "paper_reviewed_revision",
+        "layout_audited_revision",
+    }
+    if field not in allowed:
+        raise ContractError(f"未知论文修订字段: {field}")
+    state = read_simple_state(run_dir)
+    if not is_competition_first_v32_state(state):
+        return state
+    render = int(state.get("paper_render_revision", 0))
+    if expected_render_revision is not None and render != expected_render_revision:
+        raise ContractError(
+            f"论文渲染修订已漂移：预期 {expected_render_revision}，实际 {render}"
+        )
+    if field != "paper_render_revision" and value != render:
+        raise ContractError("盲评或版面审计只能绑定当前论文渲染修订")
+    if value < int(state.get(field, 0)):
+        raise ContractError("论文修订号不能回退")
+    state[field] = value
+    state["revision"] += 1
+    state["updated_at"] = utc_now()
+    write_simple_state(run_dir, state)
+    return state
+
+
+def record_paper_render(run_dir: Path, *, previous_revision: int) -> dict[str, Any]:
+    """在受控 PDF 编译成功后递增渲染修订号。"""
+    return _record_paper_revision(
+        run_dir,
+        field="paper_render_revision",
+        value=previous_revision + 1,
+        expected_render_revision=previous_revision,
+    )
+
+
+def record_paper_review(run_dir: Path, *, render_revision: int) -> dict[str, Any]:
+    """记录独立 PDF 盲评已覆盖当前渲染修订。"""
+    return _record_paper_revision(
+        run_dir,
+        field="paper_reviewed_revision",
+        value=render_revision,
+        expected_render_revision=render_revision,
+    )
+
+
+def record_layout_audit(run_dir: Path, *, render_revision: int) -> dict[str, Any]:
+    """记录 CUMCM 论证与版面审计已覆盖当前渲染修订。"""
+    return _record_paper_revision(
+        run_dir,
+        field="layout_audited_revision",
+        value=render_revision,
+        expected_render_revision=render_revision,
+    )
 
 
 def write_simple_state(run_dir: Path, payload: dict[str, Any]) -> None:

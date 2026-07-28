@@ -50,7 +50,7 @@ PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
 # v3.2 不写 v3.1 的 review/summary.json（科学挑战不经 import_scientific_review），
 # 因此盲评结论需要独立记录文件，否则 v3.2 永远无法完成 PDF 盲评。
 V32_PAPER_BLIND_RECORD_PATH = REVIEW_ROOT / "paper-blind-review.json"
-PAPER_BLIND_PROMPT_PREFIX = (
+LEGACY_PAPER_BLIND_PROMPT_PREFIX = (
     "你是一位数学建模竞赛评委，现在做冷读盲评。你只收到这份冻结 PDF，"
     "没有题面、源码、运行记录、作者解释或前序审核结论。\n\n"
     "请按以下顺序作答，不要跳过任何部分：\n\n"
@@ -91,6 +91,21 @@ PAPER_BLIND_PROMPT_PREFIX = (
     "（需补实验/搜索/复算）或 analysis（需改 endpoint、目标、模型或策略）。"
     "不要默认优先局部修补——只有不影响模型、结果和论证主线的问题才建议最小修改。\n\n"
     "除该 PDF 外不要读取任何文件或既有对话。论文 PDF："
+)
+PAPER_BLIND_PROMPT_VERSION = "2.0"
+LEGACY_PAPER_BLIND_PROMPT_VERSION = "1.0"
+PAPER_BLIND_PROMPT_PREFIX = LEGACY_PAPER_BLIND_PROMPT_PREFIX.replace(
+    "四、P0/P1 阻断性问题\n",
+    "补充：三分钟冷读检索（必须逐项明确回答）\n"
+    "- 三分钟内能否找到每个必答问题的直接答案？逐问写找到/未找到及页码。\n"
+    "- 只用一句话复述全文最重要的贡献；若无法复述，说明被什么信息遮蔽。\n"
+    "- 能否说明各问如何继承，以及后问为何不能与前问任意交换？\n"
+    "- 能否指出各问主图及其支持的论点？没有明确主图时如实记录。\n"
+    "- 哪些页面最像工作报告、实验日志或教材式模型介绍？给出页码。\n"
+    "- 前五页是否建立了足以理解模型选择的数据直觉？\n"
+    "这些检索结果只依据 PDF；找不到时不得依据题面或作者解释补全。\n\n"
+    "四、P0/P1 阻断性问题\n",
+    1,
 )
 
 FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
@@ -1342,6 +1357,8 @@ def _build_competition_review_packet(run_dir: Path, *, kind: str) -> dict[str, A
         "files": files,
         "created_at": utc_now(),
     }
+    if kind == "paper-blind":
+        manifest["prompt_version"] = PAPER_BLIND_PROMPT_VERSION
     atomic_json(packet_dir / "manifest.json", manifest)
     return manifest
 
@@ -1416,6 +1433,8 @@ def build_review_packet(run_dir: Path, *, kind: str) -> dict[str, Any]:
         "files": files,
         "created_at": utc_now(),
     }
+    if kind == "paper-blind":
+        manifest["prompt_version"] = PAPER_BLIND_PROMPT_VERSION
     atomic_json(packet_dir / "manifest.json", manifest)
     return manifest
 
@@ -1435,12 +1454,19 @@ def _read_packet_manifest(run_dir: Path, manifest_relative: str) -> tuple[Path, 
         "files",
         "created_at",
     }
-    if set(payload) != expected or payload["schema_version"] != "1.0":
+    packet_kind = payload.get("packet_kind")
+    allowed_keys = [expected]
+    if packet_kind == "paper-blind":
+        allowed_keys.append(expected | {"prompt_version"})
+    if set(payload) not in allowed_keys or payload.get("schema_version") != "1.0":
         raise ContractError("审查包 manifest 格式不兼容")
     if payload["run_id"] != run_dir.name:
         raise ContractError("审查包 run_id 不匹配")
     if payload["packet_kind"] not in _PACKET_ROOTS:
         raise ContractError("审查包类别不合法")
+    prompt_version = payload.get("prompt_version")
+    if prompt_version is not None and prompt_version != PAPER_BLIND_PROMPT_VERSION:
+        raise ContractError("paper-blind 提示词版本不受支持")
     if not isinstance(payload["source_roots"], list) or not isinstance(payload["files"], list):
         raise ContractError("审查包缺少源树或文件清单")
     packet_id = payload["packet_id"]
@@ -1523,7 +1549,16 @@ def paper_blind_review_prompt(run_dir: Path, manifest_relative: str) -> str:
     frozen_pdf = manifest_path.parent / _PACKET_DESTINATIONS["paper/final.pdf"]
     if not frozen_pdf.is_file():
         raise ContractError("paper-blind 审查包缺少冻结 PDF")
-    return PAPER_BLIND_PROMPT_PREFIX + str(frozen_pdf.resolve())
+    prompt_version = manifest.get(
+        "prompt_version", LEGACY_PAPER_BLIND_PROMPT_VERSION
+    )
+    if prompt_version == LEGACY_PAPER_BLIND_PROMPT_VERSION:
+        prefix = LEGACY_PAPER_BLIND_PROMPT_PREFIX
+    elif prompt_version == PAPER_BLIND_PROMPT_VERSION:
+        prefix = PAPER_BLIND_PROMPT_PREFIX
+    else:
+        raise ContractError("paper-blind 提示词版本不受支持")
+    return prefix + str(frozen_pdf.resolve())
 
 
 def paper_blind_review_prompt_sha256(run_dir: Path, manifest_relative: str) -> str:
@@ -3360,12 +3395,15 @@ def _import_v32_paper_blind_review(
         report_file=report_file,
         reviewer_thread_id=reviewer_thread_id,
     )
+    state = read_simple_state(run_dir)
+    render_revision = int(state.get("paper_render_revision", 0))
     record = {
         "schema_name": "v32_paper_blind_review",
         "schema_version": "1.0",
         "run_id": run_dir.name,
         "verdict": verdict,
         "highest_severity": highest_severity,
+        "paper_render_revision": render_revision,
         "packet": packet,
         "report": report,
         "task_receipt": task,
@@ -3373,6 +3411,9 @@ def _import_v32_paper_blind_review(
         "reviewed_at": utc_now(),
     }
     atomic_json(run_dir / V32_PAPER_BLIND_RECORD_PATH, record)
+    from shumozizi.simple.state import record_paper_review
+
+    record_paper_review(run_dir, render_revision=render_revision)
     return {"paper_blind_review": record}
 
 
@@ -3408,6 +3449,13 @@ def _v32_paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
 def _v32_paper_blind_review_current(run_dir: Path, review: dict[str, Any]) -> tuple[bool, str]:
     """复验 v3.2 盲评仍绑定未漂移的冻结 PDF、报告和独立回执。"""
     try:
+        state = read_simple_state(run_dir)
+        review_revision = review.get("paper_render_revision")
+        if review_revision is not None and (
+            review_revision != state.get("paper_render_revision", 0)
+            or review_revision != state.get("paper_reviewed_revision", 0)
+        ):
+            return False, "当前渲染修订尚未完成独立 PDF 盲评"
         packet = _verify_v32_frozen_packet_copy(
             run_dir, review.get("packet"), expected_kind="paper-blind"
         )

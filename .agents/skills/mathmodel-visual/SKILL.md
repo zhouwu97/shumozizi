@@ -15,9 +15,11 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 在 analysis 阶段先列出 `mathematical_objects` 和 `visual_questions`。在模型输出合同中声明 `visual_outputs`，至少按实际需要保存候选解、可行边界、活跃约束、搜索轨迹、Pareto 点、状态轨迹或不确定性样本；只保存最终标量时先修模型输出，不能让绘图阶段猜造结构数据。
 
-先为每个 `core_question=true` 的问题在 `FIGURE_PLAN.json` 2.2 写一条 `visual_decisions`：空间、流程、机制、阈值或权衡需要视觉证据时选 `required` 并说明原因；确实可由公式、直接答案表和短文完整表达时选 `waived` 并给出具体理由。不能通过缺少计划或把所有图设为可选来静默零图。旧 2.1 文件只作兼容读取，新计划使用 2.2。
+新运行使用 `FIGURE_PLAN.json` 2.3，把科学证据需要与竞赛阅读需要分开。每个核心问题按 `scope=Qx` 声明 `evidence_need` 和 `presentation_need`；数据结构本身决定统计单位、删失、聚合或模型选择时，再增加 `scope=whole_paper` 的数据画像判断。`evidence_need=required` 表示缺图会使关键科学证据不完整，继续作为编译硬门；`presentation_need=required` 表示公式和表格虽足以证明，但缺图会使评委难以迅速理解，初期只产生 advisory。两者都可在有具体理由时 `waived`，纯解析题不强制主图。旧 2.1/2.2 只作兼容读取。
 
-需要作为正文论证证据的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`renderer`、`visual_question`、`expected_observation` 和 `decision_consequence`。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版后若 PDF 评审暴露新的证据缺口，可以新增带 `review_finding` 的图，候选 PDF 冻结后不再扩图。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
+每张 2.3 图还声明 `presentation_role`：`data_portrait`、`question_hero`、`supporting` 或 `appendix`。一个问题只确定承担主叙事的 hero figure，不按题号凑固定图数；其余图只有承担独立证据任务时才进正文。纯呈现图可读取当前运行内已冻结的 `problem/`、`analysis/` 或 `results/raw/` 文件，不得为数据画像伪造实验结果；晋级后用 `scripts/figures/register_presentation_figure.py` 登记输入、脚本、输出和人工看图回执。
+
+需要作为正文论证证据或主叙事入口的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`renderer`、`visual_question`、`expected_observation` 和 `decision_consequence`。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版后若 PDF 评审暴露新的证据缺口，可以新增带 `review_finding` 的图，候选 PDF 冻结后不再扩图。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
 
 图不能由脚本直接覆盖 `figures/current/`。每次修改使用新版本目录 `figures/candidates/<figure_id>/<version>/` 同时生成 PNG/PDF，先独立打开检查，再执行 `python scripts/figures/promote_figure_candidate.py` 晋级。普通统计图检查文件可读和 PNG/PDF 宽高比；`diagram` 还必须输出同目录 layout JSON，检查画布边界、节点内文字、文字重叠、最小字号、箭头穿字和节点连接点居中。机械 QA 通过后仍要填写人工看图结论；同一候选版本不得反复覆盖。
 

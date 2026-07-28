@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_name": {"const": "cumcm_layout_audit"},
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"enum": ["1.0", "1.1", "1.2"]},
     "run_id": {"type": "string", "minLength": 1},
     "reviewed_pdf_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "structure": {
@@ -76,9 +76,34 @@
     },
     "paper_review_verdict": {"enum": ["pass", "conditional_pass", "rework"]},
     "review_summary": {"type": "string", "minLength": 20},
+    "authoring_realization": {"$ref": "#/$defs/authoringRealization"},
+    "learning_realization": {"$ref": "#/$defs/learningRealization"},
+    "cold_read": {"$ref": "#/$defs/coldRead"},
+    "adjudication": {"$ref": "#/$defs/adjudication"},
+    "presentation_probe": {"$ref": "#/$defs/presentationProbe"},
     "layout": {"$ref": "#/$defs/layout"},
     "overall_verdict": {"enum": ["pending", "pass", "conditional_pass", "rework"]}
   },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}},
+      "then": {
+        "required": [
+          "authoring_realization", "cold_read", "adjudication", "presentation_probe"
+        ]
+      }
+    },
+    {
+      "$comment": "1.2 在不污染 PDF-only 冷读的前提下，追加写作前选定论文卡模式的本地兑现检查。",
+      "if": {"properties": {"schema_version": {"const": "1.2"}}},
+      "then": {
+        "required": [
+          "authoring_realization", "learning_realization", "cold_read",
+          "adjudication", "presentation_probe"
+        ]
+      }
+    }
+  ],
   "$defs": {
     "argumentDepth": {
       "type": "object",
@@ -160,6 +185,165 @@
         "symbol_definition_issues": {"$ref": "#/$defs/textList"}
       },
       "additionalProperties": false
+    },
+    "authoringRealization": {
+      "type": "object",
+      "required": ["mode", "checks", "blockers", "warnings"],
+      "properties": {
+        "mode": {"enum": ["advisory", "required"]},
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["check_id", "status", "location", "issue", "classification"],
+            "properties": {
+              "check_id": {"type": "string", "minLength": 1},
+              "status": {"enum": ["present", "missing", "partial"]},
+              "location": {"type": "string", "minLength": 1},
+              "issue": {"type": ["string", "null"]},
+              "classification": {"enum": ["blocking", "advisory"]}
+            },
+            "additionalProperties": false
+          }
+        },
+        "blockers": {"$ref": "#/$defs/textList"},
+        "warnings": {"$ref": "#/$defs/textList"}
+      },
+      "additionalProperties": false
+    },
+    "learningRealization": {
+      "type": "object",
+      "required": [
+        "advisory_only", "input_scope", "source_application",
+        "comparison_scope", "evidence_boundary", "selected_cards", "checks",
+        "status", "summary"
+      ],
+      "properties": {
+        "advisory_only": {"const": true},
+        "input_scope": {"const": "knowledge_application_and_frozen_pdf"},
+        "source_application": {"const": "paper/KNOWLEDGE_APPLICATION.md"},
+        "comparison_scope": {"const": "planned_transfer_patterns_only"},
+        "evidence_boundary": {"const": "knowledge_cards_are_not_current_evidence"},
+        "selected_cards": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "pattern_id", "paper_id", "pattern", "planned_location",
+              "current_evidence", "source_path", "realization_anchor",
+              "pdf_realization", "finding"
+            ],
+            "properties": {
+              "pattern_id": {"type": "string", "minLength": 3},
+              "paper_id": {"type": "string", "minLength": 1},
+              "pattern": {"type": "string", "minLength": 8},
+              "planned_location": {"type": "string", "minLength": 4},
+              "current_evidence": {"type": "string", "minLength": 8},
+              "source_path": {"type": "string", "minLength": 1},
+              "realization_anchor": {"type": "string", "minLength": 4},
+              "pdf_realization": {"enum": ["pass", "partial", "fail"]},
+              "finding": {"type": ["string", "null"]}
+            },
+            "additionalProperties": false
+          }
+        },
+        "status": {"enum": ["not_applicable", "pass", "partial", "fail"]},
+        "summary": {"type": "string", "minLength": 12}
+      },
+      "additionalProperties": false
+    },
+    "coldRead": {
+      "type": "object",
+      "required": [
+        "input_scope", "direct_answers_found_within_3_minutes",
+        "one_sentence_contribution", "cross_question_inheritance_understood",
+        "first_five_pages_establish_data_intuition", "hero_figures_identified",
+        "report_like_pages"
+      ],
+      "properties": {
+        "input_scope": {"const": "frozen_pdf_only"},
+        "direct_answers_found_within_3_minutes": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"}
+        },
+        "one_sentence_contribution": {"type": "string", "minLength": 8},
+        "cross_question_inheritance_understood": {"type": "boolean"},
+        "first_five_pages_establish_data_intuition": {"type": "boolean"},
+        "hero_figures_identified": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"}
+        },
+        "report_like_pages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        }
+      },
+      "additionalProperties": false
+    },
+    "adjudication": {
+      "type": "object",
+      "required": ["status", "blocking_findings", "advisory_findings"],
+      "properties": {
+        "status": {"enum": ["pass", "rework"]},
+        "blocking_findings": {"$ref": "#/$defs/textList"},
+        "advisory_findings": {"$ref": "#/$defs/textList"}
+      },
+      "additionalProperties": false
+    },
+    "presentationProbe": {
+      "type": "object",
+      "required": [
+        "advisory_only", "pdf_total_pages", "page_metrics", "dense_text_page_ranges",
+        "visual_anchor_pages", "first_visual_page", "figure_dense_page_ranges",
+        "back_loaded_visual_concentration", "warnings"
+      ],
+      "properties": {
+        "advisory_only": {"const": true},
+        "pdf_total_pages": {"type": "integer", "minimum": 1},
+        "page_metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["page", "text_characters", "visual_xobjects"],
+            "properties": {
+              "page": {"type": "integer", "minimum": 1},
+              "text_characters": {"type": "integer", "minimum": 0},
+              "visual_xobjects": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          }
+        },
+        "dense_text_page_ranges": {"$ref": "#/$defs/pageRanges"},
+        "visual_anchor_pages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        },
+        "first_visual_page": {"type": ["integer", "null"], "minimum": 1},
+        "figure_dense_page_ranges": {"$ref": "#/$defs/pageRanges"},
+        "back_loaded_visual_concentration": {"type": "boolean"},
+        "warnings": {"$ref": "#/$defs/textList"}
+      },
+      "additionalProperties": false
+    },
+    "pageRanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {"type": "integer", "minimum": 1},
+          "end": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
     },
     "textList": {
       "type": "array",

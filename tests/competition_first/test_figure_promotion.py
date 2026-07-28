@@ -15,7 +15,12 @@ from shumozizi.simple.figure_promotion import (
     audit_figure_candidate,
     promote_figure_candidate,
 )
-from shumozizi.simple.figures import register_insight_figure
+from shumozizi.simple.figures import (
+    read_figure_index,
+    register_insight_figure,
+    register_presentation_figure,
+    verify_current_figure_files,
+)
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.results import register_result
 from shumozizi.simple.state import utc_now
@@ -97,6 +102,31 @@ def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str
         pdf.relative_to(run_dir).as_posix(),
     ]
     return run_dir, outputs, layout.relative_to(run_dir).as_posix()
+
+
+def _promote_plot(run_dir: Path, figure_id: str) -> dict[str, object]:
+    """创建并晋级一张用于索引兼容测试的空白图。"""
+    folder = run_dir / f"figures/candidates/{figure_id}/v1"
+    folder.mkdir(parents=True)
+    png = folder / f"{figure_id}.png"
+    pdf = folder / f"{figure_id}.pdf"
+    Image.new("RGB", (400, 200), color="white").save(png)
+    writer = PdfWriter()
+    writer.add_blank_page(width=400, height=200)
+    with pdf.open("wb") as stream:
+        writer.write(stream)
+    return promote_figure_candidate(
+        run_dir,
+        figure_id=figure_id,
+        candidate_outputs=[
+            png.relative_to(run_dir).as_posix(),
+            pdf.relative_to(run_dir).as_posix(),
+        ],
+        target_stem=f"figures/current/{figure_id}",
+        rendering_mode="plot",
+        human_reviewed=True,
+        human_review_notes="已检查测试图的 PNG 与 PDF 尺寸、留白和可读性。",
+    )
 
 
 def test_diagram_arrow_text_collision_blocks_promotion(tmp_path: Path) -> None:
@@ -217,6 +247,146 @@ def test_v32_registration_requires_promotion_receipt(tmp_path: Path) -> None:
     )
 
     assert entry["promotion_receipt"]["path"] == promotion["receipt"]["path"]
+
+
+def test_presentation_figure_binds_frozen_inputs_without_fake_result(tmp_path: Path) -> None:
+    """数据画像可追溯到冻结输入，但不需要伪造实验 result_id。"""
+    run_dir, outputs, layout = _candidate(tmp_path, collision=False)
+    promotion = promote_figure_candidate(
+        run_dir,
+        figure_id="overall-workflow",
+        candidate_outputs=outputs,
+        target_stem="figures/current/data-portrait",
+        rendering_mode="diagram",
+        layout_report=layout,
+        human_reviewed=True,
+        human_review_notes="已检查数据画像的文字、图例、对齐和打印可读性。",
+    )
+    source = run_dir / "analysis/DATA_AUDIT.json"
+    script = run_dir / "code/figures/data_portrait.py"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text('{"mothers": 267}\n', encoding="utf-8")
+    script.write_text("print('render frozen data portrait')\n", encoding="utf-8")
+
+    entry = register_presentation_figure(
+        run_dir,
+        figure_id="overall-workflow",
+        source_files=["analysis/DATA_AUDIT.json"],
+        renderer_script="code/figures/data_portrait.py",
+        outputs=[item["path"] for item in promotion["promoted_outputs"]],
+        question_id="whole_paper",
+        question="重复测量与删失结构为什么决定后续模型选择？",
+        takeaway="数据画像使统计单位、删失类型和标签稀缺性在模型前可见。",
+        limitations="该图只描述当前附件结构，不产生新的模型数字或因果结论。",
+        presentation_role="data_portrait",
+        role="model_understanding",
+        promotion_receipt=promotion["receipt"]["path"],
+    )
+
+    assert entry["provenance_type"] == "frozen_inputs"
+    assert "result_id" not in entry
+    assert verify_current_figure_files(run_dir, figure_stage="current")["success"] is True
+
+    source.write_text('{"mothers": 268}\n', encoding="utf-8")
+    stale = verify_current_figure_files(run_dir, figure_stage="current")
+    assert stale["success"] is False
+    assert any("哈希不一致" in item["message"] for item in stale["errors"])
+
+
+def test_figure_index_13_supports_mixed_result_and_presentation_entries(
+    tmp_path: Path,
+) -> None:
+    """1.3 索引升级后仍可继续登记结果图，且既有结果图保持有效。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "mixed-figure-index",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    script = run_dir / "code/figures/render.py"
+    result_file = run_dir / "results/raw/source.json"
+    portrait_source = run_dir / "analysis/DATA_AUDIT.json"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    result_file.parent.mkdir(parents=True, exist_ok=True)
+    portrait_source.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("print('render')\n", encoding="utf-8")
+    result_file.write_text('{"score": 1}\n', encoding="utf-8")
+    portrait_source.write_text('{"rows": 10}\n', encoding="utf-8")
+    now = utc_now()
+    register_result(
+        run_dir,
+        result_id="q1-source",
+        question_id="Q1",
+        kind="comparison",
+        command="python code/figures/render.py",
+        source_script="code/figures/render.py",
+        input_files=["code/figures/render.py"],
+        output_files=["results/raw/source.json"],
+        metrics={},
+        metric_sources={},
+        exit_code=0,
+        stdout_path="results/q1-source.stdout.log",
+        stderr_path="results/q1-source.stderr.log",
+        started_at=now,
+        finished_at=now,
+        duration_seconds=1.0,
+        objective_semantics_sha256="e" * 64,
+    )
+
+    first = _promote_plot(run_dir, "q1-evidence")
+    register_insight_figure(
+        run_dir,
+        figure_id="q1-evidence",
+        result_id="q1-source",
+        input_result="results/raw/source.json",
+        renderer_script="code/figures/render.py",
+        outputs=[item["path"] for item in first["promoted_outputs"]],
+        question="Q1 的关键比较结果是否稳定优于自然基线？",
+        takeaway="统一评分下当前方案取得可复核的比较优势。",
+        role="decisive_evidence",
+        placement="body",
+        promotion_receipt=first["receipt"]["path"],
+    )
+
+    portrait = _promote_plot(run_dir, "data-portrait")
+    register_presentation_figure(
+        run_dir,
+        figure_id="data-portrait",
+        source_files=["analysis/DATA_AUDIT.json"],
+        renderer_script="code/figures/render.py",
+        outputs=[item["path"] for item in portrait["promoted_outputs"]],
+        question_id="whole_paper",
+        question="数据结构中的重复测量和缺失模式是什么？",
+        takeaway="数据画像在建模前明确统计单位与缺失边界。",
+        limitations="该图仅描述冻结输入，不提供新的实验结论。",
+        presentation_role="data_portrait",
+        role="model_understanding",
+        promotion_receipt=portrait["receipt"]["path"],
+    )
+
+    second = _promote_plot(run_dir, "q1-mechanism")
+    register_insight_figure(
+        run_dir,
+        figure_id="q1-mechanism",
+        result_id="q1-source",
+        input_result="results/raw/source.json",
+        renderer_script="code/figures/render.py",
+        outputs=[item["path"] for item in second["promoted_outputs"]],
+        question="Q1 的比较优势由哪个约束机制形成？",
+        takeaway="结果图把最终优势与活跃约束直接对应。",
+        role="insight",
+        placement="body",
+        promotion_receipt=second["receipt"]["path"],
+    )
+
+    index = read_figure_index(run_dir)
+    assert index["schema_version"] == "1.3"
+    assert [item["figure_id"] for item in index["figures"]] == [
+        "q1-evidence",
+        "data-portrait",
+        "q1-mechanism",
+    ]
+    assert verify_current_figure_files(run_dir, figure_stage="current")["success"] is True
 
 
 def test_v32_render_never_overwrites_candidate_version(tmp_path: Path) -> None:

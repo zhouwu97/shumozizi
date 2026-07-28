@@ -13,6 +13,10 @@ from typing import Any
 import pytest
 
 from shumozizi.core.io import ContractError
+from shumozizi.knowledge.retrieval import (
+    write_analysis_knowledge_retrieval,
+    write_paper_knowledge_application,
+)
 from shumozizi.paper.cumcm_adapter import SECTION_TARGETS, write_cumcm_structure_map
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.simple.competition import write_answer_map
@@ -29,13 +33,25 @@ from shumozizi.simple.state import utc_now
 
 def _run(tmp_path: Path, name: str) -> Path:
     """创建一个最小 v3.2 运行目录。"""
-    return initialize_simple_run(
+    run_dir = initialize_simple_run(
         tmp_path,
         name,
         competition="cumcm",
         required_questions=["Q1"],
         workflow_version="3.2",
     )
+    write_analysis_knowledge_retrieval(
+        run_dir,
+        None,
+        {
+            "problem_type": "测试夹具",
+            "data_structure": "最小生产结果",
+            "task_types": ["结果洞察"],
+        },
+        unavailable_reason="测试夹具不加载仓内论文卡索引，显式记录后继续。",
+    )
+    write_paper_knowledge_application(run_dir)
+    return run_dir
 
 
 def _register(

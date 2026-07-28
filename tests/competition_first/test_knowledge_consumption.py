@@ -11,12 +11,15 @@ import pytest
 from shumozizi.core.io import ContractError, load_json
 from shumozizi.knowledge.papers import REQUIRED_CARD_SECTIONS, build_paper_index
 from shumozizi.knowledge.retrieval import (
+    evaluate_paper_knowledge_consumption,
+    read_paper_knowledge_application,
     record_analysis_knowledge_decisions,
     require_analysis_knowledge_retrieval,
     require_paper_knowledge_application,
     write_analysis_knowledge_retrieval,
     write_paper_knowledge_application,
 )
+from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import require_v32_modeling_plan
 from shumozizi.simple.revisions import classify_revision
@@ -260,6 +263,8 @@ def test_paper_application_requires_a_decision_for_every_pattern(tmp_path: Path)
                     "- 理由：该模式能解释当前论文的验证单位选择。\n"
                     "- 应用位置：问题分析与验证设计\n"
                     "- 当前题证据：当前题重复检测数据存在个体跨折泄漏风险。"
+                    "\n- 正文源码：paper/main.tex"
+                    "\n- 兑现锚点：本文按孕妇标识完成训练验证分组。"
                 )
                 first = False
             else:
@@ -268,15 +273,115 @@ def test_paper_application_requires_a_decision_for_every_pattern(tmp_path: Path)
                     "- 理由：当前题的论证链不需要该结构模式。\n"
                     "- 应用位置：不适用\n"
                     "- 当前题证据：不适用"
+                    "\n- 正文源码：不适用"
+                    "\n- 兑现锚点：不适用"
                 )
             text = text.replace(
-                "- 写作决定：待判断\n- 理由：待填写\n- 应用位置：待填写\n- 当前题证据：待填写",
+                "- 写作决定：待判断\n- 理由：待填写\n- 应用位置：待填写\n"
+                "- 当前题证据：待填写\n- 正文源码：待填写\n- 兑现锚点：待填写",
+                replacement,
+                1,
+            )
+    path.write_text(text, encoding="utf-8")
+    (run_dir / "paper/main.tex").write_text(
+        "本文按孕妇标识完成训练验证分组。\n", encoding="utf-8"
+    )
+
+    assert require_paper_knowledge_application(run_dir) == path
+    application = read_paper_knowledge_application(run_dir)
+    assert application["selected_cards"] == ["structural-card"]
+    assert application["adopted_patterns"][0]["planned_location"] == "问题分析与验证设计"
+    assert evaluate_paper_knowledge_consumption(run_dir)["errors"] == []
+
+    unused = text.replace("- 正文源码：paper/main.tex", "- 正文源码：paper/unused.tex")
+    path.write_text(unused, encoding="utf-8")
+    (run_dir / "paper/unused.tex").write_text(
+        "本文按孕妇标识完成训练验证分组。\n", encoding="utf-8"
+    )
+    assert any(
+        "编译包含链" in item
+        for item in evaluate_paper_knowledge_consumption(run_dir)["errors"]
+    )
+    path.write_text(text, encoding="utf-8")
+
+    (run_dir / "paper/main.tex").write_text(
+        "% 本文按孕妇标识完成训练验证分组。\n正文尚未消费所选结构模式。\n",
+        encoding="utf-8",
+    )
+    missing = evaluate_paper_knowledge_consumption(run_dir)
+    assert any("未被正文消费" in item for item in missing["errors"])
+    assert any(
+        "未被正文消费" in item for item in check_paper_readiness(run_dir)["errors"]
+    )
+
+    path.write_text(
+        text.replace("- 来源卡片：`structural-card`", "- 来源卡片：`other-card`", 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(ContractError, match="来源卡片"):
+        read_paper_knowledge_application(run_dir)
+
+
+def test_paper_application_adopts_patterns_from_at_most_two_cards(tmp_path: Path) -> None:
+    """写作检索可以看多张候选卡，但实际迁移不得把上下文扩成卡片堆积。"""
+    for index in range(1, 4):
+        index_path = _seed_card(
+            tmp_path,
+            paper_id=f"structural-card-{index}",
+            title=f"跨领域纵向决策案例 {index}",
+        )
+    run_dir = initialize_simple_run(tmp_path, "paper-card-limit", workflow_version="3.2")
+    write_analysis_knowledge_retrieval(run_dir, index_path, _fingerprint())
+    document = load_json(run_dir / "knowledge/analysis-retrieval.json")
+    accepted = []
+    rejected = []
+    for card in document["matched_cards"]:
+        for pattern_index, pattern in enumerate(card["candidate_patterns"]):
+            target = accepted if pattern_index == 0 else rejected
+            item = {
+                "pattern_id": pattern["pattern_id"],
+                "reason": "该判断用于验证写作阶段选卡数量上限。",
+            }
+            if pattern_index == 0:
+                item["route_application"] = "在当前题中重新组织个体级验证叙事。"
+            target.append(item)
+    record_analysis_knowledge_decisions(
+        run_dir,
+        accepted_patterns=accepted,
+        rejected_patterns=rejected,
+    )
+    path = write_paper_knowledge_application(run_dir)
+    text = path.read_text(encoding="utf-8")
+    for card in document["matched_cards"]:
+        for pattern_index, _pattern in enumerate(card["candidate_patterns"]):
+            if pattern_index == 0:
+                replacement = (
+                    "- 写作决定：采用\n"
+                    "- 理由：该模式服务当前论文的个体级验证叙事。\n"
+                    "- 应用位置：问题分析与验证设计\n"
+                    "- 当前题证据：当前题数据存在同一个体跨折泄漏风险。"
+                    "\n- 正文源码：paper/main.tex"
+                    "\n- 兑现锚点：本文按个体组织验证叙事。"
+                )
+            else:
+                replacement = (
+                    "- 写作决定：拒绝\n"
+                    "- 理由：当前题不需要同时迁移该辅助结构模式。\n"
+                    "- 应用位置：不适用\n"
+                    "- 当前题证据：不适用"
+                    "\n- 正文源码：不适用"
+                    "\n- 兑现锚点：不适用"
+                )
+            text = text.replace(
+                "- 写作决定：待判断\n- 理由：待填写\n- 应用位置：待填写\n"
+                "- 当前题证据：待填写\n- 正文源码：待填写\n- 兑现锚点：待填写",
                 replacement,
                 1,
             )
     path.write_text(text, encoding="utf-8")
 
-    assert require_paper_knowledge_application(run_dir) == path
+    with pytest.raises(ContractError, match="最多采用 2 张"):
+        require_paper_knowledge_application(run_dir)
 
 
 def test_card_updates_do_not_invalidate_scientific_results(tmp_path: Path) -> None:

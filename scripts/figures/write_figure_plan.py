@@ -15,7 +15,7 @@ from shumozizi.simple.figures import write_figure_plan  # noqa: E402
 
 
 def main() -> int:
-    """校验并原子写入 FIGURE_PLAN 2.1/2.2。"""
+    """校验并原子写入 FIGURE_PLAN 2.1/2.2/2.3。"""
     parser = argparse.ArgumentParser(description="写入 v3.2 正文图表计划")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--input", type=Path, required=True)

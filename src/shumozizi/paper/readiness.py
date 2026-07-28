@@ -183,7 +183,7 @@ def _normalized_latex_path(value: str) -> str:
 
 
 def validate_required_figure_consumption(run_dir: Path) -> list[str]:
-    """复验 FIGURE_PLAN 2.1/2.2 的必需图已生成并在 LaTeX 正文中消费。
+    """复验 FIGURE_PLAN 2.1/2.2/2.3 的必需图已生成并在 LaTeX 正文中消费。
 
     旧 2.0 图表计划继续只服务兼容收据；只有 v3.2 主动写入 2.1 时才启用
     生成、current 来源、插图、交叉引用和解释闭环。
@@ -211,9 +211,9 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
     try:
         plan = load_json(plan_path)
         plan_version = plan.get("schema_version")
-        if plan_version not in {"2.1", "2.2"}:
+        if plan_version not in {"2.1", "2.2", "2.3"}:
             return [
-                f"核心问题 {question_id} 必须使用 FIGURE_PLAN 2.1/2.2 声明显式视觉决策"
+                f"核心问题 {question_id} 必须使用 FIGURE_PLAN 2.1/2.2/2.3 声明显式视觉决策"
                 for question_id in sorted(core_questions)
             ]
         errors = validate_document(plan, "figure_plan")
@@ -223,9 +223,10 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
             return [f"FIGURE_PLAN {plan_version} 的 run_id 与当前运行不一致"]
         decisions = plan.get("visual_decisions", [])
         decision_map = {
-            item.get("question_id"): item
+            item.get("scope", item.get("question_id")): item
             for item in decisions
-            if isinstance(item, dict) and isinstance(item.get("question_id"), str)
+            if isinstance(item, dict)
+            and isinstance(item.get("scope", item.get("question_id")), str)
         }
         decision_errors: list[str] = []
         for question_id in sorted(core_questions):
@@ -235,7 +236,12 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                     f"核心问题 {question_id} 缺少显式视觉决策：必须选择 required 或 waived"
                 )
                 continue
-            if decision.get("status") == "required":
+            evidence_required = (
+                decision.get("evidence_need") == "required"
+                if plan_version == "2.3"
+                else decision.get("status") == "required"
+            )
+            if evidence_required:
                 main_figures = [
                     item
                     for item in plan.get("figures", [])
@@ -309,7 +315,43 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                 errors.append(f"稳定性图 {figure_id} 必须放入附录章节")
         return errors
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
-        return ["FIGURE_PLAN 2.1/2.2 闭环校验失败: " + str(exc)]
+        return ["FIGURE_PLAN 2.1/2.2/2.3 闭环校验失败: " + str(exc)]
+
+
+def presentation_figure_warnings(run_dir: Path) -> list[str]:
+    """对 FIGURE_PLAN 2.3 的呈现需求给出非阻断性缺口提示。"""
+    plan_path = run_dir / _FIGURE_PLAN_PATH
+    if not plan_path.is_file():
+        return []
+    try:
+        plan = load_json(plan_path)
+        if plan.get("schema_version") != "2.3":
+            return []
+        decisions = plan.get("visual_decisions", [])
+        figures = plan.get("figures", [])
+        warnings: list[str] = []
+        for decision in decisions:
+            if decision.get("presentation_need") != "required":
+                continue
+            scope = decision.get("scope")
+            expected_role = "data_portrait" if scope == "whole_paper" else "question_hero"
+            matches = [
+                figure
+                for figure in figures
+                if figure.get("presentation_role") == expected_role
+                and (
+                    scope == "whole_paper"
+                    or figure.get("question_id") == scope
+                )
+            ]
+            if not matches:
+                warnings.append(
+                    f"呈现需求 {scope} 声明为 required，但缺少 {expected_role} 图；"
+                    "当前仅提示，不自动要求增加低价值图。"
+                )
+        return warnings
+    except (ContractError, OSError, TypeError, ValueError):
+        return ["FIGURE_PLAN 2.3 呈现需求无法读取，建议人工检查。"]
 
 
 def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
@@ -460,10 +502,14 @@ def require_reviewable_draft_argument_readiness(
         label="paper/ARGUMENT_PLAN.md",
         minimum_chars=120,
     )
-    from shumozizi.knowledge.retrieval import require_paper_knowledge_application
+    from shumozizi.knowledge.retrieval import (
+        evaluate_paper_knowledge_consumption,
+        require_paper_knowledge_application,
+    )
 
     try:
         require_paper_knowledge_application(run_dir)
+        errors.extend(evaluate_paper_knowledge_consumption(run_dir)["errors"])
     except ContractError as exc:
         errors.append(str(exc))
     storyboard, storyboard_errors = _substantive_markdown(
@@ -521,10 +567,33 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     errors: list[str] = []
     warnings: list[str] = []
     if is_competition_first_v32_state(read_simple_state(run_dir)):
-        from shumozizi.paper.cumcm_adapter import require_cumcm_structure_map
+        from shumozizi.knowledge.retrieval import (
+            evaluate_paper_knowledge_consumption,
+        )
+        from shumozizi.paper.cumcm_adapter import (
+            evaluate_presentation_contract,
+            require_cumcm_structure_map,
+        )
 
         try:
+            errors.extend(evaluate_paper_knowledge_consumption(run_dir)["errors"])
+        except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+            errors.append(str(exc))
+        try:
             require_cumcm_structure_map(run_dir)
+            realization = evaluate_presentation_contract(run_dir)
+            if realization is not None:
+                for item in realization["checks"]:
+                    if item["status"] == "present":
+                        continue
+                    message = (
+                        f"呈现合同 {item['check_id']} 为 {item['status']}"
+                        f"（{item['location']}）：{item['issue']}"
+                    )
+                    if item["classification"] == "blocking":
+                        errors.append(message)
+                    else:
+                        warnings.append(message)
         except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
             errors.append(str(exc))
     answers = _competition_answer_map(run_dir)
@@ -595,6 +664,7 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         warnings.append("缺少 paper/CONTRIBUTION_BRIEF.md；这不阻断普通问题的正确回答。")
     warnings.extend(_insight_figure_warnings(run_dir))
     warnings.extend(_argument_plan_warnings(run_dir))
+    warnings.extend(presentation_figure_warnings(run_dir))
     errors.extend(_code_appendix_errors(run_dir))
     errors.extend(_core_insight_usage_errors(run_dir, answers))
     if is_competition_first_v32_state(read_simple_state(run_dir)):

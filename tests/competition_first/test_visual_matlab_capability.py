@@ -77,6 +77,64 @@ def test_figure_plan_22_requires_model_native_visual_semantics(tmp_path: Path) -
         )
 
 
+def test_figure_plan_23_accepts_frozen_sources_without_result_id(tmp_path: Path) -> None:
+    """2.3 允许呈现图只绑定冻结文件，但来源不能同时为空。"""
+    run_dir = _run(tmp_path, "figure-plan-presentation-source")
+    figure = {
+        **_figure("multi_panel_evidence_chain"),
+        "presentation_role": "data_portrait",
+        "source_result_ids": [],
+        "source_files": ["analysis/DATA_AUDIT.json"],
+        "required": False,
+    }
+    plan = {
+        "schema_name": "figure_plan",
+        "schema_version": "2.3",
+        "run_id": run_dir.name,
+        "visual_decisions": [
+            {
+                "scope": "whole_paper",
+                "evidence_need": "waived",
+                "presentation_need": "required",
+                "reason": "数据统计单位与缺失结构会直接影响后续模型选择。",
+            }
+        ],
+        "figures": [figure],
+    }
+
+    assert write_figure_plan(run_dir, plan)["figures"][0]["source_result_ids"] == []
+
+    missing_sources = {**plan, "figures": [{**figure}]}
+    del missing_sources["figures"][0]["source_files"]
+    with pytest.raises(ContractError, match="source_files|not valid"):
+        write_figure_plan(run_dir, missing_sources)
+
+
+def test_figure_plan_22_still_requires_nonempty_result_sources(tmp_path: Path) -> None:
+    """2.3 的呈现来源放宽不能反向削弱 2.2 的结果绑定要求。"""
+    run_dir = _run(tmp_path, "figure-plan-22-result-source")
+    figure = _figure("pareto_feasible_region")
+    figure["source_result_ids"] = []
+
+    with pytest.raises(ContractError, match="source_result_ids|non-empty"):
+        write_figure_plan(
+            run_dir,
+            {
+                "schema_name": "figure_plan",
+                "schema_version": "2.2",
+                "run_id": run_dir.name,
+                "visual_decisions": [
+                    {
+                        "question_id": "Q2",
+                        "status": "required",
+                        "reason": "多目标折中必须展示可行域、约束和最终决策。",
+                    }
+                ],
+                "figures": [figure],
+            },
+        )
+
+
 def test_visual_value_audit_distinguishes_structure_from_route_bars(tmp_path: Path) -> None:
     """视觉审核按信息价值区分模型结构图和普通路线柱形图。"""
     run_dir = _run(tmp_path, "figure-value")

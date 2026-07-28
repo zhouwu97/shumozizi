@@ -60,14 +60,15 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 - **Codex 桌面端**：用 `create_thread` 新建独立顶层对话，禁止 fork 或续用任何已有对话。
 - **Claude.ai / Claude Code**：dispatch 一个子 Agent（Agent tool call），**不能新开浏览器页面**；子 Agent 不得接收任何当前 run 的上下文，只接收冻结 PDF 路径 + 提示词。子 Agent 的 agent ID 即为 `raw_thread_id`，`creation_mode` 为 `dispatch_agent`，`provider` 为 `claude`。
 
-无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，报告结构：第一印象与竞争力定位 → 写作风格诊断（AI 句式、过度分点、空话总结）→ 可读性与论证清晰度 → P0/P1 阻断性问题 → 最高价值修改建议（不超过 5 条）。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
+无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、计划文件、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须在三分钟内逐问找直接答案、复述一句话贡献、说明问题继承、识别主图及其论点、指出工作报告页，并判断前五页是否建立数据直觉。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
 
 **网页版 GPT 补充审核为可选环节**，只在论文主模型和结果已稳定、需要专项编辑审查时使用，不是每次 PDF 编译后的默认流程。使用时：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核聚焦写作风格（AI 句式 / 分点堆砌 / 空话）、可读性和论证表达，找出最高价值的修改建议；无法由 PDF 验证的内容标为”需要本地复算/对照题面”。发现需要重写章节、替换主图或回到实验的问题时，直接说明，不要降级为局部修补。将审核结果写入 `WEB_PAPER_AUDIT.json`；如有修复，重新编译并复核。最多使用一轮；确需再次审核时生成新提示。网页评价不能证明省一或任何奖项，只能降低已识别的质量风险。
 
 ## 图表与论文
 
-- 写 `paper/ARGUMENT_PLAN.md` 前，必须根据分析阶段候选模式完成 `paper/KNOWLEDGE_APPLICATION.md`：逐项说明写作时采用或拒绝，采用项写明论文位置并绑定当前题面、数据、模型或真实结果。知识卡不是当前题证据；无相关匹配时记录该事实即可，不强迫采用模式。首版可审阅 PDF 的论证就绪检查负责验证该文件，不新增工作流阶段。
-- Competition-First v3.2 的 CUMCM 正式候选稿使用轻量结构适配器：`paper/CUMCM_STRUCTURE_MAP.json` 只映射现有科学论证到国赛外层栏目，并让 Pandoc 把指定 Word 模板作为样式参考；不得借适配修改模型、数字或结论。`paper/CUMCM_LAYOUT_AUDIT.json` 在 `paper_review` 记录论证深度、问题继承和反工作报告风险，在 `verify` 原文件补数字、引用、Word/PDF 与版面闭环。第五章保留逐问特有叙事和近端验证，第六章只汇总跨问题检验。CUMCM 正文 24–30 页仅为软规划，少于 18 页或超过 30 页触发说明，不以页数证明质量。
+- 写 `paper/ARGUMENT_PLAN.md` 前，必须根据分析阶段候选模式完成 `paper/KNOWLEDGE_APPLICATION.md`：逐项说明写作时采用或拒绝，采用模式最多来自 1–2 张卡，采用项写明论文位置、当前题证据、实际正文源码和兑现锚点。首版草稿与正式候选稿的论证就绪检查必须打开正文源码确认锚点已经被消费；只填写计划而未进入正文不能放行。知识卡不是当前题证据；无相关匹配时记录该事实即可，不强迫采用模式，不新增工作流阶段。
+- Competition-First v3.2 的 CUMCM 正式候选稿使用 `CUMCM_STRUCTURE_MAP` 1.1：`classic` 保留固定栏目兜底，`semantic` 允许拆出数据处理和逐问章节，但必须覆盖全部语义角色、必答问题并保留 `ARGUMENT_PLAN` 的论证顺序。两种画像都填写 advisory `presentation_contract`，明确前五页阅读路线、跨问主线、答案总览、数据画像和逐问主图；不得借适配修改模型、数字、结论或证据等级。`paper/CUMCM_LAYOUT_AUDIT.json` 1.2 在 `paper_review` 合并 PDF 冷读、计划兑现、页面节奏、论证深度、问题继承、反工作报告风险和论文卡模式兑现，在 `verify` 原文件补数字、引用、Word/PDF 与版面闭环。论文卡兑现只对照 `KNOWLEDGE_APPLICATION.md` 中预先采用的安全模式，始终 advisory；盲评上下文仍只接收 PDF。近端验证留在各问，综合检验只汇总跨问题内容。CUMCM 正文 24–30 页仅为软规划，少于 18 页或超过 30 页触发说明，不以页数证明质量。
+- 新运行使用 `FIGURE_PLAN` 2.3，将 `evidence_need` 与 `presentation_need` 分开；前者控制科学证据硬门，后者初期只给评委阅读告警。数据结构决定统计单位、删失、聚合或模型选择时规划 `data_portrait`；每问按实际需要选择一个 `question_hero`，纯解析题可以有理由豁免。纯呈现图只能读取当前运行内冻结的 `problem/`、`analysis/` 或 `results/raw/` 文件，并登记输入、脚本、current 输出与人工晋级回执，不得为数据画像伪造实验结果。
 - 图表先输出到版本化 `figures/candidates/<figure_id>/<version>/`，通过文件可读性、PNG/PDF 几何一致性和人工看图后才晋级 `figures/current/`；流程图另查文字越界、重叠、最小字号、箭头穿字和连接点居中。每张图只需要真实来源、它回答的问题、读者看到的 takeaway，以及可选边界；不得为每题、3D、多种子、敏感性或双版本输出凑数量，也不靠输出份数凑数量。
 - v3.2 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。`stability`（舍入、采样层级、数值稳定性）一律进入附录，不得占据正文版面。省略 role 会被拒绝，否则附录约束形同虚设。
 - 图必须由当前数据和当前脚本实际生成，PNG/PDF 可读，并在结果变化后失效。
@@ -75,8 +76,8 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 - PDF 内源码默认不超过一页（`source_code_appendix.pdf_page_budget`），完整代码走 `mode: attachment`；确有赛事要求时显式声明 `competition_requires_full` 与依据。运行时会自动生成 `paper/generated/argument_map.json`；v3.2 只能使用无回退 LaTeX 学术模板。
 - 论文采用可往返的三种逻辑动作：结构蓝图，统一共享模型并逐问成文，证据边界与严格返修。可借鉴蓝图、共享模型、逐问章节、证据局限和返修的五轮思路，但不得把次数固定成状态机或伪造完成度。论文阶段按需路由研究主线、公式语境、结果闭环、图表、摘要、严格评阅和 `latex-layout-editor`，但永远不把专家卡当作当前事实。`paper/STORYBOARD.md` 和 `paper/CONTRIBUTION_BRIEF.md` 是提高质量的软产物；贡献最多三项，不能把常规方法组合包装为创新。
 - 不把约 13 页当作复杂论文的默认目标。先服从赛事页数上限；没有紧上限时，多问且推导/验证复杂的论文可用约 25–33 页正文作为初始规划区间，再按真实内容调整。该区间只帮助防止过度压缩，不是硬门或获奖证明。正文优先完整讲清一个主模型、一个自然 baseline 和一条真正不同的 challenger；中央推导、必要伪代码和参考文献留在正文，完整代码与稳定性审计进附件。
-- 小的正文文字改动只需重新编译和机械 QA；影响结论或图表的改动需重新盲评；代码、数据、目标或主要结果改动需回到实验和科学挑战。标记 `complete` 前必须重新验证科学挑战仍绑定当前生产事实。
-- 返修按 `science -> argument -> render` 分层失效：科学事实改动重做三层，论证改动只重做后两层，字号、箭头、留白等纯渲染改动只重做渲染与 PDF 检查。首版草稿后、候选 PDF 前允许按明确评审发现限量补实验或主图；候选冻结后停止新增科学内容。
+- 每次正式编译递增 `paper_render_revision`；独立盲评和 CUMCM 版式审计必须绑定当前修订，重新编译后旧审查自动失效。小的正文文字改动不回到实验或科学挑战，但正式重编后仍须把盲评、版式审计和机械 QA 绑定新修订；代码、数据、目标或主要结果改动需回到实验和科学挑战。标记 `complete` 前必须重新验证科学挑战仍绑定当前生产事实。
+- 返修按 `science -> argument -> render` 分层失效：科学事实改动重做三层，论证改动重做论证与渲染，字号、箭头、留白等纯渲染改动不失效科学事实或论证内容，但正式重编后仍须完成当前修订的盲评、版式审计和 PDF 检查。首版草稿后、候选 PDF 前允许按明确评审发现限量补实验或主图；候选冻结后停止新增科学内容。
 
 ## 工程约束
 

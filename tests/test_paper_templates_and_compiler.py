@@ -30,6 +30,7 @@ from shumozizi.paper.templates import (
     select_paper_template,
 )
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.state import paper_revision_status, read_simple_state
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_ROOT = REPO_ROOT / "skills/5writing/templates"
@@ -381,6 +382,58 @@ def test_latex_compile_receipt_uses_selected_latex_entrypoint(
     assert receipt["entrypoint_path"] == "paper/main.tex"
     assert receipt["final_pdf_path"] == "paper/final.pdf"
     assert (run_dir / "paper/final.pdf").is_file()
+    assert verify_paper_compile_receipt(run_dir)["valid"] is True
+
+
+def test_v32_compile_increments_render_revision_and_invalidates_old_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """每次正式渲染只递增一次修订号，未重审时状态必须可见。"""
+    _set_engines(monkeypatch, latex=True, typst=True)
+    _isolate_compiler_receipt(monkeypatch)
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-render-revision",
+        competition="mcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="latex",
+        selection_reason="验证正式编译修订号与盲评新鲜度，不涉及竞赛模板内容。",
+    )
+    materialize_selected_template(run_dir)
+    fake_compiler = tmp_path / "fake_revision_xelatex.py"
+    fake_compiler.write_text(
+        "from pathlib import Path\n"
+        "Path('main.log').write_text('generated log', encoding='utf-8')\n"
+        "Path('main.pdf').write_bytes(b'%PDF-1.4\\nrevision test')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        paper_compiler,
+        "_compiler_steps",
+        lambda engine: (
+            "xelatex",
+            [[sys.executable, str(fake_compiler), "main.tex"]] if engine == "latex" else [],
+        ),
+    )
+
+    first = compile_paper(run_dir)
+    first_state = read_simple_state(run_dir)
+    assert first["paper_render_revision"] == 1
+    assert first_state["paper_render_revision"] == 1
+    assert paper_revision_status(first_state)["status"] == "UNREVIEWED_DRAFT"
+
+    second = compile_paper(run_dir)
+    second_state = read_simple_state(run_dir)
+    assert second["paper_render_revision"] == 2
+    assert second_state["paper_render_revision"] == 2
+    assert second_state["paper_reviewed_revision"] == 0
+    assert paper_revision_status(second_state)["status"] == "UNREVIEWED_DRAFT"
     assert verify_paper_compile_receipt(run_dir)["valid"] is True
 
 

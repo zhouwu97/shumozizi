@@ -26,16 +26,16 @@ v3.2 前期可按问题需要用只绑定 `problem/` 的 fresh thread、CUMCM A/
 
 ## 图表与论文
 
-图表默认写入 `figures/current/`，每张图登记 `source`、`question`、`takeaway` 和可选 `limitations`。删除图后论文不会失去信息时，删除该图。不得默认要求每问图、3D、收敛图、多种子图、敏感性图或重复 evidence/publication 图。
+图表默认写入 `figures/current/`，每张图登记 `source`、`question`、`takeaway` 和可选 `limitations`。新运行使用 `FIGURE_PLAN` 2.3：`evidence_need` 判断科学证据是否缺图不可，`presentation_need` 判断评委是否需要视觉入口；后者初期只告警。数据结构决定统计单位、删失、聚合或模型选择时，可规划 `scope=whole_paper` 的 `data_portrait`；它通过 `register_presentation_figure.py` 绑定冻结输入、脚本、current 输出与人工晋级回执，不伪造实验结果。删除图后论文不会失去信息时，删除该图。不得默认要求每问图、3D、收敛图、多种子图、敏感性图或重复 evidence/publication 图。
 
-先用 `paper/STORYBOARD.md` 形成结构蓝图；再统一共享符号、假设和数学对象，并逐问成文；最后把结论逐项与 `answer_map`、结果、图表和限制对齐后严格返修。三者按草稿和证据状态往返，不按 R1--R5 固定轮次推进，也不把文档填写变成门禁。获奖论文专家卡和网页讨论可按草稿状态提示研究主线、模型推导、算法说明、结果闭环、图表任务、摘要、严格返修和 LaTeX 版式，但不能提供当前事实。`CONTRIBUTION_BRIEF.md` 最多三项贡献且为警告项。硬门只有：每个必答问题存在 `answer_map` 直接答案映射、引用 current 生产结果、引用的图有效、没有负面证据、v3.2 的无回退 LaTeX 模板和正文可编译、源码策略符合比赛要求。`paper/generated/argument_map.json` 自动生成，禁止要求人工维护哈希地图。摘要最后写。
+先用 `paper/STORYBOARD.md` 形成结构蓝图；再统一共享符号、假设和数学对象，并逐问成文；最后把结论逐项与 `answer_map`、结果、图表和限制对齐后严格返修。三者按草稿和证据状态往返，不按 R1--R5 固定轮次推进，也不把文档填写变成门禁。写 `ARGUMENT_PLAN.md` 前先完成分析阶段结构检索和 `paper/KNOWLEDGE_APPLICATION.md`，逐项采用或拒绝安全模式，实际采用最多来自 1--2 张卡；每个采用项必须绑定当前题证据、实际正文源码和兑现锚点，编译前会打开源码复验。知识卡永远不提供当前数字、结论或 citation。CUMCM 候选稿使用 `CUMCM_STRUCTURE_MAP` 1.1：`classic` 是固定栏目兜底，`semantic` 允许数据处理和逐问章节细化；两者都填写 advisory `presentation_contract`，使阅读路线、答案总览、数据画像和主图真正进入源码与 PDF。`CONTRIBUTION_BRIEF.md` 最多三项贡献且为警告项。硬门只有：每个必答问题存在 `answer_map` 直接答案映射、引用 current 生产结果、引用的图有效、没有负面证据、v3.2 的无回退 LaTeX 模板和正文可编译、源码策略符合比赛要求。`paper/generated/argument_map.json` 自动生成，禁止要求人工维护哈希地图。摘要最后写。
 
 ## 审查与重跑
 
 科学挑战只进行一次，采用两阶段阅读：阶段A只读题面，独立重建数学结构和关键歧义，先写入报告；阶段B读代码和结果，与阶段A对照，选择一个最高价值结论实施真实攻击并说明结论。风险数量不设要求，一个根本性缺陷可以集中全部篇幅。只有 P0/P1、需要确认的决定性实验或无法判断是否继续时才建立一个 `FOCUSED_FOLLOWUP.md`。PDF 盲评采用相对评价（第一印象与竞争力 → 写作风格诊断 → 可读性 → P0/P1 → 最高价值修改），不能只写 pass/fail。
 
-最终 PDF 盲评必须由 `create_thread` 创建全新独立顶层对话，不得使用 fork、子 Agent、续聊或写作对话。先构建 `paper-blind` 冻结包，再运行 `scripts/review/show_paper_blind_prompt.py <run-dir> --manifest <manifest> --json`；把返回的提示词原样交给新对话。新对话只读取冻结 PDF，不读取题面、源码、实验、作者说明或既有审核意见。主流程等待审核完成，将报告和新 `thread_id` 写入回执；提示词哈希不匹配时拒绝导入。
+最终 PDF 盲评必须由 `create_thread` 创建全新独立顶层对话，不得使用 fork、子 Agent、续聊或写作对话。先构建 `paper-blind` 冻结包，再运行 `scripts/review/show_paper_blind_prompt.py <run-dir> --manifest <manifest> --json`；把返回的提示词原样交给新对话。新对话只读取冻结 PDF，不读取题面、源码、实验、计划文件、论文卡、作者说明或既有审核意见，并完成三分钟答案检索、贡献复述、继承关系和主图识别。主流程等待审核完成，将报告和新 `thread_id` 写入回执，再由本地 `CUMCM_LAYOUT_AUDIT` 1.2 核对呈现计划、页面节奏及预先采用的论文卡模式是否兑现；学习兑现始终 advisory。正式编译、盲评、版面审计分别记录渲染修订号；三者不一致时当前稿自动显示未审。提示词哈希不匹配时拒绝导入。
 
 **网页版 GPT 补充审核为可选环节**，只在论文主模型和结果已稳定、需要专项写作质量改进时使用，不是每次 PDF 编译后的默认流程。使用时用 `scripts/review/web_paper_audit.py prompt` 生成提示，另开网页对话并只上传 PDF。网页审核聚焦写作风格（固定句式 / 分点堆砌 / 空话总结 / 讨论缺位）和可读性，给出最高价值修改建议（≤ 5 条）；发现需要重写章节、替换主图或回到实验的问题时直接说明，不要降级为加几行文字的修补。最多使用一轮。两种审核都只能发现风险，不能证明竞赛名次或保证省一；机械 QA 只检查交付，不重定义数学正确性。
 
-正文小改：重新编译和机械 QA。解释、图表、主要结论改动：重新编译、PDF 盲评和机械 QA。代码、数据、目标或主要结果改动：回到实验、科学挑战、PDF 盲评和机械 QA。
+正文小改不回到实验或科学挑战，但正式重编后仍须让 PDF 盲评、CUMCM 版式审计和机械 QA 绑定新修订。代码、数据、目标或主要结果改动：回到实验、科学挑战，再重做论文审查与机械 QA。

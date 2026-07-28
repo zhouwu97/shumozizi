@@ -27,6 +27,7 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
     supported_non_v2 = {
         ("figure_plan", "2.1"),
         ("figure_plan", "2.2"),
+        ("figure_plan", "2.3"),
         ("argument_map", "3.0"),
         ("red_team_coverage_declaration", "3.0"),
         ("paper_structure_signal_report", "1.0"),
@@ -39,7 +40,10 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         ("scientific_reviewer_benchmark_status", "1.0"),
         ("knowledge_retrieval", "1.0"),
         ("cumcm_structure_map", "1.0"),
+        ("cumcm_structure_map", "1.1"),
         ("cumcm_layout_audit", "1.0"),
+        ("cumcm_layout_audit", "1.1"),
+        ("cumcm_layout_audit", "1.2"),
     }
     if version != "2.0" and (name, version) not in supported_non_v2:
         return [f"Schema 校验器拒绝版本 {version}"]

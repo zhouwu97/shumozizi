@@ -35,7 +35,9 @@ FIGURE_PLAN_PATH = Path("figures/FIGURE_PLAN.json")
 # 审计产物：它们对评委的边际价值远低于机制、阈值和权衡，不该占据正文版面。
 FIGURE_ROLES = frozenset({"model_understanding", "decisive_evidence", "insight", "stability"})
 FIGURE_PLACEMENTS = frozenset({"body", "appendix"})
+PRESENTATION_ROLES = frozenset({"data_portrait", "question_hero", "supporting", "appendix"})
 _APPENDIX_ONLY_ROLES = frozenset({"stability"})
+_PRESENTATION_SOURCE_PREFIXES = ("problem/", "analysis/", "results/raw/")
 
 # 分数表达图形原型通常能承载的信息，而非对渲染质量作伪证明。实际图仍需人工
 # 查看对象、边界、标注和视觉层级是否真的落地。
@@ -107,7 +109,7 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
 
     Args:
         run_dir: 当前运行目录。
-        payload: ``FIGURE_PLAN`` 2.1/2.2 文档。
+        payload: ``FIGURE_PLAN`` 2.1/2.2/2.3 文档。
 
     Returns:
         已原子写入的图表计划。
@@ -152,7 +154,7 @@ def audit_figure_information_value(payload: dict[str, Any]) -> dict[str, Any]:
     """按视觉原型审核正文图的信息承载机会，不替代实际看图。
 
     Args:
-        payload: 已声明视觉原型的 ``FIGURE_PLAN`` 2.2 文档。
+        payload: 已声明视觉原型的 ``FIGURE_PLAN`` 2.2/2.3 文档。
 
     Returns:
         每张图的五维分数、低价值修订建议和人工复核边界。建议阈值为 6 分，
@@ -220,6 +222,31 @@ def _file_record(run_dir: Path, relative: str) -> dict[str, str]:
 def _competition_first_run(run_dir: Path) -> bool:
     """判断当前运行是否使用 v3.1 简化图表协议。"""
     return is_competition_first_state(read_simple_state(run_dir))
+
+
+def _promotion_record(
+    run_dir: Path,
+    *,
+    figure_id: str,
+    output_records: list[dict[str, str]],
+    promotion_receipt: str,
+) -> dict[str, str]:
+    """复验候选图已通过机械 QA 和人工看图并返回回执记录。"""
+    receipt_record = _file_record(run_dir, promotion_receipt)
+    receipt = load_json(resolve_inside(run_dir, receipt_record["path"], must_exist=True))
+    promoted_hashes = {
+        item.get("path"): item.get("sha256")
+        for item in receipt.get("promoted_outputs", [])
+        if isinstance(item, dict)
+    }
+    if (
+        receipt.get("figure_id") != figure_id
+        or receipt.get("qa", {}).get("success") is not True
+        or receipt.get("human_review", {}).get("reviewed") is not True
+        or any(promoted_hashes.get(item["path"]) != item["sha256"] for item in output_records)
+    ):
+        raise ContractError("图表晋级回执未绑定当前输出、机械 QA 或人工看图结论")
+    return receipt_record
 
 
 def _register_competition_figure(
@@ -309,21 +336,12 @@ def _register_competition_figure(
             "v3.2 图表必须先通过候选版式 QA 与人工看图，再绑定 promotion_receipt 登记"
         )
     if promotion_receipt is not None:
-        receipt_record = _file_record(run_dir, promotion_receipt)
-        receipt = load_json(resolve_inside(run_dir, receipt_record["path"], must_exist=True))
-        promoted_hashes = {
-            item.get("path"): item.get("sha256")
-            for item in receipt.get("promoted_outputs", [])
-            if isinstance(item, dict)
-        }
-        if (
-            receipt.get("figure_id") != figure_id
-            or receipt.get("qa", {}).get("success") is not True
-            or receipt.get("human_review", {}).get("reviewed") is not True
-            or any(promoted_hashes.get(item["path"]) != item["sha256"] for item in output_records)
-        ):
-            raise ContractError("图表晋级回执未绑定当前输出、机械 QA 或人工看图结论")
-        entry["promotion_receipt"] = receipt_record
+        entry["promotion_receipt"] = _promotion_record(
+            run_dir,
+            figure_id=figure_id,
+            output_records=output_records,
+            promotion_receipt=promotion_receipt,
+        )
     for existing in index["figures"]:
         if existing["figure_id"] == figure_id and existing["status"] == "current":
             existing["status"] = "superseded"
@@ -392,6 +410,123 @@ def register_insight_figure(
     )
 
 
+def register_presentation_figure(
+    run_dir: Path,
+    *,
+    figure_id: str,
+    source_files: list[str],
+    renderer_script: str,
+    outputs: list[str],
+    question_id: str,
+    question: str,
+    takeaway: str,
+    limitations: str,
+    presentation_role: str,
+    role: str,
+    promotion_receipt: str,
+    template_id: str = "custom",
+) -> dict[str, Any]:
+    """登记不创造实验结果的竞赛呈现图。
+
+    该入口只允许读取当前运行中已冻结的题面、分析产物或真实结果文件，适合数据画像
+    和解释型主图。它保留输入、脚本、输出与人工晋级追溯，但不会把呈现需要伪装成
+    新的生产结果。
+
+    Args:
+        run_dir: 当前 Competition-First v3.2 运行目录。
+        figure_id: 图表标识。
+        source_files: 运行内冻结输入文件。
+        renderer_script: 实际执行的绘图脚本。
+        outputs: 已晋级到 ``figures/current`` 的 PNG/PDF 输出。
+        question_id: 对应问题；全文数据画像可使用 ``whole_paper``。
+        question: 图回答的读者问题。
+        takeaway: 读者应一眼看到的结论。
+        limitations: 图不能证明的边界。
+        presentation_role: data_portrait、question_hero、supporting 或 appendix。
+        role: 既有科学叙事角色。
+        promotion_receipt: 候选图机械 QA 与人工看图回执。
+        template_id: 绘图实现类型。
+
+    Returns:
+        已写入 ``figures/index.json`` 的当前图条目。
+
+    Raises:
+        ContractError: 输入越界、输出未晋级或运行版本不支持。
+    """
+    state = read_simple_state(run_dir)
+    if not is_competition_first_v32_state(state):
+        raise ContractError("纯呈现图登记只适用于 Competition-First v3.2")
+    if presentation_role not in PRESENTATION_ROLES:
+        raise ContractError("presentation_role 必须是 " + ", ".join(sorted(PRESENTATION_ROLES)))
+    if role not in FIGURE_ROLES:
+        raise ContractError("figure role 必须是 " + ", ".join(sorted(FIGURE_ROLES)))
+    if presentation_role == "appendix" or role == "stability":
+        placement = "appendix"
+    else:
+        placement = "body"
+    if role == "stability" and presentation_role != "appendix":
+        raise ContractError("stability 图的 presentation_role 必须为 appendix")
+    if not source_files:
+        raise ContractError("纯呈现图至少需要一个冻结输入文件")
+    source_records = [_file_record(run_dir, item) for item in source_files]
+    invalid_sources = [
+        item["path"]
+        for item in source_records
+        if not item["path"].startswith(_PRESENTATION_SOURCE_PREFIXES)
+    ]
+    if invalid_sources:
+        raise ContractError(
+            "纯呈现图只能读取 problem/、analysis/ 或 results/raw/："
+            + ", ".join(invalid_sources)
+        )
+    output_records = [_file_record(run_dir, item) for item in outputs]
+    suffixes = {Path(item["path"]).suffix.lower() for item in output_records}
+    if (
+        not output_records
+        or not suffixes <= {".png", ".pdf", ".svg"}
+        or not suffixes & {".png", ".pdf"}
+        or any(not item["path"].startswith("figures/current/") for item in output_records)
+    ):
+        raise ContractError("纯呈现图必须提供 figures/current/ 下的可读 PNG 或 PDF")
+    receipt_record = _promotion_record(
+        run_dir,
+        figure_id=figure_id,
+        output_records=output_records,
+        promotion_receipt=promotion_receipt,
+    )
+    entry = {
+        "figure_id": figure_id,
+        "template_id": template_id,
+        "provenance_type": "frozen_inputs",
+        "source_files": source_records,
+        "renderer_script": _file_record(run_dir, renderer_script),
+        "outputs": output_records,
+        "status": "current",
+        "question_id": question_id,
+        "figure_stage": "current",
+        "source": [item["path"] for item in source_records],
+        "question": question,
+        "takeaway": takeaway,
+        "limitations": limitations,
+        "role": role,
+        "placement": placement,
+        "presentation_role": presentation_role,
+        "promotion_receipt": receipt_record,
+        "paper_allowed": True,
+        "demo": False,
+        "created_at": utc_now(),
+    }
+    index = read_figure_index(run_dir)
+    index["schema_version"] = "1.3"
+    for existing in index["figures"]:
+        if existing["figure_id"] == figure_id and existing["status"] == "current":
+            existing["status"] = "superseded"
+    index["figures"].append(entry)
+    require_figure_index(index)
+    atomic_json(run_dir / INDEX_PATH, index)
+    return entry
+
+
 def _verify_competition_figures(run_dir: Path) -> dict[str, Any]:
     """复验 v3.1 当前图的来源、哈希和基本可读性。"""
     index = read_figure_index(run_dir)
@@ -405,6 +540,39 @@ def _verify_competition_figures(run_dir: Path) -> dict[str, Any]:
         checked.append(figure_id)
         if figure.get("demo") or not figure.get("paper_allowed"):
             errors.append({"figure_id": figure_id, "message": "演示图或未允许图不能进入论文"})
+        if figure.get("provenance_type") == "frozen_inputs":
+            source_records = [
+                *figure.get("source_files", []),
+                figure.get("renderer_script", {}),
+                figure.get("promotion_receipt", {}),
+            ]
+            for record in source_records:
+                issue = _verify_recorded_file(run_dir, record, "呈现图来源")
+                if issue:
+                    errors.append({"figure_id": figure_id, "message": issue})
+            for output in figure.get("outputs", []):
+                issue = _verify_recorded_file(run_dir, output, "图表输出")
+                if issue:
+                    errors.append({"figure_id": figure_id, "message": issue})
+                    continue
+                path = resolve_inside(run_dir, output["path"], must_exist=True)
+                if path.stat().st_size == 0:
+                    errors.append({"figure_id": figure_id, "message": "图表输出为空"})
+                elif path.suffix.lower() == ".png":
+                    try:
+                        from PIL import Image
+
+                        with Image.open(path) as image:
+                            image.verify()
+                    except (OSError, ValueError) as exc:
+                        errors.append(
+                            {"figure_id": figure_id, "message": f"PNG 不可读: {exc}"}
+                        )
+                elif path.suffix.lower() == ".pdf" and not path.read_bytes().startswith(b"%PDF"):
+                    errors.append(
+                        {"figure_id": figure_id, "message": "PDF 图表不是有效 PDF 文件头"}
+                    )
+            continue
         result = results.get(figure.get("result_id"))
         if result is None or result.get("status") != "current" or not result.get("execution_valid"):
             errors.append({"figure_id": figure_id, "message": "源结果已被替代或不再有效"})

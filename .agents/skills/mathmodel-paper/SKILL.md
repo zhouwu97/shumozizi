@@ -29,7 +29,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 第一步：填写 ARGUMENT_PLAN.md
 
-在动笔前，先执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper`。读取分析阶段匹配的论文卡模式，在 `paper/KNOWLEDGE_APPLICATION.md` 中逐项决定写作时采用或拒绝；采用项必须说明应用位置，并绑定当前题面、数据、模型或真实实验结果。知识卡不是当前题证据，不得迁移原题参数、公式和代码、数值结论或奖项评价。无相关匹配时记录该事实即可，不强迫采用任何模式。
+在动笔前，先执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper`。读取分析阶段已提取的安全论文卡模式，在 `paper/KNOWLEDGE_APPLICATION.md` 中逐项决定写作时采用或拒绝；实际采用的模式最多来自 1--2 张卡，采用项必须说明应用位置、当前题证据、实际正文源码和一个可核对的兑现锚点。写作时把锚点对应的结构真正写入声明源码；草稿和候选稿就绪检查会打开源码复验，不能只完成计划。只消费受控模式，不把整库或原论文塞入写作上下文。知识卡不是当前题证据，不得迁移原题参数、公式和代码、数值结论或奖项评价。无相关匹配时记录该事实即可，不强迫采用任何模式。
 
 完成迁移判断后，再填写 `paper/ARGUMENT_PLAN.md`（见格式规范）。该文件在实验结束后填写，在论文写完前人工检视——不得在写作过程中自动生成再立即消费。
 
@@ -154,7 +154,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
-每个核心问题必须在 `FIGURE_PLAN.json` 中显式选择 `required` 或 `waived`；旧 2.1 兼容读取，新计划使用含视觉原型与决策后果的 2.2。`required` 至少有一张非 `stability` 且 `required=true` 的正文主图；`waived` 必须说明为什么公式、表格或文字足以传达核心关系。计划通过 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 受控写入。对于 `required=true` 的图，必须有 current 真实结果、实际绘图脚本和输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
+每个核心问题必须在 `FIGURE_PLAN.json` 2.3 中分别声明 `evidence_need` 和 `presentation_need`；前者控制科学证据硬门，后者只提示评委阅读缺口。正文图用 `presentation_role` 区分数据画像、逐问主图和辅助图；纯解析题可以说明理由后豁免主图。`evidence_need=required` 至少有一张非 `stability` 且 `required=true` 的正文图；纯呈现图保持 `required=false`，由 CUMCM 呈现合同 advisory 检查，避免为了过硬门制造低价值图。计划通过 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 受控写入。图必须有冻结来源、实际绘图脚本、候选晋级回执和 current 输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
 
 ---
 
@@ -174,7 +174,7 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 
 ## 修订范围
 
-- `render`：字号、箭头、留白、分页和不改论证的图形样式，只重做图像/PDF 检查。
+- `render`：字号、箭头、留白、分页和不改论证的图形样式，不重做科学挑战或论证内容；正式重编后仍须让盲评、版式审计和图像/PDF 检查绑定新修订。
 - `argument`：正文结构、推导表达、图表论证位置或直接答案表述，重做论证、编译和 PDF 盲评。
 - `science`：代码、数据、目标、主要结果或行动建议，回到实验和科学挑战，再重做论证与渲染。
 
@@ -184,11 +184,16 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 
 ## CUMCM 结构适配
 
-仅对 Competition-First v3.2 的 CUMCM 正式候选稿，在编译前写
-`paper/CUMCM_STRUCTURE_MAP.json`。它把现有 `ARGUMENT_PLAN`、`STORYBOARD`、
-逐问正文、结果和图表映射到摘要、问题重述、问题分析、模型假设、符号与数据、
-模型建立与求解、综合检验、模型评价、参考文献和附录；第五章必须覆盖全部必答问题，
-第六章只汇总跨问题检验，支持主结论的近端验证继续留在各问正文。
+仅对 Competition-First v3.2 的 CUMCM 正式候选稿，在编译前写 1.1 版
+`paper/CUMCM_STRUCTURE_MAP.json`。`profile=classic` 保留固定国赛外层栏目作为稳定兜底；
+`profile=semantic` 允许拆出数据处理和逐问章节，但仍必须覆盖问题重述、问题分析、假设、
+符号或数据定义、数据处理、逐问求解、近端验证、综合评价、参考文献和附录，并保留
+`ARGUMENT_PLAN` 的论证顺序及全部必答问题。结构自由不得改变模型、数字、结论或证据等级。
+
+1.1 同时填写轻量 `presentation_contract`：前五页阅读路线、跨问题主线、直接答案总览、
+数据画像和逐问 hero figure。每项必须给源码锚点或具体豁免理由；初期使用 `mode=advisory`，
+只有直接答案、证据必需图、结构语义缺失等稳定低风险项才可单独硬阻断。综合检验只保留跨问题
+内容，支持主结论的近端验证继续留在各问正文。
 
 通过 `python scripts/paper/cumcm_adapter.py <run_dir> structure-map --input <json>`
 写入。适配只允许章节映射、段落移动、标题改写、去重、图表重排和交叉引用修复；
@@ -196,6 +201,9 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 `--reference-doc` 的样式和外层结构参考，占位文案不具科学权威。CUMCM 正文页数使用
 24–30 页软规划：少于 18 页检查论证缺失，18–23 页检查过度压缩，超过 30 页核对
 官方上限和重复内容；页数本身不构成质量证据。
+
+每次正式编译成功会递增 `paper_render_revision`。只有独立 PDF 盲评与版式审计都绑定同一
+修订号时，当前稿才显示为已审；重新编译后自动回到 `UNREVIEWED_DRAFT`，不得沿用旧审查。
 
 ---
 
