@@ -25,6 +25,46 @@ class KnowledgeAuthoringTests(unittest.TestCase):
             self.assertIn("inconclusive", argument_map.read_text(encoding="utf-8"))
             self.assertIn("PAPER_BLUEPRINT", blueprint.read_text(encoding="utf-8"))
 
+    def test_blueprint_records_question_progression_and_content_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "run"
+            (run_dir / "config").mkdir(parents=True)
+            (run_dir / "claims").mkdir()
+            (run_dir / "paper").mkdir()
+            (run_dir / "config/RUN_CONFIG_LOCK.json").write_text(
+                json.dumps({"run_id": "x"}), encoding="utf-8"
+            )
+            blueprint = write_paper_blueprint(
+                run_dir,
+                [
+                    {"question_id": "q1", "question": "建立基础对象"},
+                    {
+                        "question_id": "q2",
+                        "question": "扩展到约束场景",
+                        "relationship": "inherits",
+                        "inherits_from": ["q1"],
+                        "inherited_object": "共享状态与判定器",
+                        "new_difficulty": "新增整数约束",
+                        "new_mechanism": "可行域递推",
+                        "why_previous_insufficient": "基础模型不表达离散线数",
+                        "answer_increment": "从局部计算升级为全局布局",
+                        "algorithm": "可行构造与局部精化",
+                        "algorithm_choice_reason": "响应混合非凸变量",
+                    },
+                ],
+            )
+            text = blueprint.read_text(encoding="utf-8")
+            for marker in (
+                "内容成熟度动作（按需往返，不是状态门）",
+                "继承对象：共享状态与判定器",
+                "新增困难：新增整数约束",
+                "新增数学机制：可行域递推",
+                "原模型为何不足：基础模型不表达离散线数",
+                "相对前问的答案增量：从局部计算升级为全局布局",
+                "算法与选型理由：可行构造与局部精化；响应混合非凸变量",
+            ):
+                self.assertIn(marker, text)
+
     def test_argument_map_detects_changed_results(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = Path(temporary) / "run"

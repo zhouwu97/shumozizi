@@ -1,17 +1,19 @@
 ---
 name: mathmodel-matlab
-description: 在 Capability-First v3 中使用本机 MATLAB 或 GNU Octave 提供可复现的独立实现能力。仅在能力路由实际选择该引擎时使用；不把 MATLAB 本身当作独立性、proxy-exact 风险或科学正确性的证明。
+description: 在 Competition-First v3.2 中使用真实 MATLAB/Octave 完成建模、优化、仿真、独立复算和科学绘图；不把工具品牌当作独立性或正确性证明。
 ---
 
-# MATLAB / Octave 独立实现能力
+# MATLAB / Octave 建模与独立实现能力
 
-MATLAB/Octave 只是可选 engine。独立性来自不同推导、参数化、算法族或判定实现，而不是文件扩展名或工具品牌；第二套 Python、Julia、R、反例搜索和性质测试也可承担同一验证职责。
+MATLAB/Octave 不是每题必选。出现矩阵计算、连续/整数/多目标优化、ODE/PDE、控制仿真、信号与图像、曲面拟合、三维场或网络流时主动比较；只有它能利用题目结构、形成不同算法族/判定实现、提供明显更强仿真绘图，或承担独立 oracle/challenger 时启用。先读 [modeling-recipes.md](references/modeling-recipes.md) 选择角色与配方。
 
-1. 先读取 `state/capability-route.json` 与 `state/tooling.json`。仅运行路由选择且探测为可用的引擎；否则记录不可用并改用路由允许的替代公式 oracle，不能安装后假设其结果与生产环境等价。
-2. 使用 `code/matlab/` 保存 `.m` 脚本，输入只从 `problem/`、受控参数文件或当前结果读取；数值证据输出写入 `results/evidence/`，证据图写入 `figures/evidence/`。在脚本头部记录输入路径、单位和运行命令。作为路由指定的独立 oracle 时，必须通过 v3 执行器以 `kind=independent-oracle` 登记，并显式把该 `.m` 文件列为输入。
-3. 作为独立 oracle 时，不导入、翻译或调用 Python 的核心判定函数。几何题可用“线段参数代入球面二次方程”对照 Python 的投影裁剪；机理题可用不同积分器/步长与守恒残差；优化题使用不同的搜索族或参数化。共享题意是允许的，共享判定语义和源码不是。
-4. MATLAB 可优先用 `plot3`、`surf`、`cylinder`、`sphere` 构建三维对象和边界；优化工具箱的 `ga`、`particleswarm`、`patternsearch`、`surrogateopt` 只有在许可证和工具箱真实存在时才用。Octave 不应声称支持 MATLAB 专有工具箱。
-5. `method_profile.stochastic=true` 才要求 multiseed；`uses_proxy_objective=true` 才要求 proxy-exact。MATLAB/Octave 的存在不得触发其中任一风险。独立实现、反例、性质测试或更优候选产生负面证据时，统一交给 `independent_evidence_consequence`，先级联失效相关结果、图、argument map、论文与审核，再检查 verdict。
+1. 将真实入口保存为 `code/matlab/run_analysis.m`。输入只来自 `problem/`、受控参数或明确登记的 current 结果；脚本通过 `SHUMOZIZI_RUN_DIR` 定位运行根目录，不使用仓库外绝对路径。
+2. MATLAB 至少承担一种科学角色：`primary_model`、`optimizer_challenger`、`independent_oracle` 或 `scientific_visualization`。不能只把 Python 数组导出后重算平均值。独立实现不得导入、翻译或调用 Python 核心判定函数；可共享原始输入和最终问题定义，不共享中间数组与判定源码。
+3. 每次启用必须真实产生 `results/matlab/result.json`、`result.csv`、`figures/current/matlab-*.pdf`、`matlab-*.png` 和 `logs/matlab-run.log`。统一执行：`python scripts/matlab/run_matlab.py <run_dir> --config <config.json>`；底层命令为 `matlab -batch "run('code/matlab/run_analysis.m')"`。
+4. 运行器写 `results/matlab/manifest.json`，记录入口、版本、真实工具箱、输入、输出、耗时和退出状态，并把成功执行登记为 current 生产结果。环境不可用时必须写 `availability=unavailable` 和失败结果，不生成假输出或假回执。
+5. MATLAB 专有优化器只在 manifest 中确实记录相应工具箱且许可证可用时使用；否则选择基础 MATLAB 可实现的枚举、矩阵算法、数值积分或明确的 Python fallback。Octave 不得声称支持 MATLAB 专有工具箱。
+6. 结果 JSON 应同时输出最终指标和模型原生视觉数据，如候选解、可行边界、活跃约束、搜索历史、Pareto 点、状态轨迹或不确定性样本。科学图必须基于同次执行的真实结构数据，标出最优点、边界、baseline/fallback 和结论所需的关键事件。
+7. `method_profile.stochastic=true` 才要求 multiseed；`uses_proxy_objective=true` 才要求 proxy-exact。MATLAB 的存在不自动触发风险，也不证明独立性或正确性。出现更优候选、复算冲突或不可行证据时，按负面证据规则级联失效旧结果、图和论文。
 
 Windows 示例：
 
@@ -20,4 +22,4 @@ matlab -batch "run('code/matlab/geometry_oracle.m')"
 octave --quiet --no-gui code/matlab/geometry_oracle.m
 ```
 
-若引擎不存在，停止该路线并在 `DECISIONS.md` 记录可用替代实现与其独立性边界；不要静默降为复用 Python 的同源 oracle。
+若引擎不存在，保留 runner 生成的 unavailable manifest，并在 `DECISIONS.md` 记录替代实现与独立性边界；不要静默降为复用 Python 的同源 oracle。

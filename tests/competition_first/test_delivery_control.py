@@ -419,6 +419,31 @@ def test_candidate_pdf_is_required_before_paper_review(
         update_simple_state(run_dir, phase="paper_review")
 
 
+def test_candidate_pdf_must_change_after_first_reviewable_milestone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """复制首版 PDF 不能冒充经过返修的候选版。"""
+    run_dir = _run(tmp_path)
+    pdf_bytes = b"%PDF-1.4\nsame-paper-content\n"
+    (run_dir / "paper/draft-1.pdf").write_bytes(pdf_bytes)
+    atomic_json(run_dir / "paper/reviewable-draft-receipt.json", {"fixture": True})
+    monkeypatch.setattr(
+        "shumozizi.paper.compiler.verify_reviewable_draft_receipt",
+        lambda _run: {"valid": True, "errors": []},
+    )
+    freeze_pdf_milestone(run_dir, "first_reviewable")
+
+    (run_dir / "paper/final.pdf").write_bytes(pdf_bytes)
+    atomic_json(run_dir / "paper/compile-receipt.json", {"fixture": True})
+    monkeypatch.setattr(
+        "shumozizi.paper.compiler.verify_paper_compile_receipt",
+        lambda _run: {"valid": True, "errors": []},
+    )
+
+    with pytest.raises(ContractError, match="实质内容增量"):
+        freeze_pdf_milestone(run_dir, "candidate")
+
+
 @pytest.mark.parametrize("required", [False, True])
 def test_web_review_gate_follows_explicit_delivery_configuration(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, required: bool

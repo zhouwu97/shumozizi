@@ -37,6 +37,33 @@ FIGURE_ROLES = frozenset({"model_understanding", "decisive_evidence", "insight",
 FIGURE_PLACEMENTS = frozenset({"body", "appendix"})
 _APPENDIX_ONLY_ROLES = frozenset({"stability"})
 
+# 分数表达图形原型通常能承载的信息，而非对渲染质量作伪证明。实际图仍需人工
+# 查看对象、边界、标注和视觉层级是否真的落地。
+_VISUAL_VALUE_PROFILES: dict[str, tuple[int, int, int, int, int] | None] = {
+    "spatial_scene_with_constraints": (2, 2, 2, 2, 1),
+    "spatial_trajectory_with_constraints": (2, 2, 2, 2, 1),
+    "pareto_feasible_region": (2, 2, 2, 2, 2),
+    "response_surface_with_constraints": (2, 2, 2, 2, 1),
+    "decision_surface_with_fallback": (2, 2, 2, 2, 2),
+    "uncertainty_fan_with_threshold": (2, 2, 2, 2, 2),
+    "network_flow_bottleneck": (2, 2, 2, 2, 1),
+    "spatiotemporal_density": (2, 2, 1, 1, 2),
+    "classifier_diagnostic_bundle": (2, 1, 2, 2, 2),
+    "cluster_structure_embedding": (2, 2, 1, 1, 1),
+    "phase_field_bifurcation": (2, 2, 2, 1, 1),
+    "search_trajectory_envelope": (2, 2, 1, 2, 2),
+    "multi_panel_evidence_chain": (2, 2, 2, 2, 2),
+    "route_score_comparison": (1, 0, 0, 1, 1),
+    "custom": None,
+}
+_VISUAL_VALUE_DIMENSIONS = (
+    "mathematical_object",
+    "mechanism_or_structure",
+    "constraint_or_boundary",
+    "final_decision",
+    "uncertainty_or_comparison",
+)
+
 
 def _schema() -> dict[str, Any]:
     """读取 v3 图表索引 Schema。"""
@@ -80,7 +107,7 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
 
     Args:
         run_dir: 当前运行目录。
-        payload: ``FIGURE_PLAN`` 2.1 文档。
+        payload: ``FIGURE_PLAN`` 2.1/2.2 文档。
 
     Returns:
         已原子写入的图表计划。
@@ -111,6 +138,69 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         require_delivery_action_allowed(run_dir, "expand_figure_plan")
     atomic_json(path, payload)
     return payload
+
+
+def audit_figure_information_value(payload: dict[str, Any]) -> dict[str, Any]:
+    """按视觉原型审核正文图的信息承载机会，不替代实际看图。
+
+    Args:
+        payload: 已声明视觉原型的 ``FIGURE_PLAN`` 2.2 文档。
+
+    Returns:
+        每张图的五维分数、低价值修订建议和人工复核边界。建议阈值为 6 分，
+        因而本报告始终是 advisory，不会自行改变工作流状态。
+
+    Raises:
+        ContractError: 图表计划不符合 Schema。
+    """
+    require_valid(payload, "figure_plan")
+    records: list[dict[str, Any]] = []
+    needs_revision: list[dict[str, str]] = []
+    for figure in payload.get("figures", []):
+        archetype = figure.get("visual_archetype")
+        profile = _VISUAL_VALUE_PROFILES.get(archetype)
+        if profile is None:
+            record = {
+                "figure_id": figure.get("figure_id"),
+                "visual_archetype": archetype,
+                "total_score": None,
+                "scores": None,
+                "requires_visual_review": True,
+                "message": "custom 或旧版图必须由评阅者逐项检查五类信息价值。",
+            }
+        else:
+            scores = dict(zip(_VISUAL_VALUE_DIMENSIONS, profile, strict=True))
+            total = sum(profile)
+            record = {
+                "figure_id": figure.get("figure_id"),
+                "visual_archetype": archetype,
+                "total_score": total,
+                "scores": scores,
+                "requires_visual_review": True,
+                "message": "原型分只表示设计机会，仍需检查实际图是否兑现这些信息。",
+            }
+            if figure.get("required") is True and total < 6:
+                needs_revision.append(
+                    {
+                        "figure_id": str(figure.get("figure_id")),
+                        "message": (
+                            "正文主图的信息价值低于建议阈值 6；检查是否只比较方法得分、"
+                            "重复表格，或遗漏模型对象、约束边界与决策机制。"
+                        ),
+                    }
+                )
+        records.append(record)
+    return {
+        "schema_version": payload.get("schema_version"),
+        "advisory_only": True,
+        "recommended_minimum": 6,
+        "figures": records,
+        "needs_revision": needs_revision,
+        "limitations": (
+            "该审核不能从计划字段证明图中确有可行域、活跃约束、最优点或不确定性，"
+            "最终仍需打开 PNG/PDF 进行评委视角复核。"
+        ),
+    }
 
 
 def _file_record(run_dir: Path, relative: str) -> dict[str, str]:

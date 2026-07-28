@@ -544,7 +544,10 @@ def _probe_tool_requirement(requirement: dict[str, Any], commands: dict[str, str
             )
         else:
             expression = f"assert(license('test','{name}')); disp('{name} licensed');"
-        probe = _run_probe([command, "-batch", expression])
+        probe = _run_probe(
+            [command, "-batch", expression],
+            timeout_seconds=_PROBE_TIMEOUT_SECONDS[engine],
+        )
     elif engine == "octave":
         if kind == "license":
             probe = {

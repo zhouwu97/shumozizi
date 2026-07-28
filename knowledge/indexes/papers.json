@@ -1,7 +1,7 @@
 {
   "schema_name": "paper_card_index",
   "schema_version": "1.0",
-  "paper_count": 10,
+  "paper_count": 11,
   "papers": [
     {
       "paper_id": "cumcm-2012-a-wine-evaluation",
@@ -157,6 +157,32 @@
       "structural_tags": [],
       "source_sha256": "4c4afd10a66b390d8a962609c31ef36792258561852f6b7d19545b847d897851",
       "card_path": "knowledge/cards/papers/cumcm-2018-b-rgv-scheduling.md"
+    },
+    {
+      "paper_id": "cumcm-main-2023-b-workspace-case",
+      "title": "CUMCM-main 2023 B 完整工作区案例（身份未核验）",
+      "problem_type": "空间几何与有限域覆盖优化",
+      "data_structure": "题面几何、规则网格曲面与有限测线布局",
+      "task_types": [
+        "共享数学对象",
+        "逐问递进",
+        "约束覆盖优化",
+        "多保真评价",
+        "独立验证"
+      ],
+      "domain_terms": [
+        "多波束测深",
+        "测线布局",
+        "射线首交"
+      ],
+      "structural_tags": [
+        "research-thread-and-transition",
+        "model-algorithm-separation",
+        "figure-as-evidence",
+        "content-maturity-audit"
+      ],
+      "source_sha256": "FD1655D9AEFD54D3F732EF5BE00D48C4DB5A1F23486E0516BFA513AE7699A29B",
+      "card_path": "knowledge/cards/papers/cumcm-main-2023-b-workspace-case.md"
     },
     {
       "paper_id": "fan-2021-thin-film-neural-networks",

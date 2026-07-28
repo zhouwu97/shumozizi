@@ -519,11 +519,31 @@ def freeze_pdf_milestone(run_dir: Path, milestone: str) -> dict[str, Any]:
     receipt = verify_paper_compile_receipt(run_dir)
     if not receipt["valid"]:
         raise ContractError("冻结 PDF 里程碑前必须先通过受控编译回执复验: " + "；".join(receipt["errors"]))
+    document = load_json(run_dir / PDF_MILESTONES_PATH)
+    predecessor: dict[str, Any] | None = None
+    if milestone == "candidate":
+        if not _milestone_current(run_dir, "first_reviewable"):
+            raise ContractError("候选 PDF 必须继承仍有效的 first_reviewable 里程碑")
+        predecessor = document.get("milestones", {}).get("first_reviewable")
+        if not isinstance(predecessor, dict):
+            raise ContractError("候选 PDF 缺少可复验的 first_reviewable 记录")
+        first_receipt_path = run_dir / predecessor.get("compile_receipt_path", "")
+        first_receipt = load_json(first_receipt_path) if first_receipt_path.is_file() else {}
+        current_receipt = load_json(run_dir / "paper/compile-receipt.json")
+        first_source_hash = first_receipt.get("paper_source_sha256")
+        current_source_hash = current_receipt.get("paper_source_sha256")
+        # PDF 元数据可能随重编译变化；优先比较源码摘要，避免同一正文仅靠重编译过关。
+        same_source = (
+            isinstance(first_source_hash, str)
+            and isinstance(current_source_hash, str)
+            and first_source_hash == current_source_hash
+        )
+        if same_source or predecessor.get("sha256") == sha256_file(source):
+            raise ContractError("候选 PDF 相对首版没有实质内容增量，不能冻结新里程碑")
     target = run_dir / targets[milestone]
     temporary = target.with_suffix(target.suffix + ".tmp")
     shutil.copy2(source, temporary)
     temporary.replace(target)
-    document = load_json(run_dir / PDF_MILESTONES_PATH)
     record = {
         "path": targets[milestone],
         "sha256": sha256_file(target),
@@ -532,6 +552,11 @@ def freeze_pdf_milestone(run_dir: Path, milestone: str) -> dict[str, Any]:
         "compile_receipt_sha256": sha256_file(run_dir / "paper/compile-receipt.json"),
         "frozen_at": utc_now(),
     }
+    if predecessor is not None:
+        record["predecessor_sha256"] = predecessor["sha256"]
+        record["predecessor_compile_receipt_sha256"] = predecessor.get(
+            "compile_receipt_sha256"
+        )
     document.setdefault("milestones", {})[milestone] = record
     atomic_json(run_dir / PDF_MILESTONES_PATH, document)
     return record

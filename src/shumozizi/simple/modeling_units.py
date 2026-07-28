@@ -70,6 +70,9 @@ _INSIGHT_KINDS = frozenset(
 # 核心问题的搜索预算下限：占全部生产执行耗时的比例。低于它说明算力主要
 # 花在确认当前候选没撒谎，而不是继续寻找更强候选。
 CORE_SEARCH_BUDGET_SHARE = 0.4
+_PLANNING_PLACEHOLDERS = frozenset(
+    {"待填写", "待补充", "待分析", "待确认", "todo", "tbd", "placeholder"}
+)
 
 
 def semantic_reconstruction_input_bindings(run_dir: Path) -> dict[str, Any]:
@@ -95,6 +98,14 @@ def _require_text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ContractError(f"{label} 必须是非空文本")
     return value.strip()
+
+
+def _require_substantive_plan_text(value: object, label: str) -> str:
+    """读取已经形成决策的规划文本，拒绝短标签和待办占位符。"""
+    text = _require_text(value, label)
+    if len(text) < 8 or any(marker in text.casefold() for marker in _PLANNING_PLACEHOLDERS):
+        raise ContractError(f"{label} 必须是已完成的实质规划文本，不能使用短标签或待办占位符")
+    return text
 
 
 def _require_text_list(value: object, label: str, *, minimum: int = 1) -> list[str]:
@@ -1197,10 +1208,21 @@ def _validate_actual_unit(
     }
 
 
-def _validate_research_story(value: object, question_ids: set[str]) -> None:
+def _validate_research_story(
+    value: object,
+    question_ids: set[str],
+    *,
+    require_progression_contract: bool,
+) -> None:
     """确保论文有统一主线，并明确每个必答问题如何继承或升级。"""
     story = _require_mapping(value, "research_story")
-    _require_text(story.get("central_tension"), "research_story.central_tension")
+    text_reader = _require_substantive_plan_text if require_progression_contract else _require_text
+    text_reader(story.get("central_tension"), "research_story.central_tension")
+    if require_progression_contract:
+        text_reader(
+            story.get("central_mathematical_object"),
+            "research_story.central_mathematical_object",
+        )
     progression = story.get("question_progression")
     if not isinstance(progression, list) or not progression:
         raise ContractError("research_story.question_progression 必须覆盖每个必答问题")
@@ -1210,8 +1232,29 @@ def _validate_research_story(value: object, question_ids: set[str]) -> None:
         question_id = _require_text(item.get("question_id"), f"research_story.question_progression[{index}].question_id")
         if question_id not in question_ids or question_id in seen:
             raise ContractError("research_story.question_progression 必须一一覆盖必答问题")
-        _require_text(item.get("role"), f"research_story.question_progression[{index}].role")
-        _require_text(item.get("upgrade"), f"research_story.question_progression[{index}].upgrade")
+        label = f"research_story.question_progression[{index}]"
+        text_reader(item.get("role"), f"{label}.role")
+        text_reader(item.get("upgrade"), f"{label}.upgrade")
+        if require_progression_contract:
+            inherited = item.get("inherits_from")
+            if not isinstance(inherited, list):
+                raise ContractError(f"{label}.inherits_from 必须是问题 ID 列表")
+            inherited_ids = [_require_text(value, f"{label}.inherits_from[]") for value in inherited]
+            if len(set(inherited_ids)) != len(inherited_ids):
+                raise ContractError(f"{label}.inherits_from 不得重复")
+            invalid = sorted(set(inherited_ids) - seen)
+            if invalid:
+                raise ContractError(
+                    f"{label}.inherits_from 只能引用此前已定义的问题: {', '.join(invalid)}"
+                )
+            for field in (
+                "inherited_object",
+                "new_difficulty",
+                "new_mechanism",
+                "why_previous_insufficient",
+                "answer_increment",
+            ):
+                text_reader(item.get(field), f"{label}.{field}")
         seen.add(question_id)
     if seen != question_ids:
         raise ContractError("research_story.question_progression 缺少必答问题")
@@ -1240,7 +1283,11 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     if not question_ids:
         raise ContractError("v3.2 运行必须先声明 required_questions")
     _semantic_reconstructions(run_dir, payload.get("semantic_reconstructions"))
-    _validate_research_story(payload.get("research_story"), question_ids)
+    _validate_research_story(
+        payload.get("research_story"),
+        question_ids,
+        require_progression_contract=schema_version == "1.2",
+    )
     raw_units = payload.get("units")
     if not isinstance(raw_units, list) or not raw_units:
         raise ContractError("MODELING_UNITS 至少需要一个建模单元")

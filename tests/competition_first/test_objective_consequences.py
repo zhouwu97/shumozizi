@@ -255,8 +255,19 @@ def _units(run_dir: Path, *, core: bool = True) -> dict[str, Any]:
         ],
         "research_story": {
             "central_tension": "在瓶颈约束下提高总体收益。",
+            "central_mathematical_object": "统一收益向量、瓶颈指标与精确可行性判定器。",
             "question_progression": [
-                {"question_id": "Q1", "role": "建立统一评价口径。", "upgrade": "结构路线深化。"}
+                {
+                    "question_id": "Q1",
+                    "role": "建立总体收益与瓶颈保障的统一评价口径。",
+                    "upgrade": "比较异构结构路线并深化可行候选。",
+                    "inherits_from": [],
+                    "inherited_object": "本问首次建立收益向量和精确可行性判定器。",
+                    "new_difficulty": "总体收益、瓶颈保障和硬可行性可能产生冲突。",
+                    "new_mechanism": "用共同后果指标比较事件区间覆盖与逆向指派。",
+                    "why_previous_insufficient": "这是基础问题，不存在可直接继承的前问模型。",
+                    "answer_increment": "得到兼顾总体收益、瓶颈保障和回退条件的方案。",
+                }
             ],
         },
         "units": [

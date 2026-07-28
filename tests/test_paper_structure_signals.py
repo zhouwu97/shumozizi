@@ -261,7 +261,8 @@ def test_natural_argument_language_does_not_require_workflow_terms() -> None:
     Q1
     问题分析与直接答案：推荐在第 12 周执行检测，最坏组失败率为 8.0%。
     优化目标是在可靠性约束下尽量提前；在前问建立的概率模型基础上，本问增加分组决策变量。
-    为何采用区间删失模型：它能对应观测窗口。关键推导给出似然与约束，求解流程采用动态规划。
+    为何采用区间删失模型：它能对应观测窗口。关键推导给出似然与约束；求解流程先初始化可行状态，
+    再按周递推并剪除违反可靠性约束的状态，直到所有分组完成决策。
     模型检验显示约束全部满足。结果分析中，该方案相对基线提前 1.2 周；原因在于瓶颈组约束首先活跃。
     适用边界为当前 BMI 与孕周范围，当样本分布改变时需要重新估计。
     全局稳健性：已完成敏感性检验。
@@ -375,18 +376,35 @@ def test_blueprint_materializes_full_python_and_matlab_source(tmp_path: Path, mo
         assert item["source_text"] == (run_dir / item["source_path"]).read_text(encoding="utf-8")
 
 
-def test_keyword_stuffing_can_only_satisfy_mechanical_signals() -> None:
-    """关键词堆砌即使命中结构信号，也不能产生论证质量结论或跳过盲审。"""
+def test_keyword_stuffing_cannot_satisfy_argument_action_signals() -> None:
+    """逐问合同关键词齐全但没有真实论证动作时，机械门也必须拒绝。"""
+    blueprint = deepcopy(_blueprint(["Q1"]))
+    question = next(
+        section for section in blueprint["sections"] if section["section_id"] == "question_Q1"
+    )
+    question["required_elements"] = [
+        "chosen_objective",
+        "question_inheritance",
+        "model_choice_rationale",
+        "mathematical_object_derivation",
+        "algorithm_steps",
+        "core_proof_obligations",
+        "production_result_refs",
+        "comparison_route",
+        "evidence_interpretation",
+        "unproved_boundary",
+        "direct_answer",
+    ]
     report = assess_paper_structure_signals(
-        _blueprint(["Q1"]),
+        blueprint,
         pdf_text="""
         摘要
         问题重述与假设
         共享模型
         Q1
-        直接答案：目标函数为 12.3 s。模型与算法、关键结果和验证与边界全部存在。
-        模型选择理由、证明义务、生产结果、基线、因此、表明、局限只是重复标签；
-        目标函数、模型选择理由、证明义务、生产结果、基线、因此、表明、局限继续重复。
+        直接答案：目标函数为 12.3 s。承接前问、模型选择理由、关键推导、算法步骤全部存在。
+        模型检验、结果分析、基线、结果解释、适用边界只是重复标签；
+        目标函数、模型选择理由、关键推导、算法步骤、模型检验、结果分析、基线、结果解释、适用边界继续重复。
         这些词超过一百二十个字符并出现三个句子标记，但文本不保证任何数学结论正确。
         全局稳健性：已说明。
         结论
@@ -395,8 +413,9 @@ def test_keyword_stuffing_can_only_satisfy_mechanical_signals() -> None:
         page_count=2,
     )
 
-    assert report["status"] == "signals_present"
-    assert report["mechanical_gate_passed"] is True
+    assert report["status"] == "missing_required_signals"
+    assert report["mechanical_gate_passed"] is False
+    assert "argument_action_signal" in report["missing_required_signals"][0]
     assert report["assesses_mathematical_correctness"] is False
     assert report["assesses_argument_quality"] is False
     assert report["independent_pdf_review_required"] is True

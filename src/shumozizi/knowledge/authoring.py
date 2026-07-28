@@ -66,7 +66,11 @@ def write_paper_blueprint(
     summary_results: str = "仅从 accepted 且 paper_allowed 的 sealed result 选取",
     literature_roles: str = "文献只支持模型选择、假设和方法依据，不替代当前题证据",
 ) -> Path:
-    """生成给人和 AI 使用的轻量论文工作台，不生成结论。"""
+    """生成给人和 AI 使用的轻量论文工作台，不生成结论。
+
+    ``questions`` 中的递进字段只描述论文论证结构，不承载当前运行的数值事实。
+    这样既能提前规划研究故事，也不会把离线案例或尚未准入的结果写进论文。
+    """
     lock = load_json(run_dir / "config" / "RUN_CONFIG_LOCK.json")
     digests = _authoring_digests(run_dir)
     lines = [
@@ -96,6 +100,15 @@ def write_paper_blueprint(
         f"- 摘要准备使用的真实结果：{summary_results}",
         f"- 文献应支持的判断：{literature_roles}",
         "",
+        "## 内容成熟度动作（按需往返，不是状态门）",
+        "",
+        "每次动作必须带来可读的内容增量；文件存在或复制同一草稿不算完成。",
+        "- P1 研究主线：写清核心矛盾、共享数学对象和逐问依赖。",
+        "- P2 共享模型：统一符号、判定器、目标和跨问接口。",
+        "- P3 逐问成文：每问完成模型、算法、结果、直接答案和边界。",
+        "- P4 证据闭环：补基线、消融、误差、独立验证和 fallback。",
+        "- P5 严格返修：最后处理摘要、图表叙事、可读性和审查意见。",
+        "",
         "## 各问章节职责",
         "",
     ]
@@ -106,7 +119,15 @@ def write_paper_blueprint(
                 f"## {question_id}",
                 "",
                 f"- 本问需要回答：{question.get('question', '待路线确认')}",
+                f"- 与前问的关系：{question.get('relationship', 'foundation' if index == 1 else 'inherits')}",
+                f"- 继承自：{', '.join(str(item) for item in question.get('inherits_from', [])) or '无（基础问题）'}",
+                f"- 继承对象：{question.get('inherited_object', '无；本问建立共享对象')}",
+                f"- 新增困难：{question.get('new_difficulty', '待分析；必须说明新增变量、约束、不确定性或尺度')}",
+                f"- 新增数学机制：{question.get('new_mechanism', '待分析；必须说明如何回应新增困难')}",
+                f"- 原模型为何不足：{question.get('why_previous_insufficient', '待填写；若可直接复用，应明确说明不新增模型的理由')}",
+                f"- 相对前问的答案增量：{question.get('answer_increment', '待填写；必须说明本问多解决了什么')}",
                 f"- 模型与理由：{question.get('model', '待路线确认')}",
+                f"- 算法与选型理由：{question.get('algorithm', '待实验计划')}；{question.get('algorithm_choice_reason', '待说明算法为何匹配数学困难')}",
                 f"- 核心假设：{question.get('assumptions', '待路线确认')}",
                 f"- 变量和公式：{question.get('variables_and_formulae', '待数学规格')}",
                 f"- 核心公式：{question.get('core_formulae', '待数学规格')}",

@@ -183,7 +183,7 @@ def _normalized_latex_path(value: str) -> str:
 
 
 def validate_required_figure_consumption(run_dir: Path) -> list[str]:
-    """复验 FIGURE_PLAN 2.1 的必需图已生成并在 LaTeX 正文中消费。
+    """复验 FIGURE_PLAN 2.1/2.2 的必需图已生成并在 LaTeX 正文中消费。
 
     旧 2.0 图表计划继续只服务兼容收据；只有 v3.2 主动写入 2.1 时才启用
     生成、current 来源、插图、交叉引用和解释闭环。
@@ -210,16 +210,17 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
         ]
     try:
         plan = load_json(plan_path)
-        if plan.get("schema_version") != "2.1":
+        plan_version = plan.get("schema_version")
+        if plan_version not in {"2.1", "2.2"}:
             return [
-                f"核心问题 {question_id} 必须使用 FIGURE_PLAN 2.1 声明显式视觉决策"
+                f"核心问题 {question_id} 必须使用 FIGURE_PLAN 2.1/2.2 声明显式视觉决策"
                 for question_id in sorted(core_questions)
             ]
         errors = validate_document(plan, "figure_plan")
         if errors:
             return errors
         if plan.get("run_id") != run_dir.name:
-            return ["FIGURE_PLAN 2.1 的 run_id 与当前运行不一致"]
+            return [f"FIGURE_PLAN {plan_version} 的 run_id 与当前运行不一致"]
         decisions = plan.get("visual_decisions", [])
         decision_map = {
             item.get("question_id"): item
@@ -255,7 +256,7 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                 str(item.get("message", item))
                 for item in verification.get("errors", [])
             )
-            return ["FIGURE_PLAN 2.1 存在失效 current 图: " + detail]
+            return [f"FIGURE_PLAN {plan_version} 存在失效 current 图: " + detail]
         index = load_json(run_dir / "figures/index.json")
         current = {
             item.get("figure_id"): item
@@ -308,7 +309,7 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                 errors.append(f"稳定性图 {figure_id} 必须放入附录章节")
         return errors
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
-        return ["FIGURE_PLAN 2.1 闭环校验失败: " + str(exc)]
+        return ["FIGURE_PLAN 2.1/2.2 闭环校验失败: " + str(exc)]
 
 
 def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:

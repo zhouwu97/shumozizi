@@ -91,13 +91,18 @@
     "contentSignals": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["text_characters", "sentence_count", "minimum_body_signal", "technical_content_signal", "explanation_marker_present"],
+      "required": ["text_characters", "sentence_count", "minimum_body_signal", "technical_content_signal", "explanation_marker_present", "derivation_action_present", "algorithm_action_present", "result_comparison_action_present", "boundary_action_present", "argument_action_signal"],
       "properties": {
         "text_characters": {"type": "integer", "minimum": 0},
         "sentence_count": {"type": "integer", "minimum": 0},
         "minimum_body_signal": {"type": "boolean"},
         "technical_content_signal": {"type": "boolean"},
-        "explanation_marker_present": {"type": "boolean"}
+        "explanation_marker_present": {"type": "boolean"},
+        "derivation_action_present": {"type": "boolean"},
+        "algorithm_action_present": {"type": "boolean"},
+        "result_comparison_action_present": {"type": "boolean"},
+        "boundary_action_present": {"type": "boolean"},
+        "argument_action_signal": {"type": "boolean"}
       }
     }
   }

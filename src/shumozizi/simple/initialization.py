@@ -203,6 +203,7 @@ def initialize_simple_run(
                 "semantic_reconstructions": [],
                 "research_story": {
                     "central_tension": "待填写：题目的核心矛盾与统一研究主线。",
+                    "central_mathematical_object": "待填写：贯穿全文的共享状态、判定器或概率对象。",
                     "question_progression": [],
                 },
                 "units": [],

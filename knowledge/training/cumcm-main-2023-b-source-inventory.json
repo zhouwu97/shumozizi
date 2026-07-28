@@ -1,0 +1,68 @@
+{
+  "schema_name": "paper_source_inventory",
+  "schema_version": "1.0",
+  "generated_at": "2026-07-27T00:00:00Z",
+  "sources": [
+    {
+      "source_id": "source-cumcm-main-2023-b",
+      "root_name": "CUMCM-main/workspaces/B题"
+    },
+    {
+      "source_id": "source-cumcm-main-structure",
+      "root_name": "CUMCM-main/.agents/skills/solve-mathmodel"
+    }
+  ],
+  "file_count": 7,
+  "extension_counts": {".md": 4, ".pdf": 2, ".docx": 1},
+  "files": [
+    {
+      "source_id": "source-cumcm-main-2023-b",
+      "relative_path": "problem/B题.pdf",
+      "extension": ".pdf",
+      "size_bytes": 899651,
+      "sha256": "E709E066139EA0A4BB64AA7E56EA097725A1F2B4E5161FC8C7E50C48BE079396"
+    },
+    {
+      "source_id": "source-cumcm-main-2023-b",
+      "relative_path": "validation/main.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1812960,
+      "sha256": "FD1655D9AEFD54D3F732EF5BE00D48C4DB5A1F23486E0516BFA513AE7699A29B"
+    },
+    {
+      "source_id": "source-cumcm-main-2023-b",
+      "relative_path": "paper/main.docx",
+      "extension": ".docx",
+      "size_bytes": 1343566,
+      "sha256": "AAFC5FEE949C090984B47A37C49DEBC3EC624D50D1E46B335233953B6F9F1CB2"
+    },
+    {
+      "source_id": "source-cumcm-main-2023-b",
+      "relative_path": "reports/paper-blueprint.md",
+      "extension": ".md",
+      "size_bytes": 5353,
+      "sha256": "3435A11B2203D11CB5BD4A304196093DB916C4F1EF96C38C2BA41F6B0E3B57A9"
+    },
+    {
+      "source_id": "source-cumcm-main-2023-b",
+      "relative_path": "reports/paper-review.md",
+      "extension": ".md",
+      "size_bytes": 1678,
+      "sha256": "8B83BFC74DF589B781DAF347A10B6334E588E3C88BF594A093EC52CD2912496C"
+    },
+    {
+      "source_id": "source-cumcm-main-2023-b",
+      "relative_path": "todo.md",
+      "extension": ".md",
+      "size_bytes": 1700,
+      "sha256": "20076C77A18738821E2D745909F28BCC9921E83E833A54FAF4814EF90C2DC2D5"
+    },
+    {
+      "source_id": "source-cumcm-main-structure",
+      "relative_path": "references/paper-writing-patterns-2023-2025.md",
+      "extension": ".md",
+      "size_bytes": 4892,
+      "sha256": "8115EB5DF83F710ABDAF0F40B0F0A2B7E64CB2F5D07854D2B67998811815730C"
+    }
+  ]
+}

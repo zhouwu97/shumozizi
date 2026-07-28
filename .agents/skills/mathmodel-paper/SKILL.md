@@ -150,7 +150,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
-每个核心问题必须在 `FIGURE_PLAN.json` 2.1 中显式选择 `required` 或 `waived`。`required` 至少有一张非 `stability` 且 `required=true` 的正文主图；`waived` 必须说明为什么公式、表格或文字足以传达核心关系。计划通过 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 受控写入。对于 `required=true` 的图，必须有 current 真实结果、实际绘图脚本和输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
+每个核心问题必须在 `FIGURE_PLAN.json` 中显式选择 `required` 或 `waived`；旧 2.1 兼容读取，新计划使用含视觉原型与决策后果的 2.2。`required` 至少有一张非 `stability` 且 `required=true` 的正文主图；`waived` 必须说明为什么公式、表格或文字足以传达核心关系。计划通过 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 受控写入。对于 `required=true` 的图，必须有 current 真实结果、实际绘图脚本和输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
 
 ---
 

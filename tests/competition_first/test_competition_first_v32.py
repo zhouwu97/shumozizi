@@ -142,11 +142,18 @@ def _plan(run_dir: Path) -> dict[str, object]:
         ],
         "research_story": {
             "central_tension": "在可行性约束下提高精确目标，同时保留可解释回退。",
+            "central_mathematical_object": "统一可行域、精确评分器与候选方案状态。",
             "question_progression": [
                 {
                     "question_id": "Q1",
                     "role": "建立可复验的基线与统一评价口径。",
                     "upgrade": "用结构不同的路线比较并在首解后继续深化。",
+                    "inherits_from": [],
+                    "inherited_object": "本问首次建立统一可行域和精确评分器。",
+                    "new_difficulty": "需要同时处理硬约束、路线异构性和有限搜索预算。",
+                    "new_mechanism": "以统一精确评分器比较异构路线并约束晋级。",
+                    "why_previous_insufficient": "这是基础问题，不存在可直接复用的前问模型。",
+                    "answer_increment": "形成可执行主答案、量化改进和已验证回退方案。",
                 }
             ],
         },
@@ -552,6 +559,22 @@ def test_v32_promotion_checks_ignore_manual_override(tmp_path: Path) -> None:
 
     with pytest.raises(ContractError, match="系统派生答案资格不一致"):
         require_v32_experiment_evidence(run_dir)
+
+
+def test_v32_research_story_requires_substantive_question_progression(tmp_path: Path) -> None:
+    """新运行不能只用角色和升级标签冒充逐问继承蓝图。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-research-story",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    del plan["research_story"]["question_progression"][0]["new_mechanism"]
+
+    with pytest.raises(ContractError, match="new_mechanism"):
+        write_modeling_units(run_dir, plan)
 
 
 def test_v32_endpoint_ranking_reversal_returns_to_analysis(tmp_path: Path) -> None:

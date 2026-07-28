@@ -108,6 +108,31 @@ EXPLANATION_PATTERN = re.compile(
     r"从而|故而|据此|because|therefore|thus|indicat(?:e|es|ed)|implies?",
     re.IGNORECASE,
 )
+DERIVATION_ACTION_PATTERN = re.compile(
+    r"(?:关键推导|模型推导).{0,60}(?:给出|得到|推出|导出)|"
+    r"(?:定义|令|设).{0,40}(?:变量|状态|目标|约束)|"
+    r"(?:key|model)\s+derivation.{0,60}(?:gives?|yields?|derives?)",
+    re.IGNORECASE,
+)
+ALGORITHM_ACTION_PATTERN = re.compile(
+    r"(?:先|首先).{2,80}(?:再|然后|随后|继而)|"
+    r"(?:初始化|枚举|迭代|递推|更新).{2,80}(?:直到|直至|停止|收敛|完成)|"
+    r"步骤\s*[一二三四五六七八九\d]+|"
+    r"(?:initialize|iterate|recur).{2,80}(?:until|converge|terminate)",
+    re.IGNORECASE,
+)
+RESULT_COMPARISON_ACTION_PATTERN = re.compile(
+    r"(?:相对|相比|较).{0,40}(?:提高|降低|减少|增加|提前|缩短|延长|改善|恶化)"
+    r".{0,30}\d|"
+    r"compared\s+with.{0,40}(?:increase|decrease|improve|reduce).{0,30}\d",
+    re.IGNORECASE,
+)
+BOUNDARY_ACTION_PATTERN = re.compile(
+    r"(?:当|若|如果).{2,60}(?:时|则|需要|不再|重新)|"
+    r"(?:仅适用|不外推|适用范围).{2,60}|"
+    r"(?:when|if).{2,60}(?:then|requires?|no\s+longer)",
+    re.IGNORECASE,
+)
 QUANTITATIVE_PATTERN = re.compile(
     r"\d+(?:\.\d+)?\s*(?:%|秒|分钟|小时|米|千米|克|千克|元|次|个|"
     r"s|ms|min|h|m|km|kg|yuan)?\b",
@@ -419,10 +444,11 @@ def _question_segment(
     if not segments:
         return False, ""
 
-    def score(segment: str) -> tuple[int, int, int, int, int]:
+    def score(segment: str) -> tuple[int, int, int, int, int, int]:
         signals = _content_signals(segment)
         return (
             sum(_element_detected(element, segment) for element in required_elements),
+            int(signals["argument_action_signal"]),
             int(signals["technical_content_signal"]),
             int(signals["explanation_marker_present"]),
             int(signals["minimum_body_signal"]),
@@ -487,12 +513,28 @@ def _content_signals(text: str) -> dict[str, int | bool]:
         text_characters >= MINIMUM_BODY_SIGNAL_CHARACTERS
         and sentence_count >= MINIMUM_BODY_SIGNAL_SENTENCES
     )
+    derivation_action = DERIVATION_ACTION_PATTERN.search(text) is not None
+    algorithm_action = ALGORITHM_ACTION_PATTERN.search(text) is not None
+    result_comparison_action = RESULT_COMPARISON_ACTION_PATTERN.search(text) is not None
+    boundary_action = BOUNDARY_ACTION_PATTERN.search(text) is not None
     return {
         "text_characters": text_characters,
         "sentence_count": sentence_count,
         "minimum_body_signal": substantive,
         "technical_content_signal": quantitative,
         "explanation_marker_present": explanation,
+        "derivation_action_present": derivation_action,
+        "algorithm_action_present": algorithm_action,
+        "result_comparison_action_present": result_comparison_action,
+        "boundary_action_present": boundary_action,
+        "argument_action_signal": all(
+            (
+                derivation_action,
+                algorithm_action,
+                result_comparison_action,
+                boundary_action,
+            )
+        ),
     }
 
 
@@ -605,11 +647,18 @@ def assess_paper_structure_signals(
             for element in section["required_elements"]
         }
         content_signals = _content_signals(segment) if heading_detected else _content_signals("")
+        requires_argument_actions = {
+            "mathematical_object_derivation",
+            "algorithm_steps",
+            "evidence_interpretation",
+            "unproved_boundary",
+        }.issubset(section["required_elements"])
         structure_signals_complete = bool(
             heading_detected
             and all(elements.values())
             and content_signals["minimum_body_signal"]
             and content_signals["technical_content_signal"]
+            and (not requires_argument_actions or content_signals["argument_action_signal"])
             and section["draft_allowed"]
         )
         question_coverage.append(
@@ -644,6 +693,8 @@ def assess_paper_structure_signals(
                 missing.append("minimum_body_signal")
             if not content_signals["technical_content_signal"]:
                 missing.append("technical_content_signal")
+            if requires_argument_actions and not content_signals["argument_action_signal"]:
+                missing.append("argument_action_signal")
             missing_required_signals.append(f"question:{question_id}: 缺少 {', '.join(missing)}")
 
     warnings: list[str] = []
