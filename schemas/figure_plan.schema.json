@@ -73,7 +73,8 @@
           "renderer": {"enum": ["python", "matlab", "octave", "other"]},
           "visual_question": {"type": "string", "minLength": 8},
           "expected_observation": {"type": "string", "minLength": 8},
-          "decision_consequence": {"type": "string", "minLength": 8}
+          "decision_consequence": {"type": "string", "minLength": 8},
+          "review_finding": {"type": "string", "minLength": 12}
         },
         "allOf": [
           {

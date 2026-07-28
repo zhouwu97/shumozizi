@@ -401,6 +401,27 @@ def test_reviewable_draft_compiles_before_answer_qualification(
         selection_reason="测试首个可审阅 PDF 与正式候选门禁相互隔离。",
     )
     materialize_selected_template(run_dir)
+    (run_dir / "paper/ARGUMENT_PLAN.md").write_text(
+        "# 论文论证计划\n\n"
+        "## 总体判断\n\n"
+        "本文先统一问题对象与评价口径，再用当前真实结果判断路线是否值得进入后续问题。"
+        "这一判断连接基线、候选路线、验证证据与适用边界，避免正文退化为结果清单。\n\n"
+        "## Q1 完整性卡\n\n"
+        "题面要求明确比较可执行方案。数学对象是当前样本上的统一目标。"
+        "关键推导连接约束与评价量，算法执行自然基线和主路线。"
+        "结果由真实实验支持，边界是不外推到题面范围之外，结论给出当前直接答案。\n",
+        encoding="utf-8",
+    )
+    (run_dir / "paper/STORYBOARD.md").write_text(
+        "# 论文故事板\n\n"
+        "## 中心判断\n\n"
+        "本文的中心判断是统一对象、目标和验证单位后，路线差异才具有决策含义。\n\n"
+        "## 论证链\n\n"
+        "题面事实导出共享数学对象，再由解析关系确定数值求解任务；"
+        "当前实验支持 Q1 判断，后续 Q2 将继承同一评价口径并补足尚未完成的验证。"
+        "竞争解释通过自然基线排除，结论只在当前题面参数和数据范围内成立。\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         paper_readiness,
         "require_paper_readiness",
@@ -450,6 +471,26 @@ def test_reviewable_draft_compiles_before_answer_qualification(
     assert "当前候选结论" in disclosure
     assert "不可作为最终提交" in disclosure
     assert verify_reviewable_draft_receipt(run_dir)["valid"] is True
+
+
+def test_reviewable_draft_requires_argument_plan_and_storyboard(tmp_path: Path) -> None:
+    """能编译的空壳不能冒充可审阅论文首版。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "reviewable-draft-without-argument",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+
+    with pytest.raises(ContractError, match="ARGUMENT_PLAN.md"):
+        compile_reviewable_draft(
+            run_dir,
+            completed_content=["Q1 已完成。"],
+            unfinished_questions=[],
+            remaining_experiments=[],
+            provisional_conclusions=[],
+        )
 
 
 @pytest.mark.paper_e2e

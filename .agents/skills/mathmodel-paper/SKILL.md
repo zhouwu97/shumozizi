@@ -21,6 +21,8 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 该专用入口生成 `paper/draft-1.pdf` 和独立草稿回执，允许正式答案资格或科学挑战尚未全部完成，但不允许虚构数字，且 PDF 必须明确“本稿不可作为最终提交”。没有证据支持的候选结论保持空数组，由状态页显示“暂无”。不要用正式 `compile_paper` 冒充首版草稿。
 
+该入口不是“能编译即可”的排版检查：编译前必须完成非占位的 `ARGUMENT_PLAN.md` 与 `STORYBOARD.md`，写清全篇中心判断和跨问题论证链；披露为已完成的核心问题必须已有判断、证据、竞争解释和适用边界。未完成问题可以保留，但必须在草稿状态页显式列出。
+
 候选截止前必须先闭合所有正式答案资格与科学挑战，再执行严格 `compile_paper.py` 生成当前 `paper/final.pdf`，并冻结为 `paper/candidate.pdf`。候选 PDF 缺失、正式编译回执失效或与当前 `final.pdf` 不一致时，不得进入 `paper_review`；草稿 PDF 和草稿回执永远不能替代候选门禁。不要为了补充新框架或非阻断性实验而推迟第一版可审阅 PDF。
 
 ---
@@ -170,9 +172,11 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 
 ## 修订范围
 
-- 小文字改动：重新编译 + 机械 QA
-- 影响结论或图表：重做 PDF 盲评
-- 代码/数据/目标/主要结果：回到实验和科学挑战
+- `render`：字号、箭头、留白、分页和不改论证的图形样式，只重做图像/PDF 检查。
+- `argument`：正文结构、推导表达、图表论证位置或直接答案表述，重做论证、编译和 PDF 盲评。
+- `science`：代码、数据、目标、主要结果或行动建议，回到实验和科学挑战，再重做论证与渲染。
+
+可用 `python scripts/simple/delivery_control.py revision-impact <paths...>` 机械分类；它不替代对实际语义的判断。
 
 ---
 

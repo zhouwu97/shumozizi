@@ -9,10 +9,10 @@ MATLAB/Octave 不是每题必选。出现矩阵计算、连续/整数/多目标�
 
 1. 将真实入口保存为 `code/matlab/run_analysis.m`。输入只来自 `problem/`、受控参数或明确登记的 current 结果；脚本通过 `SHUMOZIZI_RUN_DIR` 定位运行根目录，不使用仓库外绝对路径。
 2. MATLAB 至少承担一种科学角色：`primary_model`、`optimizer_challenger`、`independent_oracle` 或 `scientific_visualization`。不能只把 Python 数组导出后重算平均值。独立实现不得导入、翻译或调用 Python 核心判定函数；可共享原始输入和最终问题定义，不共享中间数组与判定源码。
-3. 每次启用必须真实产生 `results/matlab/result.json`、`result.csv`、`figures/current/matlab-*.pdf`、`matlab-*.png` 和 `logs/matlab-run.log`。统一执行：`python scripts/matlab/run_matlab.py <run_dir> --config <config.json>`；底层命令为 `matlab -batch "run('code/matlab/run_analysis.m')"`。
+3. 产物按角色决定：`primary_model`、`optimizer_challenger`、`independent_oracle` 至少输出 JSON，CSV 只在表结构确有复用价值时输出；`scientific_visualization` 输出版本化候选 PNG/PDF，并进入图像晋级流程。所有角色都会自动生成 stdout/stderr 与 `logs/matlab-run.log`。统一执行：`python scripts/matlab/run_matlab.py <run_dir> --config <config.json>`；底层命令为 `matlab -batch "run('code/matlab/run_analysis.m')"`。
 4. 运行器写 `results/matlab/manifest.json`，记录入口、版本、真实工具箱、输入、输出、耗时和退出状态，并把成功执行登记为 current 生产结果。环境不可用时必须写 `availability=unavailable` 和失败结果，不生成假输出或假回执。
 5. MATLAB 专有优化器只在 manifest 中确实记录相应工具箱且许可证可用时使用；否则选择基础 MATLAB 可实现的枚举、矩阵算法、数值积分或明确的 Python fallback。Octave 不得声称支持 MATLAB 专有工具箱。
-6. 结果 JSON 应同时输出最终指标和模型原生视觉数据，如候选解、可行边界、活跃约束、搜索历史、Pareto 点、状态轨迹或不确定性样本。科学图必须基于同次执行的真实结构数据，标出最优点、边界、baseline/fallback 和结论所需的关键事件。
+6. 数值角色的结果 JSON 输出最终指标，并按后续论证需要保存候选解、可行边界、活跃约束、搜索历史、Pareto 点、状态轨迹或不确定性样本；不要求独立 oracle 为无关的图表制造结构数据。科学图必须基于真实结构数据，标出最优点、边界、baseline/fallback 和结论所需的关键事件，并先输出到 `figures/candidates/`。
 7. `method_profile.stochastic=true` 才要求 multiseed；`uses_proxy_objective=true` 才要求 proxy-exact。MATLAB 的存在不自动触发风险，也不证明独立性或正确性。出现更优候选、复算冲突或不可行证据时，按负面证据规则级联失效旧结果、图和论文。
 
 Windows 示例：

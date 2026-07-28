@@ -21,6 +21,7 @@ from shumozizi.simple.delivery import (
     verify_workflow_source_lock,
     work_log_summary,
 )
+from shumozizi.simple.revisions import classify_revision
 
 
 def main() -> int:
@@ -55,6 +56,8 @@ def main() -> int:
     source.add_argument("run_dir", type=Path)
     advance = subparsers.add_parser("advance", help="在真实门禁通过时自动推进一阶段")
     advance.add_argument("run_dir", type=Path)
+    revision = subparsers.add_parser("revision-impact", help="判定返修需要重做的最小层级")
+    revision.add_argument("paths", nargs="+")
     args = parser.parse_args()
     try:
         if args.command == "status":
@@ -85,6 +88,8 @@ def main() -> int:
             document = approve_workflow_p0_patch(args.run_dir, reason=args.reason)
         elif args.command == "verify-source-lock":
             document = {"source_lock": verify_workflow_source_lock(args.run_dir), "work_log": work_log_summary(args.run_dir)}
+        elif args.command == "revision-impact":
+            document = classify_revision(args.paths)
         else:
             document = advance_delivery_phase(args.run_dir)
     except ContractError as exc:

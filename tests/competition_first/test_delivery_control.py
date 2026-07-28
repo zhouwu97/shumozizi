@@ -13,6 +13,7 @@ from shumozizi.simple import review as simple_review
 from shumozizi.simple.competition import write_next_experiments
 from shumozizi.simple.delivery import (
     DELIVERY_CONTROL_PATH,
+    PDF_MILESTONES_PATH,
     WORK_LOG_PATH,
     advance_delivery_phase,
     approve_workflow_p0_patch,
@@ -63,6 +64,33 @@ def _move_past_first_pdf_deadline(run_dir: Path) -> None:
     control = load_json(run_dir / DELIVERY_CONTROL_PATH)
     control["started_at"] = _at(control["started_at"], -481)
     atomic_json(run_dir / DELIVERY_CONTROL_PATH, control)
+
+
+def _mark_pdf_milestone(run_dir: Path, name: str) -> None:
+    """写入无需编译器的当前 PDF 里程碑夹具。"""
+    document = load_json(run_dir / PDF_MILESTONES_PATH)
+    if name == "first_reviewable":
+        path = run_dir / "paper/draft-1.pdf"
+        path.write_bytes(b"%PDF-1.4\nreviewable fixture\n")
+        record = {
+            "path": "paper/draft-1.pdf",
+            "sha256": sha256_file(path),
+            "source_pdf_sha256": sha256_file(path),
+            "frozen_at": "2026-07-28T00:00:00Z",
+        }
+    else:
+        path = run_dir / "paper/candidate.pdf"
+        final = run_dir / "paper/final.pdf"
+        path.write_bytes(b"%PDF-1.4\ncandidate fixture\n")
+        final.write_bytes(path.read_bytes())
+        record = {
+            "path": "paper/candidate.pdf",
+            "sha256": sha256_file(path),
+            "source_pdf_sha256": sha256_file(final),
+            "frozen_at": "2026-07-28T00:10:00Z",
+        }
+    document.setdefault("milestones", {})[name] = record
+    atomic_json(run_dir / PDF_MILESTONES_PATH, document)
 
 
 def _figure_plan(run_dir: Path) -> dict[str, object]:
@@ -121,6 +149,7 @@ def test_v32_initialization_freezes_delivery_plan_and_work_log(tmp_path: Path) -
     assert control["workflow_source_locked"] is True
     assert control["protocol_patch_budget_minutes"] == 30.0
     assert work_log["entries"] == []
+    assert work_log["phase_sessions"][0]["phase"] == "analysis"
 
 
 def test_first_pdf_deadline_overrides_normal_experiment_work(tmp_path: Path) -> None:
@@ -151,10 +180,43 @@ def test_delivery_action_permission_is_enforced_after_first_pdf_deadline(
     require_delivery_action_allowed(run_dir, "paper_write")
 
 
-def test_delivery_cutoff_blocks_new_experiments_but_allows_existing_plan_repairs(
+def test_early_first_draft_freezes_scope_but_opens_review_repair(tmp_path: Path) -> None:
+    """提前完成首版也应立即冻结框架，同时允许评审驱动实验返修。"""
+    run_dir = _run(tmp_path)
+    write_next_experiments(
+        run_dir,
+        {
+            "experiments": [
+                {"experiment_id": "probe-q1", "decision": "形成首版主结果。"}
+            ]
+        },
+    )
+    _mark_pdf_milestone(run_dir, "first_reviewable")
+
+    with pytest.raises(ContractError, match="add_new_route"):
+        require_delivery_action_allowed(run_dir, "add_new_route")
+    repaired = write_next_experiments(
+        run_dir,
+        {
+            "experiments": [
+                {"experiment_id": "probe-q1", "decision": "形成首版主结果。"},
+                {
+                    "experiment_id": "review-sensitivity",
+                    "decision": "检验阈值是否改变直接答案。",
+                    "review_finding": "首版 PDF 评审指出关键阈值缺少敏感性分析。",
+                },
+            ]
+        },
+    )
+
+    assert repaired["experiments"][-1]["experiment_id"] == "review-sensitivity"
+    assert "add_new_route" in next_required_action(run_dir)["forbidden_actions"]
+
+
+def test_review_finding_allows_bounded_experiment_addition_before_candidate(
     tmp_path: Path,
 ) -> None:
-    """截止后只能修订既有实验计划，不能追加新的实验 ID。"""
+    """首版后可按评审发现补实验，但候选冻结后停止扩展。"""
     run_dir = _run(tmp_path)
     plan = {
         "experiments": [
@@ -170,14 +232,32 @@ def test_delivery_cutoff_blocks_new_experiments_but_allows_existing_plan_repairs
     plan["experiments"].append(
         {"experiment_id": "probe-q1-extra", "decision": "增加新的非阻断性搜索。"}
     )
-    with pytest.raises(ContractError, match="add_experiment_plan"):
+    with pytest.raises(ContractError, match="first_reviewable"):
+        write_next_experiments(run_dir, plan)
+    _mark_pdf_milestone(run_dir, "first_reviewable")
+    plan["experiments"][-1]["review_finding"] = (
+        "PDF 评审指出主结论缺少关键阈值敏感性证据。"
+    )
+    assert write_next_experiments(run_dir, plan)["experiments"][-1][
+        "experiment_id"
+    ] == "probe-q1-extra"
+
+    _mark_pdf_milestone(run_dir, "candidate")
+    plan["experiments"].append(
+        {
+            "experiment_id": "probe-q1-too-late",
+            "decision": "候选冻结后不应执行。",
+            "review_finding": "候选冻结之后才提出的额外科学内容请求。",
+        }
+    )
+    with pytest.raises(ContractError, match="候选 PDF 已冻结"):
         write_next_experiments(run_dir, plan)
 
 
-def test_delivery_cutoff_blocks_new_figures_but_allows_existing_figure_repairs(
+def test_review_finding_allows_new_figure_before_candidate(
     tmp_path: Path,
 ) -> None:
-    """截止后可修图和图注，但不能扩大正文图表集合。"""
+    """评审发现可触发一张新主图，普通装饰扩图仍被拒绝。"""
     run_dir = _run(tmp_path)
     plan = _figure_plan(run_dir)
     write_figure_plan(run_dir, plan)
@@ -190,8 +270,11 @@ def test_delivery_cutoff_blocks_new_figures_but_allows_existing_figure_repairs(
     added["figure_id"] = "q1-extra"
     added["latex_label"] = "fig:q1-extra"
     plan["figures"].append(added)
-    with pytest.raises(ContractError, match="expand_figure_plan"):
+    with pytest.raises(ContractError, match="first_reviewable"):
         write_figure_plan(run_dir, plan)
+    _mark_pdf_milestone(run_dir, "first_reviewable")
+    added["review_finding"] = "PDF 评审指出全篇缺少训练选择与验证隔离流程图。"
+    assert write_figure_plan(run_dir, plan)["figures"][-1]["figure_id"] == "q1-extra"
 
 
 def test_delivery_cutoff_blocks_extra_reviews_but_keeps_blind_review_available(
@@ -572,8 +655,8 @@ def test_invalid_or_overlapping_work_sessions_are_rejected(tmp_path: Path) -> No
         )
 
 
-def test_start_stop_work_tracks_one_active_session_and_coverage(tmp_path: Path) -> None:
-    """start/stop 必须持久化唯一活动会话并暴露覆盖率与墙钟缺口。"""
+def test_start_stop_work_is_optional_detail_beside_phase_tracking(tmp_path: Path) -> None:
+    """细粒度记录保持兼容，但状态页不再追查墙钟空档。"""
     run_dir = _run(tmp_path)
     started_at = load_json(run_dir / DELIVERY_CONTROL_PATH)["started_at"]
 
@@ -606,9 +689,10 @@ def test_start_stop_work_tracks_one_active_session_and_coverage(tmp_path: Path) 
         finished_at=_at(started_at, 160),
     )
     summary = work_log_summary(run_dir, now=_at(started_at, 200))
-    assert summary["coverage_warning"] is True
-    assert summary["logged_time_coverage_ratio"] == pytest.approx(0.675)
-    assert summary["unexplained_gaps"][0]["duration_minutes"] == pytest.approx(25)
+    assert summary["coverage_warning"] is False
+    assert summary["logged_time_coverage_ratio"] == pytest.approx(1.0)
+    assert summary["unexplained_gaps"] == []
+    assert summary["phase_sessions"][0]["phase"] == "analysis"
 
 
 def test_required_figure_must_be_consumed_by_latex(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

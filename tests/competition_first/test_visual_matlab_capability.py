@@ -232,3 +232,43 @@ def test_matlab_runner_records_unavailable_without_fake_success(
     assert result["status"] == "failed"
     assert result["execution_valid"] is False
 
+
+def test_independent_oracle_only_requires_json_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """独立复算不应被迫导出 CSV 或生成与任务无关的论文图。"""
+    run_dir = _run(tmp_path, "matlab-oracle-json-only")
+    _write_matlab_entrypoint(run_dir)
+    monkeypatch.setattr(
+        "shumozizi.simple.matlab.detect_engine",
+        lambda _engine: {
+            "available": True,
+            "engine": "matlab",
+            "command": "matlab",
+            "version": "24.1",
+        },
+    )
+
+    def fake_run(*_args: object, **_kwargs: object) -> object:
+        output = run_dir / "results/matlab/oracle.json"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps({"agreement": True}), encoding="utf-8")
+        return type("Completed", (), {"returncode": 0, "stdout": "ok\n", "stderr": ""})()
+
+    monkeypatch.setattr("shumozizi.simple.matlab.subprocess.run", fake_run)
+    receipt = run_matlab_analysis(
+        run_dir,
+        entrypoint="code/matlab/run_analysis.m",
+        question_id="Q2",
+        result_id="q2-matlab-oracle",
+        role="independent_oracle",
+        input_files=["problem/input.csv"],
+        output_files=["results/matlab/oracle.json"],
+        metric_sources={},
+        objective_semantics_sha256="c" * 64,
+    )
+
+    assert receipt["execution_valid"] is True
+    result = read_result_index(run_dir)["results"][-1]
+    assert result["method_facts"]["uses_independent_oracle"] is True
+    assert result["method_facts"]["generates_scientific_visualization"] is False

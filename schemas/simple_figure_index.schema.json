@@ -43,7 +43,8 @@
            "takeaway": {"type": "string", "minLength": 1},
            "limitations": {"type": "string", "minLength": 1},
            "role": {"enum": ["model_understanding", "decisive_evidence", "insight", "stability"]},
-           "placement": {"enum": ["body", "appendix"]},
+          "placement": {"enum": ["body", "appendix"]},
+          "promotion_receipt": {"$ref": "#/$defs/file"},
           "paper_allowed": {"type": "boolean"},
           "demo": {"const": false},
           "created_at": {"type": "string", "format": "date-time"}

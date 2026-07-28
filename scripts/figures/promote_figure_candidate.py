@@ -1,0 +1,47 @@
+"""审核并晋级版本化图像候选。"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from shumozizi.core.io import ContractError  # noqa: E402
+from shumozizi.simple.figure_promotion import promote_figure_candidate  # noqa: E402
+
+
+def main() -> int:
+    """执行候选图 QA 和 current 晋级。"""
+    parser = argparse.ArgumentParser(description="审核并晋级论文图候选")
+    parser.add_argument("run_dir", type=Path)
+    parser.add_argument("--figure-id", required=True)
+    parser.add_argument("--candidate", action="append", required=True)
+    parser.add_argument("--target-stem", required=True)
+    parser.add_argument("--rendering-mode", choices=("plot", "diagram"), required=True)
+    parser.add_argument("--layout-report")
+    parser.add_argument("--human-review-notes", required=True)
+    args = parser.parse_args()
+    try:
+        result = promote_figure_candidate(
+            args.run_dir,
+            figure_id=args.figure_id,
+            candidate_outputs=args.candidate,
+            target_stem=args.target_stem,
+            rendering_mode=args.rendering_mode,
+            layout_report=args.layout_report,
+            human_reviewed=True,
+            human_review_notes=args.human_review_notes,
+        )
+    except ContractError as exc:
+        print(json.dumps({"status": "blocked", "error": str(exc)}, ensure_ascii=False))
+        return 1
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

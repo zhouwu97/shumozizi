@@ -40,14 +40,13 @@ _LOCK_ROOTS = (
 _IGNORED_SOURCE_SUFFIXES = {".pyc", ".pyo"}
 _DELIVERY_FREEZE_ACTIONS = [
     "add_new_route",
-    "add_experiment_plan",
     "create_extra_review_task",
-    "expand_figure_plan",
     "modify_workflow_schema",
     "migrate_protocol",
     "expand_review_protocol",
     "refactor_executor",
 ]
+_REVIEW_REPAIR_ACTIONS = frozenset({"add_experiment_plan", "expand_figure_plan"})
 _DELIVERY_ALLOWED_ACTIONS = frozenset(
     {
         "paper_write",
@@ -143,6 +142,13 @@ def initialize_delivery_control(
             "run_id": run_dir.name,
             "entries": [],
             "active_session": None,
+            "phase_sessions": [
+                {
+                    "phase": "analysis",
+                    "started_at": control["started_at"],
+                    "finished_at": None,
+                }
+            ],
         },
     )
     atomic_json(
@@ -177,14 +183,19 @@ def _control(run_dir: Path) -> dict[str, Any]:
 
 
 def require_delivery_action_allowed(
-    run_dir: Path, action_kind: str, *, now: str | datetime | None = None
+    run_dir: Path,
+    action_kind: str,
+    *,
+    now: str | datetime | None = None,
+    review_findings: list[str] | None = None,
 ) -> None:
-    """在首版 PDF 截止后拒绝扩大路线、协议或执行器范围。
+    """控制首版后的范围冻结，并保留评审驱动的有限返修窗口。
 
     Args:
         run_dir: 当前 v3.2 运行目录。
         action_kind: 调用入口准备执行的语义动作。
         now: 可选的确定性当前时间，主要供测试和恢复工具使用。
+        review_findings: 新实验或新图所回应的评审发现；首版后必填。
 
     Raises:
         ContractError: 截止后请求了禁止动作，或动作类型不属于公开许可表。
@@ -192,7 +203,11 @@ def require_delivery_action_allowed(
     if not isinstance(action_kind, str) or not action_kind.strip():
         raise ContractError("delivery action_kind 必须是非空文本")
     action = action_kind.strip()
-    known = set(_DELIVERY_FREEZE_ACTIONS) | set(_DELIVERY_ALLOWED_ACTIONS)
+    known = (
+        set(_DELIVERY_FREEZE_ACTIONS)
+        | set(_DELIVERY_ALLOWED_ACTIONS)
+        | set(_REVIEW_REPAIR_ACTIONS)
+    )
     if action not in known:
         raise ContractError(f"未知 delivery action_kind: {action}")
     control = _control(run_dir)
@@ -200,10 +215,27 @@ def require_delivery_action_allowed(
     started = _parse_time(control["started_at"])
     elapsed = max(0.0, (current - started).total_seconds() / 60)
     cutoff = float(control["delivery_plan"]["first_reviewable_pdf_deadline"])
-    if elapsed >= cutoff and action in _DELIVERY_FREEZE_ACTIONS:
+    first_reviewable_frozen = _milestone_current(run_dir, "first_reviewable")
+    scope_frozen = elapsed >= cutoff or first_reviewable_frozen
+    if scope_frozen and action in _DELIVERY_FREEZE_ACTIONS:
         raise ContractError(
-            f"交付首版截止后禁止动作 {action}；只能继续论文、图表修复、编译、"
-            "审核修复、机械验证或已登记的阻断性交付修复"
+            f"交付首版截止后禁止动作 {action}；路线、协议、审核范围和执行器必须冻结"
+        )
+    if not scope_frozen or action not in _REVIEW_REPAIR_ACTIONS:
+        return
+    if _milestone_current(run_dir, "candidate"):
+        raise ContractError(f"候选 PDF 已冻结，禁止继续执行 {action} 新增科学内容")
+    if not first_reviewable_frozen:
+        raise ContractError(
+            f"首版截止后必须先冻结 first_reviewable，再以评审发现驱动 {action}"
+        )
+    findings = review_findings or []
+    if not 1 <= len(findings) <= 5 or any(
+        not isinstance(item, str) or len(item.strip()) < 12 for item in findings
+    ):
+        raise ContractError(
+            f"首版后的 {action} 必须为每个新增项提供 12 字以上 review_finding，"
+            "且单次最多新增 5 项"
         )
 
 
@@ -334,10 +366,49 @@ def stop_work_session(
     return entry
 
 
+def record_phase_transition(
+    run_dir: Path,
+    *,
+    from_phase: str,
+    to_phase: str,
+    changed_at: str | None = None,
+) -> None:
+    """在状态切换时自动关闭上一阶段并开始下一阶段计时。
+
+    Args:
+        run_dir: 当前运行目录。
+        from_phase: 切换前阶段。
+        to_phase: 切换后阶段。
+        changed_at: 可选的确定性切换时间。
+    """
+    if from_phase == to_phase or not (run_dir / WORK_LOG_PATH).is_file():
+        return
+    timestamp = changed_at or utc_now()
+    _parse_time(timestamp)
+    document = load_json(run_dir / WORK_LOG_PATH)
+    sessions = document.setdefault("phase_sessions", [])
+    if not sessions:
+        sessions.append(
+            {
+                "phase": from_phase,
+                "started_at": _control(run_dir)["started_at"],
+                "finished_at": timestamp,
+            }
+        )
+    else:
+        active = sessions[-1]
+        if active.get("finished_at") is None:
+            active["finished_at"] = timestamp
+    sessions.append(
+        {"phase": to_phase, "started_at": timestamp, "finished_at": None}
+    )
+    atomic_json(run_dir / WORK_LOG_PATH, document)
+
+
 def work_log_summary(
     run_dir: Path, *, now: str | datetime | None = None
 ) -> dict[str, Any]:
-    """汇总真实工时、活动会话、墙钟覆盖率和较长未解释缺口。"""
+    """汇总阶段级工时，并保留可选的细粒度工作记录。"""
     document = load_json(run_dir / WORK_LOG_PATH)
     totals = {category: 0.0 for category in sorted(WORK_CATEGORIES)}
     for entry in document.get("entries", []):
@@ -356,27 +427,24 @@ def work_log_summary(
         active_minutes = max(
             0.0, (current - _parse_time(active["started_at"])).total_seconds() / 60
         )
-    intervals = sorted(
-        (
-            _parse_time(entry["started_at"]),
-            _parse_time(entry["finished_at"]),
+    phase_sessions: list[dict[str, Any]] = []
+    for session in document.get("phase_sessions", []):
+        if not isinstance(session, dict):
+            continue
+        session_start = _parse_time(session["started_at"])
+        session_finish = (
+            _parse_time(session["finished_at"])
+            if isinstance(session.get("finished_at"), str)
+            else current
         )
-        for entry in document.get("entries", [])
-    )
-    unexplained_gaps: list[dict[str, Any]] = []
-    for (_, previous_finish), (next_start, _) in zip(
-        intervals, intervals[1:], strict=False
-    ):
-        gap = (next_start - previous_finish).total_seconds() / 60
-        if gap >= 20:
-            unexplained_gaps.append(
-                {
-                    "started_at": previous_finish.isoformat().replace("+00:00", "Z"),
-                    "finished_at": next_start.isoformat().replace("+00:00", "Z"),
-                    "duration_minutes": gap,
-                }
-            )
-    coverage = min(1.0, (total + active_minutes) / wall_minutes) if wall_minutes else 1.0
+        phase_sessions.append(
+            {
+                **session,
+                "duration_minutes": max(
+                    0.0, (session_finish - session_start).total_seconds() / 60
+                ),
+            }
+        )
     return {
         "total_minutes": total,
         "category_minutes": totals,
@@ -386,9 +454,10 @@ def work_log_summary(
         "active_session_minutes": active_minutes,
         "active_session_long_running": active_minutes >= 120,
         "elapsed_wall_minutes": wall_minutes,
-        "logged_time_coverage_ratio": coverage,
-        "coverage_warning": bool(document.get("entries") or active) and coverage < 0.8,
-        "unexplained_gaps": unexplained_gaps,
+        "logged_time_coverage_ratio": 1.0 if phase_sessions else 0.0,
+        "coverage_warning": False,
+        "unexplained_gaps": [],
+        "phase_sessions": phase_sessions,
     }
 
 
@@ -636,6 +705,9 @@ def next_required_action(
     elapsed = max(0.0, (current - started).total_seconds() / 60)
     plan = control["delivery_plan"]
     remaining = float(plan["final_deadline"]) - elapsed
+    scope_frozen = elapsed >= plan["first_reviewable_pdf_deadline"] or _milestone_current(
+        run_dir, "first_reviewable"
+    )
     summary = work_log_summary(run_dir)
     source_lock = verify_workflow_source_lock(run_dir)
     if not source_lock["valid"]:
@@ -738,6 +810,6 @@ def next_required_action(
         priority="P0_DELIVERY" if elapsed >= plan["final_deadline"] else "P1_MAINLINE",
         elapsed=elapsed,
         remaining=remaining,
-        forbidden_actions=_DELIVERY_FREEZE_ACTIONS if elapsed >= plan["first_reviewable_pdf_deadline"] else [],
+        forbidden_actions=_DELIVERY_FREEZE_ACTIONS if scope_frozen else [],
         work_summary=summary,
     )

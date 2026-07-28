@@ -24,7 +24,7 @@ from shumozizi.simple.capabilities import require_capability_route
 from shumozizi.simple.critical_claims import read_critical_claims
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
-from shumozizi.simple.state import read_simple_state, utc_now
+from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
 from tools.qa.figqa import audit_figure
 
 PLAN_PATH = Path("state/visualization-plan.json")
@@ -241,13 +241,25 @@ def run_figure_render(
         raise ContractError("图表渲染至少需要一个输出")
     if len({path.resolve() for path in outputs}) != len(outputs):
         raise ContractError("图表渲染输出路径重复")
+    v32_candidate_mode = is_competition_first_v32_state(read_simple_state(root))
     for output in outputs:
         relative = relative_inside(root, output).as_posix()
         if not relative.startswith("figures/") or relative.startswith("figures/receipts/"):
             raise ContractError("图表输出必须位于 figures/ 下且不能覆盖收据")
+        if v32_candidate_mode and not relative.startswith(
+            f"figures/candidates/{figure_id}/"
+        ):
+            raise ContractError(
+                "v3.2 图表必须先输出到 figures/candidates/<figure_id>/<version>/，"
+                "通过独立版式 QA 后再晋级 current"
+            )
         if output.exists():
             if not output.is_file():
                 raise ContractError("图表输出不能覆盖目录")
+            if v32_candidate_mode:
+                raise ContractError(
+                    "v3.2 候选版本已存在；修改图后必须使用新的 version 目录，不能覆盖旧候选"
+                )
             output.unlink()
         output.parent.mkdir(parents=True, exist_ok=True)
     safe_arguments = [_safe_render_argument(value) for value in (arguments or [])]

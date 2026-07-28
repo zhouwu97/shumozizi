@@ -132,10 +132,18 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         for item in payload.get("figures", [])
         if isinstance(item, dict) and isinstance(item.get("figure_id"), str)
     }
-    if new_ids - old_ids:
+    added_ids = new_ids - old_ids
+    if added_ids:
         from shumozizi.simple.delivery import require_delivery_action_allowed
 
-        require_delivery_action_allowed(run_dir, "expand_figure_plan")
+        findings = [
+            str(item.get("review_finding", ""))
+            for item in payload.get("figures", [])
+            if isinstance(item, dict) and item.get("figure_id") in added_ids
+        ]
+        require_delivery_action_allowed(
+            run_dir, "expand_figure_plan", review_findings=findings
+        )
     atomic_json(path, payload)
     return payload
 
@@ -231,6 +239,7 @@ def _register_competition_figure(
     cannot_prove: str | None,
     role: str | None = None,
     placement: str | None = None,
+    promotion_receipt: str | None = None,
 ) -> dict[str, Any]:
     """登记由问题和 takeaway 驱动的 v3.1 图表。"""
     if figure_stage not in {"current", "evidence", "publication"}:
@@ -295,6 +304,26 @@ def _register_competition_figure(
         entry["role"] = role
     if placement is not None:
         entry["placement"] = placement
+    if is_competition_first_v32_state(read_simple_state(run_dir)) and promotion_receipt is None:
+        raise ContractError(
+            "v3.2 图表必须先通过候选版式 QA 与人工看图，再绑定 promotion_receipt 登记"
+        )
+    if promotion_receipt is not None:
+        receipt_record = _file_record(run_dir, promotion_receipt)
+        receipt = load_json(resolve_inside(run_dir, receipt_record["path"], must_exist=True))
+        promoted_hashes = {
+            item.get("path"): item.get("sha256")
+            for item in receipt.get("promoted_outputs", [])
+            if isinstance(item, dict)
+        }
+        if (
+            receipt.get("figure_id") != figure_id
+            or receipt.get("qa", {}).get("success") is not True
+            or receipt.get("human_review", {}).get("reviewed") is not True
+            or any(promoted_hashes.get(item["path"]) != item["sha256"] for item in output_records)
+        ):
+            raise ContractError("图表晋级回执未绑定当前输出、机械 QA 或人工看图结论")
+        entry["promotion_receipt"] = receipt_record
     for existing in index["figures"]:
         if existing["figure_id"] == figure_id and existing["status"] == "current":
             existing["status"] = "superseded"
@@ -318,6 +347,7 @@ def register_insight_figure(
     template_id: str = "custom",
     role: str | None = None,
     placement: str | None = None,
+    promotion_receipt: str | None = None,
 ) -> dict[str, Any]:
     """登记仅包含来源、问题和 takeaway 的 v3.1 图表。
 
@@ -335,6 +365,7 @@ def register_insight_figure(
         role: 图的角色（model_understanding / decisive_evidence / insight /
             stability）；stability 会被强制归入附录。
         placement: 计划版面位置（body 或 appendix）。
+        promotion_receipt: 候选图通过版式 QA 与人工看图后的晋级回执。
 
     Returns:
         当前图表索引条目。
@@ -357,6 +388,7 @@ def register_insight_figure(
         cannot_prove=limitations,
         role=role,
         placement=placement,
+        promotion_receipt=promotion_receipt,
     )
 
 
@@ -385,7 +417,10 @@ def _verify_competition_figures(run_dir: Path) -> dict[str, Any]:
             errors.append({"figure_id": figure_id, "message": "图表输入不属于源结果输出"})
         elif input_record.get("sha256") != result["output_hashes"][input_record["path"]]:
             errors.append({"figure_id": figure_id, "message": "图表输入哈希已漂移"})
-        for record in [input_record, figure.get("renderer_script", {})]:
+        source_records = [input_record, figure.get("renderer_script", {})]
+        if isinstance(figure.get("promotion_receipt"), dict):
+            source_records.append(figure["promotion_receipt"])
+        for record in source_records:
             issue = _verify_recorded_file(run_dir, record, "图表来源")
             if issue:
                 errors.append({"figure_id": figure_id, "message": issue})
@@ -426,6 +461,7 @@ def register_figure(
     scientific_question: str | None = None,
     expected_takeaway: str | None = None,
     cannot_prove: str | None = None,
+    promotion_receipt: str | None = None,
 ) -> dict[str, Any]:
     """登记一次真实图表生成并替代同 ID 的旧 current 图。
 
@@ -461,6 +497,7 @@ def register_figure(
             scientific_question=scientific_question,
             expected_takeaway=expected_takeaway,
             cannot_prove=cannot_prove,
+            promotion_receipt=promotion_receipt,
         )
     if not figure_id.replace("-", "").replace("_", "").replace(".", "").isalnum():
         raise ContractError(f"figure_id 不合法: {figure_id}")

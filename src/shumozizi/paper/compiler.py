@@ -350,6 +350,11 @@ def compile_reviewable_draft(
     unknown_questions = sorted(set(unfinished) - set(state["required_questions"]))
     if unknown_questions:
         raise ContractError("草稿未完成问题不属于必答问题: " + ", ".join(unknown_questions))
+    from shumozizi.paper.readiness import require_reviewable_draft_argument_readiness
+
+    require_reviewable_draft_argument_readiness(
+        run_dir, unfinished_questions=unfinished
+    )
     manifest = require_materialized_template(run_dir)
     engine = manifest["engine"]
     root = run_dir.resolve()

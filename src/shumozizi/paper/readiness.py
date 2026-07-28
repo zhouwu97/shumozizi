@@ -407,6 +407,109 @@ def _argument_plan_warnings(run_dir: Path) -> list[str]:
     ]
 
 
+def _markdown_question_section(text: str, question_id: str) -> str | None:
+    """提取 Markdown 中以问题编号命名的章节正文。"""
+    heading = re.compile(
+        rf"^(?P<marks>#{{1,4}})[^\n]*\b{re.escape(question_id)}\b[^\n]*$",
+        re.MULTILINE | re.IGNORECASE,
+    )
+    match = heading.search(text)
+    if match is None:
+        return None
+    level = len(match.group("marks"))
+    following = re.compile(rf"^#{{1,{level}}}\s+", re.MULTILINE).search(text, match.end())
+    end = following.start() if following is not None else len(text)
+    return text[match.end() : end].strip()
+
+
+def _substantive_markdown(path: Path, *, label: str, minimum_chars: int) -> tuple[str, list[str]]:
+    """读取非占位 Markdown，并返回正文和就绪错误。"""
+    if not path.is_file():
+        return "", [f"可审阅草稿缺少 {label}"]
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return "", [f"无法读取 {label}: {exc}"]
+    body = re.sub(r"^#{1,6}\s+.*$", "", text, flags=re.MULTILINE).strip()
+    meaningful = re.sub(r"\s+", "", body)
+    if len(meaningful) < minimum_chars:
+        return text, [f"{label} 内容过短，尚不足以形成可审阅论证"]
+    placeholders = len(re.findall(r"待填写|待补充|TODO|TBD", text, flags=re.IGNORECASE))
+    if placeholders and placeholders * 20 >= len(meaningful):
+        return text, [f"{label} 仍以占位内容为主"]
+    return text, []
+
+
+def require_reviewable_draft_argument_readiness(
+    run_dir: Path, *, unfinished_questions: list[str]
+) -> None:
+    """要求首版草稿已经形成最小论文论证，而不要求所有问题完成。
+
+    Args:
+        run_dir: 当前 Competition-First v3.2 运行目录。
+        unfinished_questions: 草稿披露页明确列出的未完成问题。
+
+    Raises:
+        ContractError: 故事板、论证计划或已完成核心问题仍是占位内容。
+    """
+    state = read_simple_state(run_dir)
+    if not is_competition_first_v32_state(state):
+        return
+    plan, errors = _substantive_markdown(
+        run_dir / "paper" / "ARGUMENT_PLAN.md",
+        label="paper/ARGUMENT_PLAN.md",
+        minimum_chars=120,
+    )
+    storyboard, storyboard_errors = _substantive_markdown(
+        run_dir / "paper" / "STORYBOARD.md",
+        label="paper/STORYBOARD.md",
+        minimum_chars=100,
+    )
+    errors.extend(storyboard_errors)
+    if storyboard:
+        if not re.search(r"中心判断|总体判断|一句话主旨", storyboard):
+            errors.append("STORYBOARD.md 缺少中心判断")
+        if not re.search(r"论证链|章节作用|各问递进", storyboard):
+            errors.append("STORYBOARD.md 缺少跨问题论证链")
+    if plan and not re.search(r"总体判断|中心判断|核心判断", plan):
+        errors.append("ARGUMENT_PLAN.md 缺少全篇总体判断")
+
+    unfinished = set(unfinished_questions)
+    core_questions: set[str] = set()
+    modeling_path = run_dir / "analysis" / "MODELING_UNITS.json"
+    if modeling_path.is_file():
+        try:
+            modeling = load_json(modeling_path)
+            core_questions = {
+                str(unit.get("question_id"))
+                for unit in modeling.get("units", [])
+                if isinstance(unit, dict) and unit.get("core_question") is True
+            }
+        except (OSError, ValueError):
+            errors.append("analysis/MODELING_UNITS.json 无法读取，不能识别核心问题")
+
+    required_markers = {
+        "判断": r"关键判断|判断|命题|结论",
+        "证据": r"证据|结果|计算|验证|实验",
+        "竞争解释": r"竞争解释|替代解释|模型比较|路线比较|对照",
+        "边界": r"边界|限制|适用|外推",
+    }
+    for question_id in state["required_questions"]:
+        if question_id in unfinished:
+            continue
+        section = _markdown_question_section(plan, question_id) if plan else None
+        if section is None or len(re.sub(r"\s+", "", section)) < 60:
+            errors.append(f"已完成问题 {question_id} 在 ARGUMENT_PLAN.md 中缺少实质完整性卡")
+            continue
+        if question_id not in core_questions:
+            continue
+        for label, pattern in required_markers.items():
+            if not re.search(pattern, section):
+                errors.append(f"已完成核心问题 {question_id} 的论证单元缺少{label}")
+    if errors:
+        raise ContractError("可审阅草稿尚未达到最小论证就绪条件: " + "；".join(errors))
+
+
 def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]]:
     """执行 Competition-First 最小论文硬门和可选写作警告。"""
     errors: list[str] = []

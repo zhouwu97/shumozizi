@@ -17,7 +17,12 @@ from shumozizi.simple.state import utc_now
 _ROLES = frozenset(
     {"primary_model", "optimizer_challenger", "independent_oracle", "scientific_visualization"}
 )
-_REQUIRED_SUFFIXES = frozenset({".json", ".csv", ".pdf", ".png"})
+_ROLE_REQUIRED_SUFFIXES = {
+    "primary_model": frozenset({".json"}),
+    "optimizer_challenger": frozenset({".json"}),
+    "independent_oracle": frozenset({".json"}),
+    "scientific_visualization": frozenset({".pdf", ".png"}),
+}
 
 
 def _relative_file(run_dir: Path, value: str, *, must_exist: bool) -> str:
@@ -82,9 +87,10 @@ def run_matlab_analysis(
 ) -> dict[str, Any]:
     """运行 MATLAB/Octave 入口，写 manifest 并登记真实结果。
 
-    入口只通过 ``SHUMOZIZI_RUN_DIR`` 获得运行根目录。调用方必须声明 JSON、
-    CSV、PDF 和 PNG 四类输出，使数值结果、结构数据和论文图在同一次执行中
-    产生。manifest 只证明命令与文件闭环，不证明模型正确或独立性成立。
+    入口只通过 ``SHUMOZIZI_RUN_DIR`` 获得运行根目录。数值模型、优化挑战和
+    独立 oracle 至少输出 JSON；科学绘图输出 PNG/PDF 候选。CSV 和图像只在
+    科学角色确实需要时生成。manifest 只证明命令与文件闭环，不证明模型正确
+    或独立性成立。
 
     Args:
         run_dir: 当前 Competition-First 运行目录。
@@ -93,7 +99,7 @@ def run_matlab_analysis(
         result_id: 写入结果索引的稳定 ID。
         role: MATLAB 承担的科学角色。
         input_files: 原始题面附件、受控参数或当前结果，不含入口自身。
-        output_files: MATLAB 必须新鲜生成的 JSON、CSV、PDF、PNG 文件。
+        output_files: 按 MATLAB 科学角色声明的最小新鲜产物。
         metric_sources: 指标到 JSON 文件及点路径的映射。
         objective_semantics_sha256: 当前目标语义哈希。
         engine: ``matlab`` 或 ``octave``。
@@ -123,9 +129,16 @@ def run_matlab_analysis(
     normalized_inputs = list(dict.fromkeys([script, *normalized_inputs]))
     normalized_outputs = [_relative_file(root, item, must_exist=False) for item in output_files]
     suffixes = {Path(item).suffix.casefold() for item in normalized_outputs}
-    if not _REQUIRED_SUFFIXES <= suffixes:
-        missing = ", ".join(sorted(_REQUIRED_SUFFIXES - suffixes))
-        raise ContractError(f"MATLAB 运行必须声明 JSON、CSV、PDF、PNG 输出，缺少: {missing}")
+    required_suffixes = _ROLE_REQUIRED_SUFFIXES[role]
+    if not required_suffixes <= suffixes:
+        missing = ", ".join(sorted(required_suffixes - suffixes))
+        raise ContractError(f"MATLAB 角色 {role} 缺少必需输出类型: {missing}")
+    if role == "scientific_visualization":
+        image_outputs = [
+            item for item in normalized_outputs if Path(item).suffix.casefold() in {".png", ".pdf"}
+        ]
+        if any(not item.startswith("figures/candidates/") for item in image_outputs):
+            raise ContractError("MATLAB 科学图必须先输出到 figures/candidates/ 版本目录")
     if len(normalized_outputs) != len(set(normalized_outputs)):
         raise ContractError("MATLAB output_files 不允许重复")
     output_set = set(normalized_outputs)
@@ -267,8 +280,7 @@ def run_matlab_analysis(
         method_facts={
             "uses_independent_oracle": role == "independent_oracle",
             "uses_optimizer_challenger": role == "optimizer_challenger",
-            "generates_scientific_visualization": True,
+            "generates_scientific_visualization": role == "scientific_visualization",
         },
     )
     return manifest
-

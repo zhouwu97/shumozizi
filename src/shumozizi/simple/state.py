@@ -290,8 +290,19 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             require_completion_allowed(run_dir)
     if "execution_mode" in changes and changes["execution_mode"] not in EXECUTION_MODES:
         raise ContractError("execution_mode 必须为 production 或 exploration")
+    previous_phase = state["phase"]
     state.update(changes)
     state["revision"] += 1
-    state["updated_at"] = utc_now()
+    changed_at = utc_now()
+    state["updated_at"] = changed_at
     write_simple_state(run_dir, state)
+    if state["phase"] != previous_phase:
+        from shumozizi.simple.delivery import record_phase_transition
+
+        record_phase_transition(
+            run_dir,
+            from_phase=previous_phase,
+            to_phase=state["phase"],
+            changed_at=changed_at,
+        )
     return state

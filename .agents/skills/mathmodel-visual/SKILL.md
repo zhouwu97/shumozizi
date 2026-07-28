@@ -17,7 +17,9 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 先为每个 `core_question=true` 的问题在 `FIGURE_PLAN.json` 2.2 写一条 `visual_decisions`：空间、流程、机制、阈值或权衡需要视觉证据时选 `required` 并说明原因；确实可由公式、直接答案表和短文完整表达时选 `waived` 并给出具体理由。不能通过缺少计划或把所有图设为可选来静默零图。旧 2.1 文件只作兼容读取，新计划使用 2.2。
 
-需要作为正文论证证据的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`renderer`、`visual_question`、`expected_observation` 和 `decision_consequence`。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版截止后只能修订既有图，不能新增图 ID。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
+需要作为正文论证证据的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`renderer`、`visual_question`、`expected_observation` 和 `decision_consequence`。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版后若 PDF 评审暴露新的证据缺口，可以新增带 `review_finding` 的图，候选 PDF 冻结后不再扩图。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
+
+图不能由脚本直接覆盖 `figures/current/`。每次修改使用新版本目录 `figures/candidates/<figure_id>/<version>/` 同时生成 PNG/PDF，先独立打开检查，再执行 `python scripts/figures/promote_figure_candidate.py` 晋级。普通统计图检查文件可读和 PNG/PDF 宽高比；`diagram` 还必须输出同目录 layout JSON，检查画布边界、节点内文字、文字重叠、最小字号、箭头穿字和节点连接点居中。机械 QA 通过后仍要填写人工看图结论；同一候选版本不得反复覆盖。
 
 用 `audit_figure_information_value()` 查看五维建议分：数学对象、机制、约束/边界、最终决策、不确定性/对照各 0--2 分，正文主图建议至少 6 分。该分数只根据原型判断设计机会，不是门禁；必须打开 PNG/PDF 检查是否真的兑现。以下情况应返修：空间题无布局或剖面，多目标题无 Pareto/可行域，动态题无状态轨迹和控制量，不确定性题只有均值，热力图只是彩色数字表，主图只比较算法分数，或图后正文没有观察、机制和决策后果。
 

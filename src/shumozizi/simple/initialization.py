@@ -19,6 +19,8 @@ SIMPLE_DIRECTORIES = (
     "results/evidence",
     "analysis",
     "figures/current",
+    "figures/candidates",
+    "figures/promotions",
     "paper/sections",
     "paper/submission",
     "review/red_team_artifacts",

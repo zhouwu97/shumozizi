@@ -357,10 +357,18 @@ def write_next_experiments(run_dir: Path, payload: dict[str, Any]) -> dict[str, 
         for item in experiments
         if isinstance(item, dict) and isinstance(item.get("experiment_id"), str)
     }
-    if new_ids - old_ids:
+    added_ids = new_ids - old_ids
+    if added_ids:
         from shumozizi.simple.delivery import require_delivery_action_allowed
 
-        require_delivery_action_allowed(run_dir, "add_experiment_plan")
+        findings = [
+            str(item.get("review_finding", ""))
+            for item in experiments
+            if isinstance(item, dict) and item.get("experiment_id") in added_ids
+        ]
+        require_delivery_action_allowed(
+            run_dir, "add_experiment_plan", review_findings=findings
+        )
     document = {
         "schema_version": "1.0",
         "run_id": run_dir.name,
