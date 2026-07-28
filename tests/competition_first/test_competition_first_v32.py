@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
+from shumozizi.knowledge.retrieval import write_analysis_knowledge_retrieval
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.templates import select_paper_template
 from shumozizi.simple import review as simple_review
@@ -33,6 +34,20 @@ from shumozizi.simple.review_tasks import (
     persist_review_task_creation_event,
 )
 from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
+
+
+def _record_fixture_knowledge_retrieval(run_dir: Path) -> None:
+    """让不评估知识匹配质量的主链夹具显式完成检索尝试。"""
+    write_analysis_knowledge_retrieval(
+        run_dir,
+        None,
+        {
+            "problem_type": "测试用优化问题",
+            "data_structure": "测试构造数据",
+            "task_types": ["路线比较"],
+        },
+        unavailable_reason="该主链测试夹具不装载真实论文卡索引，仅验证阶段合同。",
+    )
 
 
 def _register_result(
@@ -381,6 +396,7 @@ def test_v32_requires_two_fresh_reconstructions_then_real_comparison_evidence(tm
 
     write_modeling_units(run_dir, plan)
     write_objective_candidates(run_dir, _objective_candidates(run_dir, with_actual=False))
+    _record_fixture_knowledge_retrieval(run_dir)
     state = update_simple_state(run_dir, phase="experiment")
 
     assert state["schema_version"] == "3.2"
@@ -764,6 +780,7 @@ def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
     plan = _plan(run_dir)
     write_modeling_units(run_dir, plan)
     write_objective_candidates(run_dir, _objective_candidates(run_dir, with_actual=False))
+    _record_fixture_knowledge_retrieval(run_dir)
     update_simple_state(run_dir, phase="experiment")
     for result_id, objective in (
         ("baseline", 10.0),
@@ -926,7 +943,9 @@ def test_v32_paper_generation_uses_modeling_evidence_not_legacy_tournament(
     simple_review.require_paper_generation_allowed(run_dir)
 
 
-def test_v32_verify_reachable_without_web_audit(tmp_path: Path) -> None:
+def test_v32_verify_reachable_without_web_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """v3.2 在没有任何网页审核文件时，科学挑战 + PDF 盲评 → 能进入 verify 阶段。
 
     回归测试：P1-A 修复前，进入 verify 会无条件调用
@@ -944,6 +963,7 @@ def test_v32_verify_reachable_without_web_audit(tmp_path: Path) -> None:
     plan = _plan(run_dir)
     write_modeling_units(run_dir, plan)
     write_objective_candidates(run_dir, _objective_candidates(run_dir, with_actual=False))
+    _record_fixture_knowledge_retrieval(run_dir)
     update_simple_state(run_dir, phase="experiment")
     for result_id, objective in (
         ("baseline", 10.0),
@@ -1079,6 +1099,11 @@ def test_v32_verify_reachable_without_web_audit(tmp_path: Path) -> None:
         )
     ), "夹具不应预先创建任何网页审核文件"
 
+    # 本测试只隔离验证“网页审核可选”；CUMCM 论证审计由专用测试覆盖。
+    monkeypatch.setattr(
+        "shumozizi.paper.cumcm_adapter.require_cumcm_paper_review_audit",
+        lambda _run: None,
+    )
     state = update_simple_state(run_dir, phase="verify")
 
     assert state["phase"] == "verify"

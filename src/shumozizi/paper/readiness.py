@@ -460,6 +460,12 @@ def require_reviewable_draft_argument_readiness(
         label="paper/ARGUMENT_PLAN.md",
         minimum_chars=120,
     )
+    from shumozizi.knowledge.retrieval import require_paper_knowledge_application
+
+    try:
+        require_paper_knowledge_application(run_dir)
+    except ContractError as exc:
+        errors.append(str(exc))
     storyboard, storyboard_errors = _substantive_markdown(
         run_dir / "paper" / "STORYBOARD.md",
         label="paper/STORYBOARD.md",
@@ -514,9 +520,17 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     """执行 Competition-First 最小论文硬门和可选写作警告。"""
     errors: list[str] = []
     warnings: list[str] = []
+    if is_competition_first_v32_state(read_simple_state(run_dir)):
+        from shumozizi.paper.cumcm_adapter import require_cumcm_structure_map
+
+        try:
+            require_cumcm_structure_map(run_dir)
+        except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+            errors.append(str(exc))
     answers = _competition_answer_map(run_dir)
     if answers is None:
-        return ["缺少 paper/answer-map.json 或 analysis/answer_map.json"], warnings
+        errors.append("缺少 paper/answer-map.json 或 analysis/answer_map.json")
+        return errors, warnings
     required = _question_ids_from_state(run_dir)
     results = _current_production_results(run_dir)
     from shumozizi.simple.modeling_units import final_answer_selections

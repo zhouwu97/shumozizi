@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CUMCM argument, narrative and layout audit",
+  "type": "object",
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "reviewed_pdf_sha256",
+    "structure",
+    "argument_depth",
+    "question_progression",
+    "narrative_risks",
+    "paper_review_verdict",
+    "review_summary",
+    "layout",
+    "overall_verdict"
+  ],
+  "properties": {
+    "schema_name": {"const": "cumcm_layout_audit"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "reviewed_pdf_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "structure": {
+      "type": "object",
+      "required": [
+        "problem_restatement",
+        "problem_analysis",
+        "assumptions",
+        "symbols_and_data",
+        "four_questions",
+        "model_evaluation"
+      ],
+      "additionalProperties": {"enum": ["pass", "issue"]}
+    },
+    "argument_depth": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/argumentDepth"}
+    },
+    "question_progression": {
+      "type": "object",
+      "required": ["status", "interchangeable_questions", "links", "summary"],
+      "properties": {
+        "status": {"enum": ["pass", "issue"]},
+        "interchangeable_questions": {"type": "boolean"},
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "inheritance"],
+            "properties": {
+              "from": {"type": "string", "minLength": 1},
+              "to": {"type": "string", "minLength": 1},
+              "inheritance": {"type": "string", "minLength": 8}
+            },
+            "additionalProperties": false
+          }
+        },
+        "summary": {"type": "string", "minLength": 12}
+      },
+      "additionalProperties": false
+    },
+    "narrative_risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "location", "issue", "status"],
+        "properties": {
+          "severity": {"enum": ["P0", "P1", "P2", "P3"]},
+          "location": {"type": "string", "minLength": 1},
+          "issue": {"type": "string", "minLength": 8},
+          "status": {"enum": ["open", "resolved"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "paper_review_verdict": {"enum": ["pass", "conditional_pass", "rework"]},
+    "review_summary": {"type": "string", "minLength": 20},
+    "layout": {"$ref": "#/$defs/layout"},
+    "overall_verdict": {"enum": ["pending", "pass", "conditional_pass", "rework"]}
+  },
+  "$defs": {
+    "argumentDepth": {
+      "type": "object",
+      "required": [
+        "mathematical_difficulty",
+        "mathematical_object",
+        "modeling_basis",
+        "derivation",
+        "solver",
+        "main_result",
+        "mechanism",
+        "competing_route_or_counterexample",
+        "claim_specific_validation",
+        "direct_answer"
+      ],
+      "properties": {
+        "mathematical_difficulty": {"type": "boolean"},
+        "mathematical_object": {"type": "boolean"},
+        "modeling_basis": {"type": "boolean"},
+        "derivation": {"type": "boolean"},
+        "solver": {"type": "boolean"},
+        "main_result": {"type": "boolean"},
+        "mechanism": {"type": "boolean"},
+        "competing_route_or_counterexample": {"type": "boolean"},
+        "claim_specific_validation": {"type": "boolean"},
+        "direct_answer": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "layout": {
+      "type": "object",
+      "required": [
+        "status",
+        "pdf_total_pages",
+        "body_pages",
+        "page_assessment",
+        "page_review_note",
+        "underdevelopment_found",
+        "underdevelopment_note",
+        "official_page_limit_checked",
+        "docx_status",
+        "docx_note",
+        "figures_too_small",
+        "broken_sentences_by_float",
+        "formula_overflow",
+        "cross_chapter_inconsistencies",
+        "symbol_definition_issues"
+      ],
+      "properties": {
+        "status": {"enum": ["pending", "checked"]},
+        "pdf_total_pages": {"type": ["integer", "null"], "minimum": 1},
+        "body_pages": {"type": ["integer", "null"], "minimum": 1},
+        "page_assessment": {
+          "enum": [
+            null,
+            "under_18_review_required",
+            "compression_review_required",
+            "normal_range",
+            "over_30_limit_review_required"
+          ]
+        },
+        "page_review_note": {"type": ["string", "null"]},
+        "underdevelopment_found": {"type": "boolean"},
+        "underdevelopment_note": {"type": ["string", "null"]},
+        "official_page_limit_checked": {"type": "boolean"},
+        "docx_status": {
+          "enum": [
+            "pending",
+            "render_checked",
+            "structure_checked_render_unavailable",
+            "unavailable_with_reason"
+          ]
+        },
+        "docx_note": {"type": ["string", "null"]},
+        "figures_too_small": {"$ref": "#/$defs/textList"},
+        "broken_sentences_by_float": {"$ref": "#/$defs/textList"},
+        "formula_overflow": {"$ref": "#/$defs/textList"},
+        "cross_chapter_inconsistencies": {"$ref": "#/$defs/textList"},
+        "symbol_definition_issues": {"$ref": "#/$defs/textList"}
+      },
+      "additionalProperties": false
+    },
+    "textList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "additionalProperties": false
+}

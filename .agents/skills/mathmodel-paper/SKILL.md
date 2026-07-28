@@ -29,7 +29,9 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 第一步：填写 ARGUMENT_PLAN.md
 
-在动笔前，必须先完成 `paper/ARGUMENT_PLAN.md`（见格式规范）。该文件在实验结束后填写，在论文写完前人工检视——不得在写作过程中自动生成再立即消费。
+在动笔前，先执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper`。读取分析阶段匹配的论文卡模式，在 `paper/KNOWLEDGE_APPLICATION.md` 中逐项决定写作时采用或拒绝；采用项必须说明应用位置，并绑定当前题面、数据、模型或真实实验结果。知识卡不是当前题证据，不得迁移原题参数、公式和代码、数值结论或奖项评价。无相关匹配时记录该事实即可，不强迫采用任何模式。
+
+完成迁移判断后，再填写 `paper/ARGUMENT_PLAN.md`（见格式规范）。该文件在实验结束后填写，在论文写完前人工检视——不得在写作过程中自动生成再立即消费。
 
 每个必答问题先填写逐问完整性卡：题面要求、与前问的继承、数学对象、关键推导、算法、主结果、机制解释、验证边界和直接答案。核心问题（`core_question=true`）在此基础上再填写完整论证单元；普通问题可以更短，但不能退化为只有 answer map 位置和一张结果表。
 
@@ -177,6 +179,23 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 - `science`：代码、数据、目标、主要结果或行动建议，回到实验和科学挑战，再重做论证与渲染。
 
 可用 `python scripts/simple/delivery_control.py revision-impact <paths...>` 机械分类；它不替代对实际语义的判断。
+
+---
+
+## CUMCM 结构适配
+
+仅对 Competition-First v3.2 的 CUMCM 正式候选稿，在编译前写
+`paper/CUMCM_STRUCTURE_MAP.json`。它把现有 `ARGUMENT_PLAN`、`STORYBOARD`、
+逐问正文、结果和图表映射到摘要、问题重述、问题分析、模型假设、符号与数据、
+模型建立与求解、综合检验、模型评价、参考文献和附录；第五章必须覆盖全部必答问题，
+第六章只汇总跨问题检验，支持主结论的近端验证继续留在各问正文。
+
+通过 `python scripts/paper/cumcm_adapter.py <run_dir> structure-map --input <json>`
+写入。适配只允许章节映射、段落移动、标题改写、去重、图表重排和交叉引用修复；
+禁止修改模型、重新选择数字或创造结论。上传的 Word 模板只作为 Pandoc
+`--reference-doc` 的样式和外层结构参考，占位文案不具科学权威。CUMCM 正文页数使用
+24–30 页软规划：少于 18 页检查论证缺失，18–23 页检查过度压缩，超过 30 页核对
+官方上限和重复内容；页数本身不构成质量证据。
 
 ---
 

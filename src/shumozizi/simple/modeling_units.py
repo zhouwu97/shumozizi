@@ -1405,6 +1405,10 @@ def require_v32_modeling_plan(run_dir: Path) -> None:
     state = read_simple_state(run_dir)
     if not is_competition_first_v32_state(state):
         return
+    from shumozizi.knowledge.retrieval import require_analysis_knowledge_retrieval
+
+    # 路线草案可以自由迭代，但正式投入实验前必须显式消费一次仓内经验。
+    require_analysis_knowledge_retrieval(run_dir)
     path = run_dir / MODELING_UNITS_PATH
     if not path.is_file():
         raise ContractError("进入实验前必须完成 analysis/MODELING_UNITS.json")

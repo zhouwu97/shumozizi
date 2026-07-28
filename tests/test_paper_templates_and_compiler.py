@@ -14,6 +14,10 @@ import shumozizi.paper.templates as paper_templates
 import shumozizi.simple.review as simple_review
 from scripts.qa.check_placeholders import check_placeholders
 from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.knowledge.retrieval import (
+    write_analysis_knowledge_retrieval,
+    write_paper_knowledge_application,
+)
 from shumozizi.paper.compiler import (
     compile_paper,
     compile_reviewable_draft,
@@ -394,6 +398,17 @@ def test_reviewable_draft_compiles_before_answer_qualification(
         workflow_version="3.2",
         total_hours=12,
     )
+    write_analysis_knowledge_retrieval(
+        run_dir,
+        None,
+        {
+            "problem_type": "测试用论文编译",
+            "data_structure": "测试构造数据",
+            "task_types": ["草稿编译"],
+        },
+        unavailable_reason="该编译测试不装载真实论文卡索引，仅验证草稿论证入口。",
+    )
+    write_paper_knowledge_application(run_dir)
     select_paper_template(
         run_dir,
         language="zh",

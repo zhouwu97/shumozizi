@@ -65,6 +65,8 @@ PDF 盲评需要独立上下文，**不能新开浏览器页面**，平台区分
 
 不得创建 coverage declaration、逐风险 follow-up、final audit 或仅以 pass/fail 代替自由判断。已执行反例、独立复算冲突、不可行和性质失败始终阻断。
 
+对 CUMCM v3.2，盲评后把同一轮阅读得到的结构完整性、核心问题论证深度、问题继承和叙事风险写入 `paper/CUMCM_LAYOUT_AUDIT.json`，不另开审核阶段。每个核心问题检查数学困难、数学对象、建模依据、关键推导、求解、主结果、机制、竞争路线或反例、结论近端验证和直接答案；四问可任意换序、统一套句、用步骤冒充推导、图不支撑论点或用文件/公式/页数充当质量时不得进入 verify。使用 `python scripts/paper/cumcm_adapter.py <run_dir> paper-review --input <json>` 写入。
+
 ---
 
 ## 按需网页 PDF 审核

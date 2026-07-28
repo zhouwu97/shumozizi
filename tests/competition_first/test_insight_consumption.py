@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from shumozizi.core.io import ContractError
+from shumozizi.paper.cumcm_adapter import SECTION_TARGETS, write_cumcm_structure_map
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.simple.competition import write_answer_map
 from shumozizi.simple.figures import write_figure_plan
@@ -253,6 +254,82 @@ def _units_with_insight(run_dir: Path, insight_id: str = "Q1-mechanism") -> None
     )
 
 
+def _write_structure_map(run_dir: Path) -> None:
+    """为只测试论文洞察消费的夹具补齐 CUMCM 结构前提。"""
+    source_of_truth = {
+        "argument_plan": "paper/ARGUMENT_PLAN.md",
+        "storyboard": "paper/STORYBOARD.md",
+        "figure_plan": "figures/FIGURE_PLAN.json",
+        "results": "results/RESULT_REGISTRY.json",
+        "modeling_units": "analysis/MODELING_UNITS.json",
+    }
+    for relative in source_of_truth.values():
+        path = run_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.is_file():
+            path.write_text("fixture source\n", encoding="utf-8")
+    reference = run_dir / "paper/reference.docx"
+    reference.write_bytes(b"reference")
+    sections = []
+    for target in SECTION_TARGETS:
+        sources = ["argument_plan"]
+        scope = "local"
+        if target == "五、模型的建立与求解":
+            sources = ["Q1"]
+        elif target == "六、模型的综合分析与检验":
+            sources = ["results"]
+            scope = "cross_question_only"
+        sections.append(
+            {
+                "target": target,
+                "sources": sources,
+                "purpose": "保留本节在完整论文中的论证功能。",
+                "required_claims": [],
+                "forbidden_content": (
+                    ["模型名称", "最终数值", "大段题面复制"]
+                    if target == "一、问题重述"
+                    else []
+                ),
+                "preserve_argument_order": True,
+                "compression": "deduplicate_only",
+                "scope": scope,
+            }
+        )
+    write_cumcm_structure_map(
+        run_dir,
+        {
+            "template": {
+                "reference_docx": "paper/reference.docx",
+                "path_scope": "run",
+                "usage": "styles_and_outer_structure_only",
+                "placeholder_content_authoritative": False,
+            },
+            "source_of_truth": source_of_truth,
+            "adaptation_rules": {
+                "allowed": [
+                    "map_sections",
+                    "move_paragraphs",
+                    "rewrite_headings",
+                    "deduplicate_repetition",
+                    "reorder_figures",
+                    "repair_cross_references",
+                ],
+                "forbidden": [
+                    "change_model",
+                    "select_or_modify_numbers",
+                    "create_new_conclusions",
+                ],
+            },
+            "sections": sections,
+            "page_planning": {
+                "recommended_body_pages": [24, 30],
+                "inspect_below_pages": 18,
+                "hard_gate": False,
+            },
+        },
+    )
+
+
 def test_core_insights_are_exposed_for_paper_consumption(tmp_path: Path) -> None:
     """核心问题的实质规律可被论文阶段读取。"""
     run_dir = _run(tmp_path, "insight-exposed")
@@ -295,6 +372,7 @@ def test_paper_blocks_when_core_insight_is_produced_but_never_used(tmp_path: Pat
             "figures": [],
         },
     )
+    _write_structure_map(run_dir)
 
     status = check_paper_readiness(run_dir)
 
@@ -334,6 +412,7 @@ def test_paper_passes_when_the_answer_map_cites_the_insight(tmp_path: Path) -> N
             "figures": [],
         },
     )
+    _write_structure_map(run_dir)
 
     status = check_paper_readiness(run_dir)
 

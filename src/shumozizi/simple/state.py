@@ -274,7 +274,11 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
                     require_web_paper_audit_release,
                     validate_web_paper_audit_if_present,
                 )
+                from shumozizi.paper.cumcm_adapter import (
+                    require_cumcm_paper_review_audit,
+                )
 
+                require_cumcm_paper_review_audit(run_dir)
                 # 网页审核是可选增强：有文件时全量复验，无文件时直接放行。
                 # 使用 require_web_paper_audit_release 会在无审核文件时阻断终检，
                 # 导致纯 PDF 盲评路径无法进入 verify。

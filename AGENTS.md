@@ -29,6 +29,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 ## 路线与实验
 
+- 题面和数据审计后、路线竞争前，必须生成结构化任务指纹并检索仓内 `knowledge/indexes/papers.json`。检索使用数据结构、统计单位、任务类型、数学困难、目标与约束结构、验证风险和多问继承关系，题名与领域词只能作为辅助。结果写入运行目录的 `knowledge/analysis-retrieval.json`，允许 `matched`、`no_relevant_match` 或有具体原因的 `unavailable_with_reason`；有候选模式时必须逐项采用或拒绝，未执行检索不得正式进入 experiment。知识卡只提供路线启发，不得自动晋级为主路线，也不得迁移原题参数、公式和代码、数值结论或奖项评价。知识卡和索引更新不通过哈希反向失效当前实验、结果或科学挑战。
 - 前期可用 fresh thread、获奖论文结构卡或网页 GPT 讨论题意、建模、反例、验证和论文建议；专家卡和网页讨论都是发现问题的可选手段，不是阶段门。进入实验前的正式 `MODELING_UNITS.json` 仍须有两次只绑定 `problem/` 的真实 fresh-thread 题意重建，但回执只证明独立性，绝不证明模型或结论已正确。应及时把改变路线的判断写成绑定 `problem/` 的 `analysis/BASELINE_FREEZE.json` 决策快照，并在问题、反例或实验冲突出现后修订、重跑和复审。
 - 获奖论文专家库和网页讨论都不是答案库、引用库、结果来源或状态门。运行时只能读取安全 `library.json`；来源、页码与论文标识仅保留于离线 `provenance.json`。未冻结时路由须标记 `advisory_only=true` 和 `requires_independent_verification=true`；冻结或修订后应重新路由，并用 `AWARD_EXPERT_ROUTE_AUDIT.json` 确认 `structure_only=true`、`prompt_safe=true` 和 `raw_sources_returned=0`。审计须说明它没有操作系统级文件访问监控。
 - 网页 GPT 仅可基于用户提供的题面讨论和批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，也不得复用此类内容。其建议与专家卡只能帮助路线竞争、probe、验证、研究主线和 LaTeX 论文组织；不得作为当前模型、参数、结果、图表、代码、citation、claim evidence 或 exact 比较的替代品。需要并行讨论时，先将仅基于 `problem/` 的路线冻结为 `LOCAL_ROUTE_SNAPSHOT.json`，发给网页的首轮提示不得披露该路线，且在本地路线写完前不得阅读网页回应；之后将差异和本地验证动作写入 `EXTERNAL_DISCUSSION_COMPARISON.json`。实现总结必须另开网页 fresh chat，不能续用首轮讨论；它只能给出可由 exact scorer 和真实实验检验的实现建议，不能替代本地寻找最优。所有可采纳建议必须由当前运行的 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核验证；同题资料仍只能在 baseline 快照后进入 answer-filter。
@@ -65,6 +66,8 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 
 ## 图表与论文
 
+- 写 `paper/ARGUMENT_PLAN.md` 前，必须根据分析阶段候选模式完成 `paper/KNOWLEDGE_APPLICATION.md`：逐项说明写作时采用或拒绝，采用项写明论文位置并绑定当前题面、数据、模型或真实结果。知识卡不是当前题证据；无相关匹配时记录该事实即可，不强迫采用模式。首版可审阅 PDF 的论证就绪检查负责验证该文件，不新增工作流阶段。
+- Competition-First v3.2 的 CUMCM 正式候选稿使用轻量结构适配器：`paper/CUMCM_STRUCTURE_MAP.json` 只映射现有科学论证到国赛外层栏目，并让 Pandoc 把指定 Word 模板作为样式参考；不得借适配修改模型、数字或结论。`paper/CUMCM_LAYOUT_AUDIT.json` 在 `paper_review` 记录论证深度、问题继承和反工作报告风险，在 `verify` 原文件补数字、引用、Word/PDF 与版面闭环。第五章保留逐问特有叙事和近端验证，第六章只汇总跨问题检验。CUMCM 正文 24–30 页仅为软规划，少于 18 页或超过 30 页触发说明，不以页数证明质量。
 - 图表先输出到版本化 `figures/candidates/<figure_id>/<version>/`，通过文件可读性、PNG/PDF 几何一致性和人工看图后才晋级 `figures/current/`；流程图另查文字越界、重叠、最小字号、箭头穿字和连接点居中。每张图只需要真实来源、它回答的问题、读者看到的 takeaway，以及可选边界；不得为每题、3D、多种子、敏感性或双版本输出凑数量，也不靠输出份数凑数量。
 - v3.2 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。`stability`（舍入、采样层级、数值稳定性）一律进入附录，不得占据正文版面。省略 role 会被拒绝，否则附录约束形同虚设。
 - 图必须由当前数据和当前脚本实际生成，PNG/PDF 可读，并在结果变化后失效。

@@ -456,7 +456,13 @@ def verify_reviewable_draft_receipt(run_dir: Path) -> dict[str, Any]:
     return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}
 
 
-def compile_docx(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) -> Path:
+def compile_docx(
+    paper_dir: Path,
+    *,
+    engine: str,
+    timeout_seconds: int = 120,
+    reference_docx: Path | None = None,
+) -> Path:
     """用 pandoc 从论文源文件生成 Word 格式（.docx）。
 
     部分竞赛的交付配置要求同时提交 Word 版本；本函数在 PDF 编译完成后由
@@ -467,6 +473,7 @@ def compile_docx(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) ->
         paper_dir: 论文源文件目录（即 ``run_dir/paper/``）。
         engine: 当前编译引擎，``"latex"`` 或 ``"typst"``。
         timeout_seconds: pandoc 最长允许秒数。
+        reference_docx: 可选的 Word 样式参考模板；只提供样式和外层排版。
 
     Returns:
         生成的 ``paper_dir/final.docx`` 路径。
@@ -485,6 +492,15 @@ def compile_docx(paper_dir: Path, *, engine: str, timeout_seconds: int = 120) ->
         raise ContractError(f"pandoc 转换需要源文件 {entrypoint.name}，但文件不存在")
     out = paper_dir / "final.docx"
     command = [pandoc, str(entrypoint), "-o", str(out), "--quiet"]
+    if reference_docx is not None:
+        reference_docx = reference_docx.resolve()
+        if (
+            not reference_docx.is_file()
+            or reference_docx.suffix.casefold() != ".docx"
+            or reference_docx.stat().st_size == 0
+        ):
+            raise ContractError(f"Pandoc 参考 Word 模板无效: {reference_docx}")
+        command.append(f"--reference-doc={reference_docx}")
     try:
         completed = subprocess.run(
             command,
@@ -557,8 +573,23 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     docx_skipped_reason: str | None = None
     final_docx: Path | None = None
     docx_qa: dict[str, Any] | None = None
+    reference_docx: Path | None = None
+    from shumozizi.paper.cumcm_adapter import (
+        require_cumcm_structure_map,
+        resolve_cumcm_reference_docx,
+    )
+
+    structure_map = require_cumcm_structure_map(root)
+    if structure_map is not None:
+        reference_docx = resolve_cumcm_reference_docx(root, structure_map)
     try:
-        final_docx = compile_docx(paper_dir, engine=manifest["engine"], timeout_seconds=timeout_seconds)
+        compile_kwargs: dict[str, Any] = {
+            "engine": manifest["engine"],
+            "timeout_seconds": timeout_seconds,
+        }
+        if reference_docx is not None:
+            compile_kwargs["reference_docx"] = reference_docx
+        final_docx = compile_docx(paper_dir, **compile_kwargs)
         docx_qa = audit_docx(root, final_docx, timeout_seconds=timeout_seconds)
         if not docx_qa["success"]:
             raise ContractError("DOCX 内容 QA 失败: " + "; ".join(docx_qa["errors"]))

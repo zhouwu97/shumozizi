@@ -77,6 +77,10 @@ PAPER_BLIND_PROMPT_PREFIX = (
     "- 每问能否明确区分主答案与 fallback，验证是否紧跟其支持的主结果？\n"
     "- 论文是否因过度压缩而省略中央推导、算法或结果机制？页数本身不作为评分依据。\n"
     "- 读完之后，读者能否说清楚这篇论文发现了什么、为什么成立？\n\n"
+    "同时执行以下反工作报告检查：四问是否反复套用同一句式；每张正文图删除后是否会让"
+    "某条核心论点失去证据；操作步骤是否被误写成数学推导；主结论与其关键验证是否相隔"
+    "一个完整大章；是否把文件数、闸门数、公式数、图表数、字数或页数当成论文质量。"
+    "命中任一项时指出具体位置，并说明应重写、移图还是补足论证。\n\n"
     "四、P0/P1 阻断性问题\n"
     "只列出你在本轮确认的严重问题（P0：致命缺陷；P1：重大缺陷），"
     "给出页码/位置、问题描述和影响。不要为了凑数量列 P0/P1。\n"
@@ -4511,6 +4515,13 @@ def completion_status(run_dir: Path) -> dict[str, Any]:
         mechanical = mechanical_qa_status(run_dir)
         if not mechanical["allowed"]:
             return {"allowed": False, "reason": mechanical["reason"]}
+        if is_competition_first_v32_state(read_simple_state(run_dir)):
+            from shumozizi.paper.cumcm_adapter import require_cumcm_layout_audit
+
+            try:
+                require_cumcm_layout_audit(run_dir)
+            except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+                return {"allowed": False, "reason": str(exc)}
         from shumozizi.simple.figures import verify_current_figure_files
         from shumozizi.simple.results import verify_current_result_files
 

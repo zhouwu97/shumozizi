@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Competition-First run knowledge retrieval",
+  "type": "object",
+  "required": [
+    "schema_name",
+    "schema_version",
+    "stage",
+    "run_id",
+    "status",
+    "task_fingerprint",
+    "matched_cards",
+    "accepted_patterns",
+    "rejected_patterns",
+    "forbidden_transfer",
+    "no_match_reason",
+    "unavailable_reason"
+  ],
+  "properties": {
+    "schema_name": {"const": "knowledge_retrieval"},
+    "schema_version": {"const": "1.0"},
+    "stage": {"const": "analysis"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {
+      "enum": ["matched", "no_relevant_match", "unavailable_with_reason"]
+    },
+    "task_fingerprint": {
+      "type": "object",
+      "required": [
+        "problem_type",
+        "data_structure",
+        "task_types",
+        "statistical_units",
+        "mathematical_difficulties",
+        "objective_structures",
+        "constraint_types",
+        "validation_risks",
+        "question_chain",
+        "structural_tags",
+        "keywords"
+      ],
+      "properties": {
+        "problem_type": {"type": "string", "minLength": 1},
+        "data_structure": {"type": "string", "minLength": 1},
+        "task_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "statistical_units": {"$ref": "#/$defs/textList"},
+        "mathematical_difficulties": {"$ref": "#/$defs/textList"},
+        "objective_structures": {"$ref": "#/$defs/textList"},
+        "constraint_types": {"$ref": "#/$defs/textList"},
+        "validation_risks": {"$ref": "#/$defs/textList"},
+        "question_chain": {"$ref": "#/$defs/textList"},
+        "structural_tags": {"$ref": "#/$defs/textList"},
+        "keywords": {"$ref": "#/$defs/textList"}
+      },
+      "additionalProperties": false
+    },
+    "matched_cards": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/matchedCard"}
+    },
+    "accepted_patterns": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/acceptedPattern"}
+    },
+    "rejected_patterns": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rejectedPattern"}
+    },
+    "forbidden_transfer": {
+      "type": "array",
+      "prefixItems": [
+        {"const": "原题参数"},
+        {"const": "公式和代码"},
+        {"const": "数值结论"},
+        {"const": "奖项评价"}
+      ],
+      "items": false
+    },
+    "no_match_reason": {"type": ["string", "null"]},
+    "unavailable_reason": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "textList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "candidatePattern": {
+      "type": "object",
+      "required": ["pattern_id", "pattern"],
+      "properties": {
+        "pattern_id": {"type": "string", "minLength": 3},
+        "pattern": {"type": "string", "minLength": 8}
+      },
+      "additionalProperties": false
+    },
+    "matchedCard": {
+      "type": "object",
+      "required": [
+        "paper_id",
+        "title",
+        "score",
+        "structural_similarity",
+        "domain_similarity",
+        "matched_on",
+        "candidate_patterns"
+      ],
+      "properties": {
+        "paper_id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "score": {"type": "number", "minimum": 0},
+        "structural_similarity": {"type": "number", "minimum": 0, "maximum": 1},
+        "domain_similarity": {"type": "number", "minimum": 0, "maximum": 1},
+        "matched_on": {"$ref": "#/$defs/textList"},
+        "candidate_patterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/candidatePattern"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "acceptedPattern": {
+      "type": "object",
+      "required": ["pattern_id", "reason", "route_application"],
+      "properties": {
+        "pattern_id": {"type": "string", "minLength": 3},
+        "reason": {"type": "string", "minLength": 8},
+        "route_application": {"type": "string", "minLength": 8}
+      },
+      "additionalProperties": false
+    },
+    "rejectedPattern": {
+      "type": "object",
+      "required": ["pattern_id", "reason"],
+      "properties": {
+        "pattern_id": {"type": "string", "minLength": 3},
+        "reason": {"type": "string", "minLength": 8}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

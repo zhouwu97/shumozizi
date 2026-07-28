@@ -315,6 +315,15 @@ def test_delivery_controller_reaches_submission_and_invalidates_stale_blind_revi
 ) -> None:
     """公开推进器必须贯通草稿、候选、盲评、终检与提交包。"""
     run_dir = _run(tmp_path)
+    # CUMCM 结构与版面审计由专用适配器测试覆盖；这里仅验证交付推进器。
+    monkeypatch.setattr(
+        "shumozizi.paper.cumcm_adapter.require_cumcm_paper_review_audit",
+        lambda _run: None,
+    )
+    monkeypatch.setattr(
+        "shumozizi.paper.cumcm_adapter.require_cumcm_layout_audit",
+        lambda _run: None,
+    )
     control_path = run_dir / DELIVERY_CONTROL_PATH
     original_started_at = load_json(control_path)["started_at"]
 
