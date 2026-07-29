@@ -30,6 +30,8 @@ v3.2 前期先预扫描语义风险，再按风险完成一次 faithful 或 fait
 
 论文只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 和 `PAPER_REVIEW.md` 四个主要控制文件。知识应用为 advisory，零匹配时自动提供通用结构模式。CUMCM 候选稿使用 `CUMCM_STRUCTURE_MAP` 1.2：三问以上、共享数学对象且后问新增资源、共享约束或聚合层时默认 semantic，并保留明确“模型假设与符号”入口；否则 classic 兜底。
 
+候选稿前执行 `python scripts/paper/audit_report_style.py <run_dir>`。它把重复逐问模板、内部工作流词、报账式句型和摘要、列表堆叠、碎片标题、核心问题缺推导/机制及主图未进入论证链写成 warning，并由最终 QA 展示；这些启发式信号不新增状态门，须由独立 PDF 盲评按实际页码复核。
+
 ## 审查与重跑
 
 科学挑战只进行一次，采用两阶段阅读：阶段A只读题面，独立重建数学结构和关键歧义，先写入报告；阶段B读代码和结果，与阶段A对照，选择一个最高价值结论实施真实攻击并说明结论。风险数量不设要求，一个根本性缺陷可以集中全部篇幅。只有 P0/P1、需要确认的决定性实验或无法判断是否继续时才建立一个 `FOCUSED_FOLLOWUP.md`。PDF 盲评采用相对评价（第一印象与竞争力 → 写作风格诊断 → 可读性 → P0/P1 → 最高价值修改），不能只写 pass/fail。

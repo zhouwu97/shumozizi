@@ -33,6 +33,7 @@ from shumozizi.paper.compiler import verify_paper_compile_receipt
 from shumozizi.paper.contributions import verify_contribution_ledger
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.references import verify_paper_references
+from shumozizi.paper.style_audit import audit_report_like_manuscript
 from shumozizi.paper.sufficiency import run_paper_structure_signal_check
 from shumozizi.paper.templates import require_materialized_template
 from shumozizi.simple.competition import verify_submission_exports
@@ -299,6 +300,29 @@ def run_final_checks(
             "paper-structure-signals",
             content_payload,
             "逐问结构、直接答案与最低非空壳内容信号；不评价数学或论证质量",
+        )
+    )
+    try:
+        report_style = audit_report_like_manuscript(root)
+        report_style_payload = {
+            "success": True,
+            "warning_count": len(report_style["warnings"]),
+            "warnings": report_style["warnings"],
+            "limitations": report_style["limitations"],
+        }
+    except (OSError, UnicodeError, KeyError, TypeError, ValueError) as exc:
+        # 启发式检测异常只降低可见性，不应伪装成论文科学失败。
+        report_style_payload = {
+            "success": True,
+            "warning_count": 0,
+            "warnings": [],
+            "inspection_error": str(exc),
+        }
+    checks.append(
+        _check(
+            "report-style-audit",
+            report_style_payload,
+            "工作报告式结构、内部术语、列表堆叠和主图脱离论证的非阻断告警",
         )
     )
     paper_references = _optional_paper_protocol_check(

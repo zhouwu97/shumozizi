@@ -21,6 +21,7 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.schema import validate_document
+from shumozizi.paper.style_audit import audit_report_like_manuscript
 from shumozizi.simple.capabilities import ROUTE_PATH
 from shumozizi.simple.critical_claims import CRITICAL_CLAIMS_PATH, read_critical_claims
 from shumozizi.simple.figures import verify_current_figure_files
@@ -746,6 +747,15 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     warnings.extend(_argument_plan_warnings(run_dir))
     warnings.extend(presentation_figure_warnings(run_dir))
     warnings.extend(_reference_count_warnings(run_dir))
+    try:
+        style_audit = audit_report_like_manuscript(run_dir)
+        warnings.extend(
+            f"报告式写作告警[{item['code']}]：{item['message']}"
+            for item in style_audit["warnings"]
+        )
+    except (OSError, UnicodeError, KeyError, TypeError, ValueError) as exc:
+        # 文风检测是启发式辅助，读取失败不能夺取正式答案与论文编译的控制权。
+        warnings.append(f"报告式写作检测不可用：{exc}")
     errors.extend(_code_appendix_errors(run_dir))
     errors.extend(_core_insight_usage_errors(run_dir, answers))
     if is_competition_first_v32_state(read_simple_state(run_dir)):

@@ -141,6 +141,18 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ---
 
+## 反工作报告审计
+
+候选稿编译前运行：
+
+```text
+python scripts/paper/audit_report_style.py <run_dir>
+```
+
+该命令只产生 advisory warning，不新增 Schema、阶段或编译硬门。逐项复核多问重复小节、`result_id`/fallback/scorer/晋级/回执等内部词、“本问采用/结果见表”等重复句式、摘要按 Q1—Q5 报账、列表或表格替代推导、标题碎片化、核心问题缺少推导或机制，以及主图未进入观察—机制—结论链。自动信号只能定位风险，最终由独立 PDF 盲评结合页码裁决。
+
+---
+
 ## 图与论证绑定
 
 每张正文图必须在 `PAPER_BLUEPRINT.md` 中对应一步论证，而不仅仅是 `role=insight` 标签。
