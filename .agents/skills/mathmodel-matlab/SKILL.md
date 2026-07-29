@@ -7,6 +7,7 @@ description: 在 Competition-First v3.2 中使用真实 MATLAB/Octave 完成建�
 
 MATLAB/Octave 不是每题必选。出现矩阵计算、连续/整数/多目标优化、ODE/PDE、控制仿真、信号与图像、曲面拟合、三维场或网络流时主动比较；只有它能利用题目结构、形成不同算法族/判定实现、提供明显更强仿真绘图，或承担独立 oracle/challenger 时启用。先读 [modeling-recipes.md](references/modeling-recipes.md) 选择角色与配方。
 
+0. 对适用题型先运行 `python scripts/capabilities/detect_tools.py <run_dir>`。`capability_decision.matlab_availability` 必须与 `state/tooling.json` 的真实 MATLAB/Octave 命令、退出状态和 SHA-256 一致，不接受 `not_probed`。只有解析解、小规模精确枚举、运行环境明确禁止外部引擎或 MATLAB 无法形成不同实现/科学增益时，才使用对应 `probe_waiver`；waiver 不是“时间不够”或“Python 更熟悉”的替身。
 1. 将真实入口保存为 `code/matlab/run_analysis.m`。输入只来自 `problem/`、受控参数或明确登记的 current 结果；脚本通过 `SHUMOZIZI_RUN_DIR` 定位运行根目录，不使用仓库外绝对路径。
 2. MATLAB 至少承担一种科学角色：`primary_model`、`optimizer_challenger`、`independent_oracle` 或 `scientific_visualization`。不能只把 Python 数组导出后重算平均值。独立实现不得导入、翻译或调用 Python 核心判定函数；可共享原始输入和最终问题定义，不共享中间数组与判定源码。
 3. 产物按角色决定：`primary_model`、`optimizer_challenger`、`independent_oracle` 至少输出 JSON，CSV 只在表结构确有复用价值时输出；`scientific_visualization` 输出版本化候选 PNG/PDF，并进入图像晋级流程。所有角色都会自动生成 stdout/stderr 与 `logs/matlab-run.log`。统一执行：`python scripts/matlab/run_matlab.py <run_dir> --config <config.json>`；底层命令为 `matlab -batch "run('code/matlab/run_analysis.m')"`。

@@ -114,7 +114,7 @@ def _engine_probe_command(engine: str, command: str) -> list[str]:
         return [
             command,
             "-batch",
-            "disp(version); assert(exist('fmincon','file') || exist('fmincon','builtin')); disp('fmincon available')",
+            "disp(version); disp('MATLAB available')",
         ]
     if engine == "octave":
         return [command, "--quiet", "--no-gui", "--eval", "disp(version)"]

@@ -9,6 +9,12 @@ description: 对 Competition-First v3.2 运行执行条件目标语义审查、�
 
 ---
 
+## 首解轻量 checkpoint
+
+核心优化/协同题首个可行解后的独立 AI checkpoint 发生在大规模深化前，只回答“最可能错在哪里、什么假设会推翻、是否有结构不同路线、下一项最低成本实验、继续 experiment 还是返回 analysis”。使用 `scripts/review/show_first_feasible_prompt.py` 生成固定提示，结果回填 `MODELING_UNITS.actual.refinement`；不生成审查包、报告或回执，也不替代全部问题完成后的两阶段科学挑战。
+
+---
+
 ## 科学挑战：两阶段阅读
 
 科学挑战只做一次。必须按阶段顺序执行，**不能跳过阶段A直接读代码**。

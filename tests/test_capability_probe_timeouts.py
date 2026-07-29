@@ -20,3 +20,12 @@ def test_matlab_probe_uses_long_cold_start_timeout() -> None:
 
     assert run.call_args.kwargs["timeout"] == 60
     assert capabilities._PROBE_TIMEOUT_SECONDS["python"] == 12
+
+
+def test_matlab_engine_probe_does_not_require_optimization_toolbox() -> None:
+    """基础可用性不能因缺少 fmincon 而否决 MATLAB 的仿真、矩阵或绘图角色。"""
+    command = capabilities._engine_probe_command("matlab", "matlab")
+
+    assert command[:2] == ["matlab", "-batch"]
+    assert "disp(version)" in command[2]
+    assert "fmincon" not in command[2]

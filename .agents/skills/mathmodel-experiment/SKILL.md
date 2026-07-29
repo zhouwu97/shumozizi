@@ -13,6 +13,8 @@ description: 真实执行数学建模实验，比较路线、保存 current 结�
 
 比较必须真的判胜负：赢家由统一 exact scorer 的实测结果决定，核心问题的赢家还要相对 baseline 达到事前声明的显著改善阈值。达不到时继续搜索、换更强路线，或用 `baseline_near_bound` 加实际界证据说明已接近上限。深化后的最终结果不得比比较阶段的赢家更差。路线预期上限明显落空时登记 `upside_shortfall` 的原因与决定，不要继续按原声明叙述优势。
 
+核心优化/协同问题出现首个可行解后，不直接投入剩余大预算。先运行 `python scripts/review/show_first_feasible_prompt.py <run_dir> --question <Q?>`，把固定提示交给不继承当前求解上下文的 AI。它只给出最多三项最高风险、一个可推翻假设、是否值得测试结构不同路线、下一项最低成本区分实验，以及 `continue_experiment` / `return_analysis` 决策。将 JSON 回填到当前单元的 `actual.refinement.first_feasible_checkpoint`；reviewer context ID 可选记录，不要求 task receipt。返回 analysis 时先修订并重新取得首解；继续 experiment 时先执行所提区分实验，再追加首解之后产生的 `followup_result_ids` 与 `followup_conclusion`，最后做计划内深化。这不是第二轮综合科学挑战，也不新增状态阶段。
+
 exact 赢家只获得“候选主答案”身份。执行者只登记 `actual_endpoint_resolution` 与 `qualification_evidence` 的真实结果指标：路线升级由 exact 分数和事前阈值计算，endpoint 一致性由最终裁决、合理口径下的路线排序和行动后果计算，guard 与决策稳定性由预登记指标阈值计算。系统据此唯一派生 `promoted`、`fallback_selected` 或 `redesign_required`；不得手填布尔值覆盖结果。endpoint 未决或合理口径导致路线翻转时回到 `analysis`，搜索或验证不足时回到 `experiment`。论文的 `primary_result_id` 必须与系统派生结果一致。
 
 真实结果后可以生成 `analysis/method_facts.json`。它的 true/false/unknown 只触发建议：随机求解器建议多种子，proxy 建议检查 exact 排序，时间切分检查泄漏，连续几何检查端点和离散误差。缺失或 unknown 绝不阻断。

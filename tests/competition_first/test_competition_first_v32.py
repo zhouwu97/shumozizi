@@ -17,6 +17,7 @@ from shumozizi.simple import review as simple_review
 from shumozizi.simple.competition import verify_submission_exports, write_answer_map
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import (
+    first_feasible_checkpoint_prompt,
     question_outcome_selections,
     require_v32_experiment_evidence,
     semantic_reconstruction_input_bindings,
@@ -50,6 +51,54 @@ def _record_fixture_knowledge_retrieval(run_dir: Path) -> None:
         },
         unavailable_reason="该主链测试夹具不装载真实论文卡索引，仅验证阶段合同。",
     )
+
+
+def _fixture_capability_decision(run_dir: Path) -> dict[str, object]:
+    """写入真实探测记录形状，并返回与其哈希绑定的 Python 选择。"""
+    tooling = {
+        "schema_version": "1.1",
+        "checked_at": utc_now(),
+        "engines": [
+            {
+                "engine": "python",
+                "available": True,
+                "command": "python",
+                "probe": {
+                    "command": ["python", "--version"],
+                    "exit_code": 0,
+                    "timed_out": False,
+                    "stdout_sha256": "a" * 64,
+                    "stderr_sha256": "b" * 64,
+                    "summary": "Python available",
+                },
+            },
+            {
+                "engine": "matlab",
+                "available": False,
+                "command": None,
+                "probe": None,
+            },
+            {
+                "engine": "octave",
+                "available": False,
+                "command": None,
+                "probe": None,
+            },
+        ],
+    }
+    tooling_path = run_dir / "state/tooling.json"
+    atomic_json(tooling_path, tooling)
+    return {
+        "python_considered": True,
+        "matlab_considered": True,
+        "matlab_availability": "unavailable",
+        "tooling_sha256": sha256_file(tooling_path),
+        "selected_engine": "python",
+        "matlab_role": None,
+        "probe_waiver": None,
+        "reason": "真实探测未发现 MATLAB 或 Octave，因此当前使用 Python 实现。",
+        "expected_gain": "若后续环境可用，异构数值实现可用于攻击同源误差。",
+    }
 
 
 def _paper_blind_report(required_questions: list[str]) -> str:
@@ -271,15 +320,7 @@ def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
         },
     }
     if unit_kind == "exact_oracle":
-        unit["capability_decision"] = {
-            "python_considered": True,
-            "matlab_considered": True,
-            "matlab_availability": "not_probed",
-            "selected_engine": "python",
-            "matlab_role": None,
-            "reason": "当前夹具使用 Python 主计算，但仍显式比较 MATLAB 独立复算角色。",
-            "expected_gain": "若 MATLAB 可用，可用独立区间实现攻击同源判定错误。",
-        }
+        unit["capability_decision"] = _fixture_capability_decision(run_dir)
         unit["oracle"] = {
             "oracle_kind": "独立枚举积分算法",
             "independence": "独立实现且不复用主计算的区间构造代码。",
@@ -307,15 +348,7 @@ def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
                 "diagnostic_plan": "检查残差、异常值与关键假设偏离。",
             }
         elif unit_kind == "simulation":
-            unit["capability_decision"] = {
-                "python_considered": True,
-                "matlab_considered": True,
-                "matlab_availability": "not_probed",
-                "selected_engine": "python",
-                "matlab_role": None,
-                "reason": "当前夹具用 Python 仿真，但已比较 MATLAB ODE 与控制仿真能力。",
-                "expected_gain": "若系统刚性增强，可用 ode15s 形成不同积分实现。",
-            }
+            unit["capability_decision"] = _fixture_capability_decision(run_dir)
             unit["simulation_contract"] = {
                 "calibration": "使用题面基准情形校准仿真参数。",
                 "convergence": "逐级细化时间步长并检查输出收敛。",
@@ -354,15 +387,7 @@ def _v14_optimization_plan(run_dir: Path) -> dict[str, object]:
     unit = plan["units"][0]
     assert isinstance(unit, dict)
     unit["unit_kind"] = "optimization"
-    unit["capability_decision"] = {
-        "python_considered": True,
-        "matlab_considered": True,
-        "matlab_availability": "not_probed",
-        "selected_engine": "python",
-        "matlab_role": None,
-        "reason": "当前夹具选择 Python 约束搜索，但显式比较 MATLAB 优化器路线。",
-        "expected_gain": "MATLAB patternsearch 可用于攻击 Python 搜索遗漏的可行区域。",
-    }
+    unit["capability_decision"] = _fixture_capability_decision(run_dir)
     unit.pop("primary_method")
     unit["objective"] = {
         "exact_metric": "objective",
@@ -459,6 +484,22 @@ def _attach_v14_optimization_actual(
         },
         "refinement": {
             "first_feasible_result_id": "first-feasible",
+            "first_feasible_checkpoint": {
+                "reviewed_result_id": "first-feasible",
+                "review_mode": "independent_ai",
+                "independent_context": True,
+                "reviewer_context_id": "fixture-first-feasible-review",
+                "highest_risks": [
+                    "共享约束的边界处理可能让首解在临界点失去可行性。"
+                ],
+                "reversal_assumption": "若资源不能在相邻时间段复用，当前路线排序可能反转。",
+                "stronger_route_worth_testing": True,
+                "stronger_route": "测试显式传播共享约束的联合搜索路线。",
+                "next_discriminating_experiment": "构造资源恰好饱和的小实例并比较两条路线的 exact 排序。",
+                "followup_result_ids": ["checkpoint-probe"],
+                "followup_conclusion": "边界小实例仍支持结构 challenger，未发现排序反转。",
+                "decision": "continue_experiment",
+            },
             "final_result_id": "final",
             "family_result_ids": {"约束结构深化": ["challenger", "final"]},
             "stop_reason": "budget_exhausted",
@@ -1089,6 +1130,80 @@ def test_v14_suitable_unit_must_consider_matlab_before_selecting_python(
         write_modeling_units(run_dir, plan)
 
 
+def test_v14_suitable_unit_rejects_unprobed_matlab_claim(tmp_path: Path) -> None:
+    """写 considered=true 不能替代真实工具探测或明确豁免。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-matlab-not-probed",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    decision = unit["capability_decision"]
+    assert isinstance(decision, dict)
+    decision["matlab_availability"] = "not_probed"
+
+    with pytest.raises(ContractError, match="not_probed"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_v14_suitable_unit_binds_matlab_decision_to_real_probe(tmp_path: Path) -> None:
+    """可用性声明必须绑定当前 tooling 探测，不能自由填写 available/unavailable。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-matlab-probe-binding",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    decision = unit["capability_decision"]
+    assert isinstance(decision, dict)
+    decision["tooling_sha256"] = "0" * 64
+
+    with pytest.raises(ContractError, match="tooling_sha256"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_v14_allows_only_explicit_matlab_probe_waivers(tmp_path: Path) -> None:
+    """解析、精确枚举、环境禁用或无异构增益可跳过探测，但必须具体说明。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-matlab-probe-waiver",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_optimization_plan(run_dir)
+    (run_dir / "state/tooling.json").unlink()
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["capability_decision"] = {
+        "python_considered": True,
+        "matlab_considered": True,
+        "matlab_availability": "waived",
+        "tooling_sha256": None,
+        "selected_engine": "python",
+        "matlab_role": None,
+        "probe_waiver": {
+            "reason_code": "small_exact_enumeration",
+            "justification": "候选集合可由 Python 有限枚举穷尽，并直接给出全局最优证书。",
+        },
+        "reason": "有限枚举比启动外部数值引擎更直接，且不损失可验证性。",
+        "expected_gain": "MATLAB 不会形成不同算法族，也不会增加新的科学证据。",
+    }
+
+    write_modeling_units(run_dir, plan)
+
+    waiver = unit["capability_decision"]["probe_waiver"]
+    assert isinstance(waiver, dict)
+    waiver["reason_code"] = "convenience"
+    with pytest.raises(ContractError, match="probe_waiver.reason_code"):
+        write_modeling_units(run_dir, plan)
+
+
 def test_v14_optimization_accepts_one_challenger_and_one_refinement_family(
     tmp_path: Path,
 ) -> None:
@@ -1105,6 +1220,7 @@ def test_v14_optimization_accepts_one_challenger_and_one_refinement_family(
         ("attack", 8.0),
         ("check", 8.0),
         ("first-feasible", 9.0),
+        ("checkpoint-probe", 8.8),
         ("final", 7.5),
     ):
         _register_result(run_dir, result_id, objective=objective)
@@ -1120,6 +1236,75 @@ def test_v14_optimization_accepts_one_challenger_and_one_refinement_family(
     unit["second_challenger_required"] = True
     with pytest.raises(ContractError, match="第二条 challenger"):
         write_modeling_units(run_dir, plan)
+
+
+def test_v14_core_search_requires_first_feasible_ai_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """核心题首解必须先经轻量独立复核，才能把后续深化认作已闭环。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-first-feasible-checkpoint",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("challenger", 8.0),
+        ("attack", 8.0),
+        ("check", 8.0),
+        ("first-feasible", 9.0),
+        ("checkpoint-probe", 8.8),
+        ("final", 7.5),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    plan = _v14_optimization_plan(run_dir)
+    _attach_v14_optimization_actual(plan)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    refinement = unit["actual"]["refinement"]
+    assert isinstance(refinement, dict)
+    checkpoint = refinement.pop("first_feasible_checkpoint")
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="first_feasible_checkpoint"):
+        require_v32_experiment_evidence(run_dir)
+
+    refinement["first_feasible_checkpoint"] = checkpoint
+    assert isinstance(checkpoint, dict)
+    checkpoint["decision"] = "return_analysis"
+    write_modeling_units(run_dir, plan)
+    with pytest.raises(ContractError, match="返回 analysis"):
+        require_v32_experiment_evidence(run_dir)
+
+
+def test_first_feasible_prompt_focuses_independent_ai_on_next_decision(
+    tmp_path: Path,
+) -> None:
+    """首解提示只要求最高价值纠错和下一项区分实验，不生成第二份综合审核。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-first-feasible-prompt",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    _register_result(run_dir, "first-feasible", objective=9.0)
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["actual"] = {
+        "refinement": {"first_feasible_result_id": "first-feasible"}
+    }
+    write_modeling_units(run_dir, plan)
+
+    prompt = first_feasible_checkpoint_prompt(run_dir, "Q1")
+
+    assert "独立上下文" in prompt
+    assert "最可能错在哪里" in prompt
+    assert "最低成本区分实验" in prompt
+    assert "continue_experiment" in prompt
+    assert "return_analysis" in prompt
+    assert "最多 3 项" in prompt
 
 
 @pytest.mark.parametrize(
@@ -1146,6 +1331,7 @@ def test_v14_search_health_keeps_only_real_insufficiency_as_hard_block(
         ("attack", 8.0),
         ("check", 8.0),
         ("first-feasible", 9.0),
+        ("checkpoint-probe", 8.8),
         ("final", 7.5),
     ):
         _register_result(run_dir, result_id, objective=objective)

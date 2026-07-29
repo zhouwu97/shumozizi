@@ -16,8 +16,15 @@ import math
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_tree
+from shumozizi.core.io import (
+    ContractError,
+    atomic_json,
+    load_json,
+    sha256_file,
+    sha256_tree,
+)
 from shumozizi.knowledge.external_discussion import validate_external_discussion_protocol_if_present
+from shumozizi.simple.capabilities import TOOLING_PATH
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.review_tasks import validate_review_task_receipt
 from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
@@ -90,6 +97,17 @@ MATLAB_ROLES = frozenset(
     }
 )
 CAPABILITY_ENGINES = frozenset({"python", "matlab", "octave", "hybrid", "analytic"})
+MATLAB_PROBE_WAIVER_REASONS = frozenset(
+    {
+        "analytic_solution",
+        "small_exact_enumeration",
+        "external_engine_forbidden",
+        "no_distinct_scientific_gain",
+    }
+)
+FIRST_FEASIBLE_CHECKPOINT_DECISIONS = frozenset(
+    {"continue_experiment", "return_analysis"}
+)
 # 只作资源配置提示，不再作为答案或阶段硬门。
 RECOMMENDED_SEARCH_BUDGET_SHARE = 0.35
 _PLANNING_PLACEHOLDERS = frozenset(
@@ -432,6 +450,7 @@ def _validate_route_composition(value: object, label: str) -> str:
 
 
 def _validate_capability_decision(
+    run_dir: Path,
     value: object,
     label: str,
     *,
@@ -450,9 +469,14 @@ def _validate_capability_decision(
             f"{label}.matlab_considered 必须为 true：适合 MATLAB 的题型不能静默默认 Python"
         )
     availability = item.get("matlab_availability")
-    if availability not in {"available", "unavailable", "not_probed"}:
+    if availability == "not_probed":
         raise ContractError(
-            f"{label}.matlab_availability 必须为 available、unavailable 或 not_probed"
+            f"{label}.matlab_availability=not_probed 不再允许："
+            "必须执行 state/tooling.json 真实探测，或使用受限 probe_waiver"
+        )
+    if availability not in {"available", "unavailable", "waived"}:
+        raise ContractError(
+            f"{label}.matlab_availability 必须为 available、unavailable 或 waived"
         )
     selected_engine = item.get("selected_engine")
     if selected_engine not in CAPABILITY_ENGINES:
@@ -471,6 +495,47 @@ def _validate_capability_decision(
         raise ContractError(
             f"{label}.selected_engine={selected_engine} 时必须声明 matlab_role"
         )
+    tooling_sha256 = item.get("tooling_sha256")
+    probe_waiver = item.get("probe_waiver")
+    available_engines: set[str] = set()
+    if availability == "waived":
+        if tooling_sha256 is not None:
+            raise ContractError(f"{label}.tooling_sha256 在 probe waiver 下必须为 null")
+        waiver = _require_mapping(probe_waiver, f"{label}.probe_waiver")
+        reason_code = waiver.get("reason_code")
+        if reason_code not in MATLAB_PROBE_WAIVER_REASONS:
+            raise ContractError(
+                f"{label}.probe_waiver.reason_code 必须为 "
+                + "、".join(sorted(MATLAB_PROBE_WAIVER_REASONS))
+            )
+        _require_substantive_plan_text(
+            waiver.get("justification"), f"{label}.probe_waiver.justification"
+        )
+        if selected_engine not in {"python", "analytic"}:
+            raise ContractError(
+                f"{label} 使用 probe waiver 时 selected_engine 只能是 python 或 analytic"
+            )
+        if matlab_role is not None:
+            raise ContractError(f"{label} 使用 probe waiver 时 matlab_role 必须为 null")
+    else:
+        if probe_waiver is not None:
+            raise ContractError(f"{label}.probe_waiver 在已探测时必须为 null")
+        if not isinstance(tooling_sha256, str) or len(tooling_sha256) != 64:
+            raise ContractError(
+                f"{label}.tooling_sha256 必须绑定 scripts/capabilities/detect_tools.py 的真实输出"
+            )
+        available_engines = _validate_matlab_tooling_probe(
+            run_dir,
+            expected_sha256=tooling_sha256,
+            declared_availability=str(availability),
+            label=label,
+        )
+        if selected_engine == "matlab" and "matlab" not in available_engines:
+            raise ContractError(f"{label} 选择 MATLAB，但真实探测未通过")
+        if selected_engine == "octave" and "octave" not in available_engines:
+            raise ContractError(f"{label} 选择 Octave，但真实探测未通过")
+        if selected_engine == "hybrid" and not available_engines:
+            raise ContractError(f"{label} 选择 hybrid，但 MATLAB/Octave 均不可用")
     _require_substantive_plan_text(item.get("reason"), f"{label}.reason")
     _require_substantive_plan_text(
         item.get("expected_gain"), f"{label}.expected_gain"
@@ -479,9 +544,88 @@ def _validate_capability_decision(
         "python_considered": python_considered,
         "matlab_considered": True,
         "matlab_availability": availability,
+        "tooling_sha256": tooling_sha256,
         "selected_engine": selected_engine,
         "matlab_role": matlab_role,
+        "probe_waiver": probe_waiver,
     }
+
+
+def _validate_matlab_tooling_probe(
+    run_dir: Path,
+    *,
+    expected_sha256: str,
+    declared_availability: str,
+    label: str,
+) -> set[str]:
+    """复验 MATLAB/Octave 可用性确实来自本运行的真实烟雾测试。"""
+    tooling_path = run_dir / TOOLING_PATH
+    if not tooling_path.is_file():
+        raise ContractError(
+            f"{label} 缺少 {TOOLING_PATH.as_posix()}；"
+            "先运行 scripts/capabilities/detect_tools.py"
+        )
+    if sha256_file(tooling_path) != expected_sha256:
+        raise ContractError(f"{label}.tooling_sha256 与当前真实探测记录不一致")
+    tooling = load_json(tooling_path)
+    if tooling.get("schema_version") != "1.1":
+        raise ContractError(f"{label} 只接受 tooling 1.1 真实探测记录")
+    _require_text(tooling.get("checked_at"), f"{label}.tooling.checked_at")
+    engines = tooling.get("engines")
+    if not isinstance(engines, list):
+        raise ContractError(f"{label}.tooling.engines 必须是数组")
+    records = {
+        record.get("engine"): record
+        for record in engines
+        if isinstance(record, dict)
+        and record.get("engine") in {"matlab", "octave"}
+    }
+    if set(records) != {"matlab", "octave"}:
+        raise ContractError(f"{label} 的 tooling 必须同时记录 MATLAB 与 Octave 探测")
+    available: set[str] = set()
+    for engine, record in records.items():
+        status = record.get("available")
+        if not isinstance(status, bool):
+            raise ContractError(f"{label}.tooling.{engine}.available 必须是布尔值")
+        command = record.get("command")
+        probe = record.get("probe")
+        if command is None:
+            if status or probe is not None:
+                raise ContractError(
+                    f"{label}.tooling.{engine} 未找到命令时不得声明可用或伪造 probe"
+                )
+        else:
+            _require_text(command, f"{label}.tooling.{engine}.command")
+            probe_item = _require_mapping(probe, f"{label}.tooling.{engine}.probe")
+            probe_command = probe_item.get("command")
+            if not isinstance(probe_command, list) or not probe_command:
+                raise ContractError(
+                    f"{label}.tooling.{engine}.probe.command 必须记录真实命令"
+                )
+            exit_code = probe_item.get("exit_code")
+            timed_out = probe_item.get("timed_out")
+            if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+                raise ContractError(
+                    f"{label}.tooling.{engine}.probe.exit_code 必须是整数"
+                )
+            if not isinstance(timed_out, bool):
+                raise ContractError(
+                    f"{label}.tooling.{engine}.probe.timed_out 必须是布尔值"
+                )
+            observed = exit_code == 0 and not timed_out
+            if status != observed:
+                raise ContractError(
+                    f"{label}.tooling.{engine}.available 与真实 probe 退出状态不一致"
+                )
+        if status:
+            available.add(engine)
+    observed_availability = "available" if available else "unavailable"
+    if declared_availability != observed_availability:
+        raise ContractError(
+            f"{label}.matlab_availability={declared_availability} 与真实探测 "
+            f"{observed_availability} 不一致"
+        )
+    return available
 
 
 def _route_definition(
@@ -614,6 +758,7 @@ def _validate_answer_contract(
 
 
 def _validate_unit_plan(
+    run_dir: Path,
     unit: dict[str, Any],
     *,
     question_ids: set[str],
@@ -643,6 +788,7 @@ def _validate_unit_plan(
             raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
     search_kind = mode in SEARCH_UNIT_KINDS or mode == "compare"
     capability_decision = _validate_capability_decision(
+        run_dir,
         unit.get("capability_decision"),
         f"{unit_id}.capability_decision",
         required=(
@@ -1938,6 +2084,64 @@ def _derive_v14_non_search_outcome(
     }
 
 
+def _validate_first_feasible_checkpoint(
+    value: object,
+    label: str,
+    *,
+    first_result_id: str,
+) -> dict[str, Any]:
+    """验证核心问题首解后的独立 AI 复核已产生下一步决策。"""
+    item = _require_mapping(value, label)
+    reviewed_result_id = _require_text(
+        item.get("reviewed_result_id"), f"{label}.reviewed_result_id"
+    )
+    if reviewed_result_id != first_result_id:
+        raise ContractError(
+            f"{label}.reviewed_result_id 必须等于首个可行结果 {first_result_id}"
+        )
+    if item.get("review_mode") != "independent_ai":
+        raise ContractError(f"{label}.review_mode 必须为 independent_ai")
+    if item.get("independent_context") is not True:
+        raise ContractError(
+            f"{label}.independent_context 必须为 true；原解题上下文自评不能替代首解复核"
+        )
+    reviewer_context_id = item.get("reviewer_context_id")
+    if reviewer_context_id is not None:
+        _require_text(reviewer_context_id, f"{label}.reviewer_context_id")
+    highest_risks = _require_text_list(
+        item.get("highest_risks"), f"{label}.highest_risks"
+    )
+    if len(highest_risks) > 3:
+        raise ContractError(f"{label}.highest_risks 最多 3 项")
+    _require_substantive_plan_text(
+        item.get("reversal_assumption"), f"{label}.reversal_assumption"
+    )
+    stronger = item.get("stronger_route_worth_testing")
+    if not isinstance(stronger, bool):
+        raise ContractError(
+            f"{label}.stronger_route_worth_testing 必须是布尔值"
+        )
+    _require_substantive_plan_text(
+        item.get("stronger_route"), f"{label}.stronger_route"
+    )
+    _require_substantive_plan_text(
+        item.get("next_discriminating_experiment"),
+        f"{label}.next_discriminating_experiment",
+    )
+    decision = item.get("decision")
+    if decision not in FIRST_FEASIBLE_CHECKPOINT_DECISIONS:
+        raise ContractError(
+            f"{label}.decision 必须为 "
+            + "、".join(sorted(FIRST_FEASIBLE_CHECKPOINT_DECISIONS))
+        )
+    return {
+        "reviewed_result_id": reviewed_result_id,
+        "highest_risks": highest_risks,
+        "stronger_route_worth_testing": stronger,
+        "decision": decision,
+    }
+
+
 def _validate_actual_unit(
     run_dir: Path,
     plan: dict[str, Any],
@@ -2005,7 +2209,65 @@ def _validate_actual_unit(
     refinement = _require_mapping(actual.get("refinement"), f"{plan['unit_id']}.actual.refinement")
     first = _require_text(refinement.get("first_feasible_result_id"), f"{plan['unit_id']}.actual.refinement.first_feasible_result_id")
     final = _require_text(refinement.get("final_result_id"), f"{plan['unit_id']}.actual.refinement.final_result_id")
-    _production_result(results, result_id=first, question_id=plan["question_id"], label=f"{plan['unit_id']}.first_feasible")
+    first_result = _production_result(
+        results,
+        result_id=first,
+        question_id=plan["question_id"],
+        label=f"{plan['unit_id']}.first_feasible",
+    )
+    if first_result.get("metrics", {}).get("feasible") is not True:
+        raise ContractError(f"{plan['unit_id']}.first_feasible 必须是真实可行结果")
+    if (
+        plan["schema_version"] == "1.4"
+        and plan["core_question"]
+        and plan["search_kind"]
+    ):
+        checkpoint = _validate_first_feasible_checkpoint(
+            refinement.get("first_feasible_checkpoint"),
+            f"{plan['unit_id']}.actual.refinement.first_feasible_checkpoint",
+            first_result_id=first,
+        )
+        if checkpoint["decision"] == "return_analysis":
+            raise ContractError(
+                f"{plan['unit_id']} 的首解独立 AI checkpoint 要求返回 analysis；"
+                "必须修订目标、模型或 scorer 后重新取得首解并复核"
+            )
+        followup_ids = _production_result_ids(
+            results,
+            value=refinement["first_feasible_checkpoint"].get(
+                "followup_result_ids"
+            ),
+            question_id=plan["question_id"],
+            label=(
+                f"{plan['unit_id']}.actual.refinement."
+                "first_feasible_checkpoint.followup_result_ids"
+            ),
+        )
+        if first in followup_ids:
+            raise ContractError(
+                f"{plan['unit_id']} 的首解 checkpoint 区分实验不能复用首解本身"
+            )
+        first_created_at = _require_text(
+            first_result.get("created_at"), f"{plan['unit_id']}.first_feasible.created_at"
+        )
+        for result_id in followup_ids:
+            followup_created_at = _require_text(
+                results[result_id].get("created_at"),
+                f"{plan['unit_id']}.checkpoint_followup.{result_id}.created_at",
+            )
+            if followup_created_at <= first_created_at:
+                raise ContractError(
+                    f"{plan['unit_id']} 的 checkpoint 区分实验 {result_id} "
+                    "必须在首个可行解之后真实执行"
+                )
+        _require_substantive_plan_text(
+            refinement["first_feasible_checkpoint"].get("followup_conclusion"),
+            (
+                f"{plan['unit_id']}.actual.refinement."
+                "first_feasible_checkpoint.followup_conclusion"
+            ),
+        )
+        verify_ids.update(followup_ids)
     final_result = _production_result(
         results, result_id=final, question_id=plan["question_id"], label=f"{plan['unit_id']}.final"
     )
@@ -2213,6 +2475,7 @@ def validate_modeling_units(
     for raw in raw_units:
         unit = _require_mapping(raw, "units[]")
         plan = _validate_unit_plan(
+            run_dir,
             unit,
             question_ids=question_ids,
             require_decision_contract=schema_version in {"1.1", "1.2", "1.3", "1.4"},
@@ -2447,6 +2710,96 @@ def core_question_insights(run_dir: Path) -> dict[str, list[dict[str, Any]]]:
     return collected
 
 
+def first_feasible_checkpoint_prompt(run_dir: Path, question_id: str) -> str:
+    """生成核心问题首个可行解的轻量独立 AI 复核提示。
+
+    Args:
+        run_dir: 当前 Competition-First v3.2 运行目录。
+        question_id: 需要复核的核心问题 ID。
+
+    Returns:
+        只聚焦下一步建模决策的固定提示词，不创建新阶段或审核文件。
+
+    Raises:
+        ContractError: 问题不是 v1.4 核心搜索单元，或尚无真实首个可行解。
+    """
+    state = read_simple_state(run_dir)
+    if not is_competition_first_v32_state(state):
+        raise ContractError("首解 AI checkpoint 只适用于 Competition-First v3.2")
+    path = run_dir / MODELING_UNITS_PATH
+    if not path.is_file():
+        raise ContractError("首解 AI checkpoint 缺少 analysis/MODELING_UNITS.json")
+    payload = load_json(path)
+    if payload.get("schema_version") != "1.4":
+        raise ContractError("首解 AI checkpoint 只接受 MODELING_UNITS 1.4")
+    raw_unit = next(
+        (
+            item
+            for item in payload.get("units", [])
+            if isinstance(item, dict) and item.get("question_id") == question_id
+        ),
+        None,
+    )
+    if raw_unit is None:
+        raise ContractError(f"首解 AI checkpoint 找不到问题 {question_id}")
+    plan = _validate_unit_plan(
+        run_dir,
+        raw_unit,
+        question_ids=set(state["required_questions"]),
+        require_decision_contract=True,
+        schema_version="1.4",
+    )
+    if not plan["core_question"] or not plan["search_kind"]:
+        raise ContractError(f"{question_id} 不是需要首解 AI checkpoint 的核心搜索问题")
+    actual = _require_mapping(
+        raw_unit.get("actual"), f"{plan['unit_id']}.actual"
+    )
+    refinement = _require_mapping(
+        actual.get("refinement"), f"{plan['unit_id']}.actual.refinement"
+    )
+    first_result_id = _require_text(
+        refinement.get("first_feasible_result_id"),
+        f"{plan['unit_id']}.actual.refinement.first_feasible_result_id",
+    )
+    results = {
+        item["result_id"]: item for item in read_result_index(run_dir)["results"]
+    }
+    first_result = _production_result(
+        results,
+        result_id=first_result_id,
+        question_id=question_id,
+        label=f"{plan['unit_id']}.first_feasible",
+    )
+    if first_result.get("metrics", {}).get("feasible") is not True:
+        raise ContractError(f"{plan['unit_id']}.first_feasible 尚不可行")
+    output_files = "\n".join(
+        f"- {relative}" for relative in first_result.get("output_files", [])
+    )
+    root = run_dir.resolve()
+    return (
+        "你处于独立上下文，只执行一次核心问题首解后的轻量建模复核。"
+        "不要写综合审核报告，不评价论文文风，也不要读取后续 final 结果。\n\n"
+        f"运行目录：{root}\n"
+        f"问题：{question_id}\n"
+        "允许读取：\n"
+        f"- {root / 'problem'}\n"
+        f"- {root / MODELING_UNITS_PATH}（只读取本问题的事前合同和首解字段）\n"
+        f"- {root / 'code'}（当前模型、约束和 exact scorer）\n"
+        f"- 首解 result_id：{first_result_id}\n"
+        f"- 首解输出：\n{output_files or '- 无独立输出文件'}\n\n"
+        "只回答以下问题：\n"
+        "1. 当前首解最可能错在哪里？最高风险最多 3 项。\n"
+        "2. 哪个假设一旦改变最可能推翻当前结论？\n"
+        "3. 是否存在数学结构不同且值得测试的路线？说明具体结构。\n"
+        "4. 下一项最低成本区分实验是什么？\n"
+        "5. 决策只能是 continue_experiment 或 return_analysis。\n\n"
+        "返回一个 JSON 对象，字段必须为 reviewed_result_id、highest_risks、"
+        "reversal_assumption、stronger_route_worth_testing、stronger_route、"
+        "next_discriminating_experiment、decision。不要补充其它章节。协调者执行"
+        "区分实验后，再追加 followup_result_ids 与 followup_conclusion。"
+    )
+
+
 def require_v32_experiment_evidence(run_dir: Path) -> None:
     """要求论文前的建模单元均已用真实执行完成反证、深化与对照。"""
     state = read_simple_state(run_dir)
@@ -2485,6 +2838,7 @@ def question_outcome_selections(run_dir: Path) -> dict[str, dict[str, Any]]:
         for raw in payload.get("units", []):
             unit = _require_mapping(raw, "units[]")
             plan = _validate_unit_plan(
+                run_dir,
                 unit,
                 question_ids=question_ids,
                 require_decision_contract=True,
