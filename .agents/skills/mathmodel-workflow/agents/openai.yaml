@@ -1,7 +1,7 @@
 interface:
-  display_name: "Capability-First 建模工作流"
-  short_description: "完成整题、论证型论文、语义预审和三轮独立审核"
-  default_prompt: "Use $mathmodel-workflow to continue the current capability-first-v3 modeling run."
+  display_name: "Competition-First v3.2 建模工作流"
+  short_description: "完成整道数学建模赛题的分析、实验、图表、论文与验证"
+  default_prompt: "Use $mathmodel-workflow to start or continue the complete Competition-First v3.2 modeling run."
 
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

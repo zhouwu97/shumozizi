@@ -44,6 +44,7 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         ("cumcm_layout_audit", "1.0"),
         ("cumcm_layout_audit", "1.1"),
         ("cumcm_layout_audit", "1.2"),
+        ("cumcm_layout_audit", "1.3"),
     }
     if version != "2.0" and (name, version) not in supported_non_v2:
         return [f"Schema 校验器拒绝版本 {version}"]

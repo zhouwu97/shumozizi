@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -92,9 +93,10 @@ LEGACY_PAPER_BLIND_PROMPT_PREFIX = (
     "不要默认优先局部修补——只有不影响模型、结果和论证主线的问题才建议最小修改。\n\n"
     "除该 PDF 外不要读取任何文件或既有对话。论文 PDF："
 )
-PAPER_BLIND_PROMPT_VERSION = "2.0"
+PAPER_BLIND_PROMPT_VERSION = "3.0"
 LEGACY_PAPER_BLIND_PROMPT_VERSION = "1.0"
-PAPER_BLIND_PROMPT_PREFIX = LEGACY_PAPER_BLIND_PROMPT_PREFIX.replace(
+PAPER_BLIND_PROMPT_V2_VERSION = "2.0"
+PAPER_BLIND_PROMPT_V2_PREFIX = LEGACY_PAPER_BLIND_PROMPT_PREFIX.replace(
     "四、P0/P1 阻断性问题\n",
     "补充：三分钟冷读检索（必须逐项明确回答）\n"
     "- 三分钟内能否找到每个必答问题的直接答案？逐问写找到/未找到及页码。\n"
@@ -107,6 +109,29 @@ PAPER_BLIND_PROMPT_PREFIX = LEGACY_PAPER_BLIND_PROMPT_PREFIX.replace(
     "四、P0/P1 阻断性问题\n",
     1,
 )
+PAPER_BLIND_PROMPT_PREFIX = PAPER_BLIND_PROMPT_V2_PREFIX
+
+PAPER_BLIND_ARGUMENT_ROLES = (
+    "mathematical_difficulty",
+    "mathematical_object",
+    "modeling_basis",
+    "derivation",
+    "solver",
+    "main_result",
+    "mechanism",
+    "competing_route_or_counterexample",
+    "claim_specific_validation",
+    "direct_answer",
+)
+PAPER_BLIND_STRUCTURE_FIELDS = (
+    "problem_restatement",
+    "problem_analysis",
+    "assumptions",
+    "symbols_and_data",
+    "four_questions",
+    "model_evaluation",
+)
+PAPER_BLIND_STRUCTURED_HEADING = "## 结构化盲评结果"
 
 FINAL_AUDIT_REPORT_PATH = REVIEW_ROOT / "FINAL_SUBMISSION_REVIEW.md"
 RED_TEAM_ARTIFACTS_PATH = REVIEW_ROOT / "red_team_artifacts"
@@ -1554,11 +1579,76 @@ def paper_blind_review_prompt(run_dir: Path, manifest_relative: str) -> str:
     )
     if prompt_version == LEGACY_PAPER_BLIND_PROMPT_VERSION:
         prefix = LEGACY_PAPER_BLIND_PROMPT_PREFIX
+    elif prompt_version == PAPER_BLIND_PROMPT_V2_VERSION:
+        prefix = PAPER_BLIND_PROMPT_V2_PREFIX
     elif prompt_version == PAPER_BLIND_PROMPT_VERSION:
-        prefix = PAPER_BLIND_PROMPT_PREFIX
+        state = read_simple_state(run_dir)
+        prefix = PAPER_BLIND_PROMPT_PREFIX.replace(
+            "除该 PDF 外不要读取任何文件或既有对话。论文 PDF：",
+            _paper_blind_structured_instruction(state["required_questions"])
+            + "\n\n除该 PDF 外不要读取任何文件或既有对话。论文 PDF：",
+            1,
+        )
     else:
         raise ContractError("paper-blind 提示词版本不受支持")
     return prefix + str(frozen_pdf.resolve())
+
+
+def _paper_blind_structured_instruction(required_questions: list[str]) -> str:
+    """生成与自由盲评报告同源的结构化结果说明。"""
+    answers = {question_id: False for question_id in required_questions}
+    heroes = {question_id: False for question_id in required_questions}
+    findings = {
+        question_id: {
+            "missing_roles": ["derivation"],
+            "pages": [1],
+            "finding": "请替换为该问在 PDF 中的具体定位与缺失或完整性判断。",
+        }
+        for question_id in required_questions
+    }
+    links = [
+        {
+            "from": previous,
+            "to": current,
+            "inheritance": "请替换为 PDF 中可见的继承对象与新增困难。",
+        }
+        for previous, current in zip(required_questions, required_questions[1:], strict=False)
+    ]
+    template = {
+        "cold_read": {
+            "input_scope": "frozen_pdf_only",
+            "direct_answers_found_within_3_minutes": answers,
+            "one_sentence_contribution": "请替换为仅依据 PDF 可复述的一句话贡献。",
+            "cross_question_inheritance_understood": False,
+            "first_five_pages_establish_data_intuition": False,
+            "hero_figures_identified": heroes,
+            "report_like_pages": [],
+        },
+        "structure": {field: "issue" for field in PAPER_BLIND_STRUCTURE_FIELDS},
+        "argument_findings": findings,
+        "question_progression": {
+            "status": "issue",
+            "interchangeable_questions": True,
+            "links": links,
+            "summary": "请替换为 PDF 中各问继承与递进关系的具体判断。",
+        },
+        "narrative_risks": [],
+        "review_summary": "请替换为与前文自由盲评一致的结构化总结。",
+    }
+    question_text = "、".join(required_questions)
+    return (
+        "六、结构化盲评结果（必须与上文判断一致）\n"
+        f"对必答问题 {question_text}，在报告末尾原样使用标题“{PAPER_BLIND_STRUCTURED_HEADING}”，"
+        "并紧跟一个 json 代码块。不要另建文件。missing_roles 只能从以下角色中选择："
+        + "、".join(PAPER_BLIND_ARGUMENT_ROLES)
+        + "。每问 pages 至少填写一个实际页码；finding 必须写可定位的具体判断，不能只写 pass/完整/无问题。"
+        "找不到直接答案时，cold_read 对应值必须为 false，且 missing_roles 必须包含 direct_answer。"
+        "自由报告与结构化结果冲突时不得给出通过结论。请完整替换模板中的示例判断：\n\n"
+        + PAPER_BLIND_STRUCTURED_HEADING
+        + "\n```json\n"
+        + json.dumps(template, ensure_ascii=False, indent=2)
+        + "\n```"
+    )
 
 
 def paper_blind_review_prompt_sha256(run_dir: Path, manifest_relative: str) -> str:
@@ -3362,6 +3452,203 @@ def _import_competition_scientific_review(
     return summary
 
 
+def _paper_blind_text(value: Any, label: str, *, minimum: int = 8) -> str:
+    """读取盲评结构化结果中的实质文本并拒绝模板占位。"""
+    if not isinstance(value, str) or len(value.strip()) < minimum:
+        raise ContractError(f"结构化盲评 {label} 至少需要 {minimum} 个字符")
+    text = value.strip()
+    if re.search(r"请替换|待填写|待补充|TODO|TBD", text, re.IGNORECASE):
+        raise ContractError(f"结构化盲评 {label} 仍包含模板占位")
+    return text
+
+
+def _paper_blind_pages(value: Any, label: str, *, allow_empty: bool = False) -> list[int]:
+    """规整盲评页码，确保结论能够回到冻结 PDF 定位。"""
+    if not isinstance(value, list) or (not value and not allow_empty):
+        raise ContractError(f"结构化盲评 {label} 必须包含实际 PDF 页码")
+    pages: list[int] = []
+    for page in value:
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+            raise ContractError(f"结构化盲评 {label} 只能包含正整数页码")
+        if page not in pages:
+            pages.append(page)
+    return pages
+
+
+def _parse_paper_blind_structured_results(
+    run_dir: Path, report: Path
+) -> dict[str, Any]:
+    """从同一份独立盲评报告中解析并校验结构化冷读结果。"""
+    source = report.read_text(encoding="utf-8")
+    if source.count(PAPER_BLIND_STRUCTURED_HEADING) != 1:
+        raise ContractError(
+            f"PDF 盲评报告必须且只能包含一个 {PAPER_BLIND_STRUCTURED_HEADING}"
+        )
+    match = re.search(
+        rf"(?ms)^{re.escape(PAPER_BLIND_STRUCTURED_HEADING)}\s*$\s*"
+        r"```json\s*(\{.*?\})\s*```",
+        source,
+    )
+    if match is None:
+        raise ContractError("PDF 盲评报告缺少紧随结构化标题的 json 代码块")
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ContractError(f"PDF 盲评结构化 JSON 无法解析: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ContractError("PDF 盲评结构化结果必须是 JSON 对象")
+    expected_top = {
+        "cold_read",
+        "structure",
+        "argument_findings",
+        "question_progression",
+        "narrative_risks",
+        "review_summary",
+    }
+    if set(payload) != expected_top:
+        raise ContractError("PDF 盲评结构化结果字段不完整或包含未知字段")
+
+    state = read_simple_state(run_dir)
+    questions = list(state["required_questions"])
+    question_set = set(questions)
+    cold_read = payload["cold_read"]
+    cold_fields = {
+        "input_scope",
+        "direct_answers_found_within_3_minutes",
+        "one_sentence_contribution",
+        "cross_question_inheritance_understood",
+        "first_five_pages_establish_data_intuition",
+        "hero_figures_identified",
+        "report_like_pages",
+    }
+    if not isinstance(cold_read, dict) or set(cold_read) != cold_fields:
+        raise ContractError("结构化盲评 cold_read 字段不完整或包含未知字段")
+    if cold_read["input_scope"] != "frozen_pdf_only":
+        raise ContractError("结构化盲评 cold_read 只能读取 frozen_pdf_only")
+    answers = cold_read["direct_answers_found_within_3_minutes"]
+    heroes = cold_read["hero_figures_identified"]
+    if not isinstance(answers, dict) or set(answers) != question_set:
+        raise ContractError("结构化盲评必须逐问记录三分钟直接答案检索")
+    if not isinstance(heroes, dict) or set(heroes) != question_set:
+        raise ContractError("结构化盲评必须逐问记录主图识别结果")
+    if any(not isinstance(value, bool) for value in [*answers.values(), *heroes.values()]):
+        raise ContractError("结构化盲评的直接答案和主图判断必须为布尔值")
+    _paper_blind_text(cold_read["one_sentence_contribution"], "one_sentence_contribution")
+    for field in (
+        "cross_question_inheritance_understood",
+        "first_five_pages_establish_data_intuition",
+    ):
+        if not isinstance(cold_read[field], bool):
+            raise ContractError(f"结构化盲评 cold_read.{field} 必须为布尔值")
+    cold_read["report_like_pages"] = _paper_blind_pages(
+        cold_read["report_like_pages"], "cold_read.report_like_pages", allow_empty=True
+    )
+
+    structure = payload["structure"]
+    if not isinstance(structure, dict) or set(structure) != set(PAPER_BLIND_STRUCTURE_FIELDS):
+        raise ContractError("结构化盲评 structure 未完整覆盖论文结构")
+    if any(value not in {"pass", "issue"} for value in structure.values()):
+        raise ContractError("结构化盲评 structure 只能填写 pass 或 issue")
+
+    findings = payload["argument_findings"]
+    if not isinstance(findings, dict) or set(findings) != question_set:
+        raise ContractError("结构化盲评 argument_findings 必须逐问完整覆盖")
+    allowed_roles = set(PAPER_BLIND_ARGUMENT_ROLES)
+    for question_id in questions:
+        finding = findings[question_id]
+        if not isinstance(finding, dict) or set(finding) != {
+            "missing_roles",
+            "pages",
+            "finding",
+        }:
+            raise ContractError(f"结构化盲评 {question_id} 论证发现字段不完整")
+        missing_roles = finding["missing_roles"]
+        if (
+            not isinstance(missing_roles, list)
+            or len(set(missing_roles)) != len(missing_roles)
+            or any(role not in allowed_roles for role in missing_roles)
+        ):
+            raise ContractError(f"结构化盲评 {question_id}.missing_roles 无效")
+        finding["pages"] = _paper_blind_pages(
+            finding["pages"], f"argument_findings.{question_id}.pages"
+        )
+        _paper_blind_text(
+            finding["finding"], f"argument_findings.{question_id}.finding", minimum=12
+        )
+        answer_found = answers[question_id]
+        direct_missing = "direct_answer" in missing_roles
+        if answer_found == direct_missing:
+            raise ContractError(
+                f"结构化盲评 {question_id} 的三分钟答案检索与 direct_answer 缺失判断冲突"
+            )
+
+    progression = payload["question_progression"]
+    if not isinstance(progression, dict) or set(progression) != {
+        "status",
+        "interchangeable_questions",
+        "links",
+        "summary",
+    }:
+        raise ContractError("结构化盲评 question_progression 字段不完整")
+    if progression["status"] not in {"pass", "issue"} or not isinstance(
+        progression["interchangeable_questions"], bool
+    ):
+        raise ContractError("结构化盲评 question_progression 状态无效")
+    if not isinstance(progression["links"], list):
+        raise ContractError("结构化盲评 question_progression.links 必须为数组")
+    for index, link in enumerate(progression["links"]):
+        if not isinstance(link, dict) or set(link) != {"from", "to", "inheritance"}:
+            raise ContractError(f"结构化盲评 progression link {index} 字段无效")
+        if (
+            link["from"] not in question_set
+            or link["to"] not in question_set
+            or link["from"] == link["to"]
+        ):
+            raise ContractError(f"结构化盲评 progression link {index} 问题编号无效")
+        _paper_blind_text(link["inheritance"], f"progression link {index}.inheritance")
+    if (
+        len(questions) > 1
+        and progression["status"] == "pass"
+        and len(progression["links"]) < len(questions) - 1
+    ):
+        raise ContractError("问题递进判为 pass 时必须提供足以串联各问的继承关系")
+    _paper_blind_text(progression["summary"], "question_progression.summary", minimum=12)
+
+    risks = payload["narrative_risks"]
+    if not isinstance(risks, list):
+        raise ContractError("结构化盲评 narrative_risks 必须为数组")
+    for index, risk in enumerate(risks):
+        if not isinstance(risk, dict) or set(risk) != {
+            "severity",
+            "location",
+            "issue",
+            "status",
+        }:
+            raise ContractError(f"结构化盲评 narrative_risks[{index}] 字段无效")
+        if risk["severity"] not in {"P0", "P1", "P2", "P3"}:
+            raise ContractError(f"结构化盲评 narrative_risks[{index}] 严重度无效")
+        if risk["status"] not in {"open", "resolved"}:
+            raise ContractError(f"结构化盲评 narrative_risks[{index}] 状态无效")
+        _paper_blind_text(risk["location"], f"narrative_risks[{index}].location", minimum=1)
+        _paper_blind_text(risk["issue"], f"narrative_risks[{index}].issue")
+    _paper_blind_text(payload["review_summary"], "review_summary", minimum=20)
+    return payload
+
+
+def _paper_blind_core_questions(run_dir: Path, required_questions: list[str]) -> set[str]:
+    """读取核心问题；缺少正式建模单元时保守检查全部必答问题。"""
+    try:
+        modeling = load_json(run_dir / "analysis" / "MODELING_UNITS.json")
+    except ContractError:
+        return set(required_questions)
+    core = {
+        str(unit.get("question_id"))
+        for unit in modeling.get("units", [])
+        if isinstance(unit, dict) and unit.get("core_question") is True
+    }
+    return core or set(required_questions)
+
+
 def _import_v32_paper_blind_review(
     run_dir: Path,
     *,
@@ -3396,10 +3683,35 @@ def _import_v32_paper_blind_review(
         reviewer_thread_id=reviewer_thread_id,
     )
     state = read_simple_state(run_dir)
+    structured = _parse_paper_blind_structured_results(
+        run_dir, _safe_run_path(run_dir, report["file"])
+    )
+    core_questions = _paper_blind_core_questions(run_dir, state["required_questions"])
+    structured_blockers = [
+        question_id
+        for question_id in core_questions
+        if structured["argument_findings"][question_id]["missing_roles"]
+    ]
+    if verdict == "pass" and structured_blockers:
+        raise ContractError(
+            "盲评判为 pass，但核心问题仍有论证角色缺失: " + ", ".join(sorted(structured_blockers))
+        )
+    if verdict == "pass" and (
+        structured["question_progression"]["status"] != "pass"
+        or structured["question_progression"]["interchangeable_questions"] is True
+    ):
+        raise ContractError("盲评判为 pass，但结构化结果认为各问递进仍有问题")
+    open_high_risks = [
+        risk
+        for risk in structured["narrative_risks"]
+        if risk["severity"] in {"P0", "P1"} and risk["status"] == "open"
+    ]
+    if verdict == "pass" and open_high_risks:
+        raise ContractError("盲评判为 pass，但结构化结果仍包含未关闭 P0/P1 叙事风险")
     render_revision = int(state.get("paper_render_revision", 0))
     record = {
         "schema_name": "v32_paper_blind_review",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": run_dir.name,
         "verdict": verdict,
         "highest_severity": highest_severity,
@@ -3408,6 +3720,13 @@ def _import_v32_paper_blind_review(
         "report": report,
         "task_receipt": task,
         "reviewer": _reviewer_paper(reviewer_thread_id),
+        "cold_read": structured["cold_read"],
+        "structure": structured["structure"],
+        "argument_findings": structured["argument_findings"],
+        "question_progression": structured["question_progression"],
+        "narrative_risks": structured["narrative_risks"],
+        "review_summary": structured["review_summary"],
+        "structured_results_sha256": sha256_bytes(json_bytes(structured)),
         "reviewed_at": utc_now(),
     }
     atomic_json(run_dir / V32_PAPER_BLIND_RECORD_PATH, record)
@@ -3429,7 +3748,7 @@ def _v32_paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
         review = load_json(record_path)
         if (
             review.get("schema_name") != "v32_paper_blind_review"
-            or review.get("schema_version") != "1.0"
+            or review.get("schema_version") not in {"1.0", "1.1"}
             or review.get("run_id") != run_dir.name
         ):
             return {"allowed": False, "reason": "v3.2 PDF 盲评记录格式无效"}
@@ -3462,6 +3781,22 @@ def _v32_paper_blind_review_current(run_dir: Path, review: dict[str, Any]) -> tu
         report = _safe_run_path(run_dir, review["report"]["file"])
         if sha256_file(report) != review["report"]["sha256"]:
             return False, "盲评报告哈希已变化"
+        if review.get("schema_version") == "1.1":
+            structured = _parse_paper_blind_structured_results(run_dir, report)
+            if sha256_bytes(json_bytes(structured)) != review.get(
+                "structured_results_sha256"
+            ):
+                return False, "盲评结构化结果与同源报告不一致"
+            for field in (
+                "cold_read",
+                "structure",
+                "argument_findings",
+                "question_progression",
+                "narrative_risks",
+                "review_summary",
+            ):
+                if review.get(field) != structured[field]:
+                    return False, f"盲评记录字段 {field} 与同源报告不一致"
         task = review.get("task_receipt")
         if not isinstance(task, dict):
             return False, "盲评记录缺少真实任务回执"
@@ -3496,6 +3831,28 @@ def _v32_paper_blind_review_current(run_dir: Path, review: dict[str, Any]) -> tu
         return True, ""
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         return False, str(exc)
+
+
+def require_current_paper_blind_review_record(run_dir: Path) -> dict[str, Any]:
+    """返回绑定当前 PDF、报告和独立任务的 v3.2 结构化盲评记录。
+
+    该接口只校验事实来源是否当前，不把 verdict 当作读取门槛；因此版式审计可以
+    如实记录需要返工的同一轮盲评，而不是另造一套作者输入。
+    """
+    record_path = run_dir / V32_PAPER_BLIND_RECORD_PATH
+    if not record_path.is_file():
+        raise ContractError("缺少 review/paper-blind-review.json 独立盲评记录")
+    review = load_json(record_path)
+    if (
+        review.get("schema_name") != "v32_paper_blind_review"
+        or review.get("schema_version") != "1.1"
+        or review.get("run_id") != run_dir.name
+    ):
+        raise ContractError("当前 CUMCM 审计需要 v3.2 结构化盲评记录 1.1")
+    current, reason = _v32_paper_blind_review_current(run_dir, review)
+    if not current:
+        raise ContractError("独立 PDF 盲评记录已失效: " + reason)
+    return review
 
 
 def _v32_frozen_paper_pdf(run_dir: Path, manifest_file: str) -> str:

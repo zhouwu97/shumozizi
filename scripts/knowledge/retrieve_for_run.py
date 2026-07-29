@@ -40,7 +40,11 @@ def _paper(args: argparse.Namespace) -> Path:
     """首次调用生成模板，再次调用复验人工填写结果。"""
     path = args.run_dir / "paper" / "KNOWLEDGE_APPLICATION.md"
     existed = path.is_file()
-    output = write_paper_knowledge_application(args.run_dir, overwrite=args.force)
+    output = write_paper_knowledge_application(
+        args.run_dir,
+        overwrite=args.force,
+        reopen_pattern_ids=args.reopen,
+    )
     if existed and not args.force:
         require_paper_knowledge_application(args.run_dir)
     return output
@@ -57,6 +61,13 @@ def main() -> int:
     parser.add_argument("--decisions", type=Path, help="采用/拒绝判断 JSON")
     parser.add_argument("--unavailable-reason")
     parser.add_argument("--force", action="store_true", help="重新生成写作迁移模板")
+    parser.add_argument(
+        "--reopen",
+        action="append",
+        default=[],
+        metavar="PATTERN_ID",
+        help="显式重新打开一个分析阶段已拒绝的模式；与 --force 配合生成判断段",
+    )
     args = parser.parse_args()
     try:
         output = _analysis(args) if args.stage == "analysis" else _paper(args)

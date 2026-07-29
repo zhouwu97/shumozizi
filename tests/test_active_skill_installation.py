@@ -30,6 +30,24 @@ def test_every_active_skill_has_valid_frontmatter_and_openai_interface() -> None
         assert f"${skill.name}" in interface["default_prompt"]
 
 
+def test_complete_workflow_is_implicitly_discoverable_and_starts_v32() -> None:
+    """完整赛题不应要求用户精确点名 Skill，并必须给出可执行的 v3.2 入口。"""
+    skill_root = REPO_ROOT / ".agents/skills/mathmodel-workflow"
+    content = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+    _, frontmatter_text, _ = content.split("---", maxsplit=2)
+    frontmatter = yaml.safe_load(frontmatter_text)
+    openai = yaml.safe_load((skill_root / "agents/openai.yaml").read_text(encoding="utf-8"))
+    agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert openai["policy"]["allow_implicit_invocation"] is True
+    assert "用户提供完整题面或附件" in frontmatter["description"]
+    assert "用户不需要说出 Skill 名称" in content
+    assert "scripts/codex/init_simple_run.py" in content
+    assert "--workflow-version 3.2" in content
+    assert "必须优先使用 `mathmodel-workflow` 总控" in agents
+    assert "仅在用户明确要求完整赛题交付时使用" not in content
+
+
 def test_workflow_routes_problem_families_to_imported_skills() -> None:
     """完整工作流必须把题型映射到新增能力，而非只把 Skill 复制进目录。"""
     router_root = REPO_ROOT / ".agents/skills/mathmodel-capability-router"

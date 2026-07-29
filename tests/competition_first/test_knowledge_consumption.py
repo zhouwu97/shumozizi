@@ -242,6 +242,33 @@ def test_numbers_formulas_and_code_do_not_enter_transfer_artifacts(tmp_path: Pat
     assert "把模型与算法分离" in combined
 
 
+def test_failure_mode_lessons_enter_analysis_without_becoming_a_route(tmp_path: Path) -> None:
+    """论文卡的典型误读进入分析提醒，但不会自动选择目标或路线。"""
+    index = _seed_card(tmp_path)
+    card = tmp_path / "knowledge/cards/papers/structural-card.md"
+    card.write_text(
+        card.read_text(encoding="utf-8")
+        + "\n## 关键题意裁决\n\n多主体成功应先明确主体间聚合，再计算时间测度。\n"
+        + "\n## 最诱人的错误解释\n\n把共同满足直接写成各主体时长求和。\n"
+        + "\n## 最小判别反例\n\n比较累计更高但完全错开与累计较低但同步的两个方案。\n"
+        + "\n## 分解的成立条件\n\n只有目标和共享约束均可分时，独立最优才能直接组合。\n"
+        + "\n## 结论有效范围\n\n结论只适用于当前成功事件与主体间聚合定义。\n",
+        encoding="utf-8",
+    )
+    build_paper_index(tmp_path / "knowledge/cards/papers", index)
+    run_dir = initialize_simple_run(tmp_path, "failure-lessons", workflow_version="3.2")
+    before = read_simple_state(run_dir)
+
+    document = load_json(
+        write_analysis_knowledge_retrieval(run_dir, index, _fingerprint())
+    )
+
+    lessons = document["matched_cards"][0]["failure_mode_lessons"]
+    assert "主体间聚合" in lessons["key_interpretation_decision"]
+    assert "时长求和" in lessons["tempting_wrong_interpretation"]
+    assert read_simple_state(run_dir)["selected_route"] == before["selected_route"] is None
+
+
 def test_paper_application_requires_a_decision_for_every_pattern(tmp_path: Path) -> None:
     """写论证计划前必须逐项完成采用或拒绝。"""
     index = _seed_card(tmp_path)
@@ -333,6 +360,8 @@ def test_paper_application_adopts_patterns_from_at_most_two_cards(tmp_path: Path
     run_dir = initialize_simple_run(tmp_path, "paper-card-limit", workflow_version="3.2")
     write_analysis_knowledge_retrieval(run_dir, index_path, _fingerprint())
     document = load_json(run_dir / "knowledge/analysis-retrieval.json")
+    assert len(document["matched_cards"]) == 3
+    assert all(len(card["candidate_patterns"]) <= 2 for card in document["matched_cards"])
     accepted = []
     rejected = []
     for card in document["matched_cards"]:
@@ -352,36 +381,77 @@ def test_paper_application_adopts_patterns_from_at_most_two_cards(tmp_path: Path
     )
     path = write_paper_knowledge_application(run_dir)
     text = path.read_text(encoding="utf-8")
-    for card in document["matched_cards"]:
-        for pattern_index, _pattern in enumerate(card["candidate_patterns"]):
-            if pattern_index == 0:
-                replacement = (
-                    "- 写作决定：采用\n"
-                    "- 理由：该模式服务当前论文的个体级验证叙事。\n"
-                    "- 应用位置：问题分析与验证设计\n"
-                    "- 当前题证据：当前题数据存在同一个体跨折泄漏风险。"
-                    "\n- 正文源码：paper/main.tex"
-                    "\n- 兑现锚点：本文按个体组织验证叙事。"
-                )
-            else:
-                replacement = (
-                    "- 写作决定：拒绝\n"
-                    "- 理由：当前题不需要同时迁移该辅助结构模式。\n"
-                    "- 应用位置：不适用\n"
-                    "- 当前题证据：不适用"
-                    "\n- 正文源码：不适用"
-                    "\n- 兑现锚点：不适用"
-                )
-            text = text.replace(
-                "- 写作决定：待判断\n- 理由：待填写\n- 应用位置：待填写\n"
-                "- 当前题证据：待填写\n- 正文源码：待填写\n- 兑现锚点：待填写",
-                replacement,
-                1,
-            )
+    rejected_ids = {item["pattern_id"] for item in rejected}
+    assert all(f"## `{pattern_id}`" not in text for pattern_id in rejected_ids)
+    assert "分析阶段已拒绝（自动继承）" in text
+    for _card in document["matched_cards"]:
+        text = text.replace(
+            "- 写作决定：待判断\n- 理由：待填写\n- 应用位置：待填写\n"
+            "- 当前题证据：待填写\n- 正文源码：待填写\n- 兑现锚点：待填写",
+            "- 写作决定：采用\n"
+            "- 理由：该模式服务当前论文的个体级验证叙事。\n"
+            "- 应用位置：问题分析与验证设计\n"
+            "- 当前题证据：当前题数据存在同一个体跨折泄漏风险。"
+            "\n- 正文源码：paper/main.tex"
+            "\n- 兑现锚点：本文按个体组织验证叙事。",
+            1,
+        )
     path.write_text(text, encoding="utf-8")
 
     with pytest.raises(ContractError, match="最多采用 2 张"):
         require_paper_knowledge_application(run_dir)
+
+
+def test_paper_application_only_reopens_rejected_pattern_explicitly(tmp_path: Path) -> None:
+    """分析拒绝默认继承；只有 reopen 段和实质理由齐全时才重新判断。"""
+    index_path = _seed_card(tmp_path)
+    run_dir = initialize_simple_run(tmp_path, "paper-reopen", workflow_version="3.2")
+    write_analysis_knowledge_retrieval(run_dir, index_path, _fingerprint())
+    document = load_json(run_dir / "knowledge/analysis-retrieval.json")
+    patterns = document["matched_cards"][0]["candidate_patterns"]
+    accepted = [{
+        "pattern_id": patterns[0]["pattern_id"],
+        "reason": "该模式可能改善当前题的问题继承表达。",
+        "route_application": "在当前题的跨问主线中重新组织论证。",
+    }]
+    rejected = [{
+        "pattern_id": pattern["pattern_id"],
+        "reason": "该模式与当前题的主要数学困难不一致。",
+    } for pattern in patterns[1:]]
+    record_analysis_knowledge_decisions(
+        run_dir,
+        accepted_patterns=accepted,
+        rejected_patterns=rejected,
+    )
+
+    inherited = write_paper_knowledge_application(run_dir)
+    inherited_text = inherited.read_text(encoding="utf-8")
+    for item in rejected:
+        assert f"## `{item['pattern_id']}`" not in inherited_text
+
+    if rejected:
+        reopened = write_paper_knowledge_application(
+            run_dir,
+            overwrite=True,
+            reopen_pattern_ids=[rejected[0]["pattern_id"]],
+        )
+        reopened_text = reopened.read_text(encoding="utf-8")
+        assert f"## `{rejected[0]['pattern_id']}`" in reopened_text
+        assert "- 重新打开：是" in reopened_text
+        reopened.write_text(
+            reopened_text.replace(
+                "- 写作决定：待判断\n- 理由：待填写\n- 应用位置：待填写\n"
+                "- 当前题证据：待填写\n- 正文源码：待填写\n- 兑现锚点：待填写",
+                "- 写作决定：拒绝\n"
+                "- 理由：写作阶段确认该分析采用模式不适合成稿叙事。\n"
+                "- 应用位置：不适用\n- 当前题证据：不适用\n"
+                "- 正文源码：不适用\n- 兑现锚点：不适用",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ContractError, match="重新打开.*实质理由"):
+            read_paper_knowledge_application(run_dir)
 
 
 def test_card_updates_do_not_invalidate_scientific_results(tmp_path: Path) -> None:

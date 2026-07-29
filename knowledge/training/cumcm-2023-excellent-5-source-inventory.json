@@ -1,0 +1,115 @@
+{
+  "schema_name": "paper_source_inventory",
+  "schema_version": "1.0",
+  "generated_at": "2026-07-28T15:39:04.624688Z",
+  "sources": [
+    {
+      "source_id": "source-1",
+      "root_name": "2023年高教社杯全国大学生数学建模竞赛优秀论文"
+    }
+  ],
+  "file_count": 14,
+  "extension_counts": {
+    ".pdf": 14
+  },
+  "files": [
+    {
+      "source_id": "source-1",
+      "relative_path": "A092.pdf",
+      "extension": ".pdf",
+      "size_bytes": 4432891,
+      "sha256": "6f19a1e21443043cc30e3ca70ecf41dd41152205ffa143adbbd2e99fd307bc8e"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "A127.pdf",
+      "extension": ".pdf",
+      "size_bytes": 11597105,
+      "sha256": "77aae1ffa8d3c2ce29c870ab497b6b284b9ecf4236b2d5a4240c8fa9fc7a1d62"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "A165.pdf",
+      "extension": ".pdf",
+      "size_bytes": 4830010,
+      "sha256": "63e129d60639f2a84beb094818290ab1035ddc0aa1d4b94c8189689d0523b401"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "A175.pdf",
+      "extension": ".pdf",
+      "size_bytes": 807530,
+      "sha256": "904914537e950e7faabbad018ebd1ecb410d5ff94d19731a79e2f3b971a28ac1"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "B226.pdf",
+      "extension": ".pdf",
+      "size_bytes": 2334817,
+      "sha256": "6575167cc2cace9fc4f7a2d9e654128803b4270096fcb2e63b27ef05faf7a33d"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "B311.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1124061,
+      "sha256": "b939b88771b288865fef612c613eb1d6a5890049fade34578ba35a66a4e95095"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "B47700.pdf",
+      "extension": ".pdf",
+      "size_bytes": 2616585,
+      "sha256": "07329ac31d14177997c01035dcac29e1c03243ad71cb7ccaa381cf016595e1c6"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "C050.pdf",
+      "extension": ".pdf",
+      "size_bytes": 2787829,
+      "sha256": "8842b1e70acb03dc82171ea016b19aaabd0da043ce16878b384bc3c212adb510"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "C126.pdf",
+      "extension": ".pdf",
+      "size_bytes": 1301417,
+      "sha256": "ecf38421038ba5b01a376dbe9b230ad2f711c07e8772e75ae7784b2709036c93"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "C228.pdf",
+      "extension": ".pdf",
+      "size_bytes": 3369965,
+      "sha256": "fb3f16b5294a6ea14781d3a824756af39a2700a2333d0df56c31ee3351188b10"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "C235.pdf",
+      "extension": ".pdf",
+      "size_bytes": 4363000,
+      "sha256": "84724f950dfe248bddef91071909dead68dd3717f17f580e8b9ea2e5e842a25b"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "D039.pdf",
+      "extension": ".pdf",
+      "size_bytes": 682411,
+      "sha256": "9391c303be043f83a030d2e10084bb745060e5c1047b635fc6d41b808528da2b"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "E032.pdf",
+      "extension": ".pdf",
+      "size_bytes": 2563574,
+      "sha256": "4bc22c22847475092e0fd8bb188e1ac62d2ee64b0627b5768174033a2d21cc2b"
+    },
+    {
+      "source_id": "source-1",
+      "relative_path": "E176.pdf",
+      "extension": ".pdf",
+      "size_bytes": 3965664,
+      "sha256": "1b0fbd065535cb56dfdcc4daa0f8331eef29dafd9ab99119bf769514df0e278e"
+    }
+  ]
+}

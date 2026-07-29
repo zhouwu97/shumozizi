@@ -34,6 +34,13 @@ _UNSAFE_PATTERN = re.compile(
     r"\b(?:import|from|def|class|return|function|select)\b",
     re.IGNORECASE,
 )
+_FAILURE_MODE_SECTIONS = {
+    "key_interpretation_decision": "关键题意裁决",
+    "tempting_wrong_interpretation": "最诱人的错误解释",
+    "minimal_discriminating_counterexample": "最小判别反例",
+    "decomposition_conditions": "分解的成立条件",
+    "validity_scope": "结论有效范围",
+}
 
 
 def _atomic_text(path: Path, value: str) -> None:
@@ -116,8 +123,9 @@ def _card_section(body: str, section_name: str) -> str:
     return "\n".join(content).strip()
 
 
-def _candidate_patterns(body: str, *, limit: int = 3) -> list[str]:
+def _candidate_patterns(body: str, *, limit: int = 2) -> list[str]:
     """只提取不含数字、公式或代码的结构模式。"""
+    limit = min(max(limit, 1), 2)
     section = _card_section(body, "可迁移模式")
     safe_lines: list[str] = []
     inside_code = False
@@ -138,6 +146,20 @@ def _candidate_patterns(body: str, *, limit: int = 3) -> list[str]:
         if len(candidates) >= limit:
             break
     return candidates
+
+
+def _failure_mode_lessons(body: str) -> dict[str, str]:
+    """提取论文卡中的可选失败模式，不复制数字、公式或代码。"""
+    lessons: dict[str, str] = {}
+    for field, section_name in _FAILURE_MODE_SECTIONS.items():
+        section = _card_section(body, section_name)
+        for paragraph in re.split(r"\n+|；", section):
+            text = re.sub(r"^\s*[-*+]\s*", "", paragraph).strip().strip("。")
+            text = text.replace("`", "")
+            if len(text) >= 8 and not _UNSAFE_PATTERN.search(text):
+                lessons[field] = text
+                break
+    return lessons
 
 
 def _decision_lists(
@@ -161,7 +183,7 @@ def write_analysis_knowledge_retrieval(
     *,
     decisions: dict[str, Any] | None = None,
     unavailable_reason: str | None = None,
-    limit: int = 6,
+    limit: int = 3,
 ) -> Path:
     """检索论文卡并写入一次轻量、可判断的分析阶段记录。
 
@@ -169,6 +191,7 @@ def write_analysis_knowledge_retrieval(
     只有主动重跑检索时，候选模式才会变化。
     """
     normalized = normalize_task_fingerprint(run_dir, fingerprint)
+    limit = min(max(limit, 1), 3)
     output_path = run_dir / ANALYSIS_RETRIEVAL_PATH
     existing = load_json(output_path) if output_path.is_file() else None
     accepted, rejected = _decision_lists(existing, decisions)
@@ -220,23 +243,25 @@ def write_analysis_knowledge_retrieval(
                 patterns = _candidate_patterns(card["body"])
                 if not patterns:
                     continue
-                matched_cards.append(
-                    {
-                        "paper_id": str(item["paper_id"]),
-                        "title": str(item["title"]),
-                        "score": float(item["score"]),
-                        "structural_similarity": float(item["structural_similarity"]),
-                        "domain_similarity": float(item["domain_similarity"]),
-                        "matched_on": [str(reason) for reason in item["match_reasons"]],
-                        "candidate_patterns": [
-                            {
-                                "pattern_id": f"{item['paper_id']}:P{pattern_index}",
-                                "pattern": pattern,
-                            }
-                            for pattern_index, pattern in enumerate(patterns, start=1)
-                        ],
-                    }
-                )
+                matched_card = {
+                    "paper_id": str(item["paper_id"]),
+                    "title": str(item["title"]),
+                    "score": float(item["score"]),
+                    "structural_similarity": float(item["structural_similarity"]),
+                    "domain_similarity": float(item["domain_similarity"]),
+                    "matched_on": [str(reason) for reason in item["match_reasons"]],
+                    "candidate_patterns": [
+                        {
+                            "pattern_id": f"{item['paper_id']}:P{pattern_index}",
+                            "pattern": pattern,
+                        }
+                        for pattern_index, pattern in enumerate(patterns, start=1)
+                    ],
+                }
+                failure_lessons = _failure_mode_lessons(card["body"])
+                if failure_lessons:
+                    matched_card["failure_mode_lessons"] = failure_lessons
+                matched_cards.append(matched_card)
         except (ContractError, OSError, ValueError) as exc:
             status = "unavailable_with_reason"
             recorded_unavailable_reason = f"论文卡索引或卡片当前不可读取：{exc}"
@@ -361,13 +386,30 @@ def _analysis_decisions(document: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def write_paper_knowledge_application(run_dir: Path, *, overwrite: bool = False) -> Path:
-    """根据分析检索生成写作阶段逐项判断模板。"""
+def write_paper_knowledge_application(
+    run_dir: Path,
+    *,
+    overwrite: bool = False,
+    reopen_pattern_ids: list[str] | None = None,
+) -> Path:
+    """生成写作判断模板，只重审分析已采用或显式重新打开的模式。"""
     analysis = require_analysis_knowledge_retrieval(run_dir)
     output_path = run_dir / PAPER_APPLICATION_PATH
     if output_path.is_file() and not overwrite:
         return output_path
+    decision_records = _decision_map(analysis)
     decisions = _analysis_decisions(analysis)
+    reopened = list(dict.fromkeys(reopen_pattern_ids or []))
+    unknown_reopened = sorted(set(reopened) - set(decision_records))
+    invalid_reopened = sorted(
+        pattern_id
+        for pattern_id in reopened
+        if pattern_id in decision_records and decision_records[pattern_id][0] != "rejected"
+    )
+    if unknown_reopened:
+        raise ContractError("重新打开判断包含未知模式: " + ", ".join(unknown_reopened))
+    if invalid_reopened:
+        raise ContractError("只有分析阶段已拒绝的模式可以重新打开: " + ", ".join(invalid_reopened))
     lines = [
         "# KNOWLEDGE_APPLICATION",
         "",
@@ -381,9 +423,10 @@ def write_paper_knowledge_application(run_dir: Path, *, overwrite: bool = False)
         "- 数值结论",
         "- 奖项评价",
         "",
-        "## 候选模式判断",
+        "## 写作阶段待判断模式",
         "",
-        "写作阶段最多采用来自 2 张论文卡的模式；其余候选应明确拒绝，不得为凑形式强行迁移。",
+        "默认只重审分析阶段已采用的模式；分析阶段已拒绝的模式自动继承为拒绝。"
+        "只有显式 reopen 才重新判断。写作阶段最多采用来自 2 张论文卡的模式。",
         "",
     ]
     patterns = [
@@ -398,8 +441,24 @@ def write_paper_knowledge_application(run_dir: Path, *, overwrite: bool = False)
                 "",
             ]
         )
+    inherited_rejections = [
+        (paper_id, pattern)
+        for paper_id, pattern in patterns
+        if decisions[pattern["pattern_id"]] == "rejected"
+        and pattern["pattern_id"] not in reopened
+    ]
+    if inherited_rejections:
+        lines.extend(["## 分析阶段已拒绝（自动继承）", ""])
+        for paper_id, pattern in inherited_rejections:
+            reason = decision_records[pattern["pattern_id"]][1]["reason"]
+            lines.append(
+                f"- `{pattern['pattern_id']}`（`{paper_id}`）：{reason}"
+            )
+        lines.append("")
     for paper_id, pattern in patterns:
         pattern_id = pattern["pattern_id"]
+        if decisions[pattern_id] == "rejected" and pattern_id not in reopened:
+            continue
         lines.extend(
             [
                 f"## `{pattern_id}`",
@@ -407,6 +466,11 @@ def write_paper_knowledge_application(run_dir: Path, *, overwrite: bool = False)
                 f"- 来源卡片：`{paper_id}`",
                 f"- 候选模式：{pattern['pattern']}",
                 f"- 分析阶段判断：{decisions[pattern_id]}",
+                *(
+                    ["- 重新打开：是", "- 重新打开理由：待填写"]
+                    if pattern_id in reopened
+                    else []
+                ),
                 "- 写作决定：待判断",
                 "- 理由：待填写",
                 "- 应用位置：待填写",
@@ -453,6 +517,7 @@ def _validated_paper_knowledge_application(
             raise ContractError(f"KNOWLEDGE_APPLICATION.md 缺少禁止迁移边界：{boundary}")
 
     sections = _paper_sections(text)
+    analysis_decisions = _decision_map(analysis)
     adopted_patterns: list[dict[str, str]] = []
     rejected_patterns: list[dict[str, str]] = []
     for card in analysis["matched_cards"]:
@@ -460,13 +525,41 @@ def _validated_paper_knowledge_application(
             pattern_id = pattern["pattern_id"]
             section = sections.get(pattern_id)
             if section is None:
-                raise ContractError(f"KNOWLEDGE_APPLICATION.md 缺少候选模式 {pattern_id}")
+                decision, decision_item = analysis_decisions[pattern_id]
+                if decision == "adopted":
+                    raise ContractError(
+                        f"KNOWLEDGE_APPLICATION.md 缺少分析阶段已采用模式 {pattern_id}"
+                    )
+                rejected_patterns.append(
+                    {
+                        "pattern_id": pattern_id,
+                        "paper_id": card["paper_id"],
+                        "pattern": pattern["pattern"],
+                        "reason": decision_item["reason"],
+                        "decision_source": "inherited_analysis_rejection",
+                    }
+                )
+                continue
             source_card = _field(section, "来源卡片")
             recorded_pattern = _field(section, "候选模式")
             if source_card is None or source_card.strip("`") != card["paper_id"]:
                 raise ContractError(f"候选模式 {pattern_id} 的来源卡片与分析检索不一致")
             if recorded_pattern != pattern["pattern"]:
                 raise ContractError(f"候选模式 {pattern_id} 的安全模式文本已漂移")
+            analysis_decision, _analysis_item = analysis_decisions[pattern_id]
+            if analysis_decision == "rejected":
+                reopen = _field(section, "重新打开")
+                reopen_reason = _field(section, "重新打开理由")
+                if reopen != "是":
+                    raise ContractError(
+                        f"分析阶段已拒绝模式 {pattern_id} 只有显式 reopen 才能重新判断"
+                    )
+                if (
+                    reopen_reason is None
+                    or len(reopen_reason) < 8
+                    or _PLACEHOLDER_PATTERN.search(reopen_reason)
+                ):
+                    raise ContractError(f"重新打开模式 {pattern_id} 必须说明实质理由")
             decision = _field(section, "写作决定")
             reason = _field(section, "理由")
             if decision not in {"采用", "拒绝"}:
@@ -515,6 +608,11 @@ def _validated_paper_knowledge_application(
                         "paper_id": card["paper_id"],
                         "pattern": pattern["pattern"],
                         "reason": reason,
+                        "decision_source": (
+                            "explicit_reopen"
+                            if analysis_decision == "rejected"
+                            else "paper_reassessment"
+                        ),
                         "planned_location": application,
                         "current_evidence": evidence,
                         "source_path": source_relative,
@@ -528,6 +626,11 @@ def _validated_paper_knowledge_application(
                         "paper_id": card["paper_id"],
                         "pattern": pattern["pattern"],
                         "reason": reason,
+                        "decision_source": (
+                            "explicit_reopen"
+                            if analysis_decision == "rejected"
+                            else "paper_reassessment"
+                        ),
                     }
                 )
     selected_cards = list(

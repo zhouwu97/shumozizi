@@ -1,7 +1,7 @@
 {
   "schema_name": "paper_card_index",
   "schema_version": "1.0",
-  "paper_count": 11,
+  "paper_count": 21,
   "papers": [
     {
       "paper_id": "cumcm-2012-a-wine-evaluation",
@@ -157,6 +157,266 @@
       "structural_tags": [],
       "source_sha256": "4c4afd10a66b390d8a962609c31ef36792258561852f6b7d19545b847d897851",
       "card_path": "knowledge/cards/papers/cumcm-2018-b-rgv-scheduling.md"
+    },
+    {
+      "paper_id": "cumcm-2023-a-a092-heliostat-field",
+      "title": "定日镜场的优化设计",
+      "problem_type": "空间光学机理仿真与约束优化",
+      "data_structure": "定日镜空间点集与离散时间采样",
+      "task_types": [
+        "三维几何",
+        "蒙特卡洛仿真",
+        "约束优化",
+        "布局设计"
+      ],
+      "domain_terms": [
+        "定日镜场",
+        "光学效率",
+        "集热器截断",
+        "太阳能光热"
+      ],
+      "structural_tags": [
+        "共享仿真内核",
+        "几何判定",
+        "黑箱优化",
+        "逐问扩维"
+      ],
+      "source_sha256": "6f19a1e21443043cc30e3ca70ecf41dd41152205ffa143adbbd2e99fd307bc8e",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a092-heliostat-field.md"
+    },
+    {
+      "paper_id": "cumcm-2023-a-a127-heliostat-output",
+      "title": "定日镜场的输出功率优化",
+      "problem_type": "离散光学仿真与结构化镜场优化",
+      "data_structure": "空间镜面点集、离散光线与分区环形布局",
+      "task_types": [
+        "三维光线追迹",
+        "几何离散",
+        "约束优化",
+        "分区布局"
+      ],
+      "domain_terms": [
+        "定日镜场",
+        "阴影遮挡",
+        "截断效率",
+        "输出热功率"
+      ],
+      "structural_tags": [
+        "确定性离散评分器",
+        "分区参数共享",
+        "粗到细搜索",
+        "策略消融"
+      ],
+      "source_sha256": "77aae1ffa8d3c2ce29c870ab497b6b284b9ecf4236b2d5a4240c8fa9fc7a1d62",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a127-heliostat-output.md"
+    },
+    {
+      "paper_id": "cumcm-2023-b-b226-multibeam-survey",
+      "title": "多波束测线布设",
+      "problem_type": "空间覆盖几何与路径规划",
+      "data_structure": "规则坡面参数与二维网格水深场",
+      "task_types": [
+        "解析几何",
+        "曲面拟合",
+        "覆盖优化",
+        "路径规划"
+      ],
+      "domain_terms": [
+        "多波束测深",
+        "测线布设",
+        "重叠率",
+        "海底地形"
+      ],
+      "structural_tags": [
+        "解析模型到数据地形",
+        "覆盖约束",
+        "分区拟合",
+        "贪心构造"
+      ],
+      "source_sha256": "6575167cc2cace9fc4f7a2d9e654128803b4270096fcb2e63b27ef05faf7a33d",
+      "card_path": "knowledge/cards/papers/cumcm-2023-b-b226-multibeam-survey.md"
+    },
+    {
+      "paper_id": "cumcm-2023-b-b311-primary-objective-survey",
+      "title": "基于主要目标法的测线设计问题",
+      "problem_type": "覆盖定义辨析与多目标测线规划",
+      "data_structure": "规则坡面参数、等深线与离散水深网格",
+      "task_types": [
+        "目标语义比较",
+        "解析几何",
+        "覆盖规划",
+        "多目标决策"
+      ],
+      "domain_terms": [
+        "多波束测深",
+        "重叠率",
+        "主要目标法",
+        "等深线"
+      ],
+      "structural_tags": [
+        "候选定义比较",
+        "目标分层",
+        "递推构造",
+        "空间分区"
+      ],
+      "source_sha256": "b939b88771b288865fef612c613eb1d6a5890049fade34578ba35a66a4e95095",
+      "card_path": "knowledge/cards/papers/cumcm-2023-b-b311-primary-objective-survey.md"
+    },
+    {
+      "paper_id": "cumcm-2023-b-b47700-terrain-survey-routing",
+      "title": "多波束测深合理探测方案的设计及效果分析",
+      "problem_type": "数据驱动地形重建与自适应覆盖路径规划",
+      "data_structure": "规则水深网格、连续地形代理与分区曲线路径",
+      "task_types": [
+        "空间插值",
+        "监督学习",
+        "覆盖路径规划",
+        "启发式优化"
+      ],
+      "domain_terms": [
+        "多波束测深",
+        "随机森林",
+        "地形梯度",
+        "飞蛾火焰算法"
+      ],
+      "structural_tags": [
+        "代理地形模型",
+        "局部几何控制",
+        "自适应路径",
+        "分区混合策略"
+      ],
+      "source_sha256": "07329ac31d14177997c01035dcac29e1c03243ad71cb7ccaa381cf016595e1c6",
+      "card_path": "knowledge/cards/papers/cumcm-2023-b-b47700-terrain-survey-routing.md"
+    },
+    {
+      "paper_id": "cumcm-2023-c-c126-vegetable-sales",
+      "title": "商超蔬菜销售数据的统计分析及建模",
+      "problem_type": "零售需求预测与定价补货优化",
+      "data_structure": "多层级零膨胀日销售流水与价格损耗时序",
+      "task_types": [
+        "分布分析",
+        "贝叶斯建模",
+        "多变量时序预测",
+        "利润优化"
+      ],
+      "domain_terms": [
+        "蔬菜销售",
+        "补货",
+        "动态定价",
+        "零膨胀数据"
+      ],
+      "structural_tags": [
+        "统计单位转换",
+        "预测到决策",
+        "多层级时序",
+        "离散选择"
+      ],
+      "source_sha256": "ecf38421038ba5b01a376dbe9b230ad2f711c07e8772e75ae7784b2709036c93",
+      "card_path": "knowledge/cards/papers/cumcm-2023-c-c126-vegetable-sales.md"
+    },
+    {
+      "paper_id": "cumcm-2023-c-c235-prophet-replenishment",
+      "title": "基于历史数据的蔬菜类商品定价与补货决策模型",
+      "problem_type": "可解释需求预测与混合整数定价补货决策",
+      "data_structure": "单品交易流水、品类聚合价格与多周期日序列",
+      "task_types": [
+        "多尺度统计分析",
+        "外生变量时序预测",
+        "启发式定价优化",
+        "混合整数规划"
+      ],
+      "domain_terms": [
+        "Prophet",
+        "蔬菜补货",
+        "价格弹性",
+        "单品组合"
+      ],
+      "structural_tags": [
+        "去趋势价格响应",
+        "预测嵌套优化",
+        "层级决策",
+        "软约束选择"
+      ],
+      "source_sha256": "84724f950dfe248bddef91071909dead68dd3717f17f580e8b9ea2e5e842a25b",
+      "card_path": "knowledge/cards/papers/cumcm-2023-c-c235-prophet-replenishment.md"
+    },
+    {
+      "paper_id": "cumcm-2023-d-d039-sheep-pen-scheduling",
+      "title": "圈养湖羊空间利用率的优化问题",
+      "problem_type": "周期资源调度与随机预案优化",
+      "data_structure": "多阶段群体状态时间线与随机分支",
+      "task_types": [
+        "周期调度",
+        "整数优化",
+        "蒙特卡洛仿真",
+        "随机决策"
+      ],
+      "domain_terms": [
+        "湖羊养殖",
+        "羊栏利用率",
+        "生产计划",
+        "期望损失"
+      ],
+      "structural_tags": [
+        "资源时间图",
+        "周期稳态",
+        "随机分支",
+        "仿真优化"
+      ],
+      "source_sha256": "9391c303be043f83a030d2e10084bb745060e5c1047b635fc6d41b808528da2b",
+      "card_path": "knowledge/cards/papers/cumcm-2023-d-d039-sheep-pen-scheduling.md"
+    },
+    {
+      "paper_id": "cumcm-2023-e-e032-yellow-river",
+      "title": "基于时间序列分析预测的黄河水沙监测模型",
+      "problem_type": "水文时序分析、预测与监测设计",
+      "data_structure": "多频率水文时序、断面曲线与稀疏监测点",
+      "task_types": [
+        "回归分析",
+        "突变与周期检测",
+        "时间序列预测",
+        "采样设计"
+      ],
+      "domain_terms": [
+        "黄河水沙",
+        "水文监测",
+        "调水调沙",
+        "河底高程"
+      ],
+      "structural_tags": [
+        "多尺度时序",
+        "变化点分析",
+        "预测到监测",
+        "断面积分"
+      ],
+      "source_sha256": "4bc22c22847475092e0fd8bb188e1ac62d2ee64b0627b5768174033a2d21cc2b",
+      "card_path": "knowledge/cards/papers/cumcm-2023-e-e032-yellow-river.md"
+    },
+    {
+      "paper_id": "cumcm-2023-e-e176-monitoring-knapsack",
+      "title": "基于小波变换和背包模型的小浪底水库最优监测方案研究",
+      "problem_type": "多尺度水文分析与离散监测时点选择",
+      "data_structure": "日/月水沙时序、稀疏河床断面与候选采样月份",
+      "task_types": [
+        "多尺度时间序列",
+        "变化点检测",
+        "0-1 监测设计",
+        "灰色预测"
+      ],
+      "domain_terms": [
+        "水沙通量",
+        "小波变换",
+        "监测方案",
+        "调水调沙"
+      ],
+      "structural_tags": [
+        "诊断到决策",
+        "信息价值选择",
+        "多方法交叉",
+        "稀疏外推"
+      ],
+      "source_sha256": "1b0fbd065535cb56dfdcc4daa0f8331eef29dafd9ab99119bf769514df0e278e",
+      "card_path": "knowledge/cards/papers/cumcm-2023-e-e176-monitoring-knapsack.md"
     },
     {
       "paper_id": "cumcm-main-2023-b-workspace-case",

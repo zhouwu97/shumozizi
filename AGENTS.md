@@ -25,17 +25,20 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 `mathmodel-matlab`、`mathmodel-geometry-oracle`、`mathmodel-geometry-visual`、`mathmodel-optimizer-benchmark` 和 `mathmodel-learn-paper` 是按需工具。`mathmodel-capability-router` 仅为旧运行或按需工具探测保留，不能成为新运行阶段。`mathmodel-final-check` 只执行机械 QA。
 
+用户提供完整数学建模题面或附件，或要求解答整题、多问建模、真实实验并形成论文/竞赛交付时，必须优先使用 `mathmodel-workflow` 总控；用户无需精确说出 Skill 名称。只有局部分析、调试、单个实验、单图或论文局部修改时才不自动启动完整工作流。
+
 局部分析、调试或论文修改不得自动启动完整工作流。
 
 ## 路线与实验
 
-- 题面和数据审计后、路线竞争前，必须生成结构化任务指纹并检索仓内 `knowledge/indexes/papers.json`。检索使用数据结构、统计单位、任务类型、数学困难、目标与约束结构、验证风险和多问继承关系，题名与领域词只能作为辅助。结果写入运行目录的 `knowledge/analysis-retrieval.json`，允许 `matched`、`no_relevant_match` 或有具体原因的 `unavailable_with_reason`；有候选模式时必须逐项采用或拒绝，未执行检索不得正式进入 experiment。知识卡只提供路线启发，不得自动晋级为主路线，也不得迁移原题参数、公式和代码、数值结论或奖项评价。知识卡和索引更新不通过哈希反向失效当前实验、结果或科学挑战。
-- 前期可用 fresh thread、获奖论文结构卡或网页 GPT 讨论题意、建模、反例、验证和论文建议；专家卡和网页讨论都是发现问题的可选手段，不是阶段门。进入实验前的正式 `MODELING_UNITS.json` 仍须有两次只绑定 `problem/` 的真实 fresh-thread 题意重建，但回执只证明独立性，绝不证明模型或结论已正确。应及时把改变路线的判断写成绑定 `problem/` 的 `analysis/BASELINE_FREEZE.json` 决策快照，并在问题、反例或实验冲突出现后修订、重跑和复审。
+- 题面和数据审计后、路线竞争前，必须生成结构化任务指纹并检索仓内 `knowledge/indexes/papers.json`。检索使用数据结构、统计单位、任务类型、数学困难、目标与约束结构、验证风险和多问继承关系，题名与领域词只能作为辅助。结果写入运行目录的 `knowledge/analysis-retrieval.json`，允许 `matched`、`no_relevant_match` 或有具体原因的 `unavailable_with_reason`；最多保留 3 张结构相似卡、每卡最多 2 个安全模式，有候选模式时必须逐项采用或拒绝，未执行检索不得正式进入 experiment。知识卡只提供路线启发，不得自动晋级为主路线，也不得迁移原题参数、公式和代码、数值结论或奖项评价。知识卡和索引更新不通过哈希反向失效当前实验、结果或科学挑战。
+- 前期可用 fresh thread、获奖论文结构卡或网页 GPT 讨论题意、建模、反例、验证和论文建议；专家卡和网页讨论都是发现问题的可选手段，不是阶段门。进入实验前的正式 `MODELING_UNITS.json` 使用 1.3，两次只绑定 `problem/` 的真实 fresh-thread 题意重建固定为一次 `faithful_reconstruction` 和一次 `semantic_adversary`：前者忠实重建决策变量、成功事件、聚合和输出，后者专查量词、集合/聚合、前问目标复制和分解失效并给出最小反例。回执与两份报告的一致只证明独立上下文和共识，绝不证明目标正确。应及时把改变路线的判断写成绑定 `problem/` 的 `analysis/BASELINE_FREEZE.json` 决策快照，并在问题、反例或实验冲突出现后修订、重跑和复审。
 - 获奖论文专家库和网页讨论都不是答案库、引用库、结果来源或状态门。运行时只能读取安全 `library.json`；来源、页码与论文标识仅保留于离线 `provenance.json`。未冻结时路由须标记 `advisory_only=true` 和 `requires_independent_verification=true`；冻结或修订后应重新路由，并用 `AWARD_EXPERT_ROUTE_AUDIT.json` 确认 `structure_only=true`、`prompt_safe=true` 和 `raw_sources_returned=0`。审计须说明它没有操作系统级文件访问监控。
 - 网页 GPT 仅可基于用户提供的题面讨论和批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，也不得复用此类内容。其建议与专家卡只能帮助路线竞争、probe、验证、研究主线和 LaTeX 论文组织；不得作为当前模型、参数、结果、图表、代码、citation、claim evidence 或 exact 比较的替代品。需要并行讨论时，先将仅基于 `problem/` 的路线冻结为 `LOCAL_ROUTE_SNAPSHOT.json`，发给网页的首轮提示不得披露该路线，且在本地路线写完前不得阅读网页回应；之后将差异和本地验证动作写入 `EXTERNAL_DISCUSSION_COMPARISON.json`。实现总结必须另开网页 fresh chat，不能续用首轮讨论；它只能给出可由 exact scorer 和真实实验检验的实现建议，不能替代本地寻找最优。所有可采纳建议必须由当前运行的 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核验证；同题资料仍只能在 baseline 快照后进入 answer-filter。
-- 目标不得在看到策略后果之前冻结。题面留有解释空间时，`analysis/OBJECTIVE_CANDIDATES.json` 必须保留至少两个候选目标（各含公式、预期策略偏好、题面依据）和一组共同后果度量，其中至少一个是公平、瓶颈或安全指标。每个候选都要有真实低成本 probe；若冻结候选让某 guard 指标跌破下限而其它候选没有，必须写出权衡裁决并绑定至少两点真实 Pareto 证据。`analysis/objective-ambiguities.json` 仍有未决且会改变主结果的歧义时，不能用 `determined` 跳过候选比较。
-- 每个必答问题在路线比较前必须在 `MODELING_UNITS.json` 写直接答案合同：要求输出、决策对象/总体、主 endpoint/estimand、主判据、自然 baseline 和 fallback。主 endpoint 必须预先声明；聚合口径有歧义时标记 `comparison_planned` 并跑后果 probe，不能看完结果后换 endpoint。
+- 目标使用 `analysis/OBJECTIVE_CANDIDATES.json` 1.1，顺序必须是题面合法性筛选、同源反例区分、仍合理候选的策略后果。每个候选先说明题面原句、保留/改变的量词、引入的价值偏好和是否只为方便求解，并标为题面直接支持、合理假设支持、仅敏感性或与题意不符；只有前两类可成为正式目标。合法候选只剩一个时不强迫跑多个目标实验；仍有两个以上时才用共同后果度量运行真实低成本 probe，其中至少一个是公平、瓶颈或安全指标。高风险问题不能只写一句 `determined_basis`；必须声明正式目标、被拒绝替代和拒绝理由，并复用 `MODELING_UNITS` 中的区分反例。`analysis/objective-ambiguities.json` 仍有未决且会改变主结果的歧义时，不能用 `determined` 跳过候选比较。
+- 每个必答问题在路线比较前必须在 `MODELING_UNITS.json` 写 `question_delta` 和直接答案合同：先比较相邻问题新增的实体、资源、共享约束与聚合层，再声明要求输出、决策对象/总体、主 endpoint/estimand、主判据、自然 baseline 和 fallback。主 endpoint 必须同时用自然语言与公式写清原子成功、实体内、资源间、实体间、时间和量词次序；聚合口径有歧义时标记 `comparison_planned`，先用玩具反例区分，再对仍合法解释跑后果 probe，不能看完结果后换 endpoint。高风险核心问题必须在路线搜索前用 3--5 个人工案例验证 scorer 的预期排序。
 - v3.2 每个 `compare` 单元必须有 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 仅用于题型明确需要独立 oracle 的单元。单纯替换 GA、PSO、DE 等求解器属于同一路线比较。每个单元必须显式声明 `core_question`，且运行至少有一个核心问题。
+- 任何“分别求解再组合”的路线必须声明为精确分解、启发式分解或仅作联合优化初值。精确分解给出等价依据；启发式/初值路线必须继续用联合 scorer 改进。没有证明、小规模对照或联合后续时，不得把各子问题分别最优写成全局最优。
 - 比较统一 exact 目标、实际预算与可行性优先；首个可行解后必须至少用两类异构策略深化，且只可使用计划声明的停止理由白名单。灵敏度、鲁棒性和题型 oracle 条件触发，不能互相替代。
 - 比较必须真的判胜负。赢家由统一 exact scorer 的实测结果决定，不能由声明指定；核心问题的赢家必须相对 baseline 达到事前声明的 `significant_improvement_ratio`，否则继续搜索、换路线，或用 `baseline_near_bound` 加实际界证据说明已接近上限。深化后的最终结果不得比比较阶段的赢家更差。核心问题的竞争路线要给出可量化的 `expected_improvement_ratio`，实测明显落空时登记 `upside_shortfall` 的原因与决定。
 - exact 赢家不是自动主答案。每个 compare 单元须用 `promotion_decision` 检查改善阈值、endpoint 一致性、guard 约束和决策稳定性；全部通过才 `promoted`。失败时只能启用已验证的事前 fallback，或 `redesign_required` 返回 analysis/experiment。论文的 `primary_result_id` 必须与晋级/回退结果一致。
@@ -50,7 +53,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 只有高影响且未解决的目标歧义才触发独立目标语义审查。判断来自 `analysis/objective-ambiguities.json`：至少两个合理解释、可能改变主结果、题面未排除、用户未裁决。
 
-**v3.1/v3.2 Competition-First 审查（当前主链）**：实验结束做一次科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。科学挑战采用两阶段阅读：阶段A只读 `problem/`，独立重建数学结构、最简 baseline、可能更强的候选路线和最关键歧义，并明确写入报告；阶段B再读代码和结果，与阶段A比较后选择一个最高价值结论实施真实攻击，说明攻击结果（推翻/支持/不确定）。风险数量不设要求——一个足以决定论文上限的缺陷可以集中全部篇幅；报告只要求非空（> 300 字符）且包含实质分析，不检查固定关键词或固定栏目数量。”是否存在明显更强的路线或目标定义”必须用 `record_stronger_alternative` 写成 `review/stronger-alternative.json` 闭合——`found=False` 记录会绑定记录时的生产结果集合，如果后续实验新增了生产结果，记录自动失效需重新记录；`found=True` 时要么真的跑一次并绑定真实生产结果，要么写明为何赛程内不可行；未闭合不放行论文。v3.1/v3.2 **不使用** `review/gaps/round-N.json` 查漏系统，该系统仅属于 Capability-First v3.0 路径。
+**v3.1/v3.2 Competition-First 审查（当前主链）**：实验结束做一次科学挑战，报告 `review/SCIENTIFIC_CHALLENGE.md`。科学挑战采用两阶段阅读：阶段A只读 `problem/`，独立重建数学结构、最简 baseline、可能更强的候选路线和最关键歧义，并先判断核心风险属于目标语义/分解还是模型/搜索。存在多主体、嵌套量词、聚合词、问题实体变化或先分解后组合时，第一攻击必须针对语义或分解等价性并产出独立玩具反例；只有语义风险低时才优先攻击搜索和数值。阶段B再读代码和结果，与阶段A比较后选择一个最高价值结论实施真实攻击，说明攻击结果（推翻/支持/不确定）。风险数量不设要求——一个足以决定论文上限的缺陷可以集中全部篇幅；报告只要求非空（> 300 字符）且包含实质分析，不检查固定关键词或固定栏目数量。”是否存在明显更强的路线或目标定义”必须用 `record_stronger_alternative` 写成 `review/stronger-alternative.json` 闭合——`found=False` 记录会绑定记录时的生产结果集合，如果后续实验新增了生产结果，记录自动失效需重新记录；`found=True` 时要么真的跑一次并绑定真实生产结果，要么写明为何赛程内不可行；未闭合不放行论文。v3.1/v3.2 **不使用** `review/gaps/round-N.json` 查漏系统，该系统仅属于 Capability-First v3.0 路径。
 
 审查发现必须按修复层级分流：措辞、图注、章节组织和证据边界问题进入 paper；会改变 endpoint、目标、模型、代码、结果、主路线、fallback 或行动建议的问题返回 analysis/experiment，并使旧结果、图表和论文口径失效。不能把模型或结果缺陷降级成局限性说明。
 
@@ -60,14 +63,14 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 - **Codex 桌面端**：用 `create_thread` 新建独立顶层对话，禁止 fork 或续用任何已有对话。
 - **Claude.ai / Claude Code**：dispatch 一个子 Agent（Agent tool call），**不能新开浏览器页面**；子 Agent 不得接收任何当前 run 的上下文，只接收冻结 PDF 路径 + 提示词。子 Agent 的 agent ID 即为 `raw_thread_id`，`creation_mode` 为 `dispatch_agent`，`provider` 为 `claude`。
 
-无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、计划文件、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须在三分钟内逐问找直接答案、复述一句话贡献、说明问题继承、识别主图及其论点、指出工作报告页，并判断前五页是否建立数据直觉。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
+无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、计划文件、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须在三分钟内逐问找直接答案、复述一句话贡献、说明问题继承、识别主图及其论点、指出工作报告页，并判断前五页是否建立数据直觉；报告末尾必须按固定提示嵌入同源结构化 JSON，逐问记录缺失论证角色、实际页码和具体 finding。导入器把这些事实写入现有 `review/paper-blind-review.json` 并绑定报告哈希、任务/对话 ID 与渲染修订。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
 
 **网页版 GPT 补充审核为可选环节**，只在论文主模型和结果已稳定、需要专项编辑审查时使用，不是每次 PDF 编译后的默认流程。使用时：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核聚焦写作风格（AI 句式 / 分点堆砌 / 空话）、可读性和论证表达，找出最高价值的修改建议；无法由 PDF 验证的内容标为”需要本地复算/对照题面”。发现需要重写章节、替换主图或回到实验的问题时，直接说明，不要降级为局部修补。将审核结果写入 `WEB_PAPER_AUDIT.json`；如有修复，重新编译并复核。最多使用一轮；确需再次审核时生成新提示。网页评价不能证明省一或任何奖项，只能降低已识别的质量风险。
 
 ## 图表与论文
 
-- 写 `paper/ARGUMENT_PLAN.md` 前，必须根据分析阶段候选模式完成 `paper/KNOWLEDGE_APPLICATION.md`：逐项说明写作时采用或拒绝，采用模式最多来自 1–2 张卡，采用项写明论文位置、当前题证据、实际正文源码和兑现锚点。首版草稿与正式候选稿的论证就绪检查必须打开正文源码确认锚点已经被消费；只填写计划而未进入正文不能放行。知识卡不是当前题证据；无相关匹配时记录该事实即可，不强迫采用模式，不新增工作流阶段。
-- Competition-First v3.2 的 CUMCM 正式候选稿使用 `CUMCM_STRUCTURE_MAP` 1.1：`classic` 保留固定栏目兜底，`semantic` 允许拆出数据处理和逐问章节，但必须覆盖全部语义角色、必答问题并保留 `ARGUMENT_PLAN` 的论证顺序。两种画像都填写 advisory `presentation_contract`，明确前五页阅读路线、跨问主线、答案总览、数据画像和逐问主图；不得借适配修改模型、数字、结论或证据等级。`paper/CUMCM_LAYOUT_AUDIT.json` 1.2 在 `paper_review` 合并 PDF 冷读、计划兑现、页面节奏、论证深度、问题继承、反工作报告风险和论文卡模式兑现，在 `verify` 原文件补数字、引用、Word/PDF 与版面闭环。论文卡兑现只对照 `KNOWLEDGE_APPLICATION.md` 中预先采用的安全模式，始终 advisory；盲评上下文仍只接收 PDF。近端验证留在各问，综合检验只汇总跨问题内容。CUMCM 正文 24–30 页仅为软规划，少于 18 页或超过 30 页触发说明，不以页数证明质量。
+- 写 `paper/ARGUMENT_PLAN.md` 前，必须完成 `paper/KNOWLEDGE_APPLICATION.md`：默认只重新判断分析阶段已采用的模式，分析阶段已拒绝项自动继承为拒绝；只有显式 `reopen` 并写明实质理由时才重新打开。写作采用模式最多来自 1–2 张卡，采用项写明论文位置、当前题证据、实际正文源码和兑现锚点。首版草稿与正式候选稿的论证就绪检查必须打开正文源码确认锚点已经被消费；只填写计划而未进入正文不能放行。知识卡不是当前题证据；无相关匹配时记录该事实即可，不强迫采用模式，不新增工作流阶段。
+- Competition-First v3.2 的 CUMCM 正式候选稿使用 `CUMCM_STRUCTURE_MAP` 1.1：`classic` 保留固定栏目兜底；`semantic` 仍是实验画像，当前继续要求集中前置假设/数据角色、独立 local validation 和 appendix，不设为默认，等 held-out A/B 后再决定是否放宽。两种画像都填写 advisory `presentation_contract`，明确前五页阅读路线、跨问主线、答案总览、数据画像和逐问主图；不得借适配修改模型、数字、结论或证据等级。`paper/CUMCM_LAYOUT_AUDIT.json` 1.3 直接读取当前 `review/paper-blind-review.json` 的同源冷读、逐问论证 finding、页码、问题继承和叙事风险，禁止作者再次传入平行的 `cold_read`、`argument_depth` 或问题递进判断；本地只追加呈现合同、论文卡兑现和页面机械探针，在 `verify` 原文件补数字、引用、Word/PDF 与版面闭环。论文卡兑现始终 advisory；盲评上下文仍只接收 PDF。近端验证留在各问，综合检验只汇总跨问题内容。CUMCM 正文 24–30 页仅为软规划，少于 18 页或超过 30 页触发说明，不以页数证明质量。
 - 新运行使用 `FIGURE_PLAN` 2.3，将 `evidence_need` 与 `presentation_need` 分开；前者控制科学证据硬门，后者初期只给评委阅读告警。数据结构决定统计单位、删失、聚合或模型选择时规划 `data_portrait`；每问按实际需要选择一个 `question_hero`，纯解析题可以有理由豁免。纯呈现图只能读取当前运行内冻结的 `problem/`、`analysis/` 或 `results/raw/` 文件，并登记输入、脚本、current 输出与人工晋级回执，不得为数据画像伪造实验结果。
 - 图表先输出到版本化 `figures/candidates/<figure_id>/<version>/`，通过文件可读性、PNG/PDF 几何一致性和人工看图后才晋级 `figures/current/`；流程图另查文字越界、重叠、最小字号、箭头穿字和连接点居中。每张图只需要真实来源、它回答的问题、读者看到的 takeaway，以及可选边界；不得为每题、3D、多种子、敏感性或双版本输出凑数量，也不靠输出份数凑数量。
 - v3.2 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。`stability`（舍入、采样层级、数值稳定性）一律进入附录，不得占据正文版面。省略 role 会被拒绝，否则附录约束形同虚设。

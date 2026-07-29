@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.simple.modeling_units import (
+    semantic_counterexample_for_question,
+    semantic_high_risk_questions,
+)
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import (
     is_competition_first_v32_state,
@@ -28,6 +32,10 @@ from shumozizi.simple.state import (
 OBJECTIVE_CANDIDATES_PATH = Path("analysis/OBJECTIVE_CANDIDATES.json")
 _GUARD_KINDS = frozenset({"efficiency", "fairness", "bottleneck", "safety"})
 _DIRECTIONS = frozenset({"minimize", "maximize"})
+_SUPPORT_LEVELS = frozenset(
+    {"direct", "assumption_supported", "sensitivity_only", "incompatible"}
+)
+_ELIGIBLE_SUPPORT_LEVELS = frozenset({"direct", "assumption_supported"})
 
 
 def _require_text(value: object, label: str) -> str:
@@ -118,10 +126,12 @@ def _probe_result(
     return result
 
 
-def _candidate_plan(value: object, label: str) -> dict[str, Any]:
+def _candidate_plan(
+    value: object, label: str, *, require_semantic_legality: bool
+) -> dict[str, Any]:
     """验证一个候选目标在实验前已说明公式和预期策略偏好。"""
     item = _require_mapping(value, label)
-    return {
+    parsed = {
         "objective_id": _require_text(item.get("objective_id"), f"{label}.objective_id"),
         "formula": _require_text(item.get("formula"), f"{label}.formula"),
         "expected_strategy_bias": _require_text(
@@ -131,6 +141,87 @@ def _candidate_plan(value: object, label: str) -> dict[str, Any]:
             item.get("problem_text_basis"), f"{label}.problem_text_basis"
         ),
     }
+    if require_semantic_legality:
+        support_level = item.get("support_level")
+        if support_level not in _SUPPORT_LEVELS:
+            raise ContractError(
+                f"{label}.support_level 必须为 direct、assumption_supported、"
+                "sensitivity_only 或 incompatible"
+            )
+        parsed.update(
+            {
+                "support_level": str(support_level),
+                "source_language": _require_text(
+                    item.get("source_language"), f"{label}.source_language"
+                ),
+                "preserved_quantifiers": _require_text(
+                    item.get("preserved_quantifiers"),
+                    f"{label}.preserved_quantifiers",
+                ),
+                "altered_quantifiers": _require_text(
+                    item.get("altered_quantifiers"), f"{label}.altered_quantifiers"
+                ),
+                "introduced_preferences": _require_text(
+                    item.get("introduced_preferences"),
+                    f"{label}.introduced_preferences",
+                ),
+            }
+        )
+        convenience_only = item.get("convenience_only")
+        if not isinstance(convenience_only, bool):
+            raise ContractError(f"{label}.convenience_only 必须是布尔值")
+        parsed["convenience_only"] = convenience_only
+        if support_level in _ELIGIBLE_SUPPORT_LEVELS and convenience_only:
+            raise ContractError(f"{label} 不能把仅为方便求解的目标标记为正式合法候选")
+    return parsed
+
+
+def _counterexample_rankings(run_dir: Path, question_id: str, label: str) -> dict[str, str]:
+    """读取 MODELLING_UNITS 中的同源区分反例排名。"""
+    counterexample = semantic_counterexample_for_question(run_dir, question_id)
+    if not isinstance(counterexample, dict):
+        raise ContractError(f"{label} 缺少 MODELING_UNITS 中的同源语义反例")
+    rankings = counterexample.get("candidate_rankings")
+    if not isinstance(rankings, dict) or len(rankings) < 2:
+        raise ContractError(f"{label} 的语义反例至少要比较两个目标解释")
+    normalized = {
+        _require_text(objective_id, f"{label}.candidate_rankings objective_id"): str(ranking)
+        for objective_id, ranking in rankings.items()
+    }
+    if len(set(normalized.values())) < 2:
+        raise ContractError(f"{label} 的语义反例没有让目标解释产生不同排序")
+    return normalized
+
+
+def _validate_determined_semantics(
+    item: dict[str, Any], *, run_dir: Path, question_id: str, label: str
+) -> None:
+    """高风险 determined 必须显式拒绝一个替代目标并由同源反例区分。"""
+    formal = _require_mapping(item.get("formal_objective"), f"{label}.formal_objective")
+    rejected = _require_mapping(
+        item.get("rejected_alternative"), f"{label}.rejected_alternative"
+    )
+    formal_id = _require_text(
+        formal.get("objective_id"), f"{label}.formal_objective.objective_id"
+    )
+    rejected_id = _require_text(
+        rejected.get("objective_id"), f"{label}.rejected_alternative.objective_id"
+    )
+    if formal_id == rejected_id:
+        raise ContractError(f"{label} 的正式目标和被拒绝目标必须不同")
+    for field in ("formula", "problem_text_basis", "preserved_quantifiers"):
+        _require_text(formal.get(field), f"{label}.formal_objective.{field}")
+    for field in ("formula", "rejection_reason"):
+        _require_text(rejected.get(field), f"{label}.rejected_alternative.{field}")
+    if rejected.get("support_level") not in {"sensitivity_only", "incompatible"}:
+        raise ContractError(
+            f"{label}.rejected_alternative.support_level 必须说明它仅供敏感性或与题意不符"
+        )
+    rankings = _counterexample_rankings(run_dir, question_id, label)
+    if not {formal_id, rejected_id}.issubset(rankings):
+        raise ContractError(
+            f"{label} 的同源语义反例必须同时包含正式目标和被拒绝目标"
+        )
 
 
 def _ambiguous_questions(run_dir: Path) -> set[str]:
@@ -167,7 +258,15 @@ def _ambiguous_questions(run_dir: Path) -> set[str]:
     return ambiguous
 
 
-def _validate_question_plan(raw: object, *, label: str, ambiguous: set[str]) -> dict[str, Any]:
+def _validate_question_plan(
+    raw: object,
+    *,
+    label: str,
+    ambiguous: set[str],
+    run_dir: Path,
+    schema_version: str,
+    high_risk_questions: set[str],
+) -> dict[str, Any]:
     """验证单个问题的候选目标集合与后果度量声明。"""
     item = _require_mapping(raw, label)
     question_id = _require_text(item.get("question_id"), f"{label}.question_id")
@@ -182,7 +281,17 @@ def _validate_question_plan(raw: object, *, label: str, ambiguous: set[str]) -> 
             )
         # 题面唯一确定目标时不强制候选比较，但必须写清凭什么唯一确定。
         _require_text(item.get("determined_basis"), f"{label}.determined_basis")
-        return {"question_id": question_id, "openness": openness, "candidates": {}, "guards": {}}
+        if schema_version == "1.1" and question_id in high_risk_questions:
+            _validate_determined_semantics(
+                item, run_dir=run_dir, question_id=question_id, label=label
+            )
+        return {
+            "question_id": question_id,
+            "openness": openness,
+            "candidates": {},
+            "eligible_candidates": set(),
+            "guards": {},
+        }
     raw_candidates = item.get("candidates")
     if not isinstance(raw_candidates, list) or len(raw_candidates) < 2:
         raise ContractError(
@@ -190,18 +299,39 @@ def _validate_question_plan(raw: object, *, label: str, ambiguous: set[str]) -> 
         )
     candidates: dict[str, dict[str, Any]] = {}
     for index, candidate in enumerate(raw_candidates):
-        parsed = _candidate_plan(candidate, f"{label}.candidates[{index}]")
+        parsed = _candidate_plan(
+            candidate,
+            f"{label}.candidates[{index}]",
+            require_semantic_legality=schema_version == "1.1",
+        )
         if parsed["objective_id"] in candidates:
             raise ContractError(f"{label}.candidates 的 objective_id 不得重复")
         candidates[parsed["objective_id"]] = parsed
     formulas = [item["formula"] for item in candidates.values()]
     if len(set(formulas)) != len(formulas):
         raise ContractError(f"{label}.candidates 必须给出实质不同的目标公式")
-    guards = _guard_metrics(item.get("consequence_metrics"), f"{label}.consequence_metrics")
+    eligible = {
+        objective_id
+        for objective_id, candidate in candidates.items()
+        if schema_version == "1.0"
+        or candidate.get("support_level") in _ELIGIBLE_SUPPORT_LEVELS
+    }
+    if not eligible:
+        raise ContractError(f"{label} 没有通过题面合法性筛选的正式候选目标")
+    if schema_version == "1.1":
+        rankings = _counterexample_rankings(run_dir, question_id, label)
+        if not set(candidates).issubset(rankings):
+            raise ContractError(f"{label} 的同源反例必须覆盖全部候选目标")
+    guards = (
+        _guard_metrics(item.get("consequence_metrics"), f"{label}.consequence_metrics")
+        if len(eligible) >= 2
+        else {}
+    )
     return {
         "question_id": question_id,
         "openness": openness,
         "candidates": candidates,
+        "eligible_candidates": eligible,
         "guards": guards,
     }
 
@@ -215,9 +345,14 @@ def _validate_question_actual(
     if plan["openness"] == "determined":
         return
     actual = _require_mapping(raw.get("actual"), f"{label}.actual")
-    probes = _require_mapping(actual.get("candidate_probes"), f"{label}.actual.candidate_probes")
-    if set(probes) != set(plan["candidates"]):
-        raise ContractError(f"{label} 的后果实验必须覆盖且仅覆盖已声明候选目标")
+    eligible = set(plan["eligible_candidates"])
+    probes_raw = actual.get("candidate_probes", {})
+    probes = _require_mapping(probes_raw, f"{label}.actual.candidate_probes")
+    expected_probe_ids = eligible if len(eligible) >= 2 else set()
+    if set(probes) != expected_probe_ids:
+        raise ContractError(
+            f"{label} 的后果实验必须覆盖且仅覆盖通过题面合法性筛选后仍合理的候选目标"
+        )
     guards = plan["guards"]
     measured: dict[str, dict[str, float]] = {}
     for objective_id, result_id in probes.items():
@@ -242,9 +377,11 @@ def _validate_question_actual(
         measured[objective_id] = values
 
     frozen = _require_text(actual.get("frozen_objective_id"), f"{label}.actual.frozen_objective_id")
-    if frozen not in plan["candidates"]:
-        raise ContractError(f"{label}.actual.frozen_objective_id 必须是已比较候选之一")
+    if frozen not in eligible:
+        raise ContractError(f"{label}.actual.frozen_objective_id 必须通过题面合法性筛选")
     _require_text(actual.get("freeze_rationale"), f"{label}.actual.freeze_rationale")
+    if len(eligible) < 2:
+        return
 
     # 找出冻结目标牺牲、而其它候选没有牺牲的 guard 指标：这正是 Q5 式失分点。
     sacrificed = [
@@ -322,16 +459,25 @@ def validate_objective_candidates(
     state = read_simple_state(run_dir)
     if not is_competition_first_v32_state(state):
         raise ContractError("OBJECTIVE_CANDIDATES 只适用于 Competition-First v3.2 运行")
-    if payload.get("schema_version") != "1.0" or payload.get("run_id") != state["run_id"]:
+    schema_version = payload.get("schema_version")
+    if schema_version not in {"1.0", "1.1"} or payload.get("run_id") != state["run_id"]:
         raise ContractError("OBJECTIVE_CANDIDATES 的 schema_version 或 run_id 不匹配")
     required = set(state["required_questions"])
     raw_questions = payload.get("questions")
     if not isinstance(raw_questions, list) or not raw_questions:
         raise ContractError("OBJECTIVE_CANDIDATES 必须逐问声明目标开放性")
     ambiguous = _ambiguous_questions(run_dir)
+    high_risk_questions = semantic_high_risk_questions(run_dir)
     plans: dict[str, dict[str, Any]] = {}
     for index, raw in enumerate(raw_questions):
-        plan = _validate_question_plan(raw, label=f"questions[{index}]", ambiguous=ambiguous)
+        plan = _validate_question_plan(
+            raw,
+            label=f"questions[{index}]",
+            ambiguous=ambiguous,
+            run_dir=run_dir,
+            schema_version=str(schema_version),
+            high_risk_questions=high_risk_questions,
+        )
         if plan["question_id"] not in required:
             raise ContractError(f"{plan['question_id']} 不是必答问题")
         if plan["question_id"] in plans:
@@ -358,6 +504,11 @@ def write_objective_candidates(run_dir: Path, payload: dict[str, Any]) -> dict[s
     Returns:
         已写入的文档。
     """
+    existing_path = run_dir / OBJECTIVE_CANDIDATES_PATH
+    if existing_path.is_file():
+        existing = load_json(existing_path)
+        if existing.get("schema_version") == "1.1" and payload.get("schema_version") != "1.1":
+            raise ContractError("OBJECTIVE_CANDIDATES 1.1 不得降级绕过题面合法性与反例筛选")
     validate_objective_candidates(run_dir, payload, require_actual=False)
     document = dict(payload)
     document["updated_at"] = utc_now()

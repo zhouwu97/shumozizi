@@ -18,13 +18,13 @@ from shumozizi.geometry.projection import (
 )
 from shumozizi.geometry.quadratic import segment_intersects_closed_ball_quadratic
 from shumozizi.geometry.visual import (
+    configure_spatial_axes,
     export_publication_figure,
     plot_cylinder_target,
     plot_explosion_point,
     plot_finite_segment,
     plot_sphere_cloud,
     plot_trajectory3d,
-    set_equal_3d_axes,
 )
 
 
@@ -89,13 +89,40 @@ def test_geometry_visual_primitives_render_and_export(tmp_path: Path) -> None:
     plot_sphere_cloud(ax, (1, 0, 0), 0.4, alpha=0.2, color="tab:cyan")
     plot_cylinder_target(ax, (2, 1), 0.25, 0, 1.0, alpha=0.25, color="tab:red")
     plot_explosion_point(ax, (1, 0, 0), color="tab:orange")
-    set_equal_3d_axes(ax)
+    spatial_metadata = configure_spatial_axes(
+        ax,
+        points=[(0, 0, 0), (2, 1, 1.5)],
+        unit="m",
+        azimuth=35,
+        elevation=24,
+    )
+
+    assert ax.name == "3d"
+    assert spatial_metadata["camera_projection"] == "orthographic"
+    box_aspect = ax.get_box_aspect()
+    assert box_aspect / box_aspect[0] == pytest.approx((1, 1, 1))
+    assert ax.get_xlabel().endswith("(m)")
 
     outputs = export_publication_figure(fig, tmp_path / "geometry-scene", dpi=300)
     plt.close(fig)
 
     assert {path.suffix for path in outputs} == {".pdf", ".svg", ".png"}
     assert all(path.stat().st_size > 100 for path in outputs)
+
+
+def test_geometry_trajectory_accepts_numpy_array() -> None:
+    """真实渲染常用 NumPy 数组，公共轨迹图元不能做含糊的布尔判定。"""
+    np = pytest.importorskip("numpy")
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg", force=True)
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+    artists = plot_trajectory3d(ax, np.asarray([[0, 0, 0], [1, 2, 3]], dtype=float))
+    plt.close(fig)
+
+    assert len(artists) == 1
 
 
 def test_optimizer_benchmark_uses_same_budget_seeds_and_exact_scorer() -> None:

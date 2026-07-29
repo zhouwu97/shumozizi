@@ -115,6 +115,32 @@ def _promote_plot(run_dir: Path, figure_id: str) -> dict[str, object]:
     writer.add_blank_page(width=400, height=200)
     with pdf.open("wb") as stream:
         writer.write(stream)
+    layout = folder / f"{figure_id}.layout.json"
+    atomic_json(
+        layout,
+        {
+            "schema_version": "1.0",
+            "figure_id": figure_id,
+            "paper_size_cm": {"width": 17.0, "height": 8.5},
+            "minimum_font_size_pt": 9.0,
+            "colorblind_safe": True,
+            "locale_consistent": True,
+            "primary_panel_id": "main",
+            "axes": [
+                {
+                    "id": "main",
+                    "role": "primary",
+                    "x_limits": [0.0, 10.0],
+                    "x_data_range": [1.0, 9.0],
+                    "y_limits": [0.0, 5.0],
+                    "y_data_range": [0.5, 4.5],
+                    "legend_overlaps_data": False,
+                    "takeaway_annotation": True,
+                    "decision_markers_labeled": True,
+                }
+            ],
+        },
+    )
     return promote_figure_candidate(
         run_dir,
         figure_id=figure_id,
@@ -124,9 +150,139 @@ def _promote_plot(run_dir: Path, figure_id: str) -> dict[str, object]:
         ],
         target_stem=f"figures/current/{figure_id}",
         rendering_mode="plot",
+        layout_report=layout.relative_to(run_dir).as_posix(),
         human_reviewed=True,
         human_review_notes="已检查测试图的 PNG 与 PDF 尺寸、留白和可读性。",
     )
+
+
+def test_plot_layout_blocks_wasted_axis_and_covered_takeaway(tmp_path: Path) -> None:
+    """普通统计图的轴域浪费和图例遮挡必须在晋级前被拒绝。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "plot-layout-invalid",
+        workflow_version="3.2",
+    )
+    folder = run_dir / "figures/candidates/poor-plot/v1"
+    folder.mkdir(parents=True)
+    png = folder / "poor-plot.png"
+    pdf = folder / "poor-plot.pdf"
+    Image.new("RGB", (600, 400), color="white").save(png)
+    writer = PdfWriter()
+    writer.add_blank_page(width=600, height=400)
+    with pdf.open("wb") as stream:
+        writer.write(stream)
+    layout = folder / "poor-plot.layout.json"
+    atomic_json(
+        layout,
+        {
+            "schema_version": "1.0",
+            "figure_id": "poor-plot",
+            "paper_size_cm": {"width": 17.0, "height": 11.3},
+            "minimum_font_size_pt": 7.0,
+            "colorblind_safe": False,
+            "locale_consistent": True,
+            "primary_panel_id": "main",
+            "axes": [
+                {
+                    "id": "main",
+                    "role": "primary",
+                    "x_limits": [0.0, 1.0],
+                    "x_data_range": [0.1, 0.9],
+                    "y_limits": [0.0, 1.0],
+                    "y_data_range": [0.80, 0.95],
+                    "legend_overlaps_data": True,
+                    "takeaway_annotation": False,
+                    "decision_markers_labeled": False,
+                }
+            ],
+        },
+    )
+
+    audit = audit_figure_candidate(
+        run_dir,
+        figure_id="poor-plot",
+        candidate_outputs=[
+            png.relative_to(run_dir).as_posix(),
+            pdf.relative_to(run_dir).as_posix(),
+        ],
+        rendering_mode="plot",
+        layout_report=layout.relative_to(run_dir).as_posix(),
+    )
+
+    assert audit["success"] is False
+    assert any("纵轴数据占用率" in error for error in audit["errors"])
+    assert any("图例遮挡" in error for error in audit["errors"])
+    assert any("最小字号" in error for error in audit["errors"])
+
+
+def test_spatial_plot_requires_equal_scale_orthographic_metadata(tmp_path: Path) -> None:
+    """三维图必须声明单位、视角和等比例，避免透视拉伸制造相交错觉。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "spatial-layout-invalid",
+        workflow_version="3.2",
+    )
+    folder = run_dir / "figures/candidates/spatial-scene/v1"
+    folder.mkdir(parents=True)
+    png = folder / "spatial-scene.png"
+    pdf = folder / "spatial-scene.pdf"
+    Image.new("RGB", (600, 400), color="white").save(png)
+    writer = PdfWriter()
+    writer.add_blank_page(width=600, height=400)
+    with pdf.open("wb") as stream:
+        writer.write(stream)
+    layout = folder / "spatial-scene.layout.json"
+    atomic_json(
+        layout,
+        {
+            "schema_version": "1.1",
+            "figure_id": "spatial-scene",
+            "paper_size_cm": {"width": 18.0, "height": 12.0},
+            "minimum_font_size_pt": 9.0,
+            "colorblind_safe": True,
+            "locale_consistent": True,
+            "primary_panel_id": "overview",
+            "axes": [
+                {
+                    "id": "overview",
+                    "role": "primary",
+                    "projection": "3d",
+                    "x_limits": [-1.0, 4.0],
+                    "x_data_range": [0.0, 3.0],
+                    "y_limits": [-1.0, 4.0],
+                    "y_data_range": [0.0, 3.0],
+                    "z_limits": [-1.0, 4.0],
+                    "z_data_range": [0.0, 3.0],
+                    "data_aspect_ratio": [1.0, 1.0, 2.0],
+                    "camera_projection": "perspective",
+                    "camera_view": {"azimuth": 35.0, "elevation": 25.0},
+                    "coordinate_unit": "",
+                    "trajectory_direction_labeled": False,
+                    "legend_overlaps_data": False,
+                    "takeaway_annotation": True,
+                    "decision_markers_labeled": True,
+                }
+            ],
+        },
+    )
+
+    audit = audit_figure_candidate(
+        run_dir,
+        figure_id="spatial-scene",
+        candidate_outputs=[
+            png.relative_to(run_dir).as_posix(),
+            pdf.relative_to(run_dir).as_posix(),
+        ],
+        rendering_mode="plot",
+        layout_report=layout.relative_to(run_dir).as_posix(),
+    )
+
+    assert audit["success"] is False
+    assert any("等比例" in error for error in audit["errors"])
+    assert any("正交投影" in error for error in audit["errors"])
+    assert any("坐标单位" in error for error in audit["errors"])
+    assert any("轨迹方向" in error for error in audit["errors"])
 
 
 def test_diagram_arrow_text_collision_blocks_promotion(tmp_path: Path) -> None:

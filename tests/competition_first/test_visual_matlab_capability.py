@@ -175,17 +175,21 @@ def _write_matlab_entrypoint(run_dir: Path) -> None:
 
 
 def _fake_outputs(run_dir: Path) -> None:
-    """模拟 MATLAB 新鲜生成四类必需产物。"""
+    """模拟 MATLAB 新鲜生成数值结果和版本化图像候选。"""
     output_dir = run_dir / "results/matlab"
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "result.json").write_text(
         json.dumps({"metrics": {"objective": 1.25}}), encoding="utf-8"
     )
     (output_dir / "result.csv").write_text("x,objective\n1,1.25\n", encoding="utf-8")
-    figure_dir = run_dir / "figures/current"
+    figure_dir = run_dir / "figures/candidates/matlab-smoke/v1"
+    figure_dir.mkdir(parents=True, exist_ok=True)
     (figure_dir / "matlab-smoke.pdf").write_bytes(b"%PDF-1.7\n% smoke\n")
     (figure_dir / "matlab-smoke.png").write_bytes(
         b"\x89PNG\r\n\x1a\n" + b"smoke"
+    )
+    (figure_dir / "matlab-smoke.layout.json").write_text(
+        json.dumps({"figure_id": "matlab-smoke"}), encoding="utf-8"
     )
 
 
@@ -226,8 +230,9 @@ def test_matlab_runner_writes_manifest_and_registers_production_result(
         output_files=[
             "results/matlab/result.json",
             "results/matlab/result.csv",
-            "figures/current/matlab-smoke.pdf",
-            "figures/current/matlab-smoke.png",
+            "figures/candidates/matlab-smoke/v1/matlab-smoke.pdf",
+            "figures/candidates/matlab-smoke/v1/matlab-smoke.png",
+            "figures/candidates/matlab-smoke/v1/matlab-smoke.layout.json",
         ],
         metric_sources={
             "objective": {
@@ -276,8 +281,6 @@ def test_matlab_runner_records_unavailable_without_fake_success(
         output_files=[
             "results/matlab/result.json",
             "results/matlab/result.csv",
-            "figures/current/matlab-smoke.pdf",
-            "figures/current/matlab-smoke.png",
         ],
         metric_sources={},
         objective_semantics_sha256="b" * 64,
@@ -289,6 +292,45 @@ def test_matlab_runner_records_unavailable_without_fake_success(
     result = read_result_index(run_dir)["results"][-1]
     assert result["status"] == "failed"
     assert result["execution_valid"] is False
+
+
+def test_matlab_images_always_require_versioned_candidate_and_layout(
+    tmp_path: Path,
+) -> None:
+    """数值角色顺带出图时也不能绕过候选目录和布局 QA。"""
+    run_dir = _run(tmp_path, "matlab-image-contract")
+    _write_matlab_entrypoint(run_dir)
+    common = {
+        "entrypoint": "code/matlab/run_analysis.m",
+        "question_id": "Q2",
+        "result_id": "q2-matlab-image-contract",
+        "role": "optimizer_challenger",
+        "input_files": ["problem/input.csv"],
+        "metric_sources": {},
+        "objective_semantics_sha256": "d" * 64,
+    }
+
+    with pytest.raises(ContractError, match="figures/candidates"):
+        run_matlab_analysis(
+            run_dir,
+            output_files=[
+                "results/matlab/result.json",
+                "figures/current/matlab-smoke.pdf",
+                "figures/current/matlab-smoke.png",
+            ],
+            **common,
+        )
+
+    with pytest.raises(ContractError, match="layout.json"):
+        run_matlab_analysis(
+            run_dir,
+            output_files=[
+                "results/matlab/result.json",
+                "figures/candidates/matlab-smoke/v1/matlab-smoke.pdf",
+                "figures/candidates/matlab-smoke/v1/matlab-smoke.png",
+            ],
+            **common,
+        )
 
 
 def test_independent_oracle_only_requires_json_output(

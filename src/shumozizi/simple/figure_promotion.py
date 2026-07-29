@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -206,6 +207,158 @@ def _diagram_layout_errors(
     return errors
 
 
+def _numeric_pair(
+    item: dict[str, Any], key: str, *, label: str
+) -> tuple[float, float] | None:
+    """读取布局报告中的有限递增数值区间。"""
+    value = item.get(key)
+    if (
+        not isinstance(value, list)
+        or len(value) != 2
+        or any(
+            not isinstance(number, (int, float))
+            or isinstance(number, bool)
+            or not isfinite(float(number))
+            for number in value
+        )
+    ):
+        return None
+    lower, upper = float(value[0]), float(value[1])
+    if upper <= lower:
+        return None
+    return lower, upper
+
+
+def _numeric_triple(item: dict[str, Any], key: str) -> tuple[float, float, float] | None:
+    """读取布局报告中的三个有限数值。"""
+    value = item.get(key)
+    if (
+        not isinstance(value, list)
+        or len(value) != 3
+        or any(
+            not isinstance(number, (int, float))
+            or isinstance(number, bool)
+            or not isfinite(float(number))
+            for number in value
+        )
+    ):
+        return None
+    return tuple(float(number) for number in value)
+
+
+def _plot_layout_errors(
+    report: dict[str, Any], *, png_ratio: float, minimum_font_size_pt: float
+) -> list[str]:
+    """检查统计图的论文尺寸、轴域利用、图例和结论强调。"""
+    errors: list[str] = []
+    paper_size = report.get("paper_size_cm")
+    if not isinstance(paper_size, dict):
+        errors.append("统计图 layout report 缺少 paper_size_cm")
+    else:
+        width = paper_size.get("width")
+        height = paper_size.get("height")
+        if (
+            not isinstance(width, (int, float))
+            or isinstance(width, bool)
+            or not isinstance(height, (int, float))
+            or isinstance(height, bool)
+            or not 8 <= float(width) <= 20
+            or not 5 <= float(height) <= 24
+        ):
+            errors.append("统计图论文尺寸必须位于宽 8--20 cm、高 5--24 cm")
+        else:
+            paper_ratio = float(width) / float(height)
+            if abs(paper_ratio - png_ratio) / png_ratio > 0.05:
+                errors.append("layout report 的论文尺寸比例与 PNG 不一致")
+            if paper_ratio > 2.2 and len(str(report.get("wide_figure_reason", "")).strip()) < 12:
+                errors.append("超宽统计图必须说明在论文页宽下仍可读的具体理由")
+
+    reported_font = report.get("minimum_font_size_pt")
+    if (
+        not isinstance(reported_font, (int, float))
+        or isinstance(reported_font, bool)
+        or float(reported_font) < minimum_font_size_pt
+    ):
+        errors.append(f"统计图最小字号不得小于 {minimum_font_size_pt:g} pt")
+    if report.get("colorblind_safe") is not True:
+        errors.append("统计图必须声明并采用色盲安全配色")
+    if report.get("locale_consistent") is not True:
+        errors.append("统计图标题、坐标和标注语言必须与论文一致")
+
+    axes = report.get("axes")
+    if not isinstance(axes, list) or not axes:
+        return [*errors, "统计图 layout report 缺少 axes"]
+    if len(axes) > 4:
+        errors.append("正文统计图最多使用四个具有连续论证关系的面板")
+    primary_id = report.get("primary_panel_id")
+    identifiers: set[str] = set()
+    primary_found = False
+    for index, axis in enumerate(axes):
+        if not isinstance(axis, dict):
+            errors.append(f"统计图 axes[{index}] 必须是对象")
+            continue
+        axis_id = axis.get("id")
+        if not isinstance(axis_id, str) or not axis_id.strip() or axis_id in identifiers:
+            errors.append(f"统计图 axes[{index}] 缺少唯一 id")
+            continue
+        identifiers.add(axis_id)
+        is_primary = axis_id == primary_id and axis.get("role") == "primary"
+        primary_found = primary_found or is_primary
+        projection = axis.get("projection", "2d")
+        if projection not in {"2d", "3d"}:
+            errors.append(f"面板 {axis_id} 的 projection 必须为 2d 或 3d")
+            projection = "2d"
+        dimensions = [("x", "横轴"), ("y", "纵轴")]
+        if projection == "3d":
+            dimensions.append(("z", "纵深轴"))
+        for dimension, title in dimensions:
+            limits = _numeric_pair(axis, f"{dimension}_limits", label=axis_id)
+            data_range = _numeric_pair(axis, f"{dimension}_data_range", label=axis_id)
+            if limits is None or data_range is None:
+                errors.append(f"面板 {axis_id} 的{title}范围必须是有限递增区间")
+                continue
+            tolerance = (limits[1] - limits[0]) * 1e-6
+            if data_range[0] < limits[0] - tolerance or data_range[1] > limits[1] + tolerance:
+                errors.append(f"面板 {axis_id} 的{title}数据范围超出显示范围")
+                continue
+            occupancy = (data_range[1] - data_range[0]) / (limits[1] - limits[0])
+            if occupancy < 0.2:
+                fixed_reason = str(axis.get("low_occupancy_reason", "")).strip()
+                if axis.get("axis_policy") != "fixed_semantic" or len(fixed_reason) < 12:
+                    errors.append(
+                        f"面板 {axis_id} 的{title}数据占用率仅 {occupancy:.1%}，"
+                        "应收紧轴域或说明固定语义范围"
+                    )
+        if projection == "3d":
+            aspect = _numeric_triple(axis, "data_aspect_ratio")
+            if aspect is None or min(aspect) <= 0 or max(aspect) / min(aspect) > 1.02:
+                errors.append(f"三维面板 {axis_id} 必须使用 [1, 1, 1] 等比例坐标")
+            if axis.get("camera_projection") != "orthographic":
+                errors.append(f"三维面板 {axis_id} 必须使用正交投影避免透视距离错觉")
+            camera_view = axis.get("camera_view")
+            if not isinstance(camera_view, dict) or any(
+                not isinstance(camera_view.get(key), (int, float))
+                or isinstance(camera_view.get(key), bool)
+                or not isfinite(float(camera_view[key]))
+                for key in ("azimuth", "elevation")
+            ):
+                errors.append(f"三维面板 {axis_id} 必须声明有限的相机方位角和仰角")
+            coordinate_unit = axis.get("coordinate_unit")
+            if not isinstance(coordinate_unit, str) or not coordinate_unit.strip():
+                errors.append(f"三维面板 {axis_id} 必须声明非空坐标单位")
+            if axis.get("trajectory_direction_labeled") is not True:
+                errors.append(f"三维面板 {axis_id} 必须标明轨迹方向或明确无轨迹")
+        if axis.get("legend_overlaps_data") is not False:
+            errors.append(f"面板 {axis_id} 的图例遮挡数据或未完成避让检查")
+        if is_primary and axis.get("takeaway_annotation") is not True:
+            errors.append(f"主面板 {axis_id} 缺少可直接识别的结论标注")
+        if is_primary and axis.get("decision_markers_labeled") is False:
+            errors.append(f"主面板 {axis_id} 的决策点没有直接标签")
+    if not isinstance(primary_id, str) or not primary_found:
+        errors.append("统计图必须指定一个 role=primary 的 primary_panel_id")
+    return errors
+
+
 def audit_figure_candidate(
     run_dir: Path,
     *,
@@ -216,15 +369,15 @@ def audit_figure_candidate(
     minimum_font_size_pt: float = 8.0,
     aspect_ratio_tolerance: float = 0.02,
 ) -> dict[str, Any]:
-    """审核候选图的可读性，并对流程图执行几何碰撞检查。
+    """审核候选图的可读性，并检查流程图或统计图布局报告。
 
     Args:
         run_dir: 当前运行目录。
         figure_id: 稳定图 ID。
         candidate_outputs: 同一版本目录内的 PNG 和 PDF。
         rendering_mode: ``diagram`` 或普通 ``plot``。
-        layout_report: 流程图渲染器输出的几何 JSON。
-        minimum_font_size_pt: 流程图最小字号。
+        layout_report: 与候选同目录的流程图几何或统计图语义布局 JSON。
+        minimum_font_size_pt: 图内最小字号。
         aspect_ratio_tolerance: PNG/PDF 宽高比相对容差。
 
     Returns:
@@ -272,22 +425,30 @@ def audit_figure_candidate(
             f"PNG/PDF 宽高比不一致（{png_ratio:.4f} 对 {pdf_ratio:.4f}）"
         )
     layout_relative: str | None = None
-    if rendering_mode == "diagram":
-        if layout_report is None:
-            errors.append("流程图候选缺少 layout report")
+    if layout_report is None:
+        errors.append(f"{rendering_mode} 候选缺少 layout report")
+    else:
+        layout_path = resolve_inside(root, layout_report, must_exist=True)
+        layout_relative = relative_inside(root, layout_path).as_posix()
+        if layout_path.parent.resolve() not in parents:
+            errors.append("layout report 必须与候选 PNG/PDF 位于同一版本目录")
         else:
-            layout_path = resolve_inside(root, layout_report, must_exist=True)
-            layout_relative = relative_inside(root, layout_path).as_posix()
-            if layout_path.parent.resolve() not in parents:
-                errors.append("layout report 必须与候选 PNG/PDF 位于同一版本目录")
-            else:
-                layout = load_json(layout_path)
-                if layout.get("figure_id") != figure_id:
-                    errors.append("layout report 的 figure_id 与候选不一致")
+            layout = load_json(layout_path)
+            if layout.get("figure_id") != figure_id:
+                errors.append("layout report 的 figure_id 与候选不一致")
+            elif rendering_mode == "diagram":
                 errors.extend(
                     _diagram_layout_errors(
                         layout,
                         png_size=png_size,
+                        minimum_font_size_pt=minimum_font_size_pt,
+                    )
+                )
+            else:
+                errors.extend(
+                    _plot_layout_errors(
+                        layout,
+                        png_ratio=png_ratio,
                         minimum_font_size_pt=minimum_font_size_pt,
                     )
                 )
@@ -304,7 +465,7 @@ def audit_figure_candidate(
         "png_size_px": list(png_size),
         "pdf_size_pt": list(pdf_size),
         "aspect_ratio_relative_error": ratio_error,
-        "minimum_font_size_pt": minimum_font_size_pt if rendering_mode == "diagram" else None,
+        "minimum_font_size_pt": minimum_font_size_pt,
     }
 
 
@@ -327,7 +488,7 @@ def promote_figure_candidate(
         candidate_outputs: 版本化候选 PNG/PDF。
         target_stem: 不含后缀的 ``figures/current/`` 目标。
         rendering_mode: ``diagram`` 或普通 ``plot``。
-        layout_report: 流程图几何报告。
+        layout_report: 与候选同目录的流程图几何或统计图语义布局报告。
         human_reviewed: 是否已分别打开 PNG 和 PDF 检查。
         human_review_notes: 人工检查结论。
 

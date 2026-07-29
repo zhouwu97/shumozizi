@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, relative_inside, resolve_inside
+from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.engines.matlab import detect_engine
 from shumozizi.simple.results import json_path_value, register_result
@@ -23,6 +25,7 @@ _ROLE_REQUIRED_SUFFIXES = {
     "independent_oracle": frozenset({".json"}),
     "scientific_visualization": frozenset({".pdf", ".png"}),
 }
+_IMAGE_SUFFIXES = frozenset({".pdf", ".png"})
 
 
 def _relative_file(run_dir: Path, value: str, *, must_exist: bool) -> str:
@@ -42,6 +45,79 @@ def _read_metrics(
             raise ContractError(f"MATLAB 指标 {name} 必须来自 JSON 输出")
         metrics[name] = json_path_value(load_json(path), source.get("json_path", ""))
     return metrics
+
+
+def _validate_image_outputs(output_files: list[str]) -> list[str]:
+    """校验 MATLAB 图像必须成对进入版本化候选目录并带布局报告。
+
+    Args:
+        output_files: 已规范化为 POSIX 路径的 MATLAB 输出。
+
+    Returns:
+        每组 PNG/PDF 共用的不含扩展名候选路径。
+
+    Raises:
+        ContractError: 图像直写 current、缺少配对格式或缺少布局报告。
+    """
+    output_set = set(output_files)
+    image_files = [
+        item for item in output_files if Path(item).suffix.casefold() in _IMAGE_SUFFIXES
+    ]
+    grouped: dict[str, set[str]] = {}
+    for item in image_files:
+        if not item.startswith("figures/candidates/"):
+            raise ContractError(
+                "MATLAB 图片无论由何种角色生成，都必须先输出到 figures/candidates/"
+            )
+        path = Path(item)
+        if len(path.parts) < 5:
+            raise ContractError(
+                "MATLAB 图片必须位于 figures/candidates/<figure_id>/<version>/"
+            )
+        stem = path.with_suffix("").as_posix()
+        grouped.setdefault(stem, set()).add(path.suffix.casefold())
+    for stem, suffixes in grouped.items():
+        if suffixes != _IMAGE_SUFFIXES:
+            raise ContractError(f"MATLAB 图像候选 {stem} 必须同时输出 PNG 和 PDF")
+        layout = f"{stem}.layout.json"
+        if layout not in output_set:
+            raise ContractError(
+                f"MATLAB 图像候选 {stem} 必须同时声明 {Path(layout).name}"
+            )
+    return sorted(grouped)
+
+
+def _install_figure_kit(run_dir: Path) -> list[str]:
+    """把仓内 MATLAB 论文图工具包冻结到当前运行的代码目录。
+
+    Args:
+        run_dir: 当前运行根目录。
+
+    Returns:
+        安装后应写入 manifest 输入清单的相对文件路径。
+
+    Raises:
+        ContractError: 当前运行已有同名但内容不同的工具文件。
+    """
+    repository = resolve_repo_root(Path(__file__))
+    source_root = repository / "templates" / "matlab" / "figures" / "+shumoviz"
+    if not source_root.is_dir():
+        raise ContractError("仓库缺少 MATLAB 论文图工具包 templates/matlab/figures/+shumoviz")
+    target_root = run_dir / "code" / "matlab" / "+shumoviz"
+    target_root.mkdir(parents=True, exist_ok=True)
+    installed: list[str] = []
+    for source in sorted(source_root.glob("*.m")):
+        target = target_root / source.name
+        if target.exists() and target.read_bytes() != source.read_bytes():
+            raise ContractError(
+                f"当前运行已有不同内容的 MATLAB 图工具文件: {target.name}"
+            )
+        if not target.exists():
+            shutil.copy2(source, target)
+        installed.append(relative_inside(run_dir, target).as_posix())
+    if not installed:
+        raise ContractError("MATLAB 论文图工具包不含可安装的 .m 文件")
+    return installed
 
 
 def _toolbox_inventory(command: str, *, timeout_seconds: int) -> list[str]:
@@ -125,22 +201,18 @@ def run_matlab_analysis(
         raise ContractError("MATLAB 入口必须位于 code/matlab/ 且使用 .m 后缀")
     if "'" in script:
         raise ContractError("MATLAB 入口路径不能包含单引号")
-    normalized_inputs = [_relative_file(root, item, must_exist=True) for item in input_files]
-    normalized_inputs = list(dict.fromkeys([script, *normalized_inputs]))
     normalized_outputs = [_relative_file(root, item, must_exist=False) for item in output_files]
     suffixes = {Path(item).suffix.casefold() for item in normalized_outputs}
     required_suffixes = _ROLE_REQUIRED_SUFFIXES[role]
     if not required_suffixes <= suffixes:
         missing = ", ".join(sorted(required_suffixes - suffixes))
         raise ContractError(f"MATLAB 角色 {role} 缺少必需输出类型: {missing}")
-    if role == "scientific_visualization":
-        image_outputs = [
-            item for item in normalized_outputs if Path(item).suffix.casefold() in {".png", ".pdf"}
-        ]
-        if any(not item.startswith("figures/candidates/") for item in image_outputs):
-            raise ContractError("MATLAB 科学图必须先输出到 figures/candidates/ 版本目录")
     if len(normalized_outputs) != len(set(normalized_outputs)):
         raise ContractError("MATLAB output_files 不允许重复")
+    image_stems = _validate_image_outputs(normalized_outputs)
+    normalized_inputs = [_relative_file(root, item, must_exist=True) for item in input_files]
+    kit_inputs = _install_figure_kit(root) if image_stems else []
+    normalized_inputs = list(dict.fromkeys([script, *normalized_inputs, *kit_inputs]))
     output_set = set(normalized_outputs)
     for source in metric_sources.values():
         normalized = _relative_file(root, source.get("file", ""), must_exist=False)
@@ -159,6 +231,18 @@ def run_matlab_analysis(
         for item in normalized_outputs
         if (root / item).is_file()
     }
+    image_related = {
+        item
+        for item in normalized_outputs
+        if Path(item).suffix.casefold() in {*_IMAGE_SUFFIXES, ".json"}
+        and any(item == f"{stem}.layout.json" or item.startswith(f"{stem}.") for stem in image_stems)
+    }
+    existing_images = sorted(item for item in image_related if (root / item).exists())
+    if existing_images:
+        raise ContractError(
+            "MATLAB 图像候选版本已存在，必须使用新的 version 目录: "
+            + ", ".join(existing_images)
+        )
 
     probe = detect_engine(engine)
     available = probe.get("available") is True and isinstance(probe.get("command"), str)
@@ -179,6 +263,7 @@ def run_matlab_analysis(
         )
         environment = dict(os.environ)
         environment["SHUMOZIZI_RUN_DIR"] = str(root)
+        environment["SHUMOZIZI_FIGURE_OUTPUT_STEMS"] = ";".join(image_stems)
         try:
             completed = subprocess.run(
                 command,

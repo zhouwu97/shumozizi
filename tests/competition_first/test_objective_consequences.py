@@ -26,6 +26,7 @@ from shumozizi.simple.objective_consequences import (
     write_objective_candidates,
 )
 from shumozizi.simple.results import register_result
+from shumozizi.simple.review_focus import record_scientific_challenge_evidence
 from shumozizi.simple.review_tasks import (
     create_review_task_receipt,
     persist_review_task_creation_event,
@@ -53,6 +54,7 @@ def _register(
     objective: float = 1.0,
     duration_seconds: float = 10.0,
     extra: dict[str, float] | None = None,
+    output_extra: dict[str, Any] | None = None,
     execution_mode: str = "production",
 ) -> None:
     """登记一个真实执行结果，默认 production。"""
@@ -66,7 +68,7 @@ def _register(
     }
     metrics.update(extra or {})
     (run_dir / "results" / "raw" / f"{result_id}.json").write_text(
-        json.dumps({"metrics": metrics}), encoding="utf-8"
+        json.dumps({"metrics": metrics, **(output_extra or {})}), encoding="utf-8"
     )
     now = utc_now()
     register_result(
@@ -761,3 +763,251 @@ def test_exploration_audits_cannot_dilute_the_core_budget_share(tmp_path: Path) 
 
     with pytest.raises(ContractError, match="低于要求的"):
         require_v32_experiment_evidence(run_dir)
+
+
+def _upgrade_units_to_semantic_13(
+    run_dir: Path, units: dict[str, Any]
+) -> dict[str, Any]:
+    """把旧夹具升级为带问题差分、聚合合同和评分预检的 1.3 计划。"""
+    units["schema_version"] = "1.3"
+    for suffix, role in (
+        ("A", "faithful_reconstruction"),
+        ("B", "semantic_adversary"),
+    ):
+        create_review_task_receipt(
+            run_dir,
+            task_id=f"semantic-{suffix}",
+            task_type="semantic_reconstruction",
+            model_id="fixture-model",
+            prompt_sha256="b" * 64,
+            input_bindings=semantic_reconstruction_input_bindings(run_dir, role=role),
+            report_file=f"review/SEMANTIC_{suffix}.md",
+            creation_event_file=f"review/tasks/creation-events/semantic-{suffix}.json",
+        )
+    units["semantic_reconstructions"][0]["role"] = "faithful_reconstruction"
+    units["semantic_reconstructions"][1]["role"] = "semantic_adversary"
+    unit = units["units"][0]
+    unit["question_delta"] = {
+        "inherits_from": None,
+        "added_entities": ["多个被保障实体"],
+        "added_resources": [],
+        "shared_resources": ["统一资源预算"],
+        "changed_constraints": [],
+        "semantic_risk_signals": [
+            "multiple_entities",
+            "objective_form_ambiguity",
+        ],
+        "possible_objective_change": "总体收益可能是求和，也可能要求最弱实体同时达标。",
+        "must_recheck_aggregation": True,
+    }
+    endpoint = unit["answer_contract"]["primary_endpoint"]
+    endpoint["formula"] = "max F(S_1, ..., S_n)"
+    endpoint["aggregation"] = {
+        "atomic_success": "单个评价点满足事先声明的成功判据。",
+        "within_entity": "同一实体内部按全部评价点共同达标聚合。",
+        "across_resources": "多个资源按至少一个资源成功的并集聚合。",
+        "across_entities": "多个被保障实体按正式目标指定的算子聚合。",
+        "temporal": "对满足整体成功事件的时间集合计算测度。",
+        "quantifier_order": "先固定时刻和实体，再检查评价点与可用资源。",
+    }
+    unit["answer_contract"]["semantic_counterexample"] = {
+        "case_a": "方案 A 的各实体成功时间完全错开但累计时间较高。",
+        "case_b": "方案 B 的各实体在同一时间段共同成功但累计较低。",
+        "expected_preference": "若题意要求共同保障，应优先选择方案 B。",
+        "candidate_rankings": {"sum": "A>B", "min": "B>A"},
+    }
+    unit["answer_contract"]["semantic_scorer_preflight"] = {
+        "cases": [
+            {
+                "case_id": "simultaneous",
+                "construction": "所有主体在同一窗口共同满足成功事件。",
+                "expected_ranking": "应高于累计相近但完全错开的方案。",
+                "rationale": "该案例检查主体间共同满足的聚合语义。",
+            },
+            {
+                "case_id": "staggered",
+                "construction": "每个主体分别满足但成功时间窗口完全错开。",
+                "expected_ranking": "共同保障分数应为零或低于同步方案。",
+                "rationale": "该案例区分时间求和与共同时间集合。",
+            },
+            {
+                "case_id": "zero_bottleneck",
+                "construction": "一个主体长期成功而另一个主体始终失败。",
+                "expected_ranking": "共同保障或瓶颈目标不得给出高分。",
+                "rationale": "该案例检查总量是否掩盖最弱主体失守。",
+            },
+        ],
+        "pass_criterion": "三个案例的实际 scorer 排序必须与人工预期完全一致。",
+    }
+    for route in [unit["baseline"], *unit["competitive_routes"]]:
+        route["composition"] = {
+            "mode": "joint",
+            "joint_rationale": "路线直接在统一目标与共享约束下评价完整方案。",
+        }
+    return units
+
+
+def test_semantic_13_requires_asymmetric_reconstruction_roles(tmp_path: Path) -> None:
+    """两个同质 fresh thread 不能冒充相关性较低的题意复核。"""
+    run_dir = _run(tmp_path, "semantic-roles")
+    units = _upgrade_units_to_semantic_13(run_dir, _units(run_dir))
+    units["semantic_reconstructions"][1]["role"] = "faithful_reconstruction"
+    create_review_task_receipt(
+        run_dir,
+        task_id="semantic-B",
+        task_type="semantic_reconstruction",
+        model_id="fixture-model",
+        prompt_sha256="b" * 64,
+        input_bindings=semantic_reconstruction_input_bindings(
+            run_dir, role="faithful_reconstruction"
+        ),
+        report_file="review/SEMANTIC_B.md",
+        creation_event_file="review/tasks/creation-events/semantic-B.json",
+    )
+
+    with pytest.raises(ContractError, match="忠实重建与语义攻击"):
+        write_modeling_units(run_dir, units)
+
+
+def test_semantic_13_decomposition_requires_declared_risk_and_joint_followup(
+    tmp_path: Path,
+) -> None:
+    """分解后组合必须被识别为语义风险，并继续接受联合 scorer。"""
+    run_dir = _run(tmp_path, "decomposition-contract")
+    units = _upgrade_units_to_semantic_13(run_dir, _units(run_dir))
+    route = units["units"][0]["competitive_routes"][0]
+    route["composition"] = {
+        "mode": "heuristic_decomposition",
+        "joint_scorer_followup": "分解结果只作初值，继续在联合目标下改进。",
+    }
+
+    with pytest.raises(ContractError, match="decompose_then_combine"):
+        write_modeling_units(run_dir, units)
+
+    units["units"][0]["question_delta"]["semantic_risk_signals"].append(
+        "decompose_then_combine"
+    )
+    write_modeling_units(run_dir, units)
+
+
+def test_objective_11_filters_illegal_candidate_before_consequence_experiments(
+    tmp_path: Path,
+) -> None:
+    """题意不符的目标先淘汰，不因数值漂亮进入真实后果实验。"""
+    run_dir = _run(tmp_path, "legality-first")
+    write_modeling_units(run_dir, _upgrade_units_to_semantic_13(run_dir, _units(run_dir)))
+    payload = _candidates(run_dir)
+    payload["schema_version"] = "1.1"
+    for candidate in payload["questions"][0]["candidates"]:
+        candidate.update(
+            {
+                "source_language": "题面要求总体效果并明确所有实体均受保障。",
+                "preserved_quantifiers": "保留时间、实体与成功事件的量词次序。",
+                "altered_quantifiers": "没有改变题面原有的量词次序。",
+                "introduced_preferences": "没有引入题面之外的价值偏好。",
+                "convenience_only": False,
+            }
+        )
+    payload["questions"][0]["candidates"][0]["support_level"] = "direct"
+    payload["questions"][0]["candidates"][1]["support_level"] = "incompatible"
+    payload["questions"][0]["actual"] = {
+        "candidate_probes": {},
+        "frozen_objective_id": "sum",
+        "freeze_rationale": "另一个目标改变题面量词，正式目标由题面直接支持。",
+    }
+
+    validate_objective_candidates(run_dir, payload, require_actual=True)
+
+
+def test_semantic_scorer_preflight_must_precede_route_search(tmp_path: Path) -> None:
+    """高风险核心问题必须先证明 scorer 排序正确，再比较优化路线。"""
+    run_dir = _run(tmp_path, "scorer-first")
+    units = _upgrade_units_to_semantic_13(run_dir, _units(run_dir))
+    write_modeling_units(run_dir, units)
+    _register(
+        run_dir,
+        "semantic-preflight",
+        duration_seconds=1.0,
+        extra={"semantic_case_count": 3.0, "semantic_case_pass_rate": 1.0},
+        output_extra={
+            "semantic_cases": [
+                {
+                    "case_id": "simultaneous",
+                    "expected_ranking": "应高于累计相近但完全错开的方案。",
+                    "actual_ranking": "应高于累计相近但完全错开的方案。",
+                    "passed": True,
+                },
+                {
+                    "case_id": "staggered",
+                    "expected_ranking": "共同保障分数应为零或低于同步方案。",
+                    "actual_ranking": "共同保障分数应为零或低于同步方案。",
+                    "passed": True,
+                },
+                {
+                    "case_id": "zero_bottleneck",
+                    "expected_ranking": "共同保障或瓶颈目标不得给出高分。",
+                    "actual_ranking": "共同保障或瓶颈目标不得给出高分。",
+                    "passed": True,
+                },
+            ]
+        },
+    )
+    _search_results(run_dir, search_seconds=250.0)
+    _register(run_dir, "attack", duration_seconds=5.0)
+    _fill_actual(
+        units,
+        insights=[
+            {
+                "insight_id": "Q1-joint",
+                "kind": "mechanism",
+                "observation": "联合评价避免累计高但最弱主体为零的方案晋级。",
+                "mechanism": "主体间聚合在每个时刻先于时间测度执行。",
+                "boundary": "只适用于当前题面声明的共同保障口径。",
+                "evidence_result_ids": ["interval", "final"],
+            }
+        ],
+    )
+    units["units"][0]["actual"]["semantic_scorer_preflight_result_id"] = (
+        "semantic-preflight"
+    )
+    write_modeling_units(run_dir, units)
+
+    require_v32_experiment_evidence(run_dir)
+
+
+def test_high_risk_scientific_challenge_must_attack_semantics_first(
+    tmp_path: Path,
+) -> None:
+    """高风险问题的科学挑战不能绕去优先攻击容易量化的搜索细节。"""
+    run_dir = _run(tmp_path, "semantic-first-challenge")
+    write_modeling_units(run_dir, _upgrade_units_to_semantic_13(run_dir, _units(run_dir)))
+    _register(run_dir, "challenge-result", objective=12.0)
+
+    with pytest.raises(ContractError, match="第一攻击必须针对语义"):
+        record_scientific_challenge_evidence(
+            run_dir,
+            result_ids=["challenge-result"],
+            attack_description="检查搜索器是否在固定预算下充分收敛。",
+            stage_a_semantic_assessment={
+                "priority": "model_or_search",
+                "reason": "当前先检查搜索器的数值收敛与预算敏感性。",
+            },
+        )
+
+    receipt = record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=["challenge-result"],
+        attack_description="先用错开满足与同步满足反例攻击当前主体间聚合。",
+        stage_a_semantic_assessment={
+            "priority": "semantics_or_decomposition",
+            "reason": "本问包含多主体和共享资源，目标聚合错误会让全部搜索失去意义。",
+            "counterexample": {
+                "question_id": "Q1",
+                "case_a": "各主体成功窗口完全错开，但累计成功时间更高。",
+                "case_b": "各主体在同一窗口共同成功，但累计成功时间较低。",
+                "expected_preference": "共同保障题意应选择同步成功的方案 B。",
+            },
+        },
+    )
+
+    assert receipt["schema_version"] == "1.4"

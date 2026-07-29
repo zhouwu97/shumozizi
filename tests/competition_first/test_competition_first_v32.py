@@ -50,6 +50,67 @@ def _record_fixture_knowledge_retrieval(run_dir: Path) -> None:
     )
 
 
+def _paper_blind_report(required_questions: list[str]) -> str:
+    """构造自由报告与同源结构化结果并存的盲评夹具。"""
+    structured = {
+        "cold_read": {
+            "input_scope": "frozen_pdf_only",
+            "direct_answers_found_within_3_minutes": {
+                question_id: True for question_id in required_questions
+            },
+            "one_sentence_contribution": "论文用统一数学对象给出逐问可定位的直接答案。",
+            "cross_question_inheritance_understood": True,
+            "first_five_pages_establish_data_intuition": True,
+            "hero_figures_identified": {
+                question_id: True for question_id in required_questions
+            },
+            "report_like_pages": [],
+        },
+        "structure": {
+            field: "pass"
+            for field in (
+                "problem_restatement",
+                "problem_analysis",
+                "assumptions",
+                "symbols_and_data",
+                "four_questions",
+                "model_evaluation",
+            )
+        },
+        "argument_findings": {
+            question_id: {
+                "missing_roles": [],
+                "pages": [1],
+                "finding": f"{question_id} 的数学对象、推导、结果、机制与验证均可在第一页定位。",
+            }
+            for question_id in required_questions
+        },
+        "question_progression": {
+            "status": "pass",
+            "interchangeable_questions": False,
+            "links": [
+                {
+                    "from": previous,
+                    "to": current,
+                    "inheritance": "后问继承前问的数学对象并增加新的决策约束。",
+                }
+                for previous, current in zip(
+                    required_questions, required_questions[1:], strict=False
+                )
+            ],
+            "summary": "各问按照共享数学对象和新增约束形成不可任意交换的递进链。",
+        },
+        "narrative_risks": [],
+        "review_summary": "独立盲评未发现阻断问题，逐问论证、直接答案与递进关系均可定位。",
+    }
+    return (
+        "# PDF 全面盲审\n\n本轮未确认 P0/P1。\n\n"
+        "## 结构化盲评结果\n```json\n"
+        + json.dumps(structured, ensure_ascii=False, indent=2)
+        + "\n```\n"
+    )
+
+
 def _register_result(
     run_dir: Path,
     result_id: str,
@@ -1050,7 +1111,7 @@ def test_v32_verify_reachable_without_web_audit(
     packet = simple_review.build_review_packet(run_dir, kind="paper-blind")
     manifest_file = f"review/packet/paper-blind/{packet['packet_id']}/manifest.json"
     report = run_dir / "review" / "PAPER_BLIND_REVIEW.md"
-    report.write_text("# PDF 全面盲审\n\n本轮未确认 P0/P1。\n", encoding="utf-8")
+    report.write_text(_paper_blind_report(["Q1"]), encoding="utf-8")
     bindings = {
         "packet": {
             "manifest_file": manifest_file,
@@ -1081,7 +1142,7 @@ def test_v32_verify_reachable_without_web_audit(
         report_file=report.relative_to(run_dir).as_posix(),
         creation_event_file=event.relative_to(run_dir).as_posix(),
     )
-    simple_review.import_paper_blind_review(
+    imported = simple_review.import_paper_blind_review(
         run_dir,
         manifest_file=manifest_file,
         verdict="pass",
@@ -1089,6 +1150,13 @@ def test_v32_verify_reachable_without_web_audit(
         reviewer_thread_id="paper-blind-no-web-audit-thread",
         task_receipt_file=receipt.relative_to(run_dir).as_posix(),
     )
+    blind_record = imported["paper_blind_review"]
+    assert blind_record["schema_version"] == "1.1"
+    assert blind_record["cold_read"]["direct_answers_found_within_3_minutes"] == {
+        "Q1": True
+    }
+    assert blind_record["argument_findings"]["Q1"]["pages"] == [1]
+    assert blind_record["reviewer"]["thread_id"] == "paper-blind-no-web-audit-thread"
 
     assert not any(
         (run_dir / "review" / name).is_file()

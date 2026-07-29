@@ -61,6 +61,7 @@
     },
     "matched_cards": {
       "type": "array",
+      "maxItems": 3,
       "items": {"$ref": "#/$defs/matchedCard"}
     },
     "accepted_patterns": {
@@ -120,7 +121,20 @@
         "candidate_patterns": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 2,
           "items": {"$ref": "#/$defs/candidatePattern"}
+        },
+        "failure_mode_lessons": {
+          "type": "object",
+          "properties": {
+            "key_interpretation_decision": {"type": "string", "minLength": 8},
+            "tempting_wrong_interpretation": {"type": "string", "minLength": 8},
+            "minimal_discriminating_counterexample": {"type": "string", "minLength": 8},
+            "decomposition_conditions": {"type": "string", "minLength": 8},
+            "validity_scope": {"type": "string", "minLength": 8}
+          },
+          "minProperties": 1,
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

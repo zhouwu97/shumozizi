@@ -711,6 +711,27 @@ def _core_questions(run_dir: Path, required_questions: list[str]) -> set[str]:
     return core or set(required_questions)
 
 
+def _current_blind_review_record(run_dir: Path) -> dict[str, Any]:
+    """读取与当前 PDF 同修订的结构化独立盲评记录。"""
+    from shumozizi.simple.review import require_current_paper_blind_review_record
+
+    return require_current_paper_blind_review_record(run_dir)
+
+
+def _blind_review_source(run_dir: Path, review: dict[str, Any]) -> dict[str, Any]:
+    """构造版式审计对独立盲评记录、报告和任务身份的绑定。"""
+    record_file = Path("review/paper-blind-review.json")
+    return {
+        "record_file": record_file.as_posix(),
+        "record_sha256": sha256_file(run_dir / record_file),
+        "report_file": review["report"]["file"],
+        "report_sha256": review["report"]["sha256"],
+        "task_id": review["task_receipt"]["task_id"],
+        "thread_id": review["reviewer"]["thread_id"],
+        "paper_render_revision": review["paper_render_revision"],
+    }
+
+
 def _review_blockers(run_dir: Path, document: dict[str, Any]) -> list[str]:
     """返回论文论证和叙事审查中的阻断项。"""
     state = read_simple_state(run_dir)
@@ -718,21 +739,38 @@ def _review_blockers(run_dir: Path, document: dict[str, Any]) -> list[str]:
     for name in STRUCTURE_CHECKS:
         if document["structure"].get(name) != "pass":
             blockers.append(f"结构项 {name} 未通过")
-    argument_depth = document["argument_depth"]
-    if set(argument_depth) != set(state["required_questions"]):
-        blockers.append("论证深度审查未完整覆盖必答问题")
-    for question_id in _core_questions(run_dir, state["required_questions"]):
-        assessment = argument_depth.get(question_id, {})
-        missing = [field for field in ARGUMENT_DEPTH_FIELDS if assessment.get(field) is not True]
-        if missing:
-            blockers.append(f"核心问题 {question_id} 论证不足: {', '.join(missing)}")
+    if document.get("schema_version") == "1.3":
+        argument_findings = document["argument_findings"]
+        if set(argument_findings) != set(state["required_questions"]):
+            blockers.append("独立盲评论证发现未完整覆盖必答问题")
+        for question_id in _core_questions(run_dir, state["required_questions"]):
+            missing = argument_findings.get(question_id, {}).get("missing_roles", [])
+            if missing:
+                blockers.append(
+                    f"核心问题 {question_id} 论证不足: {', '.join(missing)}"
+                )
+    else:
+        argument_depth = document["argument_depth"]
+        if set(argument_depth) != set(state["required_questions"]):
+            blockers.append("论证深度审查未完整覆盖必答问题")
+        for question_id in _core_questions(run_dir, state["required_questions"]):
+            assessment = argument_depth.get(question_id, {})
+            missing = [
+                field
+                for field in ARGUMENT_DEPTH_FIELDS
+                if assessment.get(field) is not True
+            ]
+            if missing:
+                blockers.append(
+                    f"核心问题 {question_id} 论证不足: {', '.join(missing)}"
+                )
     progression = document["question_progression"]
     if progression["status"] != "pass" or progression["interchangeable_questions"] is True:
         blockers.append("各问缺少不可任意交换的继承关系")
     for risk in document["narrative_risks"]:
         if risk["severity"] in {"P0", "P1"} and risk["status"] == "open":
             blockers.append(f"未解决 {risk['severity']} 叙事风险: {risk['location']}")
-    if document.get("schema_version") in {"1.1", "1.2"}:
+    if document.get("schema_version") in {"1.1", "1.2", "1.3"}:
         blockers.extend(document["adjudication"]["blocking_findings"])
     return blockers
 
@@ -746,7 +784,7 @@ def _validate_review_audit(run_dir: Path, document: dict[str, Any]) -> list[str]
     pdf = run_dir / "paper" / "final.pdf"
     if not pdf.is_file() or document["reviewed_pdf_sha256"] != sha256_file(pdf):
         raise ContractError("CUMCM 论证审查未绑定当前 paper/final.pdf")
-    if document.get("schema_version") in {"1.1", "1.2"}:
+    if document.get("schema_version") in {"1.1", "1.2", "1.3"}:
         state = read_simple_state(run_dir)
         cold_read = document["cold_read"]
         answers = cold_read["direct_answers_found_within_3_minutes"]
@@ -764,7 +802,7 @@ def _validate_review_audit(run_dir: Path, document: dict[str, Any]) -> list[str]
         if expected_probe != document["presentation_probe"]:
             raise ContractError("presentation_probe 已与当前 PDF 漂移")
         learning_realization = None
-        if document.get("schema_version") == "1.2":
+        if document.get("schema_version") in {"1.2", "1.3"}:
             assessments = [
                 {
                     "pattern_id": item["pattern_id"],
@@ -787,6 +825,29 @@ def _validate_review_audit(run_dir: Path, document: dict[str, Any]) -> list[str]
         )
         if expected_adjudication != document["adjudication"]:
             raise ContractError("adjudication 必须由当前兑现检查、冷读和页面探针派生")
+    if document.get("schema_version") == "1.3":
+        review = _current_blind_review_record(run_dir)
+        expected_source = _blind_review_source(run_dir, review)
+        if document["blind_review_source"] != expected_source:
+            raise ContractError("CUMCM_LAYOUT_AUDIT 未绑定当前独立盲评记录和任务身份")
+        for field in (
+            "cold_read",
+            "structure",
+            "argument_findings",
+            "question_progression",
+            "narrative_risks",
+            "review_summary",
+        ):
+            if document[field] != review[field]:
+                raise ContractError(f"CUMCM_LAYOUT_AUDIT.{field} 与独立盲评记录不一致")
+        expected_verdict = (
+            "pass"
+            if review["verdict"] == "pass"
+            and review["highest_severity"] not in {"P0", "P1"}
+            else "rework"
+        )
+        if document["paper_review_verdict"] != expected_verdict:
+            raise ContractError("CUMCM_LAYOUT_AUDIT 结论与独立盲评结论不一致")
     blockers = _review_blockers(run_dir, document)
     verdict = document["paper_review_verdict"]
     if verdict in {"pass", "conditional_pass"} and blockers:
@@ -797,7 +858,7 @@ def _validate_review_audit(run_dir: Path, document: dict[str, Any]) -> list[str]
 
 
 def write_cumcm_paper_review_audit(run_dir: Path, payload: dict[str, Any]) -> Path:
-    """在 paper_review 阶段记录论证深度和反工作报告审查。"""
+    """从当前独立盲评派生论证事实，并追加本地呈现与学习检查。"""
     state = _require_cumcm_run(run_dir)
     if state["phase"] != "paper_review":
         raise ContractError("CUMCM 论证审计只能在 paper_review 阶段记录")
@@ -805,28 +866,45 @@ def write_cumcm_paper_review_audit(run_dir: Path, payload: dict[str, Any]) -> Pa
     pdf = run_dir / "paper" / "final.pdf"
     if not pdf.is_file():
         raise ContractError("CUMCM 论证审计缺少 paper/final.pdf")
-    schema_version = payload.get("schema_version")
-    if schema_version is None:
-        if (
-            "learning_checks" in payload
-            or (run_dir / "paper" / "KNOWLEDGE_APPLICATION.md").is_file()
-        ):
-            schema_version = "1.2"
-        elif "cold_read" in payload:
-            schema_version = "1.1"
-        else:
-            schema_version = "1.0"
+    schema_version = payload.get("schema_version", "1.3")
+    if schema_version != "1.3":
+        raise ContractError("新 v3.2 CUMCM 论证审计只能写入 1.3 同源盲评合同")
+    forbidden_parallel_inputs = sorted(
+        {
+            "cold_read",
+            "structure",
+            "argument_depth",
+            "argument_findings",
+            "question_progression",
+            "narrative_risks",
+            "paper_review_verdict",
+            "review_summary",
+        }
+        & set(payload)
+    )
+    if forbidden_parallel_inputs:
+        raise ContractError(
+            "CUMCM_LAYOUT_AUDIT 不再接受与独立盲评平行的作者判断: "
+            + ", ".join(forbidden_parallel_inputs)
+        )
+    review = _current_blind_review_record(run_dir)
+    paper_review_verdict = (
+        "pass"
+        if review["verdict"] == "pass" and review["highest_severity"] not in {"P0", "P1"}
+        else "rework"
+    )
     document = {
         "schema_name": "cumcm_layout_audit",
         "schema_version": schema_version,
         "run_id": run_dir.name,
         "reviewed_pdf_sha256": sha256_file(pdf),
-        "structure": payload.get("structure", {}),
-        "argument_depth": payload.get("argument_depth", {}),
-        "question_progression": payload.get("question_progression", {}),
-        "narrative_risks": payload.get("narrative_risks", []),
-        "paper_review_verdict": payload.get("paper_review_verdict"),
-        "review_summary": payload.get("review_summary"),
+        "blind_review_source": _blind_review_source(run_dir, review),
+        "structure": review["structure"],
+        "argument_findings": review["argument_findings"],
+        "question_progression": review["question_progression"],
+        "narrative_risks": review["narrative_risks"],
+        "paper_review_verdict": paper_review_verdict,
+        "review_summary": review["review_summary"],
         "layout": {
             "status": "pending",
             "pdf_total_pages": None,
@@ -840,29 +918,23 @@ def write_cumcm_paper_review_audit(run_dir: Path, payload: dict[str, Any]) -> Pa
             "docx_note": None,
             **{field: [] for field in ISSUE_FIELDS},
         },
-        "overall_verdict": "rework" if payload.get("paper_review_verdict") == "rework" else "pending",
+        "overall_verdict": "rework" if paper_review_verdict == "rework" else "pending",
     }
-    if schema_version in {"1.1", "1.2"}:
+    if schema_version == "1.3":
         realization = evaluate_presentation_contract(run_dir)
         if realization is None:
             raise ContractError(
                 f"CUMCM_LAYOUT_AUDIT {schema_version} 需要 CUMCM_STRUCTURE_MAP 1.1"
             )
-        cold_read = payload.get("cold_read")
-        if not isinstance(cold_read, dict):
-            raise ContractError(
-                f"CUMCM_LAYOUT_AUDIT {schema_version} 缺少 PDF-only cold_read"
-            )
+        cold_read = review["cold_read"]
         probe = probe_pdf_page_rhythm(pdf)
         document["authoring_realization"] = realization
         document["cold_read"] = cold_read
         document["presentation_probe"] = probe
-        learning_realization = None
-        if schema_version == "1.2":
-            learning_realization = build_learning_realization(
-                run_dir, payload.get("learning_checks")
-            )
-            document["learning_realization"] = learning_realization
+        learning_realization = build_learning_realization(
+            run_dir, payload.get("learning_checks")
+        )
+        document["learning_realization"] = learning_realization
         document["adjudication"] = _presentation_adjudication(
             state, realization, cold_read, probe, learning_realization
         )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -48,6 +49,53 @@ def _run(
         total_hours=total_hours,
         workflow_version="3.2",
         require_web_review=require_web_review,
+    )
+
+
+def _passing_blind_report() -> str:
+    """返回单问通过盲评及其同源结构化结果。"""
+    structured = {
+        "cold_read": {
+            "input_scope": "frozen_pdf_only",
+            "direct_answers_found_within_3_minutes": {"Q1": True},
+            "one_sentence_contribution": "论文给出可定位的单问模型、结果与直接答案。",
+            "cross_question_inheritance_understood": True,
+            "first_five_pages_establish_data_intuition": True,
+            "hero_figures_identified": {"Q1": True},
+            "report_like_pages": [],
+        },
+        "structure": {
+            field: "pass"
+            for field in (
+                "problem_restatement",
+                "problem_analysis",
+                "assumptions",
+                "symbols_and_data",
+                "four_questions",
+                "model_evaluation",
+            )
+        },
+        "argument_findings": {
+            "Q1": {
+                "missing_roles": [],
+                "pages": [1],
+                "finding": "Q1 的数学对象、推导、求解、结果、机制和验证均可定位。",
+            }
+        },
+        "question_progression": {
+            "status": "pass",
+            "interchangeable_questions": False,
+            "links": [],
+            "summary": "当前只有一个必答问题，不存在跨问交换或继承歧义。",
+        },
+        "narrative_risks": [],
+        "review_summary": "独立盲评未发现阻断问题，单问论证和直接答案均可在 PDF 中定位。",
+    }
+    return (
+        "# PDF 盲评\n\n未发现 P0/P1，论文可进入机械终检。\n\n"
+        "## 结构化盲评结果\n```json\n"
+        + json.dumps(structured, ensure_ascii=False, indent=2)
+        + "\n```\n"
     )
 
 
@@ -393,7 +441,7 @@ def test_delivery_controller_reaches_submission_and_invalidates_stale_blind_revi
         f"review/packet/paper-blind/{packet['packet_id']}/manifest.json"
     )
     report = run_dir / "review/PAPER_BLIND_REVIEW.md"
-    report.write_text("# PDF 盲评\n\n未发现 P0/P1，论文可进入机械终检。\n", encoding="utf-8")
+    report.write_text(_passing_blind_report(), encoding="utf-8")
     bindings = {
         "packet": {
             "manifest_file": manifest_file,

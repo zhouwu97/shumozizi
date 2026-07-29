@@ -73,9 +73,30 @@ CORE_SEARCH_BUDGET_SHARE = 0.4
 _PLANNING_PLACEHOLDERS = frozenset(
     {"待填写", "待补充", "待分析", "待确认", "todo", "tbd", "placeholder"}
 )
+_RECONSTRUCTION_ROLES = frozenset(
+    {"faithful_reconstruction", "semantic_adversary"}
+)
+_SEMANTIC_RISK_SIGNALS = frozenset(
+    {
+        "multiple_entities",
+        "nested_quantifiers",
+        "aggregation_language",
+        "objective_form_ambiguity",
+        "question_entity_change",
+        "decompose_then_combine",
+        "shared_resources",
+        "multi_stage",
+    }
+)
+_DECOMPOSITION_MODES = frozenset(
+    {"joint", "exact_decomposition", "heuristic_decomposition", "initialization_only"}
+)
+_COUNTEREXAMPLE_RANKINGS = frozenset({"A>B", "B>A", "tie"})
 
 
-def semantic_reconstruction_input_bindings(run_dir: Path) -> dict[str, Any]:
+def semantic_reconstruction_input_bindings(
+    run_dir: Path, *, role: str | None = None
+) -> dict[str, Any]:
     """构造题意独立重建唯一允许使用的题面绑定。
 
     Args:
@@ -87,10 +108,33 @@ def semantic_reconstruction_input_bindings(run_dir: Path) -> dict[str, Any]:
     problem_dir = run_dir / "problem"
     if not problem_dir.is_dir():
         raise ContractError("v3.2 题意重建缺少 problem/ 输入目录")
-    return {
+    bindings: dict[str, Any] = {
         "input_scope": ["problem"],
         "problem_tree_sha256": sha256_tree(problem_dir),
     }
+    if role is not None:
+        if role not in _RECONSTRUCTION_ROLES:
+            raise ContractError("题意重建角色不受支持")
+        bindings["reconstruction_role"] = role
+        bindings["required_analysis"] = (
+            [
+                "decision_variables",
+                "evaluated_entities",
+                "success_event",
+                "temporal_aggregation",
+                "cross_entity_aggregation",
+                "required_output",
+            ]
+            if role == "faithful_reconstruction"
+            else [
+                "quantifier_order",
+                "aggregation_alternatives",
+                "decomposition_equivalence",
+                "question_delta",
+                "minimal_counterexample",
+            ]
+        )
+    return bindings
 
 
 def _require_text(value: object, label: str) -> str:
@@ -137,16 +181,31 @@ def _require_flagged_validation(value: object, label: str) -> bool:
     return required
 
 
-def _semantic_reconstructions(run_dir: Path, value: object) -> None:
-    """验证两轮题意重建均为真实 create_thread 的 problem-only 审核。"""
+def _semantic_reconstructions(
+    run_dir: Path, value: object, *, require_asymmetric_roles: bool
+) -> None:
+    """验证两轮 problem-only 重建的独立性与非对称职责。"""
     reconstructions = value
     if not isinstance(reconstructions, list) or len(reconstructions) < 2:
         raise ContractError("semantic_reconstructions 至少需要两轮真实 fresh-thread 重建")
-    bindings = semantic_reconstruction_input_bindings(run_dir)
+    if require_asymmetric_roles and len(reconstructions) != 2:
+        raise ContractError("MODELING_UNITS 1.3 只使用两轮重建：一次忠实重建和一次语义攻击")
     thread_ids: set[str] = set()
     reports: set[str] = set()
+    roles: set[str] = set()
     for index, raw in enumerate(reconstructions):
         item = _require_mapping(raw, f"semantic_reconstructions[{index}]")
+        role = item.get("role")
+        if require_asymmetric_roles:
+            if role not in _RECONSTRUCTION_ROLES:
+                raise ContractError(
+                    f"semantic_reconstructions[{index}].role 必须为 "
+                    "faithful_reconstruction 或 semantic_adversary"
+                )
+            roles.add(str(role))
+        bindings = semantic_reconstruction_input_bindings(
+            run_dir, role=str(role) if role in _RECONSTRUCTION_ROLES else None
+        )
         receipt_file = _require_text(item.get("task_receipt"), f"semantic_reconstructions[{index}].task_receipt")
         report_file = _require_text(item.get("report_file"), f"semantic_reconstructions[{index}].report_file")
         receipt = validate_review_task_receipt(
@@ -166,6 +225,142 @@ def _semantic_reconstructions(run_dir: Path, value: object) -> None:
             raise ContractError("两轮题意重建必须各自绑定独立报告")
         thread_ids.add(receipt["thread_id"])
         reports.add(report_file)
+    if require_asymmetric_roles and roles != _RECONSTRUCTION_ROLES:
+        raise ContractError("两轮题意重建必须分别承担忠实重建与语义攻击职责")
+
+
+def _text_list_allow_empty(value: object, label: str) -> list[str]:
+    """读取允许为空的非重复文本列表。"""
+    if not isinstance(value, list):
+        raise ContractError(f"{label} 必须是文本数组")
+    values = [_require_text(item, f"{label}[]") for item in value]
+    if len(set(values)) != len(values):
+        raise ContractError(f"{label} 不得重复")
+    return values
+
+
+def _validate_question_delta(value: object, label: str) -> dict[str, Any]:
+    """识别相邻问题新增对象、共享资源和聚合风险。"""
+    item = _require_mapping(value, label)
+    inherits = item.get("inherits_from")
+    if inherits is not None:
+        _require_text(inherits, f"{label}.inherits_from")
+    added_entities = _text_list_allow_empty(item.get("added_entities"), f"{label}.added_entities")
+    added_resources = _text_list_allow_empty(
+        item.get("added_resources"), f"{label}.added_resources"
+    )
+    shared_resources = _text_list_allow_empty(
+        item.get("shared_resources"), f"{label}.shared_resources"
+    )
+    changed_constraints = _text_list_allow_empty(
+        item.get("changed_constraints"), f"{label}.changed_constraints"
+    )
+    signals = _text_list_allow_empty(
+        item.get("semantic_risk_signals"), f"{label}.semantic_risk_signals"
+    )
+    unsupported = sorted(set(signals) - _SEMANTIC_RISK_SIGNALS)
+    if unsupported:
+        raise ContractError(f"{label} 包含未知语义风险信号: {', '.join(unsupported)}")
+    _require_substantive_plan_text(
+        item.get("possible_objective_change"), f"{label}.possible_objective_change"
+    )
+    must_recheck = item.get("must_recheck_aggregation")
+    if not isinstance(must_recheck, bool):
+        raise ContractError(f"{label}.must_recheck_aggregation 必须是布尔值")
+    triggered = bool(
+        added_entities
+        or added_resources
+        or shared_resources
+        or changed_constraints
+        or signals
+    )
+    if triggered and not must_recheck:
+        raise ContractError(
+            f"{label} 已登记实体、资源、约束或语义信号变化，必须重新检查目标聚合"
+        )
+    return {"semantic_high_risk": must_recheck, "semantic_risk_signals": set(signals)}
+
+
+def _validate_semantic_counterexample(value: object, label: str) -> dict[str, str]:
+    """验证能让至少两个解释产生不同排序的最小反例。"""
+    item = _require_mapping(value, label)
+    _require_substantive_plan_text(item.get("case_a"), f"{label}.case_a")
+    _require_substantive_plan_text(item.get("case_b"), f"{label}.case_b")
+    _require_substantive_plan_text(
+        item.get("expected_preference"), f"{label}.expected_preference"
+    )
+    rankings = _require_mapping(item.get("candidate_rankings"), f"{label}.candidate_rankings")
+    if len(rankings) < 2:
+        raise ContractError(f"{label}.candidate_rankings 至少需要两个解释")
+    normalized: dict[str, str] = {}
+    for objective_id, ranking in rankings.items():
+        identifier = _require_text(objective_id, f"{label}.candidate_rankings objective_id")
+        if ranking not in _COUNTEREXAMPLE_RANKINGS:
+            raise ContractError(f"{label}.{identifier} 必须为 A>B、B>A 或 tie")
+        normalized[identifier] = str(ranking)
+    if len(set(normalized.values())) < 2:
+        raise ContractError(f"{label} 必须让至少两个解释产生不同排序")
+    return normalized
+
+
+def _validate_aggregation_contract(value: object, label: str) -> None:
+    """要求 endpoint 明确原子事件、资源、主体与时间四层聚合。"""
+    item = _require_mapping(value, label)
+    for field in (
+        "atomic_success",
+        "within_entity",
+        "across_resources",
+        "across_entities",
+        "temporal",
+        "quantifier_order",
+    ):
+        _require_substantive_plan_text(item.get(field), f"{label}.{field}")
+
+
+def _validate_scorer_preflight(value: object, label: str) -> dict[str, str]:
+    """验证正式搜索前计划的 3--5 个评分语义案例。"""
+    item = _require_mapping(value, label)
+    cases = item.get("cases")
+    if not isinstance(cases, list) or not 3 <= len(cases) <= 5:
+        raise ContractError(f"{label}.cases 必须包含 3--5 个人工语义案例")
+    seen: set[str] = set()
+    for index, raw in enumerate(cases):
+        case = _require_mapping(raw, f"{label}.cases[{index}]")
+        case_id = _require_text(case.get("case_id"), f"{label}.cases[{index}].case_id")
+        if case_id in seen:
+            raise ContractError(f"{label}.cases.case_id 不得重复")
+        seen.add(case_id)
+        for field in ("construction", "expected_ranking", "rationale"):
+            _require_substantive_plan_text(
+                case.get(field), f"{label}.cases[{index}].{field}"
+            )
+    _require_substantive_plan_text(item.get("pass_criterion"), f"{label}.pass_criterion")
+    return {
+        str(case["case_id"]): str(case["expected_ranking"])
+        for case in cases
+    }
+
+
+def _validate_route_composition(value: object, label: str) -> str:
+    """声明分解路线与联合目标的关系，禁止把局部最优冒充全局最优。"""
+    item = _require_mapping(value, label)
+    mode = item.get("mode")
+    if mode not in _DECOMPOSITION_MODES:
+        raise ContractError(
+            f"{label}.mode 必须为 joint、exact_decomposition、"
+            "heuristic_decomposition 或 initialization_only"
+        )
+    if mode == "joint":
+        _require_text(item.get("joint_rationale"), f"{label}.joint_rationale")
+    elif mode == "exact_decomposition":
+        _require_substantive_plan_text(
+            item.get("equivalence_basis"), f"{label}.equivalence_basis"
+        )
+    else:
+        _require_substantive_plan_text(
+            item.get("joint_scorer_followup"), f"{label}.joint_scorer_followup"
+        )
+    return str(mode)
 
 
 def _route_definition(
@@ -201,7 +396,13 @@ def _route_definition(
 
 
 def _validate_answer_contract(
-    value: object, label: str, *, derive_qualification: bool
+    value: object,
+    label: str,
+    *,
+    derive_qualification: bool,
+    require_semantic_contract: bool,
+    semantic_high_risk: bool,
+    core_question: bool,
 ) -> dict[str, Any]:
     """验证实验前逐问直接答案合同，避免先跑模型再倒推回答口径。"""
     contract = _require_mapping(value, label)
@@ -215,6 +416,11 @@ def _validate_answer_contract(
         endpoint_id = _require_text(endpoint_id, f"{label}.primary_endpoint.endpoint_id")
     _require_text(endpoint.get("name"), f"{label}.primary_endpoint.name")
     _require_text(endpoint.get("definition"), f"{label}.primary_endpoint.definition")
+    if require_semantic_contract:
+        _require_text(endpoint.get("formula"), f"{label}.primary_endpoint.formula")
+        _validate_aggregation_contract(
+            endpoint.get("aggregation"), f"{label}.primary_endpoint.aggregation"
+        )
     _require_text(
         endpoint.get("exact_metric_alignment"),
         f"{label}.primary_endpoint.exact_metric_alignment",
@@ -264,10 +470,25 @@ def _validate_answer_contract(
         _require_text(
             resolution.get("decision_rule"), f"{label}.endpoint_resolution.decision_rule"
         )
+    counterexample_rankings: dict[str, str] = {}
+    scorer_cases: dict[str, str] = {}
+    semantic_high_risk = semantic_high_risk or status == "comparison_planned"
+    if require_semantic_contract and semantic_high_risk:
+        counterexample_rankings = _validate_semantic_counterexample(
+            contract.get("semantic_counterexample"), f"{label}.semantic_counterexample"
+        )
+    if require_semantic_contract and semantic_high_risk and core_question:
+        scorer_cases = _validate_scorer_preflight(
+            contract.get("semantic_scorer_preflight"),
+            f"{label}.semantic_scorer_preflight",
+        )
     return {
         "primary_endpoint_id": endpoint_id,
         "endpoint_candidate_ids": candidate_ids,
         "endpoint_resolution_status": status,
+        "counterexample_rankings": counterexample_rankings,
+        "scorer_cases": scorer_cases,
+        "semantic_high_risk_from_endpoint": semantic_high_risk,
     }
 
 
@@ -292,12 +513,21 @@ def _validate_unit_plan(
     mode = unit.get("mode")
     if mode not in {"compare", "oracle_only"}:
         raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
+    require_semantic_contract = schema_version == "1.3"
+    delta = {"semantic_high_risk": False, "semantic_risk_signals": set()}
+    if require_semantic_contract:
+        delta = _validate_question_delta(
+            unit.get("question_delta"), f"{unit_id}.question_delta"
+        )
     answer_contract: dict[str, Any] = {}
     if require_decision_contract:
         answer_contract = _validate_answer_contract(
             unit.get("answer_contract"),
             f"{unit_id}.answer_contract",
-            derive_qualification=schema_version == "1.2",
+            derive_qualification=schema_version in {"1.2", "1.3"},
+            require_semantic_contract=require_semantic_contract,
+            semantic_high_risk=bool(delta["semantic_high_risk"]),
+            core_question=core,
         )
     objective = _require_mapping(unit.get("objective"), f"{unit_id}.objective")
     _require_text(objective.get("exact_metric"), f"{unit_id}.objective.exact_metric")
@@ -363,6 +593,7 @@ def _validate_unit_plan(
         _require_text(validation["oracle"].get("oracle_kind"), f"{unit_id}.validation.oracle.oracle_kind")
 
     route_ids: list[str] = []
+    composition_modes: dict[str, str] = {}
     expected_upsides: dict[str, float] = {}
     fallback_route: str | None = None
     if mode == "compare":
@@ -370,6 +601,10 @@ def _validate_unit_plan(
         baseline_id, baseline_structure, _ = _route_definition(
             baseline, f"{unit_id}.baseline", require_potential=False
         )
+        if require_semantic_contract:
+            composition_modes[baseline_id] = _validate_route_composition(
+                baseline.get("composition"), f"{unit_id}.baseline.composition"
+            )
         if require_decision_contract:
             _require_text(
                 baseline.get("natural_rationale"), f"{unit_id}.baseline.natural_rationale"
@@ -383,6 +618,12 @@ def _validate_unit_plan(
             )
             for index, route in enumerate(candidates_raw)
         ]
+        if require_semantic_contract:
+            for index, (route_id, _structure, _upside) in enumerate(candidates):
+                composition_modes[route_id] = _validate_route_composition(
+                    candidates_raw[index].get("composition"),
+                    f"{unit_id}.competitive_routes[{index}].composition",
+                )
         expected_upsides = {
             route_id: upside for route_id, _, upside in candidates if upside is not None
         }
@@ -397,6 +638,15 @@ def _validate_unit_plan(
         if fallback_route not in route_ids:
             raise ContractError(f"{unit_id}.fallback.route_id 必须引用已比较路线")
         _require_text(fallback.get("switch_condition"), f"{unit_id}.fallback.switch_condition")
+        if (
+            require_semantic_contract
+            and any(mode != "joint" for mode in composition_modes.values())
+            and "decompose_then_combine" not in delta["semantic_risk_signals"]
+        ):
+            raise ContractError(
+                f"{unit_id} 含分解路线，question_delta.semantic_risk_signals "
+                "必须登记 decompose_then_combine"
+            )
     else:
         oracle = _require_mapping(unit.get("oracle"), f"{unit_id}.oracle")
         _require_text(oracle.get("oracle_kind"), f"{unit_id}.oracle.oracle_kind")
@@ -414,7 +664,12 @@ def _validate_unit_plan(
         "route_ids": route_ids,
         "fallback_route": fallback_route,
         "require_decision_contract": require_decision_contract,
-        "derive_qualification": schema_version == "1.2",
+        "derive_qualification": schema_version in {"1.2", "1.3"},
+        "semantic_high_risk": bool(
+            delta["semantic_high_risk"]
+            or answer_contract.get("semantic_high_risk_from_endpoint")
+        ),
+        "composition_modes": composition_modes,
         **answer_contract,
         "expected_upsides": expected_upsides,
         "families": families,
@@ -1087,8 +1342,101 @@ def _validate_insights(value: object, plan: dict[str, Any], results: dict[str, d
         )
 
 
+def _validate_semantic_scorer_preflight_actual(
+    run_dir: Path,
+    actual: dict[str, Any],
+    plan: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+    search_ids: set[str],
+) -> str | None:
+    """确认高风险核心问题在正式路线搜索前先通过评分语义案例。"""
+    expected_cases = dict(plan.get("scorer_cases", {}))
+    expected_count = len(expected_cases)
+    if expected_count == 0:
+        return None
+    label = f"{plan['unit_id']}.actual.semantic_scorer_preflight_result_id"
+    result_id = _require_text(actual.get("semantic_scorer_preflight_result_id"), label)
+    result = _production_result(
+        results,
+        result_id=result_id,
+        question_id=plan["question_id"],
+        label=label,
+    )
+    metrics = result.get("metrics", {})
+    case_count = metrics.get("semantic_case_count")
+    pass_rate = metrics.get("semantic_case_pass_rate")
+    if (
+        not isinstance(case_count, (int, float))
+        or isinstance(case_count, bool)
+        or int(case_count) != expected_count
+    ):
+        raise ContractError(f"{label} 必须报告计划中的 {expected_count} 个语义案例")
+    if (
+        not isinstance(pass_rate, (int, float))
+        or isinstance(pass_rate, bool)
+        or not math.isclose(float(pass_rate), 1.0, rel_tol=0.0, abs_tol=1e-12)
+    ):
+        raise ContractError(f"{label} 的评分器未通过全部语义排序案例，不能接受路线搜索")
+    raw_cases: list[dict[str, Any]] | None = None
+    for output_file in result.get("output_files", []):
+        if not isinstance(output_file, str) or not output_file.lower().endswith(".json"):
+            continue
+        try:
+            output = load_json(run_dir / output_file)
+        except (OSError, ValueError):
+            continue
+        candidate_cases = output.get("semantic_cases")
+        if isinstance(candidate_cases, list):
+            raw_cases = candidate_cases
+            break
+    if raw_cases is None:
+        raise ContractError(f"{label} 的真实 JSON 输出必须包含 semantic_cases 逐案例记录")
+    observed: dict[str, dict[str, Any]] = {}
+    for index, case in enumerate(raw_cases):
+        if not isinstance(case, dict):
+            raise ContractError(f"{label}.semantic_cases[{index}] 必须是对象")
+        case_id = _require_text(
+            case.get("case_id"), f"{label}.semantic_cases[{index}].case_id"
+        )
+        if case_id in observed:
+            raise ContractError(f"{label}.semantic_cases.case_id 不得重复")
+        expected = _require_text(
+            case.get("expected_ranking"),
+            f"{label}.semantic_cases[{index}].expected_ranking",
+        )
+        actual_ranking = _require_text(
+            case.get("actual_ranking"),
+            f"{label}.semantic_cases[{index}].actual_ranking",
+        )
+        if (
+            case_id not in expected_cases
+            or expected != expected_cases[case_id]
+            or case.get("passed") is not True
+            or actual_ranking != expected_cases[case_id]
+        ):
+            raise ContractError(f"{label} 的案例 {case_id} 未得到预期排序")
+        observed[case_id] = case
+    if set(observed) != set(expected_cases):
+        raise ContractError(f"{label} 的逐案例输出必须覆盖且仅覆盖计划案例")
+    result_order = {identifier: index for index, identifier in enumerate(results)}
+    later_or_missing = [
+        identifier
+        for identifier in search_ids
+        if result_order.get(identifier, -1) <= result_order.get(result_id, -1)
+    ]
+    if later_or_missing:
+        raise ContractError(
+            f"{label} 必须早于 baseline、竞争路线和深化搜索登记；"
+            "先测试评分器奖励什么，再测试优化器"
+        )
+    return result_id
+
+
 def _validate_actual_unit(
-    plan: dict[str, Any], raw_unit: dict[str, Any], results: dict[str, dict[str, Any]]
+    run_dir: Path,
+    plan: dict[str, Any],
+    raw_unit: dict[str, Any],
+    results: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     """验证事前预期已被首批攻击、深化和条件验证的实际结果回填。
 
@@ -1189,6 +1537,11 @@ def _validate_actual_unit(
                 label=f"{plan['unit_id']}.actual.oracle_result_ids",
             )
         )
+    preflight_result_id = _validate_semantic_scorer_preflight_actual(
+        run_dir, actual, plan, results, search_ids
+    )
+    if preflight_result_id is not None:
+        verify_ids.add(preflight_result_id)
     _validate_insights(actual.get("insights"), plan, results)
     # 同一结果既服务搜索又服务验证时按搜索计入，避免把深化证据算成验证开销。
     verify_ids -= search_ids
@@ -1275,18 +1628,22 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     if not is_competition_first_v32_state(state):
         raise ContractError("MODELING_UNITS 只适用于 Competition-First v3.2 运行")
     schema_version = payload.get("schema_version")
-    if schema_version not in {"1.0", "1.1", "1.2"} or payload.get("run_id") != state["run_id"]:
+    if schema_version not in {"1.0", "1.1", "1.2", "1.3"} or payload.get("run_id") != state["run_id"]:
         raise ContractError("MODELING_UNITS 的 schema_version 或 run_id 不匹配")
     # 网页讨论不是阶段门；但一旦选择登记，就必须保持本地先行和延迟揭示边界。
     validate_external_discussion_protocol_if_present(run_dir)
     question_ids = set(state["required_questions"])
     if not question_ids:
         raise ContractError("v3.2 运行必须先声明 required_questions")
-    _semantic_reconstructions(run_dir, payload.get("semantic_reconstructions"))
+    _semantic_reconstructions(
+        run_dir,
+        payload.get("semantic_reconstructions"),
+        require_asymmetric_roles=schema_version == "1.3",
+    )
     _validate_research_story(
         payload.get("research_story"),
         question_ids,
-        require_progression_contract=schema_version == "1.2",
+        require_progression_contract=schema_version in {"1.2", "1.3"},
     )
     raw_units = payload.get("units")
     if not isinstance(raw_units, list) or not raw_units:
@@ -1300,7 +1657,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
         plan = _validate_unit_plan(
             unit,
             question_ids=question_ids,
-            require_decision_contract=schema_version in {"1.1", "1.2"},
+            require_decision_contract=schema_version in {"1.1", "1.2", "1.3"},
             schema_version=schema_version,
         )
         if plan["unit_id"] in seen_units:
@@ -1313,7 +1670,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
         plans.append(plan)
     if covered_questions != question_ids:
         raise ContractError("MODELING_UNITS 必须覆盖每个必答问题")
-    if schema_version == "1.2":
+    if schema_version in {"1.2", "1.3"}:
         duplicates = sorted(
             question_id
             for question_id, count in question_unit_counts.items()
@@ -1321,7 +1678,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
         )
         if duplicates:
             raise ContractError(
-                "MODELING_UNITS 1.2 每个必答问题必须恰有一个答案单元: "
+                f"MODELING_UNITS {schema_version} 每个必答问题必须恰有一个答案单元: "
                 + ", ".join(duplicates)
             )
     if not any(plan["core_question"] for plan in plans):
@@ -1332,7 +1689,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     if require_actual:
         results = {item["result_id"]: item for item in read_result_index(run_dir)["results"]}
         budgets = [
-            _validate_actual_unit(plan, raw, results)
+            _validate_actual_unit(run_dir, plan, raw, results)
             for plan, raw in zip(plans, raw_units, strict=True)
         ]
         _require_core_budget_share(run_dir, budgets)
@@ -1389,7 +1746,13 @@ def write_modeling_units(run_dir: Path, payload: dict[str, Any]) -> dict[str, An
             require_delivery_action_allowed(run_dir, "add_new_route")
         existing_version = existing.get("schema_version")
         requested_version = payload.get("schema_version")
-        if existing_version == "1.2" and requested_version != "1.2":
+        if (
+            existing_version == "1.3"
+            and existing.get("units")
+            and requested_version != "1.3"
+        ):
+            raise ContractError("MODELING_UNITS 1.3 不得降级绕过语义反例与评分器预检")
+        if existing_version == "1.2" and requested_version not in {"1.2", "1.3"}:
             raise ContractError("新 v3.2 运行的 MODELING_UNITS 不得降级绕过系统派生答案资格")
         if existing_version == "1.1" and requested_version == "1.0":
             raise ContractError("MODELING_UNITS 不得降级到 1.0 绕过决策合同")
@@ -1413,6 +1776,46 @@ def require_v32_modeling_plan(run_dir: Path) -> None:
     if not path.is_file():
         raise ContractError("进入实验前必须完成 analysis/MODELING_UNITS.json")
     validate_modeling_units(run_dir, load_json(path), require_actual=False)
+
+
+def semantic_high_risk_questions(run_dir: Path) -> set[str]:
+    """返回已由问题差分识别为聚合高风险的问题。"""
+    path = run_dir / MODELING_UNITS_PATH
+    if not path.is_file():
+        return set()
+    try:
+        payload = load_json(path)
+    except (OSError, ValueError):
+        return set()
+    if payload.get("schema_version") != "1.3":
+        return set()
+    return {
+        str(unit["question_id"])
+        for unit in payload.get("units", [])
+        if isinstance(unit, dict)
+        and isinstance(unit.get("question_id"), str)
+        and isinstance(unit.get("question_delta"), dict)
+        and unit["question_delta"].get("must_recheck_aggregation") is True
+    }
+
+
+def semantic_counterexample_for_question(
+    run_dir: Path, question_id: str
+) -> dict[str, Any] | None:
+    """读取建模单元中的唯一语义反例，供目标合法性校验复用。"""
+    path = run_dir / MODELING_UNITS_PATH
+    if not path.is_file():
+        return None
+    payload = load_json(path)
+    if payload.get("schema_version") != "1.3":
+        return None
+    for unit in payload.get("units", []):
+        if not isinstance(unit, dict) or unit.get("question_id") != question_id:
+            continue
+        contract = unit.get("answer_contract")
+        if isinstance(contract, dict) and isinstance(contract.get("semantic_counterexample"), dict):
+            return dict(contract["semantic_counterexample"])
+    return None
 
 
 _SUBSTANTIVE_INSIGHT_KINDS = frozenset(
@@ -1483,7 +1886,7 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
     except (OSError, ValueError):
         return {}
     schema_version = payload.get("schema_version")
-    if schema_version == "1.2":
+    if schema_version in {"1.2", "1.3"}:
         state = read_simple_state(run_dir)
         question_ids = set(state["required_questions"])
         results = {
@@ -1496,7 +1899,7 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
                 unit,
                 question_ids=question_ids,
                 require_decision_contract=True,
-                schema_version="1.2",
+                schema_version=str(schema_version),
             )
             actual = _require_mapping(
                 unit.get("actual"), f"{plan['unit_id']}.actual"

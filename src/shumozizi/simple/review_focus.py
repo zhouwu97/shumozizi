@@ -14,6 +14,7 @@ from shumozizi.core.io import (
     sha256_bytes,
     sha256_file,
 )
+from shumozizi.simple.modeling_units import semantic_high_risk_questions
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import (
     is_competition_first_v32_state,
@@ -285,6 +286,41 @@ def write_focused_followup(run_dir: Path, content: str) -> Path:
     return path
 
 
+def _normalize_stage_a_semantic_assessment(
+    value: object, *, high_risk_questions: set[str]
+) -> dict[str, Any]:
+    """验证科学挑战阶段 A 先攻击语义与分解，而不是先调搜索器。"""
+    if not isinstance(value, dict):
+        raise ContractError("stage_a_semantic_assessment 必须是对象")
+    priority = value.get("priority")
+    if priority not in {"semantics_or_decomposition", "model_or_search"}:
+        raise ContractError(
+            "stage_a_semantic_assessment.priority 必须为 "
+            "semantics_or_decomposition 或 model_or_search"
+        )
+    reason = value.get("reason")
+    if not isinstance(reason, str) or len(reason.strip()) < 12:
+        raise ContractError("stage_a_semantic_assessment.reason 至少需要 12 个字符")
+    normalized: dict[str, Any] = {"priority": priority, "reason": reason.strip()}
+    if high_risk_questions:
+        if priority != "semantics_or_decomposition":
+            raise ContractError("存在多主体、聚合或分解风险时，科学挑战第一攻击必须针对语义")
+        counterexample = value.get("counterexample")
+        if not isinstance(counterexample, dict):
+            raise ContractError("高风险科学挑战的阶段 A 必须给出独立玩具反例")
+        question_id = counterexample.get("question_id")
+        if question_id not in high_risk_questions:
+            raise ContractError("阶段 A 玩具反例必须针对已识别的高风险问题")
+        normalized_counterexample = {"question_id": str(question_id)}
+        for field in ("case_a", "case_b", "expected_preference"):
+            text = counterexample.get(field)
+            if not isinstance(text, str) or len(text.strip()) < 8:
+                raise ContractError(f"stage_a_semantic_assessment.counterexample.{field} 过于空泛")
+            normalized_counterexample[field] = text.strip()
+        normalized["counterexample"] = normalized_counterexample
+    return normalized
+
+
 def record_scientific_challenge_evidence(
     run_dir: Path,
     *,
@@ -292,6 +328,7 @@ def record_scientific_challenge_evidence(
     attack_description: str,
     comparison_result_ids: list[str] | None = None,
     findings: list[dict[str, Any]] | None = None,
+    stage_a_semantic_assessment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """绑定科学挑战的当前结论与保留对照执行结果。
 
@@ -301,6 +338,7 @@ def record_scientific_challenge_evidence(
         attack_description: 该攻击试图推翻的具体结论。
         comparison_result_ids: 用于反例或路线取舍的生产级对照结果；允许已经
             被当前候选替换，但其输出仍须保持登记时的内容。
+        stage_a_semantic_assessment: 阶段 A 对目标语义与分解风险的优先判断。
 
     Returns:
         已写入的轻量挑战证据收据。
@@ -365,9 +403,26 @@ def record_scientific_challenge_evidence(
     normalized_findings = _normalize_scientific_findings(
         run_dir, findings or [], current_results
     ) if is_v32 or findings is not None else None
+    high_risk_questions = semantic_high_risk_questions(run_dir) if is_v32 else set()
+    semantic_assessment: dict[str, Any] | None = None
+    if stage_a_semantic_assessment is not None:
+        semantic_assessment = _normalize_stage_a_semantic_assessment(
+            stage_a_semantic_assessment,
+            high_risk_questions=high_risk_questions,
+        )
+    elif high_risk_questions:
+        raise ContractError(
+            "高风险问题的科学挑战必须先记录阶段 A 目标语义/分解攻击和独立玩具反例"
+        )
     payload = {
         "schema_version": (
-            "1.3" if normalized_findings is not None else "1.2" if comparison_ids else "1.0"
+            "1.4"
+            if semantic_assessment is not None
+            else "1.3"
+            if normalized_findings is not None
+            else "1.2"
+            if comparison_ids
+            else "1.0"
         ),
         "run_id": run_dir.name,
         "attack_description": attack_description.strip(),
@@ -376,6 +431,8 @@ def record_scientific_challenge_evidence(
     }
     if normalized_findings is not None:
         payload["findings"] = normalized_findings
+    if semantic_assessment is not None:
+        payload["stage_a_semantic_assessment"] = semantic_assessment
     atomic_json(run_dir / SCIENTIFIC_CHALLENGE_EVIDENCE_PATH, payload)
     return payload
 
@@ -397,8 +454,14 @@ def verify_scientific_challenge_evidence(run_dir: Path) -> dict[str, Any]:
         if payload.get("run_id") != run_dir.name or not payload.get("attack_description"):
             raise ContractError("科学挑战证据 run_id 或攻击描述无效")
         schema_version = payload.get("schema_version", "1.0")
-        if schema_version not in {"1.0", "1.1", "1.2", "1.3"}:
+        if schema_version not in {"1.0", "1.1", "1.2", "1.3", "1.4"}:
             raise ContractError("科学挑战证据 schema_version 不受支持")
+        high_risk_questions = semantic_high_risk_questions(run_dir)
+        if high_risk_questions:
+            _normalize_stage_a_semantic_assessment(
+                payload.get("stage_a_semantic_assessment"),
+                high_risk_questions=high_risk_questions,
+            )
         results = {
             item["result_id"]: item
             for item in read_result_index(run_dir)["results"]
@@ -412,12 +475,12 @@ def verify_scientific_challenge_evidence(run_dir: Path) -> dict[str, Any]:
             evidence_role = item.get("evidence_role", "current") if isinstance(item, dict) else None
             allowed_statuses = (
                 {"current", "superseded"}
-                if schema_version in {"1.2", "1.3"} and evidence_role == "comparison"
+                if schema_version in {"1.2", "1.3", "1.4"} and evidence_role == "comparison"
                 else {"current"}
             )
             if (
                 evidence_role not in {"current", "comparison"}
-                or (evidence_role == "comparison" and schema_version not in {"1.2", "1.3"})
+                or (evidence_role == "comparison" and schema_version not in {"1.2", "1.3", "1.4"})
                 or result is None
                 or result.get("status") not in allowed_statuses
                 or not isinstance(item, dict)
@@ -466,7 +529,7 @@ def verify_scientific_challenge_evidence(run_dir: Path) -> dict[str, Any]:
         if not payload.get("results"):
             errors.append("科学挑战没有绑定任何执行结果")
         blocking_findings: list[dict[str, Any]] = []
-        if schema_version == "1.3":
+        if schema_version in {"1.3", "1.4"}:
             try:
                 normalized = _normalize_scientific_findings(
                     run_dir, payload.get("findings"), {

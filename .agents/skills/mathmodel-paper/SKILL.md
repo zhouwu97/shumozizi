@@ -29,7 +29,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 第一步：填写 ARGUMENT_PLAN.md
 
-在动笔前，先执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper`。读取分析阶段已提取的安全论文卡模式，在 `paper/KNOWLEDGE_APPLICATION.md` 中逐项决定写作时采用或拒绝；实际采用的模式最多来自 1--2 张卡，采用项必须说明应用位置、当前题证据、实际正文源码和一个可核对的兑现锚点。写作时把锚点对应的结构真正写入声明源码；草稿和候选稿就绪检查会打开源码复验，不能只完成计划。只消费受控模式，不把整库或原论文塞入写作上下文。知识卡不是当前题证据，不得迁移原题参数、公式和代码、数值结论或奖项评价。无相关匹配时记录该事实即可，不强迫采用任何模式。
+在动笔前，先执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper`。分析检索最多保留 3 张结构相似卡、每卡 2 个安全模式；写作模板默认只展示分析阶段已采用的模式，分析阶段已拒绝项自动继承，不重复填写。确需重开时使用 `--force --reopen <pattern_id>`，并填写实质 reopen 理由。实际采用的模式最多来自 1--2 张卡，采用项必须说明应用位置、当前题证据、实际正文源码和一个可核对的兑现锚点。写作时把锚点对应的结构真正写入声明源码；草稿和候选稿就绪检查会打开源码复验。知识卡不是当前题证据，不得迁移原题参数、公式和代码、数值结论或奖项评价。
 
 完成迁移判断后，再填写 `paper/ARGUMENT_PLAN.md`（见格式规范）。该文件在实验结束后填写，在论文写完前人工检视——不得在写作过程中自动生成再立即消费。
 
@@ -186,9 +186,10 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 
 仅对 Competition-First v3.2 的 CUMCM 正式候选稿，在编译前写 1.1 版
 `paper/CUMCM_STRUCTURE_MAP.json`。`profile=classic` 保留固定国赛外层栏目作为稳定兜底；
-`profile=semantic` 允许拆出数据处理和逐问章节，但仍必须覆盖问题重述、问题分析、假设、
+`profile=semantic` 是实验画像，允许拆出数据处理和逐问章节，但当前仍必须覆盖问题重述、问题分析、假设、
 符号或数据定义、数据处理、逐问求解、近端验证、综合评价、参考文献和附录，并保留
 `ARGUMENT_PLAN` 的论证顺序及全部必答问题。结构自由不得改变模型、数字、结论或证据等级。
+在 held-out A/B 证明收益前，不把 semantic 设为默认，也不在本轮放宽 local validation、appendix 或前置角色约束。
 
 1.1 同时填写轻量 `presentation_contract`：前五页阅读路线、跨问题主线、直接答案总览、
 数据画像和逐问 hero figure。每项必须给源码锚点或具体豁免理由；初期使用 `mode=advisory`，

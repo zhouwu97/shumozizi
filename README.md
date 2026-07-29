@@ -147,7 +147,7 @@ runs/<run-id>/
 
 `answer_map.json` 是编译前的必要事实：每个必答问题必须有至少一个当前生产结果和直接答案位置。`STORYBOARD.md` 与 `CONTRIBUTION_BRIEF.md` 用于提高写作质量；`method_facts.json` 在全面审核冻结后的 gap 查漏中是必需输入，和后置提取的强断言共同派生中央风险。
 
-CUMCM v3.2 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.3 分开科学证据需要与评委阅读需要，`CUMCM_STRUCTURE_MAP` 1.1 选择固定 `classic` 或语义 `semantic` 结构并声明前五页阅读路线、答案总览、数据画像和逐问主图。数据画像可直接绑定运行内冻结数据与审计文件，不需要伪造实验结果。呈现缺口和页面节奏初期只告警；逐问直接答案、科学证据必需图和结构语义缺失才阻断。
+CUMCM v3.2 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.3 分开科学证据需要与评委阅读需要，`CUMCM_STRUCTURE_MAP` 1.1 选择固定 `classic` 或实验性的 `semantic` 结构并声明前五页阅读路线、答案总览、数据画像和逐问主图。semantic 在 held-out A/B 前不设为默认，也暂不放宽 local validation、appendix 和前置角色约束。数据画像可直接绑定运行内冻结数据与审计文件，不需要伪造实验结果。
 
 写作采用三种可往返的逻辑动作：先做结构蓝图，再统一共享模型并逐问成文，最后以证据、边界和严格返修收束。`templates/competition-first/WRITING_ACTIONS.md` 提供提示；它吸收“蓝图、共享模型、逐问章节、证据局限、返修”的优点，但不把五轮写作机械固定为状态机。
 
@@ -157,7 +157,7 @@ CUMCM v3.2 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.3 分开科学证据
 
 科学挑战只回答六个问题：独立重建目标/变量/约束、三处最大风险、对最大风险的实际攻击、最薄弱问题、当前竞争力上限、最可能改变结论的下一实验。它必须绑定冻结输入、报告和真实任务回执，但不以覆盖率清单放行。
 
-PDF 盲评必须用 Codex `create_thread` 新建独立顶层对话，不得 fork、调用子 Agent 或续用写作任务。`paper-blind` 包只冻结最终 PDF；使用 `scripts/review/show_paper_blind_prompt.py` 输出固定提示词并原样发送，不能附加题面、源码、运行记录、计划文件、论文卡、作者解释或既有审核意见。盲评除竞争力、写作、P0/P1 和最高价值修改外，还要在三分钟内逐问找答案、复述一句话贡献、说明问题继承、识别主图并指出工作报告页。盲评后，本地 `CUMCM_LAYOUT_AUDIT` 1.2 可把 `KNOWLEDGE_APPLICATION.md` 中预先采用的 1--2 张卡片模式与当前 PDF 对照；该学习兑现检查始终 advisory，知识卡不能成为当前证据。每次正式编译递增 `paper_render_revision`；盲评与 CUMCM 版式审计只对同一修订有效。无法创建独立盲评时必须写明跳过原因，不能静默跳过；跳过只允许继续机械 QA，状态为 `unreviewed`，绝不能作为 `complete` 或 `submission_ready` 放行。
+PDF 盲评必须使用独立上下文，只接收冻结最终 PDF 与 `scripts/review/show_paper_blind_prompt.py` 的固定提示词。报告末尾按提示嵌入同源结构化 JSON；导入器把冷读、逐问缺失角色、页码、具体 finding、问题递进和叙事风险写入现有 `review/paper-blind-review.json`，并绑定报告哈希、任务/对话 ID 与 `paper_render_revision`。本地 `CUMCM_LAYOUT_AUDIT` 1.3 直接读取该记录，拒绝作者另填 `cold_read`、`argument_depth` 或 verdict，只追加呈现合同、页面探针和 advisory 学习兑现。分析检索最多保留 3 张卡、每卡 2 个模式；写作默认继承分析拒绝，只重新判断分析已采用或显式 reopen 的模式。无法创建独立盲评时仍只能继续机械 QA，不能标记 `complete` 或 `submission_ready`。
 
 完成前重新检查科学挑战仍绑定当前代码、数据和生产结果，再检查 PDF、匿名、占位符、乱码、裁切、空白页、当前结果和当前图表漂移。P0/P1、真实负面证据或失效的事实产物始终阻断 `complete`。
 

@@ -13,6 +13,7 @@ from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject
 from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.knowledge.retrieval import write_paper_knowledge_application
 from shumozizi.paper import compiler as paper_compiler
+from shumozizi.paper import cumcm_adapter as cumcm_adapter_module
 from shumozizi.paper.cumcm_adapter import (
     CLASSIC_ROLE_BY_TARGET,
     SECTION_TARGETS,
@@ -27,6 +28,16 @@ from shumozizi.paper.cumcm_adapter import (
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.state import paper_revision_status, update_simple_state
+
+
+@pytest.fixture(autouse=True)
+def _use_fixture_blind_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """隔离适配器单测，只跳过冻结包构造，不绕过同源字段派生。"""
+    monkeypatch.setattr(
+        cumcm_adapter_module,
+        "_current_blind_review_record",
+        lambda run_dir: load_json(run_dir / "review/paper-blind-review.json"),
+    )
 
 
 def _run(tmp_path: Path, *, questions: list[str] | None = None) -> Path:
@@ -265,42 +276,114 @@ def _cold_read(*, q2_answer_found: bool = True) -> dict[str, object]:
     }
 
 
-def _review_payload(run_dir: Path, *, verdict: str = "pass") -> dict[str, object]:
-    """构造覆盖两个问题的论文论证审核。"""
-    fields = {
-        "mathematical_difficulty": True,
-        "mathematical_object": True,
-        "modeling_basis": True,
-        "derivation": True,
-        "solver": True,
-        "main_result": True,
-        "mechanism": True,
-        "competing_route_or_counterexample": True,
-        "claim_specific_validation": True,
-        "direct_answer": True,
-    }
-    return {
-        "structure": {name: "pass" for name in (
-            "problem_restatement",
-            "problem_analysis",
-            "assumptions",
-            "symbols_and_data",
-            "four_questions",
-            "model_evaluation",
-        )},
-        "argument_depth": {"Q1": dict(fields), "Q2": dict(fields)},
-        "question_progression": {
-            "status": "pass",
-            "interchangeable_questions": False,
-            "links": [
-                {"from": "Q1", "to": "Q2", "inheritance": "Q2继承Q1的统计单位并新增决策对象。"}
-            ],
-            "summary": "各问共享统计单位，但后问在前问基础上引入新的数学困难。",
+def _write_empty_knowledge_application(run_dir: Path) -> Path:
+    """为适配器单测写入无匹配、无需学习判断的合法应用文件。"""
+    path = run_dir / "paper/KNOWLEDGE_APPLICATION.md"
+    if path.is_file():
+        return path
+    atomic_json(
+        run_dir / "knowledge/analysis-retrieval.json",
+        {
+            "schema_name": "knowledge_retrieval",
+            "schema_version": "1.0",
+            "stage": "analysis",
+            "run_id": run_dir.name,
+            "status": "no_relevant_match",
+            "task_fingerprint": {
+                "problem_type": "测试",
+                "data_structure": "测试数据",
+                "task_types": ["测试"],
+                "statistical_units": [],
+                "mathematical_difficulties": [],
+                "objective_structures": [],
+                "constraint_types": [],
+                "validation_risks": [],
+                "question_chain": [],
+                "structural_tags": [],
+                "keywords": [],
+            },
+            "matched_cards": [],
+            "accepted_patterns": [],
+            "rejected_patterns": [],
+            "forbidden_transfer": ["原题参数", "公式和代码", "数值结论", "奖项评价"],
+            "no_match_reason": "没有与当前适配器测试相关的结构模式。",
+            "unavailable_reason": None,
         },
-        "narrative_risks": [],
-        "paper_review_verdict": verdict,
-        "review_summary": "当前审核同时覆盖结构、核心论证深度、问题继承和反工作报告风险。",
+    )
+    return write_paper_knowledge_application(run_dir)
+
+
+def _write_blind_record(
+    run_dir: Path,
+    *,
+    verdict: str = "pass",
+    q2_answer_found: bool = True,
+    q1_missing_roles: list[str] | None = None,
+    progression_issue: bool = False,
+) -> Path:
+    """写入由冻结盲评派生的两问结构化记录。"""
+    _write_empty_knowledge_application(run_dir)
+    cold_read = _cold_read(q2_answer_found=q2_answer_found)
+    findings = {
+        "Q1": {
+            "missing_roles": q1_missing_roles or [],
+            "pages": [3, 4],
+            "finding": "Q1 的数学对象、推导、结果与验证均可在对应页面定位。",
+        },
+        "Q2": {
+            "missing_roles": [] if q2_answer_found else ["direct_answer"],
+            "pages": [5, 6],
+            "finding": (
+                "Q2 的直接答案与机制解释均可在对应页面定位。"
+                if q2_answer_found
+                else "Q2 在三分钟冷读内无法定位直接答案，只能找到方法描述。"
+            ),
+        },
     }
+    progression = {
+        "status": "issue" if progression_issue else "pass",
+        "interchangeable_questions": progression_issue,
+        "links": [
+            {"from": "Q1", "to": "Q2", "inheritance": "Q2继承Q1的统计单位并新增决策对象。"}
+        ],
+        "summary": "各问共享统计单位，但后问在前问基础上引入新的数学困难。",
+    }
+    record = {
+        "schema_name": "v32_paper_blind_review",
+        "schema_version": "1.1",
+        "run_id": run_dir.name,
+        "verdict": verdict,
+        "highest_severity": "none",
+        "paper_render_revision": 0,
+        "report": {"file": "review/PAPER_BLIND_REVIEW.md", "sha256": "0" * 64},
+        "task_receipt": {"task_id": "blind-task"},
+        "reviewer": {"thread_id": "blind-thread"},
+        "cold_read": cold_read,
+        "structure": {
+            name: "pass"
+            for name in (
+                "problem_restatement",
+                "problem_analysis",
+                "assumptions",
+                "symbols_and_data",
+                "four_questions",
+                "model_evaluation",
+            )
+        },
+        "argument_findings": findings,
+        "question_progression": progression,
+        "narrative_risks": [],
+        "review_summary": "独立盲评覆盖结构、逐问论证定位、问题递进和反工作报告风险。",
+    }
+    path = run_dir / "review/paper-blind-review.json"
+    atomic_json(path, record)
+    return path
+
+
+def _review_payload(run_dir: Path) -> dict[str, object]:
+    """构造仅含本地学习兑现输入的 1.3 审计载荷。"""
+    _write_blind_record(run_dir)
+    return {}
 
 
 def _set_phase(run_dir: Path, phase: str) -> None:
@@ -378,15 +461,16 @@ def test_reference_docx_is_passed_to_pandoc(tmp_path: Path, monkeypatch: pytest.
     assert f"--reference-doc={reference.resolve()}" in captured
 
 
-def test_paper_review_audit_blocks_false_core_argument_depth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """核心问题缺少一项实质论证时不能进入 verify。"""
+def test_paper_review_audit_blocks_blind_finding_for_core_argument(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """独立盲评给出页码和缺失角色后，核心问题不能靠作者布尔值放行。"""
     run_dir = _run(tmp_path)
-    _write_map(run_dir)
-    (run_dir / "paper/final.pdf").write_bytes(b"%PDF-1.4\nfixture")
+    _write_map_11(run_dir)
+    _write_pdf(run_dir, pages=8)
     _set_phase(run_dir, "paper_review")
-    payload = _review_payload(run_dir, verdict="rework")
-    payload["argument_depth"]["Q1"]["derivation"] = False
-    write_cumcm_paper_review_audit(run_dir, payload)
+    _write_blind_record(run_dir, verdict="needs_rework", q1_missing_roles=["derivation"])
+    write_cumcm_paper_review_audit(run_dir, {})
     monkeypatch.setattr(
         "shumozizi.simple.review.require_paper_blind_review_allowed",
         lambda _run: None,
@@ -398,13 +482,11 @@ def test_paper_review_audit_blocks_false_core_argument_depth(tmp_path: Path, mon
 def test_interchangeable_questions_block_verify(tmp_path: Path) -> None:
     """四问可以任意交换顺序时，叙事审计必须阻断。"""
     run_dir = _run(tmp_path)
-    _write_map(run_dir)
-    (run_dir / "paper/final.pdf").write_bytes(b"%PDF-1.4\nfixture")
+    _write_map_11(run_dir)
+    _write_pdf(run_dir, pages=8)
     _set_phase(run_dir, "paper_review")
-    payload = _review_payload(run_dir, verdict="rework")
-    payload["question_progression"]["status"] = "issue"
-    payload["question_progression"]["interchangeable_questions"] = True
-    write_cumcm_paper_review_audit(run_dir, payload)
+    _write_blind_record(run_dir, verdict="needs_rework", progression_issue=True)
+    write_cumcm_paper_review_audit(run_dir, {})
     with pytest.raises(ContractError, match="不可任意交换"):
         require_cumcm_paper_review_audit(run_dir)
 
@@ -414,7 +496,7 @@ def test_page_range_is_soft_but_layout_issue_blocks_completion(
 ) -> None:
     """页数只形成条件结论，真实版面问题仍会要求返工。"""
     run_dir = _run(tmp_path)
-    _write_map(run_dir)
+    _write_map_11(run_dir)
     _write_pdf(run_dir)
     _set_phase(run_dir, "paper_review")
     write_cumcm_paper_review_audit(run_dir, _review_payload(run_dir))
@@ -547,7 +629,7 @@ def test_presentation_contract_distinguishes_advisory_and_required(tmp_path: Pat
     assert any("opening_reading_route" in item for item in status["errors"])
 
 
-def test_layout_audit_11_blocks_missing_answer_but_keeps_style_advisory(
+def test_layout_audit_13_blocks_missing_answer_but_keeps_style_advisory(
     tmp_path: Path,
 ) -> None:
     """冷读找不到直接答案会阻断，数据直觉和工作报告感只进入建议。"""
@@ -555,25 +637,59 @@ def test_layout_audit_11_blocks_missing_answer_but_keeps_style_advisory(
     _write_map_11(run_dir)
     _write_pdf(run_dir, pages=8)
     _set_phase(run_dir, "paper_review")
-    payload = _review_payload(run_dir)
-    payload["schema_version"] = "1.1"
-    payload["cold_read"] = _cold_read()
-    path = write_cumcm_paper_review_audit(run_dir, payload)
+    _write_blind_record(run_dir)
+    path = write_cumcm_paper_review_audit(run_dir, {})
     audit = load_json(path)
     assert audit["adjudication"]["status"] == "pass"
     assert audit["adjudication"]["blocking_findings"] == []
     assert any("数据直觉" in item for item in audit["adjudication"]["advisory_findings"])
     assert audit["presentation_probe"]["advisory_only"] is True
 
-    blocked = _review_payload(run_dir, verdict="rework")
-    blocked["schema_version"] = "1.1"
-    blocked["cold_read"] = _cold_read(q2_answer_found=False)
-    write_cumcm_paper_review_audit(run_dir, blocked)
+    _write_blind_record(run_dir, verdict="needs_rework", q2_answer_found=False)
+    write_cumcm_paper_review_audit(run_dir, {})
     with pytest.raises(ContractError, match="三分钟内未找到 Q2"):
         require_cumcm_paper_review_audit(run_dir)
 
 
-def test_layout_audit_12_checks_selected_learning_patterns_after_blind_read(
+def test_layout_audit_rejects_parallel_author_review_facts(tmp_path: Path) -> None:
+    """作者不能再另填 cold_read 或全 true 布尔值覆盖独立盲评。"""
+    run_dir = _run(tmp_path)
+    _write_map_11(run_dir)
+    _write_pdf(run_dir, pages=8)
+    _set_phase(run_dir, "paper_review")
+    _write_blind_record(run_dir)
+
+    with pytest.raises(ContractError, match="平行的作者判断"):
+        write_cumcm_paper_review_audit(
+            run_dir,
+            {
+                "cold_read": _cold_read(),
+                "argument_depth": {
+                    question_id: {field: True for field in cumcm_adapter_module.ARGUMENT_DEPTH_FIELDS}
+                    for question_id in ("Q1", "Q2")
+                },
+            },
+        )
+
+
+def test_layout_audit_detects_blind_record_drift(tmp_path: Path) -> None:
+    """同源盲评记录变化后，既有 CUMCM 审计必须立即失效。"""
+    run_dir = _run(tmp_path)
+    _write_map_11(run_dir)
+    _write_pdf(run_dir, pages=8)
+    _set_phase(run_dir, "paper_review")
+    _write_blind_record(run_dir)
+    write_cumcm_paper_review_audit(run_dir, {})
+
+    record_path = run_dir / "review/paper-blind-review.json"
+    record = load_json(record_path)
+    record["review_summary"] = "独立盲评记录已被修改，原版式审计不应继续沿用。"
+    atomic_json(record_path, record)
+    with pytest.raises(ContractError, match="独立盲评记录|不一致"):
+        require_cumcm_paper_review_audit(run_dir)
+
+
+def test_layout_audit_13_checks_selected_learning_patterns_after_blind_read(
     tmp_path: Path,
 ) -> None:
     """学习兑现由本地审计检查，部分兑现只告警且计划漂移会使审计失效。"""
@@ -582,19 +698,19 @@ def test_layout_audit_12_checks_selected_learning_patterns_after_blind_read(
     _write_map_11(run_dir)
     _write_pdf(run_dir, pages=8)
     _set_phase(run_dir, "paper_review")
-    payload = _review_payload(run_dir)
-    payload["cold_read"] = _cold_read()
-    payload["learning_checks"] = [
+    _write_blind_record(run_dir)
+    payload = {"learning_checks": [
         {
             "pattern_id": "paper-card:P1",
             "pdf_realization": "partial",
             "finding": "Q1 到 Q2 已共享统计单位，但过渡段尚未说明继承如何改变决策对象。",
         }
-    ]
+    ]}
 
     path = write_cumcm_paper_review_audit(run_dir, payload)
     audit = load_json(path)
-    assert audit["schema_version"] == "1.2"
+    assert audit["schema_version"] == "1.3"
+    assert audit["blind_review_source"]["thread_id"] == "blind-thread"
     assert audit["learning_realization"]["selected_cards"] == ["paper-card"]
     assert audit["learning_realization"]["status"] == "partial"
     assert any(

@@ -22,7 +22,11 @@ def main() -> int:
     parser.add_argument("--candidate", action="append", required=True)
     parser.add_argument("--target-stem", required=True)
     parser.add_argument("--rendering-mode", choices=("plot", "diagram"), required=True)
-    parser.add_argument("--layout-report")
+    parser.add_argument(
+        "--layout-report",
+        required=True,
+        help="与候选同目录的流程图几何或统计图语义布局 JSON",
+    )
     parser.add_argument("--human-review-notes", required=True)
     args = parser.parse_args()
     try:

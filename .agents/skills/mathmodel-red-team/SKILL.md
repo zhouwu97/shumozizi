@@ -23,6 +23,8 @@ description: 对 Competition-First v3.2 运行执行条件目标语义审查、�
 3. 最可能导致目标函数失真或题意偏离的建模选择；
 4. 最值得通过实验区分的两个假设。
 
+先判断当前核心问题更可能错在目标语义/分解，还是模型/搜索。出现多主体、嵌套量词、总体/共同/同时/分别/至少一个、和与最小值或并集与交集竞争、相邻问题实体数变化、先分解后组合时，第一攻击必须针对语义或分解等价性，并构造一个让两个解释排序相反的玩具反例；反例无法区分时才把攻击预算转向几何、代理评分、搜索、鲁棒性或数值精度。阶段 A 的这一判断与反例随科学挑战证据登记，不增加审核轮次。
+
 不要按清单作答。某个问题足够关键时，可以把大部分篇幅集中在它上面。把阶段A的独立判断明确写入报告——哪怕只是几段，这是防止锚定的核心。
 
 ### 阶段B：读代码和结果，对照比较
@@ -61,11 +63,11 @@ PDF 盲评需要独立上下文，**不能新开浏览器页面**，平台区分
 - **Codex 桌面端**：用 `create_thread` 新建顶层对话，`provider=codex`，`creation_mode=create_thread`，`parent_context_inherited=false`。
 - **Claude.ai / Claude Code**：用 Agent tool dispatch 一个子 Agent，**不传入任何当前 run 的上下文**，只传冻结 PDF 路径 + 提示词；子 Agent ID 即为 `raw_thread_id`，`provider=claude`，`creation_mode=dispatch_agent`，`parent_context_inherited=false`。
 
-无论哪种平台，新上下文只读取冻结 PDF，提示词由 `scripts/review/show_paper_blind_prompt.py` 生成并原样传入；不读取题面、源码、历史 run、求解上下文、作者说明或前序审核结论。盲评写 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须完成三分钟冷读：逐问定位直接答案、复述一句话贡献、说明问题继承、识别主图及其论点、指出工作报告页，并判断前五页是否建立数据直觉。审查报告绑定冻结 PDF、固定提示词哈希、当前 `paper_render_revision` 与真实任务回执。
+无论哪种平台，新上下文只读取冻结 PDF，提示词由 `scripts/review/show_paper_blind_prompt.py` 生成并原样传入；不读取题面、源码、历史 run、求解上下文、作者说明或前序审核结论。盲评写 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须完成三分钟冷读，并在同一报告末尾按固定提示嵌入 `## 结构化盲评结果` JSON：逐问记录直接答案、论证缺失角色、实际页码、具体 finding、问题继承和叙事风险。导入器把该块写入现有 `review/paper-blind-review.json`，并绑定报告哈希、任务/对话 ID、固定提示词和当前 `paper_render_revision`；不得另交一份作者填写的冷读 JSON。
 
 不得创建 coverage declaration、逐风险 follow-up、final audit 或仅以 pass/fail 代替自由判断。已执行反例、独立复算冲突、不可行和性质失败始终阻断。
 
-对 CUMCM v3.2，盲评后把同一轮冷读结果与结构完整性、核心问题论证深度、问题继承和叙事风险写入 `paper/CUMCM_LAYOUT_AUDIT.json`，不另开审核阶段。使用 1.2 时，系统自动附上 `presentation_contract` 的源码/图表兑现检查和 PDF 页面节奏探针，并把本地 `learning_checks` 与 `KNOWLEDGE_APPLICATION.md` 中预先采用的模式合并为 `learning_realization`；每项 `learning_checks` 只填写 `pattern_id`、`pdf_realization=pass|partial|fail` 和具体 `finding`，卡片、模式、正文位置与证据由系统从知识应用文件重建。该项只检查计划是否在 PDF 中兑现，始终 advisory，不能评价奖项水平或充当当前证据。高文字密度页、图表后置、数据直觉不足、主图难识别和工作报告感先作为 advisory，逐问直接答案在三分钟内找不到则阻断。每个核心问题仍检查数学困难、数学对象、建模依据、关键推导、求解、主结果、机制、竞争路线或反例、结论近端验证和直接答案；四问可任意换序、统一套句、用步骤冒充推导、图不支撑论点或用文件/公式/页数充当质量时不得进入 verify。使用 `python scripts/paper/cumcm_adapter.py <run_dir> paper-review --input <json>` 写入。
+对 CUMCM v3.2，`paper/CUMCM_LAYOUT_AUDIT.json` 1.3 直接读取当前 `review/paper-blind-review.json`，把同一轮独立盲评的冷读、结构、逐问缺失角色与页码、问题继承和叙事风险作为唯一评审事实源；`paper-review --input` 禁止再次传入 `cold_read`、`argument_depth`、`question_progression` 或 verdict。系统只在本地追加 `presentation_contract` 兑现、PDF 页面节奏探针和 `learning_checks`；每项 `learning_checks` 只填写 `pattern_id`、`pdf_realization=pass|partial|fail` 和具体 `finding`，并始终 advisory。核心问题只要盲评 `missing_roles` 非空就阻断，不能用四十多个全 true 布尔值覆盖。使用 `python scripts/paper/cumcm_adapter.py <run_dir> paper-review --input <json>` 写入，其中 JSON 只含可选的 `learning_checks`。
 
 ---
 
