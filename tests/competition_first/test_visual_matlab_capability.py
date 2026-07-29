@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from shumozizi.core.io import ContractError, load_json
-from shumozizi.simple.figures import audit_figure_information_value, write_figure_plan
+from shumozizi.simple.figures import (
+    audit_figure_information_value,
+    recommended_visual_archetypes,
+    write_figure_plan,
+)
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.matlab import run_matlab_analysis
 from shumozizi.simple.results import read_result_index
@@ -45,6 +49,10 @@ def _figure(visual_archetype: str) -> dict[str, object]:
         "explanation_anchor": "拐点由可靠性约束开始激活形成",
         "required": True,
         "visual_archetype": visual_archetype,
+        "information_structure": "tradeoff",
+        "generic_chart_considered": True,
+        "generic_chart_rejected_because": "普通柱形图无法同时展示可行区域、约束边界和折中拐点。",
+        "mechanism_annotation": ["可行边界", "Pareto 拐点", "最终方案"],
         "renderer": "matlab",
         "visual_question": "哪个方案在可靠性与时点之间形成最佳折中？",
         "expected_observation": "最终方案位于 Pareto 拐点且通过最坏组约束。",
@@ -108,6 +116,48 @@ def test_figure_plan_23_accepts_frozen_sources_without_result_id(tmp_path: Path)
     del missing_sources["figures"][0]["source_files"]
     with pytest.raises(ContractError, match="source_files|not valid"):
         write_figure_plan(run_dir, missing_sources)
+
+
+def test_figure_plan_23_rejects_generic_hero_without_structure_justification(
+    tmp_path: Path,
+) -> None:
+    """空间、集合等结构不能用普通路线柱形图冒充唯一主图。"""
+    run_dir = _run(tmp_path, "figure-plan-generic-hero")
+    figure = {
+        **_figure("route_score_comparison"),
+        "presentation_role": "question_hero",
+        "information_structure": "set",
+    }
+    plan = {
+        "schema_name": "figure_plan",
+        "schema_version": "2.3",
+        "run_id": run_dir.name,
+        "visual_decisions": [
+            {
+                "scope": "Q2",
+                "evidence_need": "required",
+                "presentation_need": "required",
+                "reason": "时间集合并交关系决定最终覆盖长度和暴露缺口。",
+            }
+        ],
+        "figures": [figure],
+    }
+
+    with pytest.raises(ContractError, match="generic_chart_override_reason"):
+        write_figure_plan(run_dir, plan)
+
+    figure["generic_chart_override_reason"] = (
+        "本问只比较三个离散标量且不存在区间、边界或机制结构，柱形图最直接。"
+    )
+    assert write_figure_plan(run_dir, plan)["figures"][0]["figure_id"] == "q2-main"
+
+
+def test_structure_aware_archetypes_cover_interval_and_active_constraint_views() -> None:
+    """集合与权衡问题优先获得区间/可行域语法，而不是默认统计图。"""
+    assert "interval_event_timeline" in recommended_visual_archetypes("set")
+    assert "feasible_region_active_constraints" in recommended_visual_archetypes(
+        "tradeoff"
+    )
 
 
 def test_figure_plan_22_still_requires_nonempty_result_sources(tmp_path: Path) -> None:

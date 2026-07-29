@@ -30,7 +30,7 @@ python scripts/codex/init_simple_run.py <problem_path> --run-id <run-id> --workf
 3. 只有未决且会改变主结果的题意歧义才创建目标语义审查；歧义未决时不得用 `determined` 跳过候选比较。能力选择属于分析/实验中的按需动作。
 4. 实验只登记原始结果指标。核心优化/协同默认使用自然 baseline 加一条结构 challenger，第二条只在首轮不确定、仍在改善或评审明确指出缺口时增加；首解后至少一类深化。搜索占实际算力约 35% 只是 advisory。硬阻断只用于没有真实搜索、单随机种子且明显不稳定、challenger 仍快速改善或停止理由与日志冲突。系统输出 `objective_answer`、`recommended_plan`、`evidence_grade` 三层结果：endpoint、exact 指标、硬约束和可行性决定题面答案；名义答案稳定时推荐层继续指向题面赢家，只有不稳定或题面答案不可用时才可按已验证条件推荐 fallback。旧 1.2/1.3 `oracle_only` 只能以 `legacy_unverified` 查看，迁移 1.4 并完成 agreement 后才能进入正式答案。
 5. 结束实验后进行一次自由科学挑战；必要时只允许一个专项追问。阶段 A 先判断核心风险在目标语义/分解还是模型/搜索；多主体、嵌套量词、聚合词、问题实体变化或分解后组合存在时，第一攻击必须针对语义并给出独立玩具反例。只有语义风险低时才优先攻击搜索和数值。其余发现分类、回退和更强路线闭合规则不变。
-6. 图表在 `figures/work/` 迭代，通过 QA 后晋级 `figures/current/`，旧版进入 `figures/archive/`。首稿前每个必答问题都须在 `FIGURE_PLAN` 2.3 中把展示图决定为 required 或 waived；几何、并集/交集、名义—稳健和共享模型还须作 whole-paper 决策。稳定性图入附录。
+6. 图表在 `figures/work/` 迭代，通过 QA 后晋级 `figures/current/`，旧版进入 `figures/archive/`。首稿前每个必答问题都须在 `FIGURE_PLAN` 2.3 中把展示图决定为 required 或 waived；几何、并集/交集、名义—稳健和共享模型还须作 whole-paper 决策。正文 hero 先声明 `information_structure`，再按空间、时间/集合、网络、场、权衡或不确定性选择原型，并标注临界事件、活跃约束、边界和最终决策。普通柱形图/折线图不能成为这些结构的默认唯一主图；确实最合适时必须显式登记 override 理由。稳定性图入附录。
 7. 进入论文后只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 和 `PAPER_REVIEW.md` 四个主要控制文件。知识应用是 advisory；零匹配时使用通用结构模式，可检索实际采用的方法文献，禁止同题答案和现成结论。CUMCM 使用 `CUMCM_STRUCTURE_MAP` 1.2：多问共享对象并有资源/约束/聚合递进时默认 semantic，保留明确“模型假设与符号”入口；否则 classic 兜底。
 
 返修分别维护 `argument_revision` 与 `render_revision`：`science` 重做科学挑战、论证和渲染，`argument` 使盲评失效，`render` 只使版式和机械 QA 失效。编译默认 `auto`，也可用 `--revision-impact` 显式声明。

@@ -11,7 +11,7 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 每张图必须声明 role：`model_understanding`（帮助评委理解数学对象）、`decisive_evidence`（证明关键结果可信）、`insight`（揭示机制、阈值、边际收益或权衡）、`stability`（舍入、采样层级、数值稳定性）。`stability` 一律进入附录，不得占据正文版面——它对内部审计有价值，对评委的边际价值远低于机制与权衡。正文应有能回答"为什么最优解是这个结构"的图。
 
-图表默认输出到 `figures/current/`，登记真实 `source`、`question`、`takeaway` 和可选 `limitations`。使用 `register_insight_figure` 绑定当前生产结果、输入、渲染脚本与 PNG/PDF 输出。结果或脚本变化后，图必须重新生成。
+图表先输出到 `figures/work/<figure_id>/<version>/`，登记真实 `source`、`question`、`takeaway` 和可选 `limitations`；人工看图和机械 QA 通过后再晋级 `figures/current/`，旧版进入 `figures/archive/`。使用 `register_insight_figure` 绑定当前生产结果、输入、渲染脚本与 PNG/PDF 输出。结果或脚本变化后，图必须重新生成。
 
 在 analysis 阶段先列出 `mathematical_objects` 和 `visual_questions`。在模型输出合同中声明 `visual_outputs`，至少按实际需要保存候选解、可行边界、活跃约束、搜索轨迹、Pareto 点、状态轨迹或不确定性样本；只保存最终标量时先修模型输出，不能让绘图阶段猜造结构数据。
 
@@ -19,9 +19,9 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 每张 2.3 图还声明 `presentation_role`：`data_portrait`、`question_hero`、`supporting` 或 `appendix`。一个问题只确定承担主叙事的 hero figure，不按题号凑固定图数；其余图只有承担独立证据任务时才进正文。纯呈现图可读取当前运行内已冻结的 `problem/`、`analysis/` 或 `results/raw/` 文件，不得为数据画像伪造实验结果；晋级后用 `scripts/figures/register_presentation_figure.py` 登记输入、脚本、输出和人工看图回执。
 
-需要作为正文论证证据或主叙事入口的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`renderer`、`visual_question`、`expected_observation` 和 `decision_consequence`。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版后若 PDF 评审暴露新的证据缺口，可以新增带 `review_finding` 的图，候选 PDF 冻结后不再扩图。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
+需要作为正文论证证据或主叙事入口的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`information_structure`、`renderer`、`visual_question`、`expected_observation`、`decision_consequence`、`generic_chart_considered`、`generic_chart_rejected_because` 和 `mechanism_annotation`。空间、集合、网络、场、决策面、区间或不确定性结构不能把普通柱形图/折线图作为唯一主图；确实最合适时必须用 `generic_chart_override_reason` 说明。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版后若 PDF 评审暴露新的证据缺口，可以新增带 `review_finding` 的图，候选 PDF 冻结后不再扩图。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
 
-图不能由脚本直接覆盖 `figures/current/`。每次修改使用新版本目录 `figures/candidates/<figure_id>/<version>/` 同时生成 PNG/PDF，先独立打开检查，再执行 `python scripts/figures/promote_figure_candidate.py` 晋级。普通统计图检查文件可读和 PNG/PDF 宽高比；`diagram` 还必须输出同目录 layout JSON，检查画布边界、节点内文字、文字重叠、最小字号、箭头穿字和节点连接点居中。机械 QA 通过后仍要填写人工看图结论；同一候选版本不得反复覆盖。
+图不能由脚本直接覆盖 `figures/current/`。每次修改使用新版本目录 `figures/work/<figure_id>/<version>/` 同时生成 PNG/PDF，先独立打开检查，再执行 `python scripts/figures/promote_figure_candidate.py` 晋级。普通统计图检查文件可读和 PNG/PDF 宽高比；`diagram` 还必须输出同目录 layout JSON，检查画布边界、节点内文字、文字重叠、最小字号、箭头穿字和节点连接点居中。机械 QA 通过后仍要填写人工看图结论；同一候选版本不得反复覆盖。
 
 用 `audit_figure_information_value()` 查看五维建议分：数学对象、机制、约束/边界、最终决策、不确定性/对照各 0--2 分，正文主图建议至少 6 分。该分数只根据原型判断设计机会，不是门禁；必须打开 PNG/PDF 检查是否真的兑现。以下情况应返修：空间题无布局或剖面，多目标题无 Pareto/可行域，动态题无状态轨迹和控制量，不确定性题只有均值，热力图只是彩色数字表，主图只比较算法分数，或图后正文没有观察、机制和决策后果。
 

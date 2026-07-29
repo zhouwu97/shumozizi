@@ -55,6 +55,10 @@ _VISUAL_VALUE_PROFILES: dict[str, tuple[int, int, int, int, int] | None] = {
     "phase_field_bifurcation": (2, 2, 2, 1, 1),
     "search_trajectory_envelope": (2, 2, 1, 2, 2),
     "multi_panel_evidence_chain": (2, 2, 2, 2, 2),
+    "geometric_section_projection": (2, 2, 2, 2, 1),
+    "interval_event_timeline": (2, 2, 2, 2, 1),
+    "feasible_region_active_constraints": (2, 2, 2, 2, 1),
+    "state_control_event_timeline": (2, 2, 2, 2, 1),
     "route_score_comparison": (1, 0, 0, 1, 1),
     "custom": None,
 }
@@ -65,6 +69,69 @@ _VISUAL_VALUE_DIMENSIONS = (
     "final_decision",
     "uncertainty_or_comparison",
 )
+_STRUCTURE_AWARE_ARCHETYPES = {
+    "spatial": frozenset(
+        {
+            "spatial_scene_with_constraints",
+            "spatial_trajectory_with_constraints",
+            "geometric_section_projection",
+            "multi_panel_evidence_chain",
+            "custom",
+        }
+    ),
+    "temporal": frozenset(
+        {
+            "interval_event_timeline",
+            "state_control_event_timeline",
+            "spatial_trajectory_with_constraints",
+            "uncertainty_fan_with_threshold",
+            "multi_panel_evidence_chain",
+            "custom",
+        }
+    ),
+    "set": frozenset(
+        {
+            "interval_event_timeline",
+            "feasible_region_active_constraints",
+            "pareto_feasible_region",
+            "multi_panel_evidence_chain",
+            "custom",
+        }
+    ),
+    "network": frozenset(
+        {"network_flow_bottleneck", "multi_panel_evidence_chain", "custom"}
+    ),
+    "field": frozenset(
+        {
+            "response_surface_with_constraints",
+            "phase_field_bifurcation",
+            "spatiotemporal_density",
+            "spatial_scene_with_constraints",
+            "multi_panel_evidence_chain",
+            "custom",
+        }
+    ),
+    "tradeoff": frozenset(
+        {
+            "pareto_feasible_region",
+            "response_surface_with_constraints",
+            "decision_surface_with_fallback",
+            "feasible_region_active_constraints",
+            "multi_panel_evidence_chain",
+            "custom",
+        }
+    ),
+    "uncertainty": frozenset(
+        {
+            "uncertainty_fan_with_threshold",
+            "classifier_diagnostic_bundle",
+            "search_trajectory_envelope",
+            "multi_panel_evidence_chain",
+            "custom",
+        }
+    ),
+}
+_GENERIC_CHART_ARCHETYPES = frozenset({"route_score_comparison"})
 
 
 def _schema() -> dict[str, Any]:
@@ -104,6 +171,60 @@ def read_figure_index(run_dir: Path) -> dict[str, Any]:
     return payload
 
 
+def recommended_visual_archetypes(information_structure: str) -> list[str]:
+    """返回指定数学信息结构优先使用的视觉原型。
+
+    Args:
+        information_structure: spatial、temporal、set、network、field、
+            tradeoff 或 uncertainty。
+
+    Returns:
+        稳定排序的优先视觉原型列表。
+
+    Raises:
+        ContractError: 信息结构不受支持。
+    """
+    recommended = _STRUCTURE_AWARE_ARCHETYPES.get(information_structure)
+    if recommended is None:
+        raise ContractError(f"未知 information_structure: {information_structure}")
+    return sorted(recommended)
+
+
+def _require_structure_aware_visual_grammar(payload: dict[str, Any]) -> None:
+    """约束 2.3 正文主图从数学结构出发选择表达。"""
+    if payload.get("schema_version") != "2.3":
+        return
+    for raw in payload.get("figures", []):
+        if not isinstance(raw, dict) or raw.get("presentation_role") not in {
+            "data_portrait",
+            "question_hero",
+        }:
+            continue
+        figure_id = str(raw.get("figure_id", "<unknown>"))
+        information_structure = str(raw.get("information_structure", ""))
+        archetype = str(raw.get("visual_archetype", ""))
+        if raw.get("generic_chart_considered") is not True:
+            raise ContractError(
+                f"{figure_id}.generic_chart_considered 必须为 true："
+                "正文主图须显式比较普通柱形图/折线图"
+            )
+        recommended = _STRUCTURE_AWARE_ARCHETYPES[information_structure]
+        if archetype in _GENERIC_CHART_ARCHETYPES:
+            reason = raw.get("generic_chart_override_reason")
+            if not isinstance(reason, str) or len(reason.strip()) < 16:
+                raise ContractError(
+                    f"{figure_id} 以普通柱形图/折线比较作为唯一正文主图时，"
+                    "必须填写 generic_chart_override_reason 说明它为何最合适"
+                )
+            continue
+        if archetype not in recommended:
+            raise ContractError(
+                f"{figure_id}.visual_archetype={archetype} 不匹配 "
+                f"{information_structure} 信息结构；优先选择 "
+                + "、".join(sorted(recommended))
+            )
+
+
 def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """受控保存 v3.2 正文图表计划与逐问视觉决策。
 
@@ -120,6 +241,7 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     require_valid(payload, "figure_plan")
     if payload.get("run_id") != run_dir.name:
         raise ContractError("FIGURE_PLAN 的 run_id 与当前运行不一致")
+    _require_structure_aware_visual_grammar(payload)
     path = run_dir / FIGURE_PLAN_PATH
     old_ids: set[str] = set()
     if path.is_file():
@@ -168,11 +290,13 @@ def audit_figure_information_value(payload: dict[str, Any]) -> dict[str, Any]:
     needs_revision: list[dict[str, str]] = []
     for figure in payload.get("figures", []):
         archetype = figure.get("visual_archetype")
+        information_structure = figure.get("information_structure")
         profile = _VISUAL_VALUE_PROFILES.get(archetype)
         if profile is None:
             record = {
                 "figure_id": figure.get("figure_id"),
                 "visual_archetype": archetype,
+                "information_structure": information_structure,
                 "total_score": None,
                 "scores": None,
                 "requires_visual_review": True,
@@ -184,6 +308,7 @@ def audit_figure_information_value(payload: dict[str, Any]) -> dict[str, Any]:
             record = {
                 "figure_id": figure.get("figure_id"),
                 "visual_archetype": archetype,
+                "information_structure": information_structure,
                 "total_score": total,
                 "scores": scores,
                 "requires_visual_review": True,
@@ -199,6 +324,19 @@ def audit_figure_information_value(payload: dict[str, Any]) -> dict[str, Any]:
                         ),
                     }
                 )
+            if (
+                figure.get("presentation_role") == "question_hero"
+                and archetype in _GENERIC_CHART_ARCHETYPES
+            ):
+                needs_revision.append(
+                    {
+                        "figure_id": str(figure.get("figure_id")),
+                        "message": (
+                            "正文 hero 使用通用柱形/折线比较；即使已登记 override 理由，"
+                            "仍须人工确认数据确无空间、集合、边界、机制或不确定性结构。"
+                        ),
+                    }
+                )
         records.append(record)
     return {
         "schema_version": payload.get("schema_version"),
@@ -207,8 +345,8 @@ def audit_figure_information_value(payload: dict[str, Any]) -> dict[str, Any]:
         "figures": records,
         "needs_revision": needs_revision,
         "limitations": (
-            "该审核不能从计划字段证明图中确有可行域、活跃约束、最优点或不确定性，"
-            "最终仍需打开 PNG/PDF 进行评委视角复核。"
+            "information_structure、mechanism_annotation 和 rendering 声明不能证明 "
+            "PNG/PDF 中确有可行域、活跃约束、最优点或不确定性，最终仍需打开图件复核。"
         ),
     }
 

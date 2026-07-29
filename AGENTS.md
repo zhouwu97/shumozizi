@@ -75,6 +75,7 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 - 新运行使用 `FIGURE_PLAN` 2.3，将 `evidence_need` 与 `presentation_need` 分开。每个必答问题必须在首稿前把展示图明确为 required 或 waived；几何关系、并集/交集、名义—稳健对比和共享模型出现时，还必须完成 `whole_paper` 决策。数据结构决定统计单位、删失、聚合或模型选择时规划 `data_portrait`；纯解析题可以有理由豁免。纯呈现图只能读取当前运行内冻结的 `problem/`、`analysis/` 或 `results/raw/` 文件，不得伪造实验结果。
 - 图表在 `figures/work/<figure_id>/<version>/` 迭代，通过文件可读性、PNG/PDF 几何一致性和人工看图后晋级 `figures/current/`；被替换的 current 自动留入 `figures/archive/`。流程图另查文字越界、重叠、最小字号、箭头穿字和连接点居中。
 - v3.2 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。`stability`（舍入、采样层级、数值稳定性）一律进入附录，不得占据正文版面。省略 role 会被拒绝，否则附录约束形同虚设。
+- `FIGURE_PLAN` 2.3 的正文 hero 必须声明 `information_structure`、普通图取舍理由和机制标注，并按空间、时间/集合、网络、场、权衡或不确定性优先选择原型。当数据具有空间、集合、网络、场、决策面或区间结构时，普通柱形图/折线图不得作为唯一正文主图；确实最合适时必须登记 `generic_chart_override_reason`，且人工看图仍需确认声明已在 PNG/PDF 中兑现。
 - 图必须由当前数据和当前脚本实际生成，PNG/PDF 可读，并在结果变化后失效。
 - 论文每个必答问题都要有问题分析、与前问的继承、数学对象与关键推导、算法步骤、结果机制、验证边界和直接答案；普通问题可以合并小节，但不能只剩方法名和结果表。`analysis/answer_map.json` 或 `paper/answer-map.json` 的 `primary_result_id` 必须与实验晋级/回退决定一致。核心问题另需用 `insight_ids` 引用实验阶段登记的机制或边际收益类规律。
 - PDF 内源码默认不超过一页（`source_code_appendix.pdf_page_budget`），完整代码走 `mode: attachment`；确有赛事要求时显式声明 `competition_requires_full` 与依据。运行时会自动生成 `paper/generated/argument_map.json`；v3.2 只能使用无回退 LaTeX 学术模板。

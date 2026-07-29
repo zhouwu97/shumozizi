@@ -78,9 +78,28 @@
               "phase_field_bifurcation",
               "search_trajectory_envelope",
               "multi_panel_evidence_chain",
+              "geometric_section_projection",
+              "interval_event_timeline",
+              "feasible_region_active_constraints",
+              "state_control_event_timeline",
               "route_score_comparison",
               "custom"
             ]
+          },
+          "information_structure": {
+            "enum": [
+              "spatial", "temporal", "set", "network", "field", "tradeoff",
+              "uncertainty"
+            ]
+          },
+          "generic_chart_considered": {"type": "boolean"},
+          "generic_chart_rejected_because": {"type": "string", "minLength": 12},
+          "generic_chart_override_reason": {"type": "string", "minLength": 16},
+          "mechanism_annotation": {
+            "type": "array",
+            "minItems": 2,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 2}
           },
           "renderer": {"enum": ["python", "matlab", "octave", "other"]},
           "visual_question": {"type": "string", "minLength": 8},
@@ -176,6 +195,24 @@
               "anyOf": [
                 {"properties": {"source_result_ids": {"minItems": 1}}},
                 {"required": ["source_files"]}
+              ],
+              "allOf": [
+                {
+                  "if": {
+                    "required": ["presentation_role"],
+                    "properties": {
+                      "presentation_role": {
+                        "enum": ["data_portrait", "question_hero"]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "information_structure", "generic_chart_considered",
+                      "generic_chart_rejected_because", "mechanism_annotation"
+                    ]
+                  }
+                }
               ]
             }
           }
