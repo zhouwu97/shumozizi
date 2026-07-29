@@ -44,7 +44,7 @@ runDir = getenv('SHUMOZIZI_RUN_DIR');
 assert(strlength(runDir) > 0, 'SHUMOZIZI_RUN_DIR is required');
 inputPath = fullfile(runDir, 'problem', 'attachments', 'input.xlsx');
 resultDir = fullfile(runDir, 'results', 'matlab');
-figureDir = fullfile(runDir, 'figures', 'current');
+figureDir = fullfile(runDir, 'figures', 'work', 'figure-id', 'v1');
 ```
 
 执行配置必须声明 `entrypoint`、`question_id`、`result_id`、`role`、`input_files`、四类 `output_files`、`metric_sources` 和 `objective_semantics_sha256`。运行：
@@ -56,4 +56,3 @@ python scripts/matlab/run_matlab.py runs/<run-id> --config runs/<run-id>/code/ma
 ## 高价值绘图模板
 
 第一批只覆盖十类：三维场景+最优方案、曲面+等高线投影、几何剖面、Pareto 前沿、搜索轨迹双面板、可行域+约束激活、时间着色轨迹+事件带、不确定性扇形、参数→动作决策面、2--4 面板证据链。每张图必须标注最终点、边界/阈值和 baseline/fallback；配色、3D 或子图数量本身不计为信息价值。
-

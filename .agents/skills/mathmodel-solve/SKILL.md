@@ -18,13 +18,15 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 
 主终点必须在正式路线比较前显式声明。若 endpoint/聚合口径仍有合理歧义，标记 `comparison_planned`，登记至少两个候选 endpoint、题面依据和裁决规则，并运行候选后果 probe。实验结束必须写出 `actual_endpoint_resolution`；合理 endpoint 下路线翻转、行动漂移越界或缺少题意裁决依据时，答案资格由系统判为 `redesign_required / analysis`，不能降级成普通敏感性说明。
 
-新运行使用 `MODELING_UNITS` 1.3。每问在答案合同前填写轻量 `question_delta`；新增实体、资源、共享约束、聚合词或分解后组合时必须重新检查目标。`primary_endpoint` 同时用自然语言和公式声明原子成功、实体内、资源间、实体间、时间和量词次序六项聚合。高风险问题复用这一处 `semantic_counterexample`，不在其它协议重复抄写。高风险核心问题在任何路线搜索前先运行 3--5 个人工评分案例，包括同时满足、错开满足、单主体长期满足、总量高但瓶颈为零，以及必要时多资源联合成功；评分器未按预期排序时先改 endpoint/scorer，不比较优化器。
+新运行使用 `MODELING_UNITS` 1.4。每问在答案合同前填写轻量 `question_delta`；新增实体、资源、共享约束、聚合词或分解后组合时必须重新检查目标。`primary_endpoint` 同时用自然语言和公式声明原子成功、实体内、资源间、实体间、时间和量词次序六项聚合。高风险问题复用这一处 `semantic_counterexample`，不在其它协议重复抄写。高风险核心问题在任何路线搜索前先运行 3--5 个人工评分案例，包括同时满足、错开满足、单主体长期满足、总量高但瓶颈为零，以及必要时多资源联合成功；评分器未按预期排序时先改 endpoint/scorer，不比较优化器。
 
 目标候选使用 `OBJECTIVE_CANDIDATES` 1.1，顺序固定为“题面合法性 -> 同源反例区分 -> 仍合理候选的策略后果”。每个候选先声明题面原句、保留/改变的量词、引入的价值偏好、是否只为方便求解，并分为直接支持、合理假设支持、仅敏感性或与题意不符；只有前两类能成为正式目标。仅剩一个合法候选时不强迫跑多目标实验；仍有两个及以上时，才用共同的效率与公平/瓶颈/安全指标跑低成本后果 probe。高风险问题不能靠一句 `determined_basis` 跳过：必须明确正式目标、一个被拒绝替代及拒绝理由，并由 `MODELING_UNITS` 中的反例区分。
 
 标出决定奖项上限的核心问题（`core_question=true`）。核心问题必须事前声明 `significant_improvement_ratio`，其竞争路线还要写清结构利用方式和可量化的 `expected_improvement_ratio`——纯文字的"高上限"事后无法与实测对照。
 
-每题至少提出一个 baseline 和一条数学结构不同的竞争或反证路线。不要把只更换求解器的 GA、PSO、DE 当成不同路线。每条路线说明结构差异、最低成本 probe、潜在上限、失败方式和切换条件，写入 `analysis/ROUTE_COMPETITION.md`。
+先按任务类型分流：`evaluation`、`data_modeling` 和 `simulation` 使用主方法、自然核对与题型验证，不伪造路线赛马；`exact_oracle` 核对正式指标容差与区间/集合结构；只有 `optimization`、`coordination` 默认提出自然 baseline 和一条数学结构不同的 challenger。不要把只更换求解器的 GA、PSO、DE 当成不同数学路线，但 MATLAB 的结构优化器可以作为同一路线内的异构实现、独立 challenger 或 oracle。每条真实竞争路线说明结构差异、最低成本 probe、潜在上限、失败方式和切换条件，写入 `analysis/ROUTE_COMPETITION.md`。
+
+对 `optimization`、`simulation`、`exact_oracle` 和 `coordination`，必须先使用 `mathmodel-matlab` 完成能力选择，并在单元中写 `capability_decision`：`python_considered`、`matlab_considered`、`matlab_availability`、`selected_engine`、`matlab_role`、`reason` 和 `expected_gain`。MATLAB 可以不入选，但必须说明是问题规模太小、解析/精确路线更直接、真实工具箱不可用、无法形成不同算法族，还是 Python 已有精确证书。
 
 任何“分别求解再组合”的路线都必须声明为 `exact_decomposition`、`heuristic_decomposition` 或 `initialization_only`；精确分解给出等价依据，后两者必须继续接受联合 scorer 改进。无法证明可分、小规模对照不一致且又不继续联合优化时，不得把各子问题最优写成全局最优。
 

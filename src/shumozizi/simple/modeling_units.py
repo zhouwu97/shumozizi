@@ -78,6 +78,18 @@ UNIT_KINDS = frozenset(
     }
 )
 SEARCH_UNIT_KINDS = frozenset({"optimization", "coordination"})
+MATLAB_CONSIDERATION_UNIT_KINDS = frozenset(
+    {"optimization", "simulation", "exact_oracle", "coordination"}
+)
+MATLAB_ROLES = frozenset(
+    {
+        "primary_model",
+        "optimizer_challenger",
+        "independent_oracle",
+        "scientific_visualization",
+    }
+)
+CAPABILITY_ENGINES = frozenset({"python", "matlab", "octave", "hybrid", "analytic"})
 # 只作资源配置提示，不再作为答案或阶段硬门。
 RECOMMENDED_SEARCH_BUDGET_SHARE = 0.35
 _PLANNING_PLACEHOLDERS = frozenset(
@@ -419,6 +431,59 @@ def _validate_route_composition(value: object, label: str) -> str:
     return str(mode)
 
 
+def _validate_capability_decision(
+    value: object,
+    label: str,
+    *,
+    required: bool,
+) -> dict[str, Any] | None:
+    """验证适合 MATLAB 的单元已显式完成引擎选择判断。"""
+    if value is None and not required:
+        return None
+    item = _require_mapping(value, label)
+    python_considered = item.get("python_considered")
+    matlab_considered = item.get("matlab_considered")
+    if not isinstance(python_considered, bool):
+        raise ContractError(f"{label}.python_considered 必须是布尔值")
+    if matlab_considered is not True:
+        raise ContractError(
+            f"{label}.matlab_considered 必须为 true：适合 MATLAB 的题型不能静默默认 Python"
+        )
+    availability = item.get("matlab_availability")
+    if availability not in {"available", "unavailable", "not_probed"}:
+        raise ContractError(
+            f"{label}.matlab_availability 必须为 available、unavailable 或 not_probed"
+        )
+    selected_engine = item.get("selected_engine")
+    if selected_engine not in CAPABILITY_ENGINES:
+        raise ContractError(
+            f"{label}.selected_engine 必须为 "
+            + "、".join(sorted(CAPABILITY_ENGINES))
+        )
+    if "matlab_role" not in item:
+        raise ContractError(f"{label}.matlab_role 必须显式填写角色或 null")
+    matlab_role = item.get("matlab_role")
+    if matlab_role is not None and matlab_role not in MATLAB_ROLES:
+        raise ContractError(
+            f"{label}.matlab_role 必须为 " + "、".join(sorted(MATLAB_ROLES))
+        )
+    if selected_engine in {"matlab", "octave", "hybrid"} and matlab_role is None:
+        raise ContractError(
+            f"{label}.selected_engine={selected_engine} 时必须声明 matlab_role"
+        )
+    _require_substantive_plan_text(item.get("reason"), f"{label}.reason")
+    _require_substantive_plan_text(
+        item.get("expected_gain"), f"{label}.expected_gain"
+    )
+    return {
+        "python_considered": python_considered,
+        "matlab_considered": True,
+        "matlab_availability": availability,
+        "selected_engine": selected_engine,
+        "matlab_role": matlab_role,
+    }
+
+
 def _route_definition(
     value: object, label: str, *, require_potential: bool
 ) -> tuple[str, str, float | None]:
@@ -577,6 +642,14 @@ def _validate_unit_plan(
         if mode not in {"compare", "oracle_only"}:
             raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
     search_kind = mode in SEARCH_UNIT_KINDS or mode == "compare"
+    capability_decision = _validate_capability_decision(
+        unit.get("capability_decision"),
+        f"{unit_id}.capability_decision",
+        required=(
+            schema_version == "1.4"
+            and mode in MATLAB_CONSIDERATION_UNIT_KINDS
+        ),
+    )
     require_semantic_contract = schema_version in {"1.3", "1.4"}
     delta = {"semantic_high_risk": False, "semantic_risk_signals": set()}
     if require_semantic_contract:
@@ -875,6 +948,7 @@ def _validate_unit_plan(
         "stop_reasons": set(reasons),
         "primary_method": primary_method,
         "agreement": agreement,
+        "capability_decision": capability_decision,
         "oracle_required": oracle_required,
         "sensitivity_required": sensitivity_required,
         "robustness_required": robustness_required,

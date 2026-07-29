@@ -271,6 +271,15 @@ def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
         },
     }
     if unit_kind == "exact_oracle":
+        unit["capability_decision"] = {
+            "python_considered": True,
+            "matlab_considered": True,
+            "matlab_availability": "not_probed",
+            "selected_engine": "python",
+            "matlab_role": None,
+            "reason": "当前夹具使用 Python 主计算，但仍显式比较 MATLAB 独立复算角色。",
+            "expected_gain": "若 MATLAB 可用，可用独立区间实现攻击同源判定错误。",
+        }
         unit["oracle"] = {
             "oracle_kind": "独立枚举积分算法",
             "independence": "独立实现且不复用主计算的区间构造代码。",
@@ -298,6 +307,15 @@ def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
                 "diagnostic_plan": "检查残差、异常值与关键假设偏离。",
             }
         elif unit_kind == "simulation":
+            unit["capability_decision"] = {
+                "python_considered": True,
+                "matlab_considered": True,
+                "matlab_availability": "not_probed",
+                "selected_engine": "python",
+                "matlab_role": None,
+                "reason": "当前夹具用 Python 仿真，但已比较 MATLAB ODE 与控制仿真能力。",
+                "expected_gain": "若系统刚性增强，可用 ode15s 形成不同积分实现。",
+            }
             unit["simulation_contract"] = {
                 "calibration": "使用题面基准情形校准仿真参数。",
                 "convergence": "逐级细化时间步长并检查输出收敛。",
@@ -336,6 +354,15 @@ def _v14_optimization_plan(run_dir: Path) -> dict[str, object]:
     unit = plan["units"][0]
     assert isinstance(unit, dict)
     unit["unit_kind"] = "optimization"
+    unit["capability_decision"] = {
+        "python_considered": True,
+        "matlab_considered": True,
+        "matlab_availability": "not_probed",
+        "selected_engine": "python",
+        "matlab_role": None,
+        "reason": "当前夹具选择 Python 约束搜索，但显式比较 MATLAB 优化器路线。",
+        "expected_gain": "MATLAB patternsearch 可用于攻击 Python 搜索遗漏的可行区域。",
+    }
     unit.pop("primary_method")
     unit["objective"] = {
         "exact_metric": "objective",
@@ -1029,6 +1056,37 @@ def test_legacy_oracle_only_is_viewable_but_cannot_become_formal_answer(
                 }
             },
         )
+
+
+def test_v14_suitable_unit_must_consider_matlab_before_selecting_python(
+    tmp_path: Path,
+) -> None:
+    """优化等适配题型不能因为 Python 可运行就静默跳过 MATLAB。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-matlab-capability-decision",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    del unit["capability_decision"]
+
+    with pytest.raises(ContractError, match="capability_decision"):
+        write_modeling_units(run_dir, plan)
+
+    unit["capability_decision"] = {
+        "python_considered": True,
+        "matlab_considered": False,
+        "matlab_availability": "available",
+        "selected_engine": "python",
+        "matlab_role": None,
+        "reason": "Python 当前已有可运行实现，但尚未做 MATLAB 比较。",
+        "expected_gain": "MATLAB 可能提供不同的非线性约束搜索族。",
+    }
+    with pytest.raises(ContractError, match="matlab_considered.*true"):
+        write_modeling_units(run_dir, plan)
 
 
 def test_v14_optimization_accepts_one_challenger_and_one_refinement_family(
