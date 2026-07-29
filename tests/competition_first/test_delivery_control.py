@@ -126,7 +126,7 @@ def _mark_pdf_milestone(run_dir: Path, name: str) -> None:
             "source_pdf_sha256": sha256_file(path),
             "frozen_at": "2026-07-28T00:00:00Z",
         }
-    else:
+    elif name == "candidate":
         path = run_dir / "paper/candidate.pdf"
         final = run_dir / "paper/final.pdf"
         path.write_bytes(b"%PDF-1.4\ncandidate fixture\n")
@@ -136,6 +136,17 @@ def _mark_pdf_milestone(run_dir: Path, name: str) -> None:
             "sha256": sha256_file(path),
             "source_pdf_sha256": sha256_file(final),
             "frozen_at": "2026-07-28T00:10:00Z",
+        }
+    else:
+        path = run_dir / "paper/final-locked.pdf"
+        final = run_dir / "paper/final.pdf"
+        final.write_bytes(b"%PDF-1.4\nfinal fixture\n")
+        path.write_bytes(final.read_bytes())
+        record = {
+            "path": "paper/final-locked.pdf",
+            "sha256": sha256_file(path),
+            "source_pdf_sha256": sha256_file(final),
+            "frozen_at": "2026-07-28T00:20:00Z",
         }
     document.setdefault("milestones", {})[name] = record
     atomic_json(run_dir / PDF_MILESTONES_PATH, document)
@@ -194,7 +205,8 @@ def test_v32_initialization_freezes_delivery_plan_and_work_log(tmp_path: Path) -
         "blind_review_deadline": 660.0,
         "final_deadline": 720.0,
     }
-    assert control["workflow_source_locked"] is True
+    assert control["workflow_source_locked"] is False
+    assert control["workflow_source_tracking"] == "informational"
     assert control["protocol_patch_budget_minutes"] == 30.0
     assert work_log["entries"] == []
     assert work_log["phase_sessions"][0]["phase"] == "analysis"
@@ -209,27 +221,24 @@ def test_first_pdf_deadline_overrides_normal_experiment_work(tmp_path: Path) -> 
 
     assert action["next_action"] == "generate_first_reviewable_pdf"
     assert action["priority"] == "P0_DELIVERY"
-    assert "add_new_route" in action["forbidden_actions"]
-    assert "modify_workflow_schema" in action["forbidden_actions"]
+    assert action["forbidden_actions"] == []
 
 
-def test_delivery_action_permission_is_enforced_after_first_pdf_deadline(
+def test_delivery_deadline_does_not_freeze_scientific_actions(
     tmp_path: Path,
 ) -> None:
-    """截止后范围冻结必须是公共硬门，而不只是 status 中的建议。"""
+    """时间预算只提示交付优先级，不能拥有科学路线否决权。"""
     run_dir = _run(tmp_path)
     control = load_json(run_dir / DELIVERY_CONTROL_PATH)
     control["started_at"] = _at(control["started_at"], -481)
     atomic_json(run_dir / DELIVERY_CONTROL_PATH, control)
 
-    with pytest.raises(ContractError, match="add_new_route"):
-        require_delivery_action_allowed(run_dir, "add_new_route")
-
+    require_delivery_action_allowed(run_dir, "add_new_route")
     require_delivery_action_allowed(run_dir, "paper_write")
 
 
-def test_early_first_draft_freezes_scope_but_opens_review_repair(tmp_path: Path) -> None:
-    """提前完成首版也应立即冻结框架，同时允许评审驱动实验返修。"""
+def test_early_first_draft_requires_structured_revision_case(tmp_path: Path) -> None:
+    """首版后仍可返修，但必须显式权衡问题、成本、收益和停止条件。"""
     run_dir = _run(tmp_path)
     write_next_experiments(
         run_dir,
@@ -241,7 +250,7 @@ def test_early_first_draft_freezes_scope_but_opens_review_repair(tmp_path: Path)
     )
     _mark_pdf_milestone(run_dir, "first_reviewable")
 
-    with pytest.raises(ContractError, match="add_new_route"):
+    with pytest.raises(ContractError, match="estimated_cost"):
         require_delivery_action_allowed(run_dir, "add_new_route")
     repaired = write_next_experiments(
         run_dir,
@@ -251,14 +260,19 @@ def test_early_first_draft_freezes_scope_but_opens_review_repair(tmp_path: Path)
                 {
                     "experiment_id": "review-sensitivity",
                     "decision": "检验阈值是否改变直接答案。",
-                    "review_finding": "首版 PDF 评审指出关键阈值缺少敏感性分析。",
+                    "revision_case": {
+                        "review_finding": "首版 PDF 评审指出关键阈值缺少敏感性分析。",
+                        "estimated_cost": "预计增加十分钟复算与结果核对。",
+                        "expected_benefit": "确认阈值变化是否改变论文直接答案。",
+                        "stop_condition": "预登记区间内结论不翻转即停止。",
+                    },
                 },
             ]
         },
     )
 
     assert repaired["experiments"][-1]["experiment_id"] == "review-sensitivity"
-    assert "add_new_route" in next_required_action(run_dir)["forbidden_actions"]
+    assert next_required_action(run_dir)["forbidden_actions"] == []
 
 
 def test_review_finding_allows_bounded_experiment_addition_before_candidate(
@@ -280,25 +294,32 @@ def test_review_finding_allows_bounded_experiment_addition_before_candidate(
     plan["experiments"].append(
         {"experiment_id": "probe-q1-extra", "decision": "增加新的非阻断性搜索。"}
     )
-    with pytest.raises(ContractError, match="first_reviewable"):
-        write_next_experiments(run_dir, plan)
+    assert write_next_experiments(run_dir, plan)["experiments"][-1]["experiment_id"] == "probe-q1-extra"
     _mark_pdf_milestone(run_dir, "first_reviewable")
-    plan["experiments"][-1]["review_finding"] = (
-        "PDF 评审指出主结论缺少关键阈值敏感性证据。"
-    )
+    plan["experiments"][-1]["revision_case"] = {
+        "review_finding": "PDF 评审指出主结论缺少关键阈值敏感性证据。",
+        "estimated_cost": "预计补充十二分钟参数扫描与复算。",
+        "expected_benefit": "判断直接答案是否随关键阈值翻转。",
+        "stop_condition": "达到预登记阈值覆盖后停止扩展。",
+    }
     assert write_next_experiments(run_dir, plan)["experiments"][-1][
         "experiment_id"
     ] == "probe-q1-extra"
 
-    _mark_pdf_milestone(run_dir, "candidate")
+    _mark_pdf_milestone(run_dir, "final")
     plan["experiments"].append(
         {
             "experiment_id": "probe-q1-too-late",
             "decision": "候选冻结后不应执行。",
-            "review_finding": "候选冻结之后才提出的额外科学内容请求。",
+            "revision_case": {
+                "review_finding": "最终锁定之后才提出的额外科学内容请求。",
+                "estimated_cost": "预计需要二十分钟新增实验。",
+                "expected_benefit": "仅提供边际补充证据。",
+                "stop_condition": "完成单次对照后立即停止。",
+            },
         }
     )
-    with pytest.raises(ContractError, match="候选 PDF 已冻结"):
+    with pytest.raises(ContractError, match="final lock"):
         write_next_experiments(run_dir, plan)
 
 
@@ -318,17 +339,21 @@ def test_review_finding_allows_new_figure_before_candidate(
     added["figure_id"] = "q1-extra"
     added["latex_label"] = "fig:q1-extra"
     plan["figures"].append(added)
-    with pytest.raises(ContractError, match="first_reviewable"):
-        write_figure_plan(run_dir, plan)
+    assert write_figure_plan(run_dir, plan)["figures"][-1]["figure_id"] == "q1-extra"
     _mark_pdf_milestone(run_dir, "first_reviewable")
-    added["review_finding"] = "PDF 评审指出全篇缺少训练选择与验证隔离流程图。"
+    added["revision_case"] = {
+        "review_finding": "PDF 评审指出全篇缺少训练选择与验证隔离流程图。",
+        "estimated_cost": "预计增加十五分钟绘图与版式检查。",
+        "expected_benefit": "让评委快速理解训练与验证隔离关系。",
+        "stop_condition": "流程关系清晰且通过布局检查即停止。",
+    }
     assert write_figure_plan(run_dir, plan)["figures"][-1]["figure_id"] == "q1-extra"
 
 
-def test_delivery_cutoff_blocks_extra_reviews_but_keeps_blind_review_available(
+def test_delivery_cutoff_allows_review_work_and_keeps_blind_review_available(
     tmp_path: Path,
 ) -> None:
-    """截止后拒绝扩张审核任务，但主链 PDF 盲评仍必须可创建。"""
+    """截止时间只提示优先级，不能禁止仍有价值的审核任务。"""
     run_dir = _run(tmp_path)
     report = run_dir / "review/PAPER_BLIND_REVIEW.md"
     report.write_text("# PDF 盲评\n\n当前没有确认的 P0/P1。\n", encoding="utf-8")
@@ -341,13 +366,13 @@ def test_delivery_cutoff_blocks_extra_reviews_but_keeps_blind_review_available(
         "thread_id": "fixture-thread",
     }
 
-    with pytest.raises(ContractError, match="create_extra_review_task"):
-        create_review_task_receipt(
-            run_dir,
-            task_id="extra-follow-up",
-            task_type="scientific_follow_up",
-            **common,
-        )
+    extra = create_review_task_receipt(
+        run_dir,
+        task_id="extra-follow-up",
+        task_type="scientific_follow_up",
+        **common,
+    )
+    assert extra.is_file()
 
     receipt = create_review_task_receipt(
         run_dir,
@@ -492,10 +517,9 @@ def test_delivery_controller_reaches_submission_and_invalidates_stale_blind_revi
     )
     assert simple_review.paper_blind_review_status(run_dir)["allowed"] is True
 
-    final_pdf.write_bytes(b"%PDF-1.4\nchanged-after-review\n")
+    final_pdf.write_bytes(b"%PDF-1.4\nrender-only-change\n")
     stale = simple_review.paper_blind_review_status(run_dir)
-    assert stale["allowed"] is False
-    assert "重新盲评" in stale["reason"]
+    assert stale["allowed"] is True
     final_pdf.write_bytes(original_pdf)
     assert simple_review.paper_blind_review_status(run_dir)["allowed"] is True
     assert advance_delivery_phase(run_dir)["to_phase"] == "verify"
@@ -628,9 +652,10 @@ def test_protocol_overhead_forces_return_to_delivery_mainline(tmp_path: Path) ->
 
     action = next_required_action(run_dir, now=_at(started_at, 100))
 
-    assert action["next_action"] == "return_to_competition_mainline"
+    assert action["next_action"] != "return_to_competition_mainline"
     assert action["work_summary"]["protocol_overhead_ratio"] == pytest.approx(0.11)
-    assert "expand_review_protocol" in action["forbidden_actions"]
+    assert action["forbidden_actions"] == []
+    assert any("协议" in warning for warning in action["work_summary"]["warnings"])
 
 
 def test_source_lock_detects_runtime_workflow_development(tmp_path: Path) -> None:
@@ -646,7 +671,8 @@ def test_source_lock_detects_runtime_workflow_development(tmp_path: Path) -> Non
 
     assert verification["valid"] is False
     assert "src/shumozizi/feature.py" in verification["changed_files"]
-    assert action["next_action"] == "restore_workflow_source_or_record_p0_patch"
+    assert action["next_action"] != "restore_workflow_source_or_record_p0_patch"
+    assert action["work_summary"]["workflow_source_tracking"]["blocking"] is False
 
 
 def test_p0_patch_requires_unconsumed_blocking_repair_work(tmp_path: Path) -> None:

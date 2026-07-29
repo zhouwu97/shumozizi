@@ -10,9 +10,11 @@ from typing import Any
 from shumozizi.core.io import (
     ContractError,
     atomic_json,
+    json_bytes,
     load_json,
     relative_inside,
     resolve_inside,
+    sha256_bytes,
     sha256_file,
 )
 from shumozizi.simple.state import utc_now
@@ -369,12 +371,12 @@ def audit_figure_candidate(
     minimum_font_size_pt: float = 8.0,
     aspect_ratio_tolerance: float = 0.02,
 ) -> dict[str, Any]:
-    """审核候选图的可读性，并检查流程图或统计图布局报告。
+    """审核工作图的可读性，并检查流程图或统计图布局报告。
 
     Args:
         run_dir: 当前运行目录。
         figure_id: 稳定图 ID。
-        candidate_outputs: 同一版本目录内的 PNG 和 PDF。
+        candidate_outputs: 同一 work 版本目录内的 PNG 和 PDF。
         rendering_mode: ``diagram`` 或普通 ``plot``。
         layout_report: 与候选同目录的流程图几何或统计图语义布局 JSON。
         minimum_font_size_pt: 图内最小字号。
@@ -389,10 +391,14 @@ def audit_figure_candidate(
     outputs = [resolve_inside(root, value, must_exist=True) for value in candidate_outputs]
     if len(outputs) != 2 or {path.suffix.casefold() for path in outputs} != _IMAGE_SUFFIXES:
         raise ContractError("图像候选必须同时提供一份 PNG 和一份 PDF")
-    expected_prefix = f"figures/candidates/{figure_id}/"
+    expected_prefix = f"figures/work/{figure_id}/"
+    legacy_prefix = f"figures/candidates/{figure_id}/"
     relatives = [relative_inside(root, path).as_posix() for path in outputs]
-    if any(not value.startswith(expected_prefix) for value in relatives):
-        raise ContractError(f"候选图必须位于 {expected_prefix}<version>/")
+    if any(
+        not value.startswith(expected_prefix) and not value.startswith(legacy_prefix)
+        for value in relatives
+    ):
+        raise ContractError(f"工作图必须位于 {expected_prefix}<version>/")
     parents = {path.parent.resolve() for path in outputs}
     if len(parents) != 1:
         raise ContractError("同一候选版本的 PNG 和 PDF 必须位于同一目录")
@@ -480,12 +486,12 @@ def promote_figure_candidate(
     human_reviewed: bool,
     human_review_notes: str,
 ) -> dict[str, Any]:
-    """在机械 QA 和人工看图都通过后，将版本化候选晋级到 current。
+    """在机械 QA 和人工看图都通过后，将版本化工作图晋级到 current。
 
     Args:
         run_dir: 当前运行目录。
         figure_id: 稳定图 ID。
-        candidate_outputs: 版本化候选 PNG/PDF。
+        candidate_outputs: 版本化工作图 PNG/PDF。
         target_stem: 不含后缀的 ``figures/current/`` 目标。
         rendering_mode: ``diagram`` 或普通 ``plot``。
         layout_report: 与候选同目录的流程图几何或统计图语义布局报告。
@@ -510,16 +516,40 @@ def promote_figure_candidate(
         layout_report=layout_report,
     )
     if not qa["success"]:
-        raise ContractError("候选图未通过版式 QA: " + "；".join(qa["errors"]))
+        raise ContractError("工作图未通过版式 QA: " + "；".join(qa["errors"]))
     candidates = [resolve_inside(root, item["path"], must_exist=True) for item in qa["candidate_outputs"]]
     version = candidates[0].parent.name
-    receipt_path = root / "figures" / "promotions" / f"{figure_id}-{version}.json"
+    work_digest = sha256_bytes(
+        json_bytes(
+            [
+                item["sha256"]
+                for item in qa["candidate_outputs"]
+            ]
+        )
+    )[:12]
+    receipt_path = (
+        root
+        / "figures"
+        / "promotions"
+        / f"{figure_id}-{version}-{work_digest}.json"
+    )
     if receipt_path.exists():
-        raise ContractError("该候选版本已经晋级；继续修改时必须生成新的版本目录")
+        raise ContractError("该 work 内容已经晋级；继续修改后可在原 work 路径重新晋级")
     promoted: list[dict[str, str]] = []
     for source in candidates:
         destination = target.with_suffix(source.suffix.casefold())
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.is_file():
+            archive = (
+                root
+                / "figures"
+                / "archive"
+                / figure_id
+                / f"{utc_now().replace(':', '-').replace('+', '_')}-{version}"
+                / destination.name
+            )
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(destination, archive)
         temporary = destination.with_suffix(destination.suffix + ".tmp")
         shutil.copy2(source, temporary)
         temporary.replace(destination)

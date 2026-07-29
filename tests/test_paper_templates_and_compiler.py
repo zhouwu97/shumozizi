@@ -30,7 +30,13 @@ from shumozizi.paper.templates import (
     select_paper_template,
 )
 from shumozizi.simple.initialization import initialize_simple_run
-from shumozizi.simple.state import paper_revision_status, read_simple_state
+from shumozizi.simple.state import (
+    paper_revision_status,
+    read_simple_state,
+    record_layout_audit,
+    record_paper_compilation,
+    record_paper_review,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_ROOT = REPO_ROOT / "skills/5writing/templates"
@@ -469,26 +475,38 @@ def test_reviewable_draft_compiles_before_answer_qualification(
         selection_reason="测试首个可审阅 PDF 与正式候选门禁相互隔离。",
     )
     materialize_selected_template(run_dir)
-    (run_dir / "paper/ARGUMENT_PLAN.md").write_text(
-        "# 论文论证计划\n\n"
+    (run_dir / "paper/PAPER_BLUEPRINT.md").write_text(
+        "# 论文结构蓝图\n\n"
         "## 总体判断\n\n"
         "本文先统一问题对象与评价口径，再用当前真实结果判断路线是否值得进入后续问题。"
         "这一判断连接基线、候选路线、验证证据与适用边界，避免正文退化为结果清单。\n\n"
         "## Q1 完整性卡\n\n"
         "题面要求明确比较可执行方案。数学对象是当前样本上的统一目标。"
         "关键推导连接约束与评价量，算法执行自然基线和主路线。"
-        "结果由真实实验支持，边界是不外推到题面范围之外，结论给出当前直接答案。\n",
-        encoding="utf-8",
-    )
-    (run_dir / "paper/STORYBOARD.md").write_text(
-        "# 论文故事板\n\n"
-        "## 中心判断\n\n"
-        "本文的中心判断是统一对象、目标和验证单位后，路线差异才具有决策含义。\n\n"
-        "## 论证链\n\n"
+        "结果由真实实验支持，边界是不外推到题面范围之外，结论给出当前直接答案。\n\n"
+        "## 跨问题论证链\n\n"
         "题面事实导出共享数学对象，再由解析关系确定数值求解任务；"
         "当前实验支持 Q1 判断，后续 Q2 将继承同一评价口径并补足尚未完成的验证。"
         "竞争解释通过自然基线排除，结论只在当前题面参数和数据范围内成立。\n",
         encoding="utf-8",
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.3",
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "scope": question_id,
+                    "evidence_need": "waived",
+                    "presentation_need": "waived",
+                    "reason": "当前草稿只验证论证入口，暂不需要展示图且已在首稿前决定。",
+                }
+                for question_id in ("Q1", "Q2")
+            ],
+            "figures": [],
+        },
     )
     monkeypatch.setattr(
         paper_readiness,
@@ -541,7 +559,7 @@ def test_reviewable_draft_compiles_before_answer_qualification(
     assert verify_reviewable_draft_receipt(run_dir)["valid"] is True
 
 
-def test_reviewable_draft_requires_argument_plan_and_storyboard(tmp_path: Path) -> None:
+def test_reviewable_draft_requires_paper_blueprint(tmp_path: Path) -> None:
     """能编译的空壳不能冒充可审阅论文首版。"""
     run_dir = initialize_simple_run(
         tmp_path,
@@ -551,7 +569,7 @@ def test_reviewable_draft_requires_argument_plan_and_storyboard(tmp_path: Path) 
         workflow_version="3.2",
     )
 
-    with pytest.raises(ContractError, match="ARGUMENT_PLAN.md"):
+    with pytest.raises(ContractError, match="PAPER_BLUEPRINT.md"):
         compile_reviewable_draft(
             run_dir,
             completed_content=["Q1 已完成。"],
@@ -559,6 +577,38 @@ def test_reviewable_draft_requires_argument_plan_and_storyboard(tmp_path: Path) 
             remaining_experiments=[],
             provisional_conclusions=[],
         )
+
+
+def test_argument_and_render_revisions_invalidate_different_checks(tmp_path: Path) -> None:
+    """纯排版只失效版式 QA，正文论证变化才失效独立盲评。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "split-paper-revisions",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    record_paper_compilation(
+        run_dir, previous_render_revision=0, argument_changed=False
+    )
+    record_paper_review(run_dir, argument_revision=1)
+    record_layout_audit(run_dir, render_revision=1)
+    assert paper_revision_status(read_simple_state(run_dir))["status"] == "REVIEWED"
+
+    record_paper_compilation(
+        run_dir, previous_render_revision=1, argument_changed=False
+    )
+    render_only = read_simple_state(run_dir)
+    assert render_only["argument_revision"] == 1
+    assert render_only["reviewed_argument_revision"] == 1
+    assert paper_revision_status(render_only)["status"] == "REVIEWED_LAYOUT_PENDING"
+
+    record_paper_compilation(
+        run_dir, previous_render_revision=2, argument_changed=True
+    )
+    argument_change = read_simple_state(run_dir)
+    assert argument_change["argument_revision"] == 2
+    assert paper_revision_status(argument_change)["status"] == "UNREVIEWED_DRAFT"
 
 
 @pytest.mark.paper_e2e

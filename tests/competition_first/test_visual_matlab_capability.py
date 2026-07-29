@@ -182,7 +182,7 @@ def _fake_outputs(run_dir: Path) -> None:
         json.dumps({"metrics": {"objective": 1.25}}), encoding="utf-8"
     )
     (output_dir / "result.csv").write_text("x,objective\n1,1.25\n", encoding="utf-8")
-    figure_dir = run_dir / "figures/candidates/matlab-smoke/v1"
+    figure_dir = run_dir / "figures/work/matlab-smoke/v1"
     figure_dir.mkdir(parents=True, exist_ok=True)
     (figure_dir / "matlab-smoke.pdf").write_bytes(b"%PDF-1.7\n% smoke\n")
     (figure_dir / "matlab-smoke.png").write_bytes(
@@ -230,9 +230,9 @@ def test_matlab_runner_writes_manifest_and_registers_production_result(
         output_files=[
             "results/matlab/result.json",
             "results/matlab/result.csv",
-            "figures/candidates/matlab-smoke/v1/matlab-smoke.pdf",
-            "figures/candidates/matlab-smoke/v1/matlab-smoke.png",
-            "figures/candidates/matlab-smoke/v1/matlab-smoke.layout.json",
+            "figures/work/matlab-smoke/v1/matlab-smoke.pdf",
+            "figures/work/matlab-smoke/v1/matlab-smoke.png",
+            "figures/work/matlab-smoke/v1/matlab-smoke.layout.json",
         ],
         metric_sources={
             "objective": {
@@ -310,7 +310,7 @@ def test_matlab_images_always_require_versioned_candidate_and_layout(
         "objective_semantics_sha256": "d" * 64,
     }
 
-    with pytest.raises(ContractError, match="figures/candidates"):
+    with pytest.raises(ContractError, match="figures/work"):
         run_matlab_analysis(
             run_dir,
             output_files=[
@@ -326,8 +326,8 @@ def test_matlab_images_always_require_versioned_candidate_and_layout(
             run_dir,
             output_files=[
                 "results/matlab/result.json",
-                "figures/candidates/matlab-smoke/v1/matlab-smoke.pdf",
-                "figures/candidates/matlab-smoke/v1/matlab-smoke.png",
+                "figures/work/matlab-smoke/v1/matlab-smoke.pdf",
+                "figures/work/matlab-smoke/v1/matlab-smoke.png",
             ],
             **common,
         )

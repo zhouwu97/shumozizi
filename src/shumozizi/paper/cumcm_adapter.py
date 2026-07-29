@@ -50,7 +50,7 @@ CLASSIC_ROLE_BY_TARGET = {
     "八、参考文献": "references",
     "附录": "appendix",
 }
-SEMANTIC_REQUIRED_ROLES = frozenset(
+LEGACY_SEMANTIC_REQUIRED_ROLES = frozenset(
     {
         "problem_restatement",
         "problem_analysis",
@@ -60,6 +60,22 @@ SEMANTIC_REQUIRED_ROLES = frozenset(
         "question_solution",
         "local_validation",
         "overall_evaluation",
+        "references",
+        "appendix",
+    }
+)
+SEMANTIC_REQUIRED_ROLES = frozenset(
+    {
+        "abstract",
+        "problem_restatement",
+        "problem_analysis",
+        "assumptions",
+        "symbols_or_data_definition",
+        "shared_model",
+        "question_solution",
+        "local_validation",
+        "overall_evaluation",
+        "conclusion",
         "references",
         "appendix",
     }
@@ -130,6 +146,108 @@ def _nonempty_text(value: Any, label: str, *, minimum: int = 1) -> str:
     return value.strip()
 
 
+def recommend_cumcm_structure_profile(run_dir: Path) -> dict[str, Any]:
+    """根据问题链证据推荐 CUMCM 结构画像。
+
+    Args:
+        run_dir: Competition-First v3.2 运行目录。
+
+    Returns:
+        包含推荐画像、判定信号和可读理由的字典。只有三问以上、存在共享
+        数学对象和继承边，并且后问新增资源、共享约束或聚合层时，才推荐
+        使用保留国赛外壳的 ``semantic`` 画像。
+    """
+    state = _require_cumcm_run(run_dir)
+    questions = list(state["required_questions"])
+    modeling_path = run_dir / "analysis" / "MODELING_UNITS.json"
+    try:
+        modeling = load_json(modeling_path)
+    except (ContractError, OSError, ValueError):
+        modeling = {}
+
+    story = modeling.get("research_story")
+    if not isinstance(story, dict):
+        story = {}
+    central_object = story.get("central_mathematical_object")
+    shared_object_declared = bool(
+        isinstance(central_object, str)
+        and len(central_object.strip()) >= 12
+        and "待填写" not in central_object
+    )
+    progression = story.get("question_progression")
+    if not isinstance(progression, list):
+        progression = []
+    inheritance_edges = 0
+    for item in progression:
+        if not isinstance(item, dict):
+            continue
+        inherited = item.get("inherits_from")
+        if isinstance(inherited, list):
+            inheritance_edges += len(
+                [question_id for question_id in inherited if question_id in questions]
+            )
+
+    progressive_deltas: list[str] = []
+    units = modeling.get("units")
+    if not isinstance(units, list):
+        units = []
+    for unit in units:
+        if not isinstance(unit, dict):
+            continue
+        delta = unit.get("question_delta")
+        if not isinstance(delta, dict):
+            continue
+        has_progression = any(
+            isinstance(delta.get(field), list) and bool(delta[field])
+            for field in ("added_resources", "shared_resources", "changed_constraints")
+        ) or delta.get("must_recheck_aggregation") is True
+        question_id = unit.get("question_id")
+        if has_progression and isinstance(question_id, str):
+            progressive_deltas.append(question_id)
+
+    signals = {
+        "at_least_three_questions": len(questions) >= 3,
+        "shared_mathematical_object": shared_object_declared
+        and inheritance_edges >= 1,
+        "resource_constraint_or_aggregation_progression": bool(progressive_deltas),
+    }
+    profile = "semantic" if all(signals.values()) else "classic"
+    if profile == "semantic":
+        reason = (
+            "必答问题不少于三问，问题链共享同一数学对象，且后问新增资源、"
+            "共享约束或聚合层；采用经典国赛外壳下的语义内核。"
+        )
+    else:
+        missing = [name for name, present in signals.items() if not present]
+        reason = (
+            "尚无充分的问题链证据自动合并章节，使用 classic 稳定兜底；"
+            "缺少信号：" + "、".join(missing)
+        )
+    return {
+        "profile": profile,
+        "reason": reason,
+        "signals": signals,
+        "inheritance_edges": inheritance_edges,
+        "progressive_questions": sorted(set(progressive_deltas)),
+    }
+
+
+def _section_roles(section: dict[str, Any]) -> frozenset[str]:
+    """兼容读取单角色旧映射与多角色 semantic 章节。"""
+    declared: list[str] = []
+    role = section.get("role")
+    if isinstance(role, str):
+        declared.append(role)
+    roles = section.get("roles")
+    if isinstance(roles, list):
+        declared.extend(item for item in roles if isinstance(item, str))
+    if not declared:
+        raise ContractError(f"章节 {section.get('target', '<unknown>')} 缺少语义角色")
+    if len(declared) != len(set(declared)):
+        raise ContractError(f"章节 {section.get('target', '<unknown>')} 的语义角色重复")
+    return frozenset(declared)
+
+
 def resolve_cumcm_reference_docx(run_dir: Path, document: dict[str, Any]) -> Path:
     """按结构映射声明解析 Word 参考模板。"""
     template = document["template"]
@@ -180,6 +298,8 @@ def _validate_structure_map(run_dir: Path, document: dict[str, Any]) -> dict[str
     section_items = document["sections"]
     sections = {item["target"]: item for item in section_items}
     if profile == "classic":
+        if any("roles" in item for item in section_items):
+            raise ContractError("classic 结构每章只能声明单一 role")
         missing = [target for target in SECTION_TARGETS if target not in sections]
         extras = sorted(set(sections) - set(SECTION_TARGETS))
         if missing or extras or len(sections) != len(section_items):
@@ -188,7 +308,7 @@ def _validate_structure_map(run_dir: Path, document: dict[str, Any]) -> dict[str
                 + ("缺少 " + ", ".join(missing) if missing else "")
                 + ("；额外 " + ", ".join(extras) if extras else "")
             )
-        if version == "1.1":
+        if version in {"1.1", "1.2"}:
             wrong_roles = [
                 item["target"]
                 for item in section_items
@@ -197,7 +317,10 @@ def _validate_structure_map(run_dir: Path, document: dict[str, Any]) -> dict[str
             if wrong_roles:
                 raise ContractError("classic 章节语义角色不匹配: " + ", ".join(wrong_roles))
     elif profile == "semantic":
-        _validate_semantic_sections(state, section_items)
+        if version == "1.1":
+            _validate_legacy_semantic_sections(state, section_items)
+        else:
+            _validate_semantic_sections(state, section_items)
     else:
         raise ContractError("CUMCM 结构画像必须为 classic 或 semantic")
     valid_sources = {*source_of_truth, *state["required_questions"]}
@@ -221,7 +344,9 @@ def _validate_structure_map(run_dir: Path, document: dict[str, Any]) -> dict[str
         restatement = sections["一、问题重述"]
     else:
         restatement = next(
-            item for item in section_items if item["role"] == "problem_restatement"
+            item
+            for item in section_items
+            if "problem_restatement" in _section_roles(item)
         )
     restatement_forbidden = set(restatement["forbidden_content"])
     if not {"模型名称", "最终数值", "大段题面复制"}.issubset(restatement_forbidden):
@@ -233,7 +358,7 @@ def _validate_structure_map(run_dir: Path, document: dict[str, Any]) -> dict[str
         "hard_gate": False,
     }:
         raise ContractError("CUMCM 页数只能使用 24–30 页软规划和 18 页以下复核提示")
-    if version == "1.1":
+    if version in {"1.1", "1.2"}:
         _validate_presentation_contract(run_dir, state, document["presentation_contract"])
     return document
 
@@ -280,16 +405,100 @@ def _validate_presentation_contract(
 def _validate_semantic_sections(
     state: dict[str, Any], sections: list[dict[str, Any]]
 ) -> None:
-    """确定性校验 semantic 画像的角色、逐问覆盖和外层顺序。"""
+    """校验 semantic 的经典外壳、共享主线、逐问覆盖和章节顺序。"""
+    section_ids = [item["section_id"] for item in sections]
+    if len(section_ids) != len(set(section_ids)):
+        raise ContractError("semantic 结构的 section_id 不能重复")
+    section_roles = [_section_roles(item) for item in sections]
+    all_roles = frozenset().union(*section_roles)
+    missing_roles = sorted(SEMANTIC_REQUIRED_ROLES - all_roles)
+    if missing_roles:
+        raise ContractError("semantic 结构缺少语义角色: " + ", ".join(missing_roles))
+    if any(item["preserve_argument_order"] is not True for item in sections):
+        raise ContractError("semantic 结构必须保留 PAPER_BLUEPRINT 的论证顺序")
+
+    assumptions_entry = [
+        (item, roles)
+        for item, roles in zip(sections, section_roles, strict=True)
+        if {"assumptions", "symbols_or_data_definition"}.issubset(roles)
+    ]
+    if len(assumptions_entry) != 1:
+        raise ContractError(
+            "semantic 结构必须保留一个明确的“模型假设与符号”入口，"
+            "同一章节需同时声明 assumptions 与 symbols_or_data_definition"
+        )
+    assumptions_title = assumptions_entry[0][0]["target"]
+    if "假设" not in assumptions_title or "符号" not in assumptions_title:
+        raise ContractError("semantic 的假设与符号入口标题必须同时包含“假设”和“符号”")
+
+    required_questions = list(state["required_questions"])
+    known = set(required_questions)
+    covered: list[str] = []
+    for item, roles in zip(sections, section_roles, strict=True):
+        question_ids = item.get("question_ids", [])
+        unknown = sorted(set(question_ids) - known)
+        if unknown:
+            raise ContractError("semantic 章节引用未知问题: " + ", ".join(unknown))
+        if "question_solution" in roles:
+            if not question_ids:
+                raise ContractError("semantic 的求解章节必须声明至少一个 question_id")
+            covered.extend(question_ids)
+    missing_questions = [item for item in required_questions if item not in covered]
+    if missing_questions:
+        raise ContractError("semantic 结构未覆盖必答问题: " + ", ".join(missing_questions))
+    first_positions = [covered.index(item) for item in required_questions]
+    if first_positions != sorted(first_positions):
+        raise ContractError("semantic 逐问首次出现顺序必须遵循 required_questions")
+
+    def first_position(role: str) -> int:
+        """返回某角色首次出现的章节位置。"""
+        return next(index for index, roles in enumerate(section_roles) if role in roles)
+
+    def last_position(role: str) -> int:
+        """返回某角色最后出现的章节位置。"""
+        return max(index for index, roles in enumerate(section_roles) if role in roles)
+
+    first_solution = first_position("question_solution")
+    last_solution = last_position("question_solution")
+    assumptions_position = first_position("assumptions")
+    symbols_position = first_position("symbols_or_data_definition")
+    data_positions = [
+        index for index, roles in enumerate(section_roles) if "data_processing" in roles
+    ]
+    if not (
+        first_position("abstract") < first_position("problem_restatement")
+        and first_position("problem_restatement")
+        <= first_position("problem_analysis")
+        < assumptions_position
+        and assumptions_position == symbols_position
+        < first_position("shared_model")
+        < first_solution
+        and all(position < first_solution for position in data_positions)
+        and first_position("local_validation") >= first_solution
+        and first_position("overall_evaluation") > last_solution
+        and first_position("conclusion") >= first_position("overall_evaluation")
+        and first_position("references") > first_position("conclusion")
+        and first_position("appendix") > first_position("references")
+    ):
+        raise ContractError(
+            "semantic 结构必须遵循“摘要—问题重述与分析—模型假设与符号—"
+            "共享模型—问题链求解—检验评价与结论—参考文献—附录”的国赛外壳"
+        )
+
+
+def _validate_legacy_semantic_sections(
+    state: dict[str, Any], sections: list[dict[str, Any]]
+) -> None:
+    """只读兼容 CUMCM_STRUCTURE_MAP 1.1 的实验性 semantic 合同。"""
     section_ids = [item["section_id"] for item in sections]
     if len(section_ids) != len(set(section_ids)):
         raise ContractError("semantic 结构的 section_id 不能重复")
     roles = [item["role"] for item in sections]
-    missing_roles = sorted(SEMANTIC_REQUIRED_ROLES - set(roles))
+    missing_roles = sorted(LEGACY_SEMANTIC_REQUIRED_ROLES - set(roles))
     if missing_roles:
         raise ContractError("semantic 结构缺少语义角色: " + ", ".join(missing_roles))
     if any(item["preserve_argument_order"] is not True for item in sections):
-        raise ContractError("semantic 结构必须保留 ARGUMENT_PLAN 的论证顺序")
+        raise ContractError("semantic 结构必须保留 PAPER_BLUEPRINT 的论证顺序")
 
     required_questions = list(state["required_questions"])
     known = set(required_questions)
@@ -326,13 +535,22 @@ def write_cumcm_structure_map(run_dir: Path, payload: dict[str, Any]) -> Path:
     """原子写入 CUMCM 结构映射，不生成或改写论文章节。"""
     version = payload.get("schema_version")
     if version is None:
-        version = "1.1" if "profile" in payload else "1.0"
+        if "presentation_contract" in payload and "profile" not in payload:
+            version = "1.2"
+        else:
+            version = "1.1" if "profile" in payload else "1.0"
+    profile = payload.get("profile")
+    if version == "1.2" and (profile is None or profile == "auto"):
+        # 自动选择只消费分析阶段已经冻结的问题链事实，不新增作者填表。
+        profile = recommend_cumcm_structure_profile(run_dir)["profile"]
     document = {
         **payload,
         "schema_name": "cumcm_structure_map",
         "schema_version": version,
         "run_id": run_dir.name,
     }
+    if version in {"1.1", "1.2"}:
+        document["profile"] = profile
     _validate_structure_map(run_dir, document)
     path = run_dir / STRUCTURE_MAP_PATH
     atomic_json(path, document)
@@ -518,7 +736,7 @@ def evaluate_presentation_contract(run_dir: Path) -> dict[str, Any] | None:
         结构化兑现检查；1.0 映射或非 CUMCM 运行返回 ``None``。
     """
     document = require_cumcm_structure_map(run_dir)
-    if document is None or document.get("schema_version") != "1.1":
+    if document is None or document.get("schema_version") not in {"1.1", "1.2"}:
         return None
     contract = document["presentation_contract"]
     classification = "blocking" if contract["mode"] == "required" else "advisory"
@@ -924,7 +1142,7 @@ def write_cumcm_paper_review_audit(run_dir: Path, payload: dict[str, Any]) -> Pa
         realization = evaluate_presentation_contract(run_dir)
         if realization is None:
             raise ContractError(
-                f"CUMCM_LAYOUT_AUDIT {schema_version} 需要 CUMCM_STRUCTURE_MAP 1.1"
+                f"CUMCM_LAYOUT_AUDIT {schema_version} 需要 CUMCM_STRUCTURE_MAP 1.1 或 1.2"
             )
         cold_read = review["cold_read"]
         probe = probe_pdf_page_rhythm(pdf)

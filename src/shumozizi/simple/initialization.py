@@ -19,7 +19,8 @@ SIMPLE_DIRECTORIES = (
     "results/evidence",
     "analysis",
     "figures/current",
-    "figures/candidates",
+    "figures/work",
+    "figures/archive",
     "figures/promotions",
     "paper/sections",
     "paper/submission",
@@ -157,6 +158,10 @@ def initialize_simple_run(
         "paper_render_revision": 0,
         "paper_reviewed_revision": 0,
         "layout_audited_revision": 0,
+        "argument_revision": 0,
+        "render_revision": 0,
+        "reviewed_argument_revision": 0,
+        "layout_audited_render_revision": 0,
         "competition": competition,
         "problem_id": problem_id,
         "required_questions": required_questions or [],
@@ -203,7 +208,7 @@ def initialize_simple_run(
         atomic_json(
             run_dir / "analysis" / "MODELING_UNITS.json",
             {
-                "schema_version": "1.3",
+                "schema_version": "1.4",
                 "run_id": identifier,
                 "semantic_reconstructions": [],
                 "research_story": {
@@ -213,5 +218,34 @@ def initialize_simple_run(
                 },
                 "units": [],
             },
+        )
+        (run_dir / "paper" / "PAPER_BLUEPRINT.md").write_text(
+            "# PAPER_BLUEPRINT\n\n"
+            "## 全篇总体判断\n\n"
+            "待填写：一句话说明统一数学对象、主答案与证据边界。\n\n"
+            "## 跨问题论证链\n\n"
+            "待填写：说明各问新增的实体、资源、约束与聚合层，以及章节作用。\n\n"
+            "## 各问完整性卡\n\n"
+            "按必答问题分别填写：关键判断、模型与推导、直接答案、证据、"
+            "竞争解释、局部验证和适用边界。\n\n"
+            "## 贡献（最多三项）\n\n"
+            "待填写：只写由当前题真实模型、实验或洞察支持的贡献。\n\n"
+            "## 各章主张与最强/最弱问题\n\n"
+            "待填写：每章要让评委接受什么判断；哪一问最强、哪一问最弱及补救方式。\n\n"
+            "## 图表与篇幅\n\n"
+            "待填写：每张主图的论点、数据画像、共享模型图、逐问主图及必要豁免。\n\n"
+            "## 参考结构模式\n\n"
+            "待填写：只记录可迁移的组织模式，不迁移原题公式、参数或结论。\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (run_dir / "paper" / "PAPER_REVIEW.md").write_text(
+            "# PAPER_REVIEW\n\n"
+            "以评委视角一次性检查：三分钟内能否定位逐问答案、共享数学主线是否"
+            "清楚、最强与最弱问题、主图论点、证据等级、工作报告痕迹及最高价值"
+            "修改。每项发现记录处理决定。独立盲评记录和机械版式审计由系统派生，"
+            "不在此重复填写或伪造。\n",
+            encoding="utf-8",
+            newline="\n",
         )
     return run_dir

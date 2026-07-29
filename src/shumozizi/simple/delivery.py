@@ -38,7 +38,7 @@ _LOCK_ROOTS = (
     Path(".agents/skills"),
 )
 _IGNORED_SOURCE_SUFFIXES = {".pyc", ".pyo"}
-_DELIVERY_FREEZE_ACTIONS = [
+_SCIENTIFIC_CHANGE_ACTIONS = [
     "add_new_route",
     "create_extra_review_task",
     "modify_workflow_schema",
@@ -120,11 +120,12 @@ def initialize_delivery_control(
         raise ContractError("交付总时长必须大于零")
     total_minutes = float(total_hours * 60 if total_hours is not None else DEFAULT_TOTAL_MINUTES)
     control = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": run_dir.name,
         "started_at": started_at or utc_now(),
         "delivery_plan": _delivery_plan(total_minutes),
-        "workflow_source_locked": True,
+        "workflow_source_locked": False,
+        "workflow_source_tracking": "informational",
         "workflow_source_manifest": _source_manifest(repo_root),
         "protocol_patch_budget_minutes": DEFAULT_PROTOCOL_PATCH_BUDGET_MINUTES,
         "protocol_overhead_ratio_limit": DEFAULT_PROTOCOL_OVERHEAD_RATIO_LIMIT,
@@ -161,7 +162,7 @@ def initialize_delivery_control(
 def _control(run_dir: Path) -> dict[str, Any]:
     """读取并执行交付控制的最小结构校验。"""
     control = load_json(run_dir / DELIVERY_CONTROL_PATH)
-    if control.get("schema_version") != "1.0" or control.get("run_id") != run_dir.name:
+    if control.get("schema_version") not in {"1.0", "1.1"} or control.get("run_id") != run_dir.name:
         raise ContractError("delivery-control 的 schema_version 或 run_id 不匹配")
     _parse_time(control.get("started_at", ""))
     plan = control.get("delivery_plan")
@@ -187,55 +188,59 @@ def require_delivery_action_allowed(
     action_kind: str,
     *,
     now: str | datetime | None = None,
-    review_findings: list[str] | None = None,
+    review_findings: list[str | dict[str, Any]] | None = None,
 ) -> None:
-    """控制首版后的范围冻结，并保留评审驱动的有限返修窗口。
+    """允许评审驱动返修，仅在用户显式 final lock 后冻结科学内容。
 
     Args:
         run_dir: 当前 v3.2 运行目录。
         action_kind: 调用入口准备执行的语义动作。
         now: 可选的确定性当前时间，主要供测试和恢复工具使用。
-        review_findings: 新实验或新图所回应的评审发现；首版后必填。
+        review_findings: 新路线、实验或图所回应的评审发现；首版后须同时说明
+            成本、收益与停止条件。
 
     Raises:
-        ContractError: 截止后请求了禁止动作，或动作类型不属于公开许可表。
+        ContractError: final lock 后请求新增科学内容，或返修说明不完整。
     """
     if not isinstance(action_kind, str) or not action_kind.strip():
         raise ContractError("delivery action_kind 必须是非空文本")
     action = action_kind.strip()
     known = (
-        set(_DELIVERY_FREEZE_ACTIONS)
+        set(_SCIENTIFIC_CHANGE_ACTIONS)
         | set(_DELIVERY_ALLOWED_ACTIONS)
         | set(_REVIEW_REPAIR_ACTIONS)
     )
     if action not in known:
         raise ContractError(f"未知 delivery action_kind: {action}")
-    control = _control(run_dir)
-    current = _parse_time(now or utc_now())
-    started = _parse_time(control["started_at"])
-    elapsed = max(0.0, (current - started).total_seconds() / 60)
-    cutoff = float(control["delivery_plan"]["first_reviewable_pdf_deadline"])
+    _control(run_dir)
+    _parse_time(now or utc_now())
     first_reviewable_frozen = _milestone_current(run_dir, "first_reviewable")
-    scope_frozen = elapsed >= cutoff or first_reviewable_frozen
-    if scope_frozen and action in _DELIVERY_FREEZE_ACTIONS:
-        raise ContractError(
-            f"交付首版截止后禁止动作 {action}；路线、协议、审核范围和执行器必须冻结"
-        )
-    if not scope_frozen or action not in _REVIEW_REPAIR_ACTIONS:
-        return
-    if _milestone_current(run_dir, "candidate"):
-        raise ContractError(f"候选 PDF 已冻结，禁止继续执行 {action} 新增科学内容")
-    if not first_reviewable_frozen:
-        raise ContractError(
-            f"首版截止后必须先冻结 first_reviewable，再以评审发现驱动 {action}"
-        )
-    findings = review_findings or []
-    if not 1 <= len(findings) <= 5 or any(
-        not isinstance(item, str) or len(item.strip()) < 12 for item in findings
+    if _milestone_current(run_dir, "final") and (
+        action in _SCIENTIFIC_CHANGE_ACTIONS or action in _REVIEW_REPAIR_ACTIONS
     ):
+        raise ContractError(f"用户已显式 final lock，禁止继续执行 {action} 新增科学内容")
+    expansion_actions = set(_SCIENTIFIC_CHANGE_ACTIONS) | set(_REVIEW_REPAIR_ACTIONS)
+    if not first_reviewable_frozen or action not in expansion_actions:
+        return
+    findings = review_findings or []
+    valid = 1 <= len(findings) <= 5
+    for item in findings:
+        if not isinstance(item, dict):
+            valid = False
+            continue
+        valid = valid and all(
+            isinstance(item.get(field), str) and len(item[field].strip()) >= 8
+            for field in (
+                "review_finding",
+                "estimated_cost",
+                "expected_benefit",
+                "stop_condition",
+            )
+        )
+    if not valid:
         raise ContractError(
-            f"首版后的 {action} 必须为每个新增项提供 12 字以上 review_finding，"
-            "且单次最多新增 5 项"
+            f"首版后的 {action} 必须回应明确评审问题，并说明 estimated_cost、"
+            "expected_benefit 和 stop_condition；单次最多新增 5 项"
         )
 
 
@@ -462,10 +467,8 @@ def work_log_summary(
 
 
 def verify_workflow_source_lock(run_dir: Path) -> dict[str, Any]:
-    """比较运行初始化时的工作流源码基线与当前仓库。"""
+    """信息性比较工作流源码基线，不参与阶段阻断。"""
     control = _control(run_dir)
-    if control.get("workflow_source_locked") is not True:
-        return {"valid": False, "changed_files": [], "reason": "workflow_source_locked 未启用"}
     repo_root = run_dir.resolve().parents[1]
     expected = control.get("workflow_source_manifest", {})
     current = _source_manifest(repo_root)
@@ -474,7 +477,13 @@ def verify_workflow_source_lock(run_dir: Path) -> dict[str, Any]:
         for path in set(expected) | set(current)
         if expected.get(path) != current.get(path)
     )
-    return {"valid": not changed, "changed_files": changed, "reason": "" if not changed else "运行期间工作流源码发生变化"}
+    return {
+        "valid": not changed,
+        "blocking": False,
+        "tracking": "informational",
+        "changed_files": changed,
+        "reason": "" if not changed else "运行期间工作流源码发生变化，仅作影响提示",
+    }
 
 
 def approve_workflow_p0_patch(run_dir: Path, *, reason: str) -> dict[str, Any]:
@@ -558,9 +567,13 @@ def require_current_pdf_milestone(run_dir: Path, milestone: str) -> None:
 
 def freeze_pdf_milestone(run_dir: Path, milestone: str) -> dict[str, Any]:
     """把当前受控编译 PDF 冻结为第一版或候选版里程碑。"""
-    targets = {"first_reviewable": "paper/draft-1.pdf", "candidate": "paper/candidate.pdf"}
+    targets = {
+        "first_reviewable": "paper/draft-1.pdf",
+        "candidate": "paper/candidate.pdf",
+        "final": "paper/final-locked.pdf",
+    }
     if milestone not in targets:
-        raise ContractError("PDF milestone 必须为 first_reviewable 或 candidate")
+        raise ContractError("PDF milestone 必须为 first_reviewable、candidate 或 final")
     if milestone == "first_reviewable":
         from shumozizi.paper.compiler import verify_reviewable_draft_receipt
 
@@ -698,7 +711,7 @@ def _action(
 def next_required_action(
     run_dir: Path, *, now: str | datetime | None = None
 ) -> dict[str, Any]:
-    """返回当前唯一最高优先级动作，并让交付截止点覆盖普通阶段工作。"""
+    """返回当前建议动作；源码漂移和协议开销仅作为提示。"""
     state = read_simple_state(run_dir)
     control = _control(run_dir)
     current = _parse_time(now or utc_now())
@@ -706,35 +719,20 @@ def next_required_action(
     elapsed = max(0.0, (current - started).total_seconds() / 60)
     plan = control["delivery_plan"]
     remaining = float(plan["final_deadline"]) - elapsed
-    scope_frozen = elapsed >= plan["first_reviewable_pdf_deadline"] or _milestone_current(
-        run_dir, "first_reviewable"
-    )
     summary = work_log_summary(run_dir)
     source_lock = verify_workflow_source_lock(run_dir)
+    warnings: list[str] = []
     if not source_lock["valid"]:
-        return _action(
-            state,
-            next_action="restore_workflow_source_or_record_p0_patch",
-            priority="P0_SCOPE",
-            elapsed=elapsed,
-            remaining=remaining,
-            blocked_by=source_lock["changed_files"],
-            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
-            work_summary=summary,
+        warnings.append(
+            "工作流源码相对运行起点发生变化：" + ", ".join(source_lock["changed_files"])
         )
     if (
         summary["protocol_overhead_minutes"] > control["protocol_patch_budget_minutes"]
         or summary["protocol_overhead_ratio"] > control["protocol_overhead_ratio_limit"]
     ):
-        return _action(
-            state,
-            next_action="return_to_competition_mainline",
-            priority="P0_SCOPE",
-            elapsed=elapsed,
-            remaining=remaining,
-            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
-            work_summary=summary,
-        )
+        warnings.append("协议或执行器开销偏高，建议把时间转回建模、实验和论文主线。")
+    summary = {**summary, "workflow_source_tracking": source_lock, "warnings": warnings}
+    forbidden = _SCIENTIFIC_CHANGE_ACTIONS if _milestone_current(run_dir, "final") else []
     if elapsed >= plan["first_reviewable_pdf_deadline"] and not _milestone_current(
         run_dir, "first_reviewable"
     ):
@@ -744,7 +742,7 @@ def next_required_action(
             priority="P0_DELIVERY",
             elapsed=elapsed,
             remaining=remaining,
-            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+            forbidden_actions=forbidden,
             work_summary=summary,
         )
     if elapsed >= plan["candidate_pdf_deadline"] and not _milestone_current(run_dir, "candidate"):
@@ -754,7 +752,7 @@ def next_required_action(
             priority="P0_DELIVERY",
             elapsed=elapsed,
             remaining=remaining,
-            forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+            forbidden_actions=forbidden,
             work_summary=summary,
         )
     if elapsed >= plan["blind_review_deadline"]:
@@ -769,7 +767,7 @@ def next_required_action(
                 elapsed=elapsed,
                 remaining=remaining,
                 blocked_by=[blind.get("reason", "独立 PDF 盲评未完成")],
-                forbidden_actions=_DELIVERY_FREEZE_ACTIONS,
+                forbidden_actions=forbidden,
                 work_summary=summary,
             )
     if state["phase"] == "analysis":
@@ -811,6 +809,6 @@ def next_required_action(
         priority="P0_DELIVERY" if elapsed >= plan["final_deadline"] else "P1_MAINLINE",
         elapsed=elapsed,
         remaining=remaining,
-        forbidden_actions=_DELIVERY_FREEZE_ACTIONS if scope_frozen else [],
+        forbidden_actions=forbidden,
         work_summary=summary,
     )

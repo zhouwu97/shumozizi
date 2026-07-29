@@ -3708,14 +3708,19 @@ def _import_v32_paper_blind_review(
     ]
     if verdict == "pass" and open_high_risks:
         raise ContractError("盲评判为 pass，但结构化结果仍包含未关闭 P0/P1 叙事风险")
-    render_revision = int(state.get("paper_render_revision", 0))
+    render_revision = int(
+        state.get("render_revision", state.get("paper_render_revision", 0))
+    )
+    argument_revision = int(state.get("argument_revision", render_revision))
     record = {
         "schema_name": "v32_paper_blind_review",
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "run_id": run_dir.name,
         "verdict": verdict,
         "highest_severity": highest_severity,
         "paper_render_revision": render_revision,
+        "render_revision": render_revision,
+        "argument_revision": argument_revision,
         "packet": packet,
         "report": report,
         "task_receipt": task,
@@ -3732,7 +3737,7 @@ def _import_v32_paper_blind_review(
     atomic_json(run_dir / V32_PAPER_BLIND_RECORD_PATH, record)
     from shumozizi.simple.state import record_paper_review
 
-    record_paper_review(run_dir, render_revision=render_revision)
+    record_paper_review(run_dir, argument_revision=argument_revision)
     return {"paper_blind_review": record}
 
 
@@ -3748,7 +3753,7 @@ def _v32_paper_blind_review_status(run_dir: Path) -> dict[str, Any]:
         review = load_json(record_path)
         if (
             review.get("schema_name") != "v32_paper_blind_review"
-            or review.get("schema_version") not in {"1.0", "1.1"}
+            or review.get("schema_version") not in {"1.0", "1.1", "1.2"}
             or review.get("run_id") != run_dir.name
         ):
             return {"allowed": False, "reason": "v3.2 PDF 盲评记录格式无效"}
@@ -3769,19 +3774,27 @@ def _v32_paper_blind_review_current(run_dir: Path, review: dict[str, Any]) -> tu
     """复验 v3.2 盲评仍绑定未漂移的冻结 PDF、报告和独立回执。"""
     try:
         state = read_simple_state(run_dir)
-        review_revision = review.get("paper_render_revision")
-        if review_revision is not None and (
-            review_revision != state.get("paper_render_revision", 0)
-            or review_revision != state.get("paper_reviewed_revision", 0)
-        ):
-            return False, "当前渲染修订尚未完成独立 PDF 盲评"
+        if review.get("schema_version") == "1.2":
+            review_argument = review.get("argument_revision")
+            if (
+                review_argument != state.get("argument_revision", 0)
+                or review_argument != state.get("reviewed_argument_revision", 0)
+            ):
+                return False, "当前论证修订尚未完成独立 PDF 盲评"
+        else:
+            review_revision = review.get("paper_render_revision")
+            if review_revision is not None and (
+                review_revision != state.get("paper_render_revision", 0)
+                or review_revision != state.get("paper_reviewed_revision", 0)
+            ):
+                return False, "当前渲染修订尚未完成独立 PDF 盲评"
         packet = _verify_v32_frozen_packet_copy(
             run_dir, review.get("packet"), expected_kind="paper-blind"
         )
         report = _safe_run_path(run_dir, review["report"]["file"])
         if sha256_file(report) != review["report"]["sha256"]:
             return False, "盲评报告哈希已变化"
-        if review.get("schema_version") == "1.1":
+        if review.get("schema_version") in {"1.1", "1.2"}:
             structured = _parse_paper_blind_structured_results(run_dir, report)
             if sha256_bytes(json_bytes(structured)) != review.get(
                 "structured_results_sha256"
@@ -3821,13 +3834,14 @@ def _v32_paper_blind_review_current(run_dir: Path, review: dict[str, Any]) -> tu
             or receipt["thread_id"] != review["reviewer"]["thread_id"]
         ):
             return False, "盲评记录与任务回执身份不一致"
-        # 冻结 PDF 必须仍等于当前提交 PDF，否则盲评结论已过期。
-        frozen = _v32_frozen_paper_pdf(run_dir, packet["manifest_file"])
-        current_pdf = run_dir / "paper" / "final.pdf"
-        if not current_pdf.is_file():
-            return False, "缺少当前 paper/final.pdf"
-        if sha256_file(current_pdf) != frozen:
-            return False, "当前 PDF 已在盲评后重新编译，需要重新盲评"
+        if review.get("schema_version") != "1.2":
+            # 旧记录只能靠 PDF 哈希判断当前性；1.2 已改由 argument revision 绑定。
+            frozen = _v32_frozen_paper_pdf(run_dir, packet["manifest_file"])
+            current_pdf = run_dir / "paper" / "final.pdf"
+            if not current_pdf.is_file():
+                return False, "缺少当前 paper/final.pdf"
+            if sha256_file(current_pdf) != frozen:
+                return False, "当前 PDF 已在盲评后重新编译，需要重新盲评"
         return True, ""
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         return False, str(exc)
@@ -3845,10 +3859,10 @@ def require_current_paper_blind_review_record(run_dir: Path) -> dict[str, Any]:
     review = load_json(record_path)
     if (
         review.get("schema_name") != "v32_paper_blind_review"
-        or review.get("schema_version") != "1.1"
+        or review.get("schema_version") not in {"1.1", "1.2"}
         or review.get("run_id") != run_dir.name
     ):
-        raise ContractError("当前 CUMCM 审计需要 v3.2 结构化盲评记录 1.1")
+        raise ContractError("当前 CUMCM 审计需要 v3.2 结构化盲评记录 1.1 或 1.2")
     current, reason = _v32_paper_blind_review_current(run_dir, review)
     if not current:
         raise ContractError("独立 PDF 盲评记录已失效: " + reason)

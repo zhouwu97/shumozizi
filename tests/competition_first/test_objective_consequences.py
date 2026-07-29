@@ -15,8 +15,10 @@ import pytest
 from shumozizi.core.io import ContractError
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import (
+    question_outcome_selections,
     require_v32_experiment_evidence,
     semantic_reconstruction_input_bindings,
+    validate_modeling_units,
     write_modeling_units,
 )
 from shumozizi.simple.objective_consequences import (
@@ -426,10 +428,10 @@ def _search_results(run_dir: Path, *, search_seconds: float) -> None:
         )
 
 
-def test_core_question_rejects_verification_budget_exceeding_search_budget(
+def test_core_question_warns_when_verification_exceeds_search_budget(
     tmp_path: Path,
 ) -> None:
-    """核心问题的验证耗时超过搜索耗时时阻断，逼迫先继续搜索。"""
+    """验证耗时偏高只提示资源配置，不能否决已经有效的答案。"""
     run_dir = _run(tmp_path, "budget-skew")
     units = _units(run_dir)
     write_modeling_units(run_dir, units)
@@ -450,8 +452,9 @@ def test_core_question_rejects_verification_budget_exceeding_search_budget(
     )
     write_modeling_units(run_dir, units)
 
-    with pytest.raises(ContractError, match="已超过搜索与深化耗时"):
-        require_v32_experiment_evidence(run_dir)
+    warnings = validate_modeling_units(run_dir, units, require_actual=True)
+    assert any("超过搜索与深化耗时" in warning for warning in warnings)
+    require_v32_experiment_evidence(run_dir)
 
 
 def test_core_question_requires_a_real_regularity_not_only_recomputation(
@@ -522,10 +525,10 @@ def test_run_without_any_core_question_is_rejected(tmp_path: Path) -> None:
         write_modeling_units(run_dir, units)
 
 
-def test_core_search_must_hold_a_minimum_share_of_production_compute(
+def test_core_search_low_compute_share_is_advisory(
     tmp_path: Path,
 ) -> None:
-    """核心搜索占全局生产算力过低时阻断，即使单元内部比例合格。"""
+    """核心搜索占比低于 35% 时告警，但不能取消题面答案。"""
     run_dir = _run(tmp_path, "global-share")
     units = _units(run_dir)
     write_modeling_units(run_dir, units)
@@ -549,8 +552,9 @@ def test_core_search_must_hold_a_minimum_share_of_production_compute(
     )
     write_modeling_units(run_dir, units)
 
-    with pytest.raises(ContractError, match="低于要求的"):
-        require_v32_experiment_evidence(run_dir)
+    warnings = validate_modeling_units(run_dir, units, require_actual=True)
+    assert any("低于建议值 35%" in warning for warning in warnings)
+    require_v32_experiment_evidence(run_dir)
 
 
 def _good_insight() -> list[dict[str, Any]]:
@@ -585,8 +589,8 @@ def _ready_core_unit(run_dir: Path, *, scores: dict[str, float] | None = None) -
     return units
 
 
-def test_result_worse_than_baseline_cannot_reach_the_paper(tmp_path: Path) -> None:
-    """赢家没有真正超过 baseline 时阻断——这是搜索强度的下限。"""
+def test_weak_improvement_lowers_claim_but_keeps_feasible_answer(tmp_path: Path) -> None:
+    """改善不足只能降低证据等级，不能删除题面可行答案。"""
     run_dir = _run(tmp_path, "no-improvement")
     units = _ready_core_unit(
         run_dir,
@@ -600,8 +604,12 @@ def test_result_worse_than_baseline_cannot_reach_the_paper(tmp_path: Path) -> No
     )
     write_modeling_units(run_dir, units)
 
-    with pytest.raises(ContractError, match="search_insufficient.*experiment"):
-        require_v32_experiment_evidence(run_dir)
+    require_v32_experiment_evidence(run_dir)
+    outcome = question_outcome_selections(run_dir)["Q1"]
+    assert outcome["objective_answer"]["result_id"] == "final"
+    assert outcome["objective_answer"]["claim_level"] == "feasible"
+    assert outcome["evidence_grade"]["search_confidence"] == "weak"
+    assert any("baseline" in warning for warning in outcome["warnings"])
 
 
 def test_near_bound_baseline_needs_actual_bound_evidence(tmp_path: Path) -> None:
@@ -744,8 +752,8 @@ def test_determined_is_allowed_when_no_open_ambiguity_exists(tmp_path: Path) -> 
     assert frozen_objectives(run_dir) == {}
 
 
-def test_exploration_audits_cannot_dilute_the_core_budget_share(tmp_path: Path) -> None:
-    """把复算跑成 exploration 不能稀释核心搜索份额检查。"""
+def test_exploration_audits_are_included_in_budget_advisory(tmp_path: Path) -> None:
+    """预算建议的分母仍统计 exploration，但结果只告警不阻断。"""
     run_dir = _run(tmp_path, "exploration-dilution")
     units = _units(run_dir)
     write_modeling_units(run_dir, units)
@@ -761,8 +769,9 @@ def test_exploration_audits_cannot_dilute_the_core_budget_share(tmp_path: Path) 
     _fill_actual(units, insights=_good_insight())
     write_modeling_units(run_dir, units)
 
-    with pytest.raises(ContractError, match="低于要求的"):
-        require_v32_experiment_evidence(run_dir)
+    warnings = validate_modeling_units(run_dir, units, require_actual=True)
+    assert any("低于建议值 35%" in warning for warning in warnings)
+    require_v32_experiment_evidence(run_dir)
 
 
 def _upgrade_units_to_semantic_13(

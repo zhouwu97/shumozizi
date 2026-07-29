@@ -86,7 +86,20 @@
           "visual_question": {"type": "string", "minLength": 8},
           "expected_observation": {"type": "string", "minLength": 8},
           "decision_consequence": {"type": "string", "minLength": 8},
-          "review_finding": {"type": "string", "minLength": 12}
+          "review_finding": {"type": "string", "minLength": 12},
+          "revision_case": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "review_finding", "estimated_cost", "expected_benefit", "stop_condition"
+            ],
+            "properties": {
+              "review_finding": {"type": "string", "minLength": 8},
+              "estimated_cost": {"type": "string", "minLength": 8},
+              "expected_benefit": {"type": "string", "minLength": 8},
+              "stop_condition": {"type": "string", "minLength": 8}
+            }
+          }
         },
         "allOf": [
           {

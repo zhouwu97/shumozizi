@@ -18,6 +18,7 @@ from shumozizi.paper.cumcm_adapter import (
     STRUCTURE_MAP_PATH,
     cumcm_adapter_required,
     finalize_cumcm_layout_audit,
+    recommend_cumcm_structure_profile,
     require_cumcm_layout_audit,
     require_cumcm_paper_review_audit,
     require_cumcm_structure_map,
@@ -40,6 +41,7 @@ def _status(run_dir: Path) -> dict[str, Any]:
     """返回两个适配产物的当前复验状态，不写入新文件。"""
     result: dict[str, Any] = {
         "required": cumcm_adapter_required(run_dir),
+        "profile_recommendation": None,
         "structure_map": {"path": STRUCTURE_MAP_PATH.as_posix(), "valid": False},
         "paper_review": {"path": LAYOUT_AUDIT_PATH.as_posix(), "valid": False},
         "layout": {"path": LAYOUT_AUDIT_PATH.as_posix(), "valid": False},
@@ -49,6 +51,7 @@ def _status(run_dir: Path) -> dict[str, Any]:
         result["paper_review"]["valid"] = True
         result["layout"]["valid"] = True
         return result
+    result["profile_recommendation"] = recommend_cumcm_structure_profile(run_dir)
     for key, validator in (
         ("structure_map", require_cumcm_structure_map),
         ("paper_review", require_cumcm_paper_review_audit),

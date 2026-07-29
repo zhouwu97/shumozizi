@@ -524,7 +524,12 @@ def compile_docx(
     return out
 
 
-def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any]:
+def compile_paper(
+    run_dir: Path,
+    *,
+    timeout_seconds: int = 300,
+    revision_impact: str = "auto",
+) -> dict[str, Any]:
     """按模板清单编译论文，优先执行已选择的 LaTeX 引擎。
 
     Args:
@@ -539,6 +544,8 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     """
     if timeout_seconds < 1 or timeout_seconds > 3600:
         raise ContractError("论文编译 timeout_seconds 必须在 1 至 3600 之间")
+    if revision_impact not in {"auto", "render", "argument", "science"}:
+        raise ContractError("revision_impact 必须为 auto、render、argument 或 science")
     # ── 编译前最小编译前提硬门：论证大纲、结果绑定、图表、MATLAB 源码 ──
     from shumozizi.paper.readiness import require_paper_readiness
     from shumozizi.simple.review import require_paper_generation_allowed
@@ -548,6 +555,9 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     require_paper_readiness(run_dir)
     state = read_simple_state(run_dir)
     previous_render_revision = int(state.get("paper_render_revision", 0))
+    previous_argument_revision = int(
+        state.get("argument_revision", previous_render_revision)
+    )
     manifest = require_materialized_template(run_dir)
     root = run_dir.resolve()
     paper_dir = root / "paper"
@@ -555,6 +565,27 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     if not entrypoint.is_file():
         raise ContractError("论文模板入口缺失，不能编译")
     source_sha256 = _paper_source_sha256(paper_dir)
+    resolved_impact = revision_impact
+    if revision_impact == "auto":
+        previous_receipt_path = root / COMPILE_RECEIPT_PATH
+        previous_source_sha256: str | None = None
+        if previous_receipt_path.is_file():
+            try:
+                previous_source_sha256 = load_json(previous_receipt_path).get(
+                    "paper_source_sha256"
+                )
+            except (OSError, ValueError):
+                previous_source_sha256 = None
+        resolved_impact = (
+            "argument"
+            if previous_argument_revision == 0
+            or previous_source_sha256 != source_sha256
+            else "render"
+        )
+    argument_changed = resolved_impact in {"argument", "science"}
+    next_argument_revision = previous_argument_revision + int(
+        argument_changed or previous_argument_revision == 0
+    )
     compiler, steps = _compiler_steps(manifest["engine"])
     executions = _run_compiler_steps(paper_dir, steps, timeout_seconds=timeout_seconds)
 
@@ -622,6 +653,9 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     }
     if state.get("schema_version") == "3.2":
         receipt["paper_render_revision"] = previous_render_revision + 1
+        receipt["render_revision"] = previous_render_revision + 1
+        receipt["argument_revision"] = next_argument_revision
+        receipt["revision_impact"] = resolved_impact
     if final_docx is not None:
         receipt["final_docx_path"] = "paper/final.docx"
         receipt["final_docx_sha256"] = sha256_file(final_docx)
@@ -632,9 +666,13 @@ def compile_paper(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any
     _require_schema(receipt)
     atomic_json(root / COMPILE_RECEIPT_PATH, receipt)
     if state.get("schema_version") == "3.2":
-        from shumozizi.simple.state import record_paper_render
+        from shumozizi.simple.state import record_paper_compilation
 
-        record_paper_render(root, previous_revision=previous_render_revision)
+        record_paper_compilation(
+            root,
+            previous_render_revision=previous_render_revision,
+            argument_changed=argument_changed,
+        )
     return receipt
 
 
@@ -655,6 +693,14 @@ def verify_paper_compile_receipt(run_dir: Path) -> dict[str, Any]:
             "paper_render_revision", 0
         ):
             errors.append("编译回执未绑定当前论文渲染修订")
+        if receipt.get("render_revision") is not None and receipt.get(
+            "render_revision"
+        ) != state.get("render_revision", state.get("paper_render_revision", 0)):
+            errors.append("编译回执未绑定当前 render_revision")
+        if receipt.get("argument_revision") is not None and receipt.get(
+            "argument_revision"
+        ) != state.get("argument_revision", 0):
+            errors.append("编译回执未绑定当前 argument_revision")
         manifest_path = root / MANIFEST_PATH
         if receipt["template_manifest_sha256"] != sha256_file(manifest_path):
             errors.append("编译回执未绑定当前模板清单")

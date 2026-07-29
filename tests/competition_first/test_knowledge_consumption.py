@@ -338,7 +338,7 @@ def test_paper_application_requires_a_decision_for_every_pattern(tmp_path: Path)
     missing = evaluate_paper_knowledge_consumption(run_dir)
     assert any("未被正文消费" in item for item in missing["errors"])
     assert any(
-        "未被正文消费" in item for item in check_paper_readiness(run_dir)["errors"]
+        "未被正文消费" in item for item in check_paper_readiness(run_dir)["warnings"]
     )
 
     path.write_text(

@@ -15,7 +15,7 @@ from shumozizi.simple.figure_promotion import promote_figure_candidate  # noqa: 
 
 
 def main() -> int:
-    """执行候选图 QA 和 current 晋级。"""
+    """执行 work 图 QA 和 current 晋级。"""
     parser = argparse.ArgumentParser(description="审核并晋级论文图候选")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--figure-id", required=True)

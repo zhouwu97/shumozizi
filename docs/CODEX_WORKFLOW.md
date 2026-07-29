@@ -12,7 +12,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 ## 分析
 
-v3.2 前期可按问题需要用只绑定 `problem/` 的 fresh thread、CUMCM A/B 获奖论文的 3--6 张 structure-only 卡和网页版 GPT 讨论题意、建模、反例、验证与论文建议。它们只用于提出假设和攻击点，不能替代本地验证，也不参与状态跳转。需要并行网页讨论时，先冻结 `analysis/LOCAL_ROUTE_SNAPSHOT.json`：它只绑定 `problem/`、明确尚未阅读外部材料；首轮网页提示不披露本地路线，且本地路线写完前不得阅读回应。随后用 `EXTERNAL_DISCUSSION_COMPARISON.json` 将每项同意、冲突或新增假设绑定到本地验证动作；最后仅可使用 `EXTERNAL_DISCUSSION_SYNTHESIS.json` 另开 fresh chat 做实现总结。新对话只提出可验证的实验与搜索方向，实际最优或最强下界只能由本地 exact scorer 和真实执行确定。可在讨论前后写入 `analysis/BASELINE_FREEZE.json`：它是绑定当前 `problem/` 哈希、带建议来源记录和修订号的决策快照，不是禁止纠错的终局文件。发现反例、目标歧义、实验冲突或审查缺口后，应修订快照，重跑受影响实验、重新路由和复审。未冻结的路由写为 `advisory_only=true`；冻结或修订后旧路由因 SHA 漂移失效，必须重新生成。随后按决策价值写 `analysis/MODELING_UNITS.json`。每个 `compare` 单元冻结 baseline、两条数学结构不同的候选路线、统一 exact 目标和实际预算、fallback、首批攻击、至少两类首解后深化、停止理由白名单及条件验证；`oracle_only` 只用于明确需要独立 oracle 的题型。`ROUTE_COMPETITION.md` 仍用于人类可读的路线叙事。
+v3.2 前期完成两次 problem-only 语义重建，再写 `MODELING_UNITS` 1.4。逐问选择 `evaluation`、`optimization`、`exact_oracle`、`data_modeling`、`simulation` 或 `coordination`；固定评价类问题使用主方法与自然核对，exact oracle 同时核对数值容差和区间结构，核心优化/协同默认 baseline + 一条结构 challenger。正式结果分为题面 `objective_answer`、条件化 `recommended_plan` 和 `evidence_grade`，证书或稳定性不足不得改写题面答案。
 
 专家库运行时只读取 `knowledge/award-experts/library.json`：21 张跨题结构卡与 15 个规则组合角色，覆盖 2012--2025 年官方展示的 A/B 论文。来源 URL、页码、论文 ID 和哈希只留在离线 `provenance.json`。路由按 A/B、当前阶段和受限 `topic_key` 选择少量结构建议；同题资料只能在 baseline 快照后进入 answer-filter，不能改变当前题模型、参数、结果或论文结构。网页版 GPT 也只能对用户提供的题面进行讨论或批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，且不得复用这类内容。专家库和网页建议必须由当前 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核独立确认。审计的 `access_monitoring.enabled=false` 仅说明序列化输出检查的边界，不宣称操作系统级文件访问监控。
 
@@ -26,15 +26,15 @@ v3.2 前期可按问题需要用只绑定 `problem/` 的 fresh thread、CUMCM A/
 
 ## 图表与论文
 
-图表默认写入 `figures/current/`，每张图登记 `source`、`question`、`takeaway` 和可选 `limitations`。新运行使用 `FIGURE_PLAN` 2.3：`evidence_need` 判断科学证据是否缺图不可，`presentation_need` 判断评委是否需要视觉入口；后者初期只告警。数据结构决定统计单位、删失、聚合或模型选择时，可规划 `scope=whole_paper` 的 `data_portrait`；它通过 `register_presentation_figure.py` 绑定冻结输入、脚本、current 输出与人工晋级回执，不伪造实验结果。删除图后论文不会失去信息时，删除该图。不得默认要求每问图、3D、收敛图、多种子图、敏感性图或重复 evidence/publication 图。
+图表在 `figures/work/` 版本化迭代，经 QA 晋级 `figures/current/`，旧 current 进入 `figures/archive/`。首稿前每个必答问题都必须在 `FIGURE_PLAN` 2.3 中把展示图明确为 required 或 waived；几何、集合、名义—稳健和共享模型还须完成 whole-paper 决策。
 
-先用 `paper/STORYBOARD.md` 形成结构蓝图；再统一共享符号、假设和数学对象，并逐问成文；最后把结论逐项与 `answer_map`、结果、图表和限制对齐后严格返修。分析检索最多保留 3 张结构相似卡、每卡 2 个安全模式；写 `ARGUMENT_PLAN.md` 前生成 `paper/KNOWLEDGE_APPLICATION.md`，默认只重新判断分析已采用项，分析拒绝自动继承，只有显式 reopen 才重开。实际采用最多来自 1--2 张卡，并绑定当前题证据、实际正文源码和兑现锚点。知识卡永远不提供当前数字、结论或 citation。CUMCM 候选稿使用 `CUMCM_STRUCTURE_MAP` 1.1：`classic` 是固定栏目兜底，`semantic` 暂为实验画像且不设默认；两者都填写 advisory `presentation_contract`。
+论文只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 和 `PAPER_REVIEW.md` 四个主要控制文件。知识应用为 advisory，零匹配时自动提供通用结构模式。CUMCM 候选稿使用 `CUMCM_STRUCTURE_MAP` 1.2：三问以上、共享数学对象且后问新增资源、共享约束或聚合层时默认 semantic，并保留明确“模型假设与符号”入口；否则 classic 兜底。
 
 ## 审查与重跑
 
 科学挑战只进行一次，采用两阶段阅读：阶段A只读题面，独立重建数学结构和关键歧义，先写入报告；阶段B读代码和结果，与阶段A对照，选择一个最高价值结论实施真实攻击并说明结论。风险数量不设要求，一个根本性缺陷可以集中全部篇幅。只有 P0/P1、需要确认的决定性实验或无法判断是否继续时才建立一个 `FOCUSED_FOLLOWUP.md`。PDF 盲评采用相对评价（第一印象与竞争力 → 写作风格诊断 → 可读性 → P0/P1 → 最高价值修改），不能只写 pass/fail。
 
-最终 PDF 盲评先构建 `paper-blind` 冻结包，再运行 `scripts/review/show_paper_blind_prompt.py <run-dir> --manifest <manifest> --json`，把提示词原样交给独立上下文。新上下文只读取冻结 PDF，并在同一 Markdown 报告末尾输出固定结构化 JSON。导入后，现有 `review/paper-blind-review.json` 同时绑定自由报告、结构化冷读、逐问缺失角色/页码/finding、任务与对话 ID、提示词和渲染修订。`CUMCM_LAYOUT_AUDIT` 1.3 直接消费该记录，不接受另一套作者冷读或全 true 布尔值；本地只追加呈现计划、页面节奏和 advisory 学习兑现。正式编译、盲评、版面审计修订不一致时当前稿自动显示未审。
+最终 PDF 盲评绑定 `argument_revision`；字号、分页、箭头和留白等纯 render 修改只递增 `render_revision`，重做版式与机械 QA，不重做盲评。正文论证或科学事实变化才使盲评失效。
 
 **网页版 GPT 补充审核为可选环节**，只在论文主模型和结果已稳定、需要专项写作质量改进时使用，不是每次 PDF 编译后的默认流程。使用时用 `scripts/review/web_paper_audit.py prompt` 生成提示，另开网页对话并只上传 PDF。网页审核聚焦写作风格（固定句式 / 分点堆砌 / 空话总结 / 讨论缺位）和可读性，给出最高价值修改建议（≤ 5 条）；发现需要重写章节、替换主图或回到实验的问题时直接说明，不要降级为加几行文字的修补。最多使用一轮。两种审核都只能发现风险，不能证明竞赛名次或保证省一；机械 QA 只检查交付，不重定义数学正确性。
 

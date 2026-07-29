@@ -1,11 +1,11 @@
-"""管理 Competition-First v3.2 的轻量建模单元合同。
+"""管理 Competition-First v3.2 的题型化建模单元合同。
 
-该模块只冻结会改变建模决策的事实：题意双重独立重建、比较或 oracle-only
-单元、首解后的异构深化、条件验证，以及事前预期与实际结果的对照。它不复制
+该模块只冻结会改变建模决策的事实：题意双重独立重建、题型合同、必要的
+路线比较或独立 oracle、条件验证，以及事前预期与实际结果的对照。它不复制
 旧工作区的大型模型组合 JSON，也不替代现有的 result、review 或论文协议。
 
 v3.2 另外约束两件直接决定建模上限的事：
-1. 核心问题必须显式标记，并且其搜索预算不得被验证与复算预算压过；
+1. 核心问题必须显式标记；优化/协同题的搜索投入给出建议而不拥有否决权；
 2. 核心问题必须产出结构化规律（机制、边际收益、活跃约束或权衡），
    否则结果只是"被证明没撒谎"，而没有被真正理解。
 """
@@ -67,9 +67,19 @@ _INSIGHT_KINDS = frozenset(
         "decision_rule",
     }
 )
-# 核心问题的搜索预算下限：占全部生产执行耗时的比例。低于它说明算力主要
-# 花在确认当前候选没撒谎，而不是继续寻找更强候选。
-CORE_SEARCH_BUDGET_SHARE = 0.4
+UNIT_KINDS = frozenset(
+    {
+        "evaluation",
+        "optimization",
+        "exact_oracle",
+        "data_modeling",
+        "simulation",
+        "coordination",
+    }
+)
+SEARCH_UNIT_KINDS = frozenset({"optimization", "coordination"})
+# 只作资源配置提示，不再作为答案或阶段硬门。
+RECOMMENDED_SEARCH_BUDGET_SHARE = 0.35
 _PLANNING_PLACEHOLDERS = frozenset(
     {"待填写", "待补充", "待分析", "待确认", "todo", "tbd", "placeholder"}
 )
@@ -189,7 +199,9 @@ def _semantic_reconstructions(
     if not isinstance(reconstructions, list) or len(reconstructions) < 2:
         raise ContractError("semantic_reconstructions 至少需要两轮真实 fresh-thread 重建")
     if require_asymmetric_roles and len(reconstructions) != 2:
-        raise ContractError("MODELING_UNITS 1.3 只使用两轮重建：一次忠实重建和一次语义攻击")
+        raise ContractError(
+            "MODELING_UNITS 1.3/1.4 只使用两轮重建：一次忠实重建和一次语义攻击"
+        )
     thread_ids: set[str] = set()
     reports: set[str] = set()
     roles: set[str] = set()
@@ -510,10 +522,18 @@ def _validate_unit_plan(
             f"{unit_id}.core_question 必须显式声明；不标出决定奖项上限的问题，"
             "预算就会被平均分配"
         )
-    mode = unit.get("mode")
-    if mode not in {"compare", "oracle_only"}:
-        raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
-    require_semantic_contract = schema_version == "1.3"
+    if schema_version == "1.4":
+        mode = unit.get("unit_kind")
+        if mode not in UNIT_KINDS:
+            raise ContractError(
+                f"{unit_id}.unit_kind 必须为 " + "、".join(sorted(UNIT_KINDS))
+            )
+    else:
+        mode = unit.get("mode")
+        if mode not in {"compare", "oracle_only"}:
+            raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
+    search_kind = mode in SEARCH_UNIT_KINDS or mode == "compare"
+    require_semantic_contract = schema_version in {"1.3", "1.4"}
     delta = {"semantic_high_risk": False, "semantic_risk_signals": set()}
     if require_semantic_contract:
         delta = _validate_question_delta(
@@ -524,7 +544,7 @@ def _validate_unit_plan(
         answer_contract = _validate_answer_contract(
             unit.get("answer_contract"),
             f"{unit_id}.answer_contract",
-            derive_qualification=schema_version in {"1.2", "1.3"},
+            derive_qualification=schema_version in {"1.2", "1.3", "1.4"},
             require_semantic_contract=require_semantic_contract,
             semantic_high_risk=bool(delta["semantic_high_risk"]),
             core_question=core,
@@ -536,7 +556,7 @@ def _validate_unit_plan(
     threshold = objective.get("significant_improvement_ratio")
     if threshold is None:
         # 核心问题必须事前声明"多大改善才算真的更强"，避免事后把任意结果解释为成功。
-        if core:
+        if core and search_kind and schema_version != "1.4":
             raise ContractError(
                 f"{unit_id}.objective.significant_improvement_ratio 缺失："
                 "核心问题必须事前声明相对 baseline 的显著改善阈值"
@@ -553,34 +573,61 @@ def _validate_unit_plan(
                 f"{unit_id}.objective.significant_improvement_ratio 必须是非负有限数"
             )
         improvement_threshold = float(threshold)
-    budget = _require_mapping(unit.get("budget"), f"{unit_id}.budget")
-    if budget.get("kind") != "wall_seconds":
-        raise ContractError(f"{unit_id}.budget.kind 当前必须为 wall_seconds")
-    tolerance = budget.get("tolerance_ratio")
-    if (
-        not isinstance(tolerance, (int, float))
-        or isinstance(tolerance, bool)
-        or not math.isfinite(float(tolerance))
-        or float(tolerance) < 0
-    ):
-        raise ContractError(f"{unit_id}.budget.tolerance_ratio 必须是非负有限数")
+    tolerance = 0.0
+    if search_kind:
+        budget = _require_mapping(unit.get("budget"), f"{unit_id}.budget")
+        if budget.get("kind") != "wall_seconds":
+            raise ContractError(f"{unit_id}.budget.kind 当前必须为 wall_seconds")
+        tolerance_value = budget.get("tolerance_ratio")
+        if (
+            not isinstance(tolerance_value, (int, float))
+            or isinstance(tolerance_value, bool)
+            or not math.isfinite(float(tolerance_value))
+            or float(tolerance_value) < 0
+        ):
+            raise ContractError(f"{unit_id}.budget.tolerance_ratio 必须是非负有限数")
+        tolerance = float(tolerance_value)
     _require_text(unit.get("expected_outcome"), f"{unit_id}.expected_outcome")
-    attack = _require_mapping(unit.get("first_batch_attack"), f"{unit_id}.first_batch_attack")
-    _require_text(attack.get("attack"), f"{unit_id}.first_batch_attack.attack")
-    _require_text(attack.get("decision"), f"{unit_id}.first_batch_attack.decision")
-    refinement = _require_mapping(unit.get("refinement"), f"{unit_id}.refinement")
-    families = _require_text_list(
-        refinement.get("strategy_families"),
-        f"{unit_id}.refinement.strategy_families",
-        minimum=2,
-    )
-    reasons = _require_text_list(
-        refinement.get("stop_reason_whitelist"),
-        f"{unit_id}.refinement.stop_reason_whitelist",
-    )
-    unsupported = sorted(set(reasons) - STOP_REASON_WHITELIST)
-    if unsupported:
-        raise ContractError(f"{unit_id} 使用未授权搜索停止理由: {', '.join(unsupported)}")
+    families: list[str] = []
+    reasons: list[str] = []
+    if search_kind:
+        attack = _require_mapping(
+            unit.get("first_batch_attack"), f"{unit_id}.first_batch_attack"
+        )
+        _require_text(attack.get("attack"), f"{unit_id}.first_batch_attack.attack")
+        _require_text(attack.get("decision"), f"{unit_id}.first_batch_attack.decision")
+        refinement = _require_mapping(unit.get("refinement"), f"{unit_id}.refinement")
+        families = _require_text_list(
+            refinement.get("strategy_families"),
+            f"{unit_id}.refinement.strategy_families",
+            minimum=1 if schema_version == "1.4" else 2,
+        )
+        reasons = _require_text_list(
+            refinement.get("stop_reason_whitelist"),
+            f"{unit_id}.refinement.stop_reason_whitelist",
+        )
+        unsupported = sorted(set(reasons) - STOP_REASON_WHITELIST)
+        if unsupported:
+            raise ContractError(
+                f"{unit_id} 使用未授权搜索停止理由: {', '.join(unsupported)}"
+            )
+        if schema_version == "1.4":
+            repetition = _require_mapping(
+                unit.get("search_repetition"), f"{unit_id}.search_repetition"
+            )
+            repeats = repetition.get("planned_repeats")
+            if (
+                not isinstance(repeats, int)
+                or isinstance(repeats, bool)
+                or repeats < 1
+            ):
+                raise ContractError(
+                    f"{unit_id}.search_repetition.planned_repeats 必须是正整数"
+                )
+            _require_substantive_plan_text(
+                repetition.get("instability_action"),
+                f"{unit_id}.search_repetition.instability_action",
+            )
     validation = _require_mapping(unit.get("validation"), f"{unit_id}.validation")
     oracle_required = _require_flagged_validation(validation.get("oracle"), f"{unit_id}.validation.oracle")
     sensitivity_required = _require_flagged_validation(
@@ -596,7 +643,10 @@ def _validate_unit_plan(
     composition_modes: dict[str, str] = {}
     expected_upsides: dict[str, float] = {}
     fallback_route: str | None = None
-    if mode == "compare":
+    fallback_condition: str | None = None
+    primary_method: str | None = None
+    agreement: dict[str, Any] | None = None
+    if search_kind:
         baseline = _require_mapping(unit.get("baseline"), f"{unit_id}.baseline")
         baseline_id, baseline_structure, _ = _route_definition(
             baseline, f"{unit_id}.baseline", require_potential=False
@@ -610,8 +660,20 @@ def _validate_unit_plan(
                 baseline.get("natural_rationale"), f"{unit_id}.baseline.natural_rationale"
             )
         candidates_raw = unit.get("competitive_routes")
-        if not isinstance(candidates_raw, list) or len(candidates_raw) < 2:
-            raise ContractError(f"{unit_id}.competitive_routes 至少需要两条机制不同的路线")
+        minimum_candidates = 1 if schema_version == "1.4" else 2
+        if not isinstance(candidates_raw, list) or len(candidates_raw) < minimum_candidates:
+            raise ContractError(
+                f"{unit_id}.competitive_routes 至少需要 {minimum_candidates} 条"
+                "数学结构不同的 challenger"
+            )
+        if (
+            schema_version == "1.4"
+            and unit.get("second_challenger_required") is True
+            and len(candidates_raw) < 2
+        ):
+            raise ContractError(
+                f"{unit_id} 已声明 second_challenger_required，必须提供第二条 challenger"
+            )
         candidates = [
             _route_definition(
                 route, f"{unit_id}.competitive_routes[{index}]", require_potential=core
@@ -633,11 +695,18 @@ def _validate_unit_plan(
             raise ContractError(f"{unit_id} 的 route_id 不得重复")
         if len(set(structures)) != len(structures):
             raise ContractError(f"{unit_id} 的竞争路线必须具有不同 mathematical_structure")
-        fallback = _require_mapping(unit.get("fallback"), f"{unit_id}.fallback")
-        fallback_route = _require_text(fallback.get("route_id"), f"{unit_id}.fallback.route_id")
-        if fallback_route not in route_ids:
-            raise ContractError(f"{unit_id}.fallback.route_id 必须引用已比较路线")
-        _require_text(fallback.get("switch_condition"), f"{unit_id}.fallback.switch_condition")
+        fallback = unit.get("fallback")
+        if schema_version != "1.4" or fallback is not None:
+            fallback = _require_mapping(fallback, f"{unit_id}.fallback")
+            fallback_route = _require_text(
+                fallback.get("route_id"), f"{unit_id}.fallback.route_id"
+            )
+            if fallback_route not in route_ids:
+                raise ContractError(f"{unit_id}.fallback.route_id 必须引用已比较路线")
+            fallback_condition = _require_text(
+                fallback.get("switch_condition"),
+                f"{unit_id}.fallback.switch_condition",
+            )
         if (
             require_semantic_contract
             and any(mode != "joint" for mode in composition_modes.values())
@@ -647,24 +716,110 @@ def _validate_unit_plan(
                 f"{unit_id} 含分解路线，question_delta.semantic_risk_signals "
                 "必须登记 decompose_then_combine"
             )
-    else:
+        if schema_version == "1.4" and mode == "coordination":
+            _require_text(
+                unit.get("joint_scorer"),
+                f"{unit_id}.joint_scorer",
+            )
+            _require_text(
+                unit.get("decomposition_assessment"),
+                f"{unit_id}.decomposition_assessment",
+            )
+    elif mode in {"oracle_only", "exact_oracle"}:
         oracle = _require_mapping(unit.get("oracle"), f"{unit_id}.oracle")
         _require_text(oracle.get("oracle_kind"), f"{unit_id}.oracle.oracle_kind")
         _require_text(oracle.get("independence"), f"{unit_id}.oracle.independence")
+        if schema_version == "1.4":
+            agreement_raw = _require_mapping(
+                oracle.get("agreement"), f"{unit_id}.oracle.agreement"
+            )
+            metric = _require_text(
+                agreement_raw.get("metric"), f"{unit_id}.oracle.agreement.metric"
+            )
+            absolute = agreement_raw.get("absolute_tolerance")
+            relative = agreement_raw.get("relative_tolerance")
+            if any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(float(value))
+                or float(value) < 0
+                for value in (absolute, relative)
+            ):
+                raise ContractError(f"{unit_id}.oracle.agreement 容差必须是非负有限数")
+            structure_required = agreement_raw.get("interval_structure_must_match")
+            if not isinstance(structure_required, bool):
+                raise ContractError(
+                    f"{unit_id}.oracle.agreement.interval_structure_must_match 必须是布尔值"
+                )
+            structure_metric = agreement_raw.get("structure_metric", "interval_count")
+            if structure_required:
+                structure_metric = _require_text(
+                    structure_metric, f"{unit_id}.oracle.agreement.structure_metric"
+                )
+            agreement = {
+                "metric": metric,
+                "absolute_tolerance": float(absolute),
+                "relative_tolerance": float(relative),
+                "interval_structure_must_match": structure_required,
+                "structure_metric": structure_metric,
+            }
+    else:
+        method = _require_mapping(unit.get("primary_method"), f"{unit_id}.primary_method")
+        primary_method = _require_text(
+            method.get("method_id"), f"{unit_id}.primary_method.method_id"
+        )
+        _require_text(
+            method.get("mathematical_structure"),
+            f"{unit_id}.primary_method.mathematical_structure",
+        )
+        _require_substantive_plan_text(
+            unit.get("natural_comparison"), f"{unit_id}.natural_comparison"
+        )
+        if mode == "evaluation":
+            _require_text_list(
+                unit.get("fixed_inputs"), f"{unit_id}.fixed_inputs"
+            )
+            _require_substantive_plan_text(
+                unit.get("endpoint_refinement"), f"{unit_id}.endpoint_refinement"
+            )
+        elif mode == "data_modeling":
+            contract = _require_mapping(
+                unit.get("data_contract"), f"{unit_id}.data_contract"
+            )
+            for field in (
+                "observational_unit",
+                "split_or_validation",
+                "diagnostic_plan",
+            ):
+                _require_substantive_plan_text(
+                    contract.get(field), f"{unit_id}.data_contract.{field}"
+                )
+        elif mode == "simulation":
+            contract = _require_mapping(
+                unit.get("simulation_contract"), f"{unit_id}.simulation_contract"
+            )
+            for field in ("calibration", "convergence", "sensitivity"):
+                _require_substantive_plan_text(
+                    contract.get(field), f"{unit_id}.simulation_contract.{field}"
+                )
 
     return {
         "unit_id": unit_id,
+        "schema_version": schema_version,
         "question_id": question_id,
         "core_question": core,
         "mode": mode,
+        "unit_kind": mode,
+        "search_kind": search_kind,
         "exact_metric": objective["exact_metric"],
         "direction": objective["direction"],
         "improvement_threshold": improvement_threshold,
         "budget_tolerance_ratio": float(tolerance),
         "route_ids": route_ids,
         "fallback_route": fallback_route,
+        "fallback_condition": fallback_condition,
         "require_decision_contract": require_decision_contract,
-        "derive_qualification": schema_version in {"1.2", "1.3"},
+        "derive_qualification": schema_version in {"1.2", "1.3", "1.4"},
         "semantic_high_risk": bool(
             delta["semantic_high_risk"]
             or answer_contract.get("semantic_high_risk_from_endpoint")
@@ -674,6 +829,8 @@ def _validate_unit_plan(
         "expected_upsides": expected_upsides,
         "families": families,
         "stop_reasons": set(reasons),
+        "primary_method": primary_method,
+        "agreement": agreement,
         "oracle_required": oracle_required,
         "sensitivity_required": sensitivity_required,
         "robustness_required": robustness_required,
@@ -901,13 +1058,18 @@ def evaluate_decision_stability(
     return {"passed": passed, "failures": failures}
 
 
-def derive_answer_qualification(
+def derive_question_outcome(
     actual: dict[str, Any],
     plan: dict[str, Any],
     results: dict[str, dict[str, Any]],
     scores: dict[str, float],
 ) -> dict[str, Any]:
-    """从生产结果派生唯一逐问答案资格，不信任作者填写的结论。"""
+    """分离题面答案、证据等级与附加条件下的推荐方案。
+
+    题面原目标下的可行结果只由 endpoint、exact 指标、硬约束和可行性决定。
+    路线改善幅度、最优性证书与扰动稳定性只降低证据等级或形成条件化建议，
+    不得替换题面正式答案。
+    """
     label = f"{plan['unit_id']}.actual.qualification_evidence"
     evidence = _require_mapping(actual.get("qualification_evidence"), label)
     comparison = _require_mapping(actual.get("comparison"), f"{plan['unit_id']}.actual.comparison")
@@ -941,14 +1103,47 @@ def derive_answer_qualification(
         "guards": guards,
         "decision_stability": stability,
     }
-    if all(checks.values()):
-        return {
-            "status": "promoted",
+    final_result_id = _require_text(
+        actual["refinement"].get("final_result_id"),
+        f"{plan['unit_id']}.actual.refinement.final_result_id",
+    )
+    final_result = _production_result(
+        results,
+        result_id=final_result_id,
+        question_id=plan["question_id"],
+        label=f"{plan['unit_id']}.objective_answer",
+    )
+    exact_metric_available = True
+    try:
+        _finite_metric(
+            final_result,
+            plan["exact_metric"],
+            f"{plan['unit_id']}.objective_answer",
+        )
+    except ContractError:
+        exact_metric_available = False
+    feasible = final_result.get("metrics", {}).get("feasible") is True
+    objective_answer_available = (
+        endpoint["passed"]
+        and exact_metric_available
+        and guards["passed"]
+        and feasible
+    )
+    if comparison.get("optimality_certified") is True:
+        claim_level = "optimal"
+    elif upgrade["passed"]:
+        claim_level = "best_found"
+    else:
+        claim_level = "feasible"
+    objective_answer = (
+        {
             "route_id": winner,
-            "result_id": actual["refinement"]["final_result_id"],
-            "checks": checks,
-            "details": details,
+            "result_id": final_result_id,
+            "claim_level": claim_level,
         }
+        if objective_answer_available
+        else None
+    )
 
     fallback_evidence = evidence.get("fallback")
     fallback_passed = False
@@ -969,28 +1164,79 @@ def derive_answer_qualification(
             "decision_stability": fallback_stability,
         }
         fallback_passed = fallback_guards["passed"] and fallback_stability["passed"]
-    if fallback_passed:
+    recommended_plan: dict[str, Any] | None = None
+    if fallback_passed and plan.get("fallback_route"):
         fallback_route = plan["fallback_route"]
-        return {
-            "status": "fallback_selected",
+        recommended_plan = {
             "route_id": fallback_route,
             "result_id": comparison["route_result_ids"][fallback_route],
-            "checks": checks,
-            "details": {**details, "fallback": fallback_details},
+            "condition": plan.get("fallback_condition")
+            or "当题面之外的稳定性、风险或工程条件成立时采用。",
         }
 
+    warnings: list[str] = []
+    if not upgrade["passed"]:
+        warnings.append("相对自然 baseline 的改善不足，只能称为当前可行结果。")
+    if not stability["passed"]:
+        warnings.append("题面答案对扰动敏感；稳健方案只能作为附加条件下的建议。")
+    if comparison.get("optimality_certified") is not True:
+        warnings.append("缺少全局最优证书，不得把 best_found 写成全局最优。")
     if not endpoint["passed"]:
-        failure_kind, rollback_target = "endpoint_unresolved", "analysis"
-    elif not guards["passed"] or not stability["passed"]:
-        failure_kind, rollback_target = "validation_insufficient", "experiment"
-    else:
-        failure_kind, rollback_target = "search_insufficient", "experiment"
+        warnings.append("目标语义或 endpoint 尚未闭合，不能形成题面答案。")
+    if not guards["passed"] or not feasible:
+        warnings.append("结果未通过题面硬约束或可行性检查，不能形成题面答案。")
+    if not exact_metric_available:
+        warnings.append("正式结果缺少题面 exact 指标，不能形成题面答案。")
+
+    search_confidence = "strong"
+    if comparison.get("optimality_certified") is not True:
+        search_confidence = "moderate" if upgrade["passed"] else "weak"
+    evidence_grade = {
+        "feasible": feasible,
+        "endpoint_consistent": endpoint["passed"],
+        "exact_metric_available": exact_metric_available,
+        "hard_constraints_passed": guards["passed"],
+        "search_confidence": search_confidence,
+        "perturbation_stability": "strong" if stability["passed"] else "weak",
+    }
+    return {
+        "objective_answer": objective_answer,
+        "recommended_plan": recommended_plan,
+        "evidence_grade": evidence_grade,
+        "warnings": warnings,
+        "checks": checks,
+        "details": {**details, "fallback": fallback_details},
+    }
+
+
+def derive_answer_qualification(
+    actual: dict[str, Any],
+    plan: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+    scores: dict[str, float],
+) -> dict[str, Any]:
+    """兼容旧调用，但主结果始终指向题面 ``objective_answer``。"""
+    outcome = derive_question_outcome(actual, plan, results, scores)
+    answer = outcome["objective_answer"]
+    if answer is not None:
+        return {
+            "status": "promoted",
+            "route_id": answer["route_id"],
+            "result_id": answer["result_id"],
+            "checks": outcome["checks"],
+            "details": outcome["details"],
+            "outcome": outcome,
+        }
+    endpoint_ok = outcome["evidence_grade"]["endpoint_consistent"]
+    failure_kind = "answer_invalid" if endpoint_ok else "endpoint_unresolved"
+    rollback_target = "experiment" if endpoint_ok else "analysis"
     return {
         "status": "redesign_required",
         "failure_kind": failure_kind,
         "rollback_target": rollback_target,
-        "checks": checks,
-        "details": details,
+        "checks": outcome["checks"],
+        "details": outcome["details"],
+        "outcome": outcome,
     }
 
 
@@ -1432,6 +1678,142 @@ def _validate_semantic_scorer_preflight_actual(
     return result_id
 
 
+def _v14_endpoint_resolved(
+    actual: dict[str, Any],
+    plan: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+) -> bool:
+    """为非搜索题型验证 endpoint 已按题面合同裁决。"""
+    if plan.get("endpoint_resolution_status") == "determined":
+        return True
+    label = f"{plan['unit_id']}.actual.actual_endpoint_resolution"
+    resolution = _require_mapping(actual.get("actual_endpoint_resolution"), label)
+    _require_text(
+        resolution.get("problem_text_basis"), f"{label}.problem_text_basis"
+    )
+    _production_result_ids(
+        results,
+        value=resolution.get("evidence_result_ids"),
+        question_id=plan["question_id"],
+        label=f"{label}.evidence_result_ids",
+    )
+    return bool(
+        resolution.get("status") == "determined"
+        and resolution.get("selected_endpoint_id") == plan.get("primary_endpoint_id")
+    )
+
+
+def _derive_v14_non_search_outcome(
+    actual: dict[str, Any],
+    plan: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """派生评价、精确算法、数据建模与仿真单元的三层结果。"""
+    primary_result_id = _require_text(
+        actual.get("primary_result_id"),
+        f"{plan['unit_id']}.actual.primary_result_id",
+    )
+    primary = _production_result(
+        results,
+        result_id=primary_result_id,
+        question_id=plan["question_id"],
+        label=f"{plan['unit_id']}.actual.primary_result_id",
+    )
+    exact_metric_available = True
+    try:
+        _finite_metric(primary, plan["exact_metric"], f"{plan['unit_id']}.primary")
+    except ContractError:
+        exact_metric_available = False
+    feasible = primary.get("metrics", {}).get("feasible") is True
+    hard_constraints_passed = (
+        primary.get("metrics", {}).get("hard_constraints_passed") is True
+    )
+    endpoint_resolved = _v14_endpoint_resolved(actual, plan, results)
+    warnings: list[str] = []
+    agreement_passed = True
+    if plan["unit_kind"] == "exact_oracle":
+        oracle_result_id = _require_text(
+            actual.get("oracle_result_id"),
+            f"{plan['unit_id']}.actual.oracle_result_id",
+        )
+        oracle_result = _production_result(
+            results,
+            result_id=oracle_result_id,
+            question_id=plan["question_id"],
+            label=f"{plan['unit_id']}.actual.oracle_result_id",
+        )
+        agreement = plan["agreement"]
+        primary_value = _finite_metric(
+            primary, agreement["metric"], f"{plan['unit_id']}.primary"
+        )
+        oracle_value = _finite_metric(
+            oracle_result, agreement["metric"], f"{plan['unit_id']}.oracle"
+        )
+        metric_agreed = math.isclose(
+            primary_value,
+            oracle_value,
+            rel_tol=agreement["relative_tolerance"],
+            abs_tol=agreement["absolute_tolerance"],
+        )
+        structure_agreed = True
+        if agreement["interval_structure_must_match"]:
+            structure_metric = agreement["structure_metric"]
+            structure_agreed = math.isclose(
+                _finite_metric(primary, structure_metric, f"{plan['unit_id']}.primary"),
+                _finite_metric(
+                    oracle_result, structure_metric, f"{plan['unit_id']}.oracle"
+                ),
+                rel_tol=0.0,
+                abs_tol=0.0,
+            )
+        agreement_passed = metric_agreed and structure_agreed
+        if not metric_agreed:
+            warnings.append("主计算与独立 oracle 的正式指标冲突。")
+        if not structure_agreed:
+            warnings.append("主计算与独立 oracle 的区间结构冲突。")
+
+    available = (
+        endpoint_resolved
+        and exact_metric_available
+        and hard_constraints_passed
+        and feasible
+        and agreement_passed
+    )
+    if not endpoint_resolved:
+        warnings.append("目标语义或 endpoint 尚未闭合。")
+    if not exact_metric_available:
+        warnings.append("正式结果缺少题面 exact 指标。")
+    if not feasible:
+        warnings.append("正式结果未通过可行性检查。")
+    if not hard_constraints_passed:
+        warnings.append("正式结果缺少题面硬约束通过事实。")
+    method_id = plan.get("primary_method") or plan["unit_kind"]
+    return {
+        "objective_answer": (
+            {
+                "route_id": method_id,
+                "result_id": primary_result_id,
+                "claim_level": (
+                    "verified" if plan["unit_kind"] == "exact_oracle" else "evaluated"
+                ),
+            }
+            if available
+            else None
+        ),
+        "recommended_plan": None,
+        "evidence_grade": {
+            "feasible": feasible,
+            "endpoint_consistent": endpoint_resolved,
+            "exact_metric_available": exact_metric_available,
+            "hard_constraints_passed": hard_constraints_passed,
+            "search_confidence": "not_applicable",
+            "perturbation_stability": "not_assessed",
+            "oracle_agreement": agreement_passed,
+        },
+        "warnings": warnings,
+    }
+
+
 def _validate_actual_unit(
     run_dir: Path,
     plan: dict[str, Any],
@@ -1449,6 +1831,42 @@ def _validate_actual_unit(
     _require_text(actual.get("summary"), f"{plan['unit_id']}.actual.summary")
     search_ids: set[str] = set()
     verify_ids: set[str] = set()
+    if plan["schema_version"] == "1.4" and not plan["search_kind"]:
+        outcome = _derive_v14_non_search_outcome(actual, plan, results)
+        if outcome["objective_answer"] is None:
+            raise ContractError(
+                f"{plan['unit_id']} 尚无有效 objective_answer："
+                + "；".join(outcome["warnings"])
+            )
+        validation = _require_mapping(
+            actual.get("validation", {}), f"{plan['unit_id']}.actual.validation"
+        )
+        for name, required in (
+            ("oracle", plan["oracle_required"]),
+            ("sensitivity", plan["sensitivity_required"]),
+            ("robustness", plan["robustness_required"]),
+        ):
+            result_ids = validation.get(f"{name}_result_ids", [])
+            if required or result_ids not in (None, []):
+                verify_ids.update(
+                    _production_result_ids(
+                        results,
+                        value=result_ids,
+                        question_id=plan["question_id"],
+                        label=f"{plan['unit_id']}.actual.validation.{name}_result_ids",
+                    )
+                )
+        if plan["unit_kind"] == "exact_oracle":
+            verify_ids.add(str(actual["oracle_result_id"]))
+        _validate_insights(actual.get("insights"), plan, results)
+        return {
+            "unit_id": plan["unit_id"],
+            "unit_kind": plan["unit_kind"],
+            "core_question": plan["core_question"],
+            "search_seconds": 0.0,
+            "verification_seconds": _duration_seconds(results, verify_ids),
+            "warnings": outcome["warnings"],
+        }
     attack = _require_mapping(actual.get("first_batch_attack"), f"{plan['unit_id']}.actual.first_batch_attack")
     verify_ids.update(
         _production_result_ids(
@@ -1511,7 +1929,7 @@ def _validate_actual_unit(
                     label=f"{plan['unit_id']}.actual.validation.{name}_result_ids",
                 )
             )
-    if plan["mode"] == "compare":
+    if plan["search_kind"]:
         scores = _validate_comparison_actual(actual, plan, results)
         route_result_ids = actual["comparison"]["route_result_ids"]
         search_ids.update(str(route_result_ids[route_id]) for route_id in plan["route_ids"])
@@ -1547,17 +1965,30 @@ def _validate_actual_unit(
     verify_ids -= search_ids
     search_seconds = _duration_seconds(results, search_ids)
     verify_seconds = _duration_seconds(results, verify_ids)
-    if plan["core_question"] and verify_seconds > search_seconds:
-        raise ContractError(
-            f"{plan['unit_id']} 是核心问题，但验证与复算耗时 {verify_seconds:.1f}s "
-            f"已超过搜索与深化耗时 {search_seconds:.1f}s；"
-            "必须先继续寻找更强候选，再扩大验证"
+    warnings: list[str] = []
+    if plan["core_question"] and plan["search_kind"] and verify_seconds > search_seconds:
+        warnings.append(
+            f"验证与复算耗时 {verify_seconds:.1f}s 超过搜索与深化耗时 "
+            f"{search_seconds:.1f}s，建议优先继续寻找更强候选。"
         )
+    health = actual.get("search_health")
+    if isinstance(health, dict):
+        if (
+            health.get("seed_count") == 1
+            and health.get("materially_unstable") is True
+        ):
+            raise ContractError(f"{plan['unit_id']} 只有一个随机种子且结果明显不稳定")
+        if health.get("challenger_still_improving") is True:
+            raise ContractError(f"{plan['unit_id']} 的 challenger 仍在持续快速改善")
+        if health.get("stop_reason_matches_log") is False:
+            raise ContractError(f"{plan['unit_id']} 的停止理由与实际搜索日志冲突")
     return {
         "unit_id": plan["unit_id"],
+        "unit_kind": plan["unit_kind"],
         "core_question": plan["core_question"],
         "search_seconds": search_seconds,
         "verification_seconds": verify_seconds,
+        "warnings": warnings,
     }
 
 
@@ -1613,7 +2044,9 @@ def _validate_research_story(
         raise ContractError("research_story.question_progression 缺少必答问题")
 
 
-def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_actual: bool) -> None:
+def validate_modeling_units(
+    run_dir: Path, payload: dict[str, Any], *, require_actual: bool
+) -> list[str]:
     """验证 v3.2 建模单元合同及其可选的实验完成事实。
 
     Args:
@@ -1628,7 +2061,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     if not is_competition_first_v32_state(state):
         raise ContractError("MODELING_UNITS 只适用于 Competition-First v3.2 运行")
     schema_version = payload.get("schema_version")
-    if schema_version not in {"1.0", "1.1", "1.2", "1.3"} or payload.get("run_id") != state["run_id"]:
+    if schema_version not in {"1.0", "1.1", "1.2", "1.3", "1.4"} or payload.get("run_id") != state["run_id"]:
         raise ContractError("MODELING_UNITS 的 schema_version 或 run_id 不匹配")
     # 网页讨论不是阶段门；但一旦选择登记，就必须保持本地先行和延迟揭示边界。
     validate_external_discussion_protocol_if_present(run_dir)
@@ -1638,12 +2071,12 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
     _semantic_reconstructions(
         run_dir,
         payload.get("semantic_reconstructions"),
-        require_asymmetric_roles=schema_version == "1.3",
+        require_asymmetric_roles=schema_version in {"1.3", "1.4"},
     )
     _validate_research_story(
         payload.get("research_story"),
         question_ids,
-        require_progression_contract=schema_version in {"1.2", "1.3"},
+        require_progression_contract=schema_version in {"1.2", "1.3", "1.4"},
     )
     raw_units = payload.get("units")
     if not isinstance(raw_units, list) or not raw_units:
@@ -1657,7 +2090,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
         plan = _validate_unit_plan(
             unit,
             question_ids=question_ids,
-            require_decision_contract=schema_version in {"1.1", "1.2", "1.3"},
+            require_decision_contract=schema_version in {"1.1", "1.2", "1.3", "1.4"},
             schema_version=schema_version,
         )
         if plan["unit_id"] in seen_units:
@@ -1670,7 +2103,7 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
         plans.append(plan)
     if covered_questions != question_ids:
         raise ContractError("MODELING_UNITS 必须覆盖每个必答问题")
-    if schema_version in {"1.2", "1.3"}:
+    if schema_version in {"1.2", "1.3", "1.4"}:
         duplicates = sorted(
             question_id
             for question_id, count in question_unit_counts.items()
@@ -1692,16 +2125,30 @@ def validate_modeling_units(run_dir: Path, payload: dict[str, Any], *, require_a
             _validate_actual_unit(run_dir, plan, raw, results)
             for plan, raw in zip(plans, raw_units, strict=True)
         ]
-        _require_core_budget_share(run_dir, budgets)
+        return _core_budget_advisories(run_dir, budgets)
+    return []
 
 
-def _require_core_budget_share(run_dir: Path, budgets: list[dict[str, Any]]) -> None:
-    """要求核心问题的搜索深化真的占据了主要生产算力。
+def _core_budget_advisories(
+    run_dir: Path, budgets: list[dict[str, Any]]
+) -> list[str]:
+    """返回优化/协同核心问题的搜索投入提示，不阻断其他题型。
 
-    只看单元内部比例会漏掉另一种偏差：核心问题本身只跑了很少实验，而算力
-    被平摊到次要问题或全局复算上。因此这里再核对全局份额。
+    固定评价、精确算法、数据建模和仿真的主要资源并不一定是黑箱搜索，因此
+    不能再用统一比例否决其正式结果。
     """
-    core_search = sum(item["search_seconds"] for item in budgets if item["core_question"])
+    warnings = [
+        warning
+        for item in budgets
+        for warning in item.get("warnings", [])
+        if isinstance(warning, str)
+    ]
+    core_search = sum(
+        item["search_seconds"]
+        for item in budgets
+        if item["core_question"]
+        and item.get("unit_kind") in SEARCH_UNIT_KINDS | {"compare"}
+    )
     total = 0.0
     for result in read_result_index(run_dir)["results"]:
         # 分母统计全部已执行结果（含 exploration 与已被替代者）：只算 current
@@ -1712,13 +2159,14 @@ def _require_core_budget_share(run_dir: Path, budgets: list[dict[str, Any]]) -> 
             if math.isfinite(value) and value > 0:
                 total += value
     if total <= 0:
-        return
+        return warnings
     share = core_search / total
-    if share < CORE_SEARCH_BUDGET_SHARE:
-        raise ContractError(
-            f"核心问题搜索深化仅占实际算力 {share:.0%}，低于要求的 "
-            f"{CORE_SEARCH_BUDGET_SHARE:.0%}；请把预算从复算与格式稳定性移回候选搜索"
+    if core_search > 0 and share < RECOMMENDED_SEARCH_BUDGET_SHARE:
+        warnings.append(
+            f"优化/协同核心问题搜索深化占实际算力 {share:.0%}，低于建议值 "
+            f"{RECOMMENDED_SEARCH_BUDGET_SHARE:.0%}；这不阻断答案，但提示搜索投入可能不足。"
         )
+    return warnings
 
 
 def write_modeling_units(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1743,16 +2191,32 @@ def write_modeling_units(run_dir: Path, payload: dict[str, Any]) -> dict[str, An
         if new_routes - old_routes:
             from shumozizi.simple.delivery import require_delivery_action_allowed
 
-            require_delivery_action_allowed(run_dir, "add_new_route")
+            added_routes = new_routes - old_routes
+            revision_cases = [
+                route.get("revision_case", "")
+                for unit in payload.get("units", [])
+                if isinstance(unit, dict)
+                for route in unit.get("competitive_routes", [])
+                if isinstance(route, dict) and route.get("route_id") in added_routes
+            ]
+            require_delivery_action_allowed(
+                run_dir, "add_new_route", review_findings=revision_cases
+            )
         existing_version = existing.get("schema_version")
         requested_version = payload.get("schema_version")
         if (
+            existing_version == "1.4"
+            and existing.get("units")
+            and requested_version != "1.4"
+        ):
+            raise ContractError("MODELING_UNITS 1.4 不得降级绕过题型合同与三层结果")
+        if (
             existing_version == "1.3"
             and existing.get("units")
-            and requested_version != "1.3"
+            and requested_version not in {"1.3", "1.4"}
         ):
             raise ContractError("MODELING_UNITS 1.3 不得降级绕过语义反例与评分器预检")
-        if existing_version == "1.2" and requested_version not in {"1.2", "1.3"}:
+        if existing_version == "1.2" and requested_version not in {"1.2", "1.3", "1.4"}:
             raise ContractError("新 v3.2 运行的 MODELING_UNITS 不得降级绕过系统派生答案资格")
         if existing_version == "1.1" and requested_version == "1.0":
             raise ContractError("MODELING_UNITS 不得降级到 1.0 绕过决策合同")
@@ -1787,7 +2251,7 @@ def semantic_high_risk_questions(run_dir: Path) -> set[str]:
         payload = load_json(path)
     except (OSError, ValueError):
         return set()
-    if payload.get("schema_version") != "1.3":
+    if payload.get("schema_version") not in {"1.3", "1.4"}:
         return set()
     return {
         str(unit["question_id"])
@@ -1807,7 +2271,7 @@ def semantic_counterexample_for_question(
     if not path.is_file():
         return None
     payload = load_json(path)
-    if payload.get("schema_version") != "1.3":
+    if payload.get("schema_version") not in {"1.3", "1.4"}:
         return None
     for unit in payload.get("units", []):
         if not isinstance(unit, dict) or unit.get("question_id") != question_id:
@@ -1869,14 +2333,14 @@ def require_v32_experiment_evidence(run_dir: Path) -> None:
     validate_modeling_units(run_dir, load_json(path), require_actual=True)
 
 
-def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
-    """读取已晋级或已回退的逐问主答案，供论文答案映射保持一致。
+def question_outcome_selections(run_dir: Path) -> dict[str, dict[str, Any]]:
+    """读取逐问题面答案、证据等级与条件化推荐方案。
 
     Args:
         run_dir: 当前运行目录。
 
     Returns:
-        以问题 ID 为键的主路线、主结果和决策状态；未完成决策的单元不返回。
+        以问题 ID 为键的三层结果；题面答案无效时 ``objective_answer`` 为 null。
     """
     path = run_dir / MODELING_UNITS_PATH
     if not path.is_file():
@@ -1886,13 +2350,13 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
     except (OSError, ValueError):
         return {}
     schema_version = payload.get("schema_version")
-    if schema_version in {"1.2", "1.3"}:
+    if schema_version in {"1.2", "1.3", "1.4"}:
         state = read_simple_state(run_dir)
         question_ids = set(state["required_questions"])
         results = {
             item["result_id"]: item for item in read_result_index(run_dir)["results"]
         }
-        selections: dict[str, dict[str, str]] = {}
+        selections: dict[str, dict[str, Any]] = {}
         for raw in payload.get("units", []):
             unit = _require_mapping(raw, "units[]")
             plan = _validate_unit_plan(
@@ -1904,6 +2368,11 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
             actual = _require_mapping(
                 unit.get("actual"), f"{plan['unit_id']}.actual"
             )
+            if schema_version == "1.4" and not plan["search_kind"]:
+                selections[plan["question_id"]] = _derive_v14_non_search_outcome(
+                    actual, plan, results
+                )
+                continue
             if plan["mode"] == "oracle_only":
                 refinement = _require_mapping(
                     actual.get("refinement"),
@@ -1920,9 +2389,21 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
                     label=f"{plan['unit_id']}.final_answer",
                 )
                 selections[plan["question_id"]] = {
-                    "status": "promoted",
-                    "route_id": "oracle_only",
-                    "result_id": result_id,
+                    "objective_answer": {
+                        "route_id": "oracle_only",
+                        "result_id": result_id,
+                        "claim_level": "verified",
+                    },
+                    "recommended_plan": None,
+                    "evidence_grade": {
+                        "feasible": True,
+                        "endpoint_consistent": True,
+                        "exact_metric_available": True,
+                        "hard_constraints_passed": True,
+                        "search_confidence": "not_applicable",
+                        "perturbation_stability": "not_assessed",
+                    },
+                    "warnings": [],
                 }
                 continue
             comparison = _require_mapping(
@@ -1945,21 +2426,12 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
                 )
                 for route_id in plan["route_ids"]
             }
-            qualification = derive_answer_qualification(actual, plan, results, scores)
-            selection: dict[str, str] = {"status": qualification["status"]}
-            for source, target in (
-                ("route_id", "route_id"),
-                ("result_id", "result_id"),
-                ("failure_kind", "failure_kind"),
-                ("rollback_target", "rollback_target"),
-            ):
-                value = qualification.get(source)
-                if isinstance(value, str):
-                    selection[target] = value
-            selections[plan["question_id"]] = selection
+            selections[plan["question_id"]] = derive_question_outcome(
+                actual, plan, results, scores
+            )
         return selections
 
-    selections = {}
+    selections: dict[str, dict[str, Any]] = {}
     for unit in payload.get("units", []):
         if not isinstance(unit, dict):
             continue
@@ -1970,18 +2442,68 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
         decision = actual.get("promotion_decision")
         if not isinstance(decision, dict):
             continue
-        status = decision.get("status")
-        route_id = decision.get("selected_route_id")
-        result_id = decision.get("selected_result_id")
-        if status == "redesign_required":
-            selections[question_id] = {"status": status}
-        elif (
-            status in {"promoted", "fallback_selected"}
-            and isinstance(route_id, str)
-            and isinstance(result_id, str)
-        ):
+        comparison = actual.get("comparison")
+        refinement = actual.get("refinement")
+        objective_answer = None
+        if isinstance(comparison, dict) and isinstance(refinement, dict):
+            route_id = comparison.get("winner_route_id")
+            result_id = refinement.get("final_result_id")
+            if isinstance(route_id, str) and isinstance(result_id, str):
+                objective_answer = {
+                    "route_id": route_id,
+                    "result_id": result_id,
+                    "claim_level": "best_found",
+                }
+        recommended_plan = None
+        if decision.get("status") == "fallback_selected":
+            route_id = decision.get("selected_route_id")
+            result_id = decision.get("selected_result_id")
+            if isinstance(route_id, str) and isinstance(result_id, str):
+                recommended_plan = {
+                    "route_id": route_id,
+                    "result_id": result_id,
+                    "condition": str(decision.get("fallback_trigger") or "附加稳健条件成立"),
+                }
+        selections[question_id] = {
+            "objective_answer": objective_answer,
+            "recommended_plan": recommended_plan,
+            "evidence_grade": {
+                "feasible": objective_answer is not None,
+                "endpoint_consistent": decision.get("endpoint_consistent") is True,
+                "exact_metric_available": objective_answer is not None,
+                "hard_constraints_passed": decision.get("guard_constraints_passed") is True,
+                "search_confidence": (
+                    "moderate" if decision.get("route_upgrade_passed") is True else "weak"
+                ),
+                "perturbation_stability": (
+                    "strong" if decision.get("decision_stable") is True else "weak"
+                ),
+            },
+            "warnings": (
+                ["旧运行的稳健性或搜索证据较弱，不能据此替换题面答案。"]
+                if decision.get("status") != "promoted"
+                else []
+            ),
+        }
+    return selections
+
+
+def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
+    """兼容旧调用，且 ``result_id`` 永远指向题面 objective answer。"""
+    outcomes = question_outcome_selections(run_dir)
+    selections: dict[str, dict[str, str]] = {}
+    for question_id, outcome in outcomes.items():
+        answer = outcome.get("objective_answer")
+        if not isinstance(answer, dict):
             selections[question_id] = {
-                "status": status,
+                "status": "redesign_required",
+            }
+            continue
+        route_id = answer.get("route_id")
+        result_id = answer.get("result_id")
+        if isinstance(route_id, str) and isinstance(result_id, str):
+            selections[question_id] = {
+                "status": "promoted",
                 "route_id": route_id,
                 "result_id": result_id,
             }

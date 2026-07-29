@@ -226,7 +226,7 @@ def _question_section_content(
         engine: 排版引擎，``"latex"`` 或 ``"typst"``。
         question_ids: 必答问题 ID 列表。
         core_question_ids: 标为核心问题的 ID 集合；为 None 时所有问题均按普通问题处理。
-        argument_plan_units: 以 question_id 为键的论证单元标题列表，来自 ARGUMENT_PLAN.md。
+        argument_plan_units: 以 question_id 为键的论证单元标题列表，来自论文蓝图。
     """
     core_ids = core_question_ids or set()
     plan = argument_plan_units or {}
@@ -270,7 +270,7 @@ def _question_section_content(
                 lines.append(comment)
                 lines.append("")
             if units:
-                lines.append("// 论证单元（来自 ARGUMENT_PLAN.md）：")
+                lines.append("// 论证单元（来自 PAPER_BLUEPRINT.md）：")
                 for unit_title in units:
                     lines.append(f"// - {unit_title}")
                 lines.append("")
@@ -306,7 +306,7 @@ def _question_section_content(
                 lines.append(comment)
                 lines.append("")
             if units:
-                lines.append("% 论证单元（来自 ARGUMENT_PLAN.md）：")
+                lines.append("% 论证单元（来自 PAPER_BLUEPRINT.md）：")
                 for unit_title in units:
                     lines.append(f"% - {unit_title}")
                 lines.append("")
@@ -407,13 +407,15 @@ def _clear_template_references(paper_dir: Path, engine: str) -> None:
 
 
 def _argument_plan_units(run_dir: Path) -> dict[str, list[str]]:
-    """从 ARGUMENT_PLAN.md 提取每个核心问题的论证单元标题。
+    """从论文蓝图提取每个核心问题的论证单元标题。
 
     只做轻量文本扫描：识别 "## 论证单元 X" 或 "### 论证单元 X" 标题，
     不解析完整结构。提取失败时静默返回空字典，不阻断模板实例化。
     """
     import re
-    path = run_dir / "paper" / "ARGUMENT_PLAN.md"
+    path = run_dir / "paper" / "PAPER_BLUEPRINT.md"
+    if not path.is_file():
+        path = run_dir / "paper" / "ARGUMENT_PLAN.md"
     if not path.is_file():
         return {}
     try:
@@ -442,7 +444,7 @@ def _install_question_layout(run_dir: Path, manifest: dict[str, Any]) -> None:
     """按当前题目数实例化问题章节，并去除源模板的旧示例章节。
 
     读取 MODELING_UNITS.json 以区分核心问题与普通问题，生成不同深度的子节骨架；
-    同时尝试读取 ARGUMENT_PLAN.md 中的论证单元标题作为写作提示注释。
+    同时尝试读取 PAPER_BLUEPRINT.md 中的论证单元标题作为写作提示注释。
     """
     layout = manifest["question_layout"]
     question_ids = layout["question_ids"]
@@ -469,7 +471,7 @@ def _install_question_layout(run_dir: Path, manifest: dict[str, Any]) -> None:
         except (OSError, ValueError, KeyError):
             pass  # 读取失败时降级为全普通问题骨架
 
-    # 尝试提取 ARGUMENT_PLAN.md 论证单元标题（只用作注释提示）
+    # 蓝图只提供组织提示，不改变 answer-map 绑定的事实。
     plan_units = _argument_plan_units(run_dir)
 
     _replace_question_includes(entry, manifest["engine"], manifest["language"])

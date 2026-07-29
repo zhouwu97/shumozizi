@@ -12,14 +12,14 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 `blocked` 只表示真实生产错误或已验证的负面证据，绝不因为缺少方法画像、主张清单、覆盖声明、图表合同或手工 argument map 而进入该状态。
 
-新运行默认使用 v3.2：可先用仅题面的 fresh thread、获奖论文结构专家卡或网页版 GPT 讨论题意、建模、反例和验证，再为每个问题形成可修订的 `BASELINE_FREEZE.json` 决策快照与轻量 `MODELING_UNITS.json`。进入实验前，后者仍需两次真实 fresh-thread 题意重建；它们只验证独立性，不代替模型、实验和复算。这是质量改进闭环，不是按文件顺序阻塞的状态机：发现反例、实验冲突或审查缺口后，应修订快照、重跑、复审和改写。专家卡与网页讨论只提供研究主线、验证闭环和论文组织的建议，不提供本题模型、参数、结果或引用，也不构成状态门。`compare` 单元要求 baseline、两条数学结构不同的竞争路线和 fallback；`oracle_only` 单元只用于题型明确需要独立 oracle 的情况。首个可行解只能成为深化起点，不得直接充当最终解。
+新运行默认使用 v3.2：`MODELING_UNITS` 1.4 将每问分为 `evaluation`、`optimization`、`exact_oracle`、`data_modeling`、`simulation` 或 `coordination`。固定评价、数据建模与仿真不再被迫比较多条优化路线；核心优化/协同默认使用自然 baseline 加一条结构 challenger，第二条只在仍有决策价值时增加。逐问输出始终分开 `objective_answer`、`recommended_plan` 与 `evidence_grade`，稳健建议不能替换题面原目标答案。
 
 旧 v3.0/v3.1 运行可继续打开。读取 v3.0 时会把旧阶段映射为 v3.1 内存状态；第一次显式更新才写入 `state/migrations.json`，原始阶段保存在 `legacy_phase`，历史审核产物仍可查看。
 
 ## 工作原则
 
 - 先提高答案上限，再验证安全底线。
-- 每个 `compare` 单元建立一个 baseline、两条数学结构不同的竞争路线和 fallback；仅更换遗传算法、粒子群或差分进化不算新路线。
+- 搜索占实际算力约 35% 只作优化/协同题的资源提示；只有无真实搜索、单种子且明显不稳定、challenger 仍快速改善或停止日志冲突才硬阻断。
 - `knowledge/award-experts/library.json` 覆盖 2012--2025 年 CUMCM A/B 的 21 张 structure-only 卡和 15 个角色；可按 A/B、阶段和受限 `topic_key` 选择少量卡。未冻结时会明确标注为 `advisory_only`，冻结或修订 baseline 后应重新路由。`provenance.json` 是离线追溯资产，运行时不读取；同题材料只能进入 answer-filter，不能反向改变模型、参数、结果或论文结构。
 - 网页版 GPT 可参与题意、建模、反例、验证与论文建议的讨论或审核，但只能分析用户提供的材料，禁止联网检索题目答案、题解、往届答案或相近题现成结论，禁止复用这类内容。并行讨论时先冻结只依赖 `problem/` 的本地路线，首轮网页提示不披露本地路线且直到本地写完才可阅读回应；随后逐项记录差异与本地验证，最后另开 fresh chat 做实现总结。网页只提出可检验的搜索方向，本地 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核才可比较候选与寻找最优。
 - 在第一批结果后先做科学攻击，再用至少两类策略继续深化，并把停止理由限制为预先声明的白名单。统一 exact 目标、实际预算与可行性事实；灵敏度、鲁棒性和独立 oracle 仅按题型条件触发，彼此不能替代。
@@ -125,12 +125,16 @@ runs/<run-id>/
 │   ├── LOCAL_ROUTE_SNAPSHOT.json      # 可选：仅题面的本地路线先行快照
 │   ├── EXTERNAL_DISCUSSION_COMPARISON.json # 可选：延迟阅读后的差异及验证
 │   ├── EXTERNAL_DISCUSSION_SYNTHESIS.json  # 可选：给全新网页对话的受限提示
-│   ├── MODELING_UNITS.json           # v3.2：题意重建、比较/独立 oracle 与真实回填
+│   ├── MODELING_UNITS.json           # v3.2：题型合同、三层结果与真实回填
 │   └── method_facts.json             # 显式事实优先；全面审核后查漏的必需输入
 ├── results/                          # 真实执行与 current/superseded 结果
-├── figures/current/                  # 当前数据与脚本产生的图
+├── figures/
+│   ├── work/                         # 版本化工作图
+│   ├── current/                      # 已晋级的当前图
+│   └── archive/                      # 被替换的历史 current
 ├── paper/
-│   ├── STORYBOARD.md                 # 可选叙事规划
+│   ├── PAPER_BLUEPRINT.md            # 主线、跨问递进与逐问完整性卡
+│   ├── PAPER_REVIEW.md               # 论证发现与返修决定
 │   ├── CONTRIBUTION_BRIEF.md         # 最多三项贡献，可选
 │   ├── WRITING_ACTIONS.md             # 可从模板复制；分段写作动作，不是固定轮次
 │   ├── answer-map.json               # 可替代 analysis/answer_map.json
@@ -145,9 +149,9 @@ runs/<run-id>/
 
 `ROUTE_COMPETITION.md` 记录 baseline、竞争路线、区分性 probe、主路线、fallback 和切换条件；`NEXT_EXPERIMENTS.md` 只保留能改变决定的实验；`INSIGHTS.md` 区分观察、证据、机制、验证和边界，允许诚实写出尚未发现稳定规律。
 
-`answer_map.json` 是编译前的必要事实：每个必答问题必须有至少一个当前生产结果和直接答案位置。`STORYBOARD.md` 与 `CONTRIBUTION_BRIEF.md` 用于提高写作质量；`method_facts.json` 在全面审核冻结后的 gap 查漏中是必需输入，和后置提取的强断言共同派生中央风险。
+论文只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 与 `PAPER_REVIEW.md` 四个主要控制文件。知识应用、argument map、版式审计等由系统派生或作为 advisory；零匹配时使用通用结构模式。可检索实际使用的方法文献，禁止同题答案和现成结论。
 
-CUMCM v3.2 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.3 分开科学证据需要与评委阅读需要，`CUMCM_STRUCTURE_MAP` 1.1 选择固定 `classic` 或实验性的 `semantic` 结构并声明前五页阅读路线、答案总览、数据画像和逐问主图。semantic 在 held-out A/B 前不设为默认，也暂不放宽 local validation、appendix 和前置角色约束。数据画像可直接绑定运行内冻结数据与审计文件，不需要伪造实验结果。
+CUMCM v3.2 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.3 分开科学证据需要与评委阅读需要，`CUMCM_STRUCTURE_MAP` 1.2 选择固定 `classic` 或“经典外壳 + 语义内核”的 `semantic`，并声明前五页阅读路线、答案总览、数据画像和逐问主图；1.1 仅兼容旧运行。三问以上且存在共享数学对象与资源、约束或聚合递进时，省略 `profile` 会自动选择 `semantic`；否则使用 `classic` 兜底。`semantic` 仍明确保留“模型假设与符号”、参考文献和附录，但允许围绕共享模型合并多问章节。数据画像可直接绑定运行内冻结数据与审计文件，不需要伪造实验结果。
 
 写作采用三种可往返的逻辑动作：先做结构蓝图，再统一共享模型并逐问成文，最后以证据、边界和严格返修收束。`templates/competition-first/WRITING_ACTIONS.md` 提供提示；它吸收“蓝图、共享模型、逐问章节、证据局限、返修”的优点，但不把五轮写作机械固定为状态机。
 
@@ -157,7 +161,7 @@ CUMCM v3.2 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.3 分开科学证据
 
 科学挑战只回答六个问题：独立重建目标/变量/约束、三处最大风险、对最大风险的实际攻击、最薄弱问题、当前竞争力上限、最可能改变结论的下一实验。它必须绑定冻结输入、报告和真实任务回执，但不以覆盖率清单放行。
 
-PDF 盲评必须使用独立上下文，只接收冻结最终 PDF 与 `scripts/review/show_paper_blind_prompt.py` 的固定提示词。报告末尾按提示嵌入同源结构化 JSON；导入器把冷读、逐问缺失角色、页码、具体 finding、问题递进和叙事风险写入现有 `review/paper-blind-review.json`，并绑定报告哈希、任务/对话 ID 与 `paper_render_revision`。本地 `CUMCM_LAYOUT_AUDIT` 1.3 直接读取该记录，拒绝作者另填 `cold_read`、`argument_depth` 或 verdict，只追加呈现合同、页面探针和 advisory 学习兑现。分析检索最多保留 3 张卡、每卡 2 个模式；写作默认继承分析拒绝，只重新判断分析已采用或显式 reopen 的模式。无法创建独立盲评时仍只能继续机械 QA，不能标记 `complete` 或 `submission_ready`。
+PDF 盲评必须使用独立上下文，只接收冻结最终 PDF 与固定提示词。盲评绑定 `argument_revision`，纯渲染重编不使它失效；CUMCM 版式审计与机械 QA 绑定 `render_revision`。首稿和 candidate 都允许按结构化评审理由返修，只有显式 final lock 才停止新增科学内容。
 
 完成前重新检查科学挑战仍绑定当前代码、数据和生产结果，再检查 PDF、匿名、占位符、乱码、裁切、空白页、当前结果和当前图表漂移。P0/P1、真实负面证据或失效的事实产物始终阻断 `complete`。
 

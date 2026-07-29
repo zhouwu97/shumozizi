@@ -21,9 +21,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="编译 Capability-First v3 论文并写入回执")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument(
+        "--revision-impact",
+        choices=("auto", "render", "argument", "science"),
+        default="auto",
+        help="本次改动影响层级；首轮编译会自动建立 argument revision",
+    )
     args = parser.parse_args()
     try:
-        payload = compile_paper(args.run_dir, timeout_seconds=args.timeout)
+        payload = compile_paper(
+            args.run_dir,
+            timeout_seconds=args.timeout,
+            revision_impact=args.revision_impact,
+        )
     except ContractError as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}, ensure_ascii=False))
         return 1

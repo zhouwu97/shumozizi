@@ -354,6 +354,80 @@ def presentation_figure_warnings(run_dir: Path) -> list[str]:
         return ["FIGURE_PLAN 2.3 呈现需求无法读取，建议人工检查。"]
 
 
+def _presentation_decision_errors(run_dir: Path) -> list[str]:
+    """要求首稿前完成结构性展示图的 required/waived 决策。"""
+    plan_path = run_dir / _FIGURE_PLAN_PATH
+    if not plan_path.is_file():
+        return ["首版草稿前缺少 FIGURE_PLAN 2.3，尚未决定展示图是否需要"]
+    try:
+        plan = load_json(plan_path)
+        if plan.get("schema_version") != "2.3":
+            return ["首版草稿前必须用 FIGURE_PLAN 2.3 记录展示图 required/waived 决策"]
+        decisions = {
+            item.get("scope"): item
+            for item in plan.get("visual_decisions", [])
+            if isinstance(item, dict) and isinstance(item.get("scope"), str)
+        }
+        errors: list[str] = []
+        for question_id in _question_ids_from_state(run_dir):
+            if question_id not in decisions:
+                errors.append(f"{question_id} 缺少首稿前展示图 required/waived 决策")
+
+        units_path = run_dir / "analysis" / "MODELING_UNITS.json"
+        units_text = ""
+        if units_path.is_file():
+            units_text = units_path.read_text(encoding="utf-8")
+        structural_signal = bool(
+            re.search(
+                r"几何|轨迹|空间|相交|并集|交集|遮蔽|共享模型|共享约束|"
+                r"nominal|robust|名义|稳健|聚合|aggregation",
+                units_text,
+                re.IGNORECASE,
+            )
+        )
+        if structural_signal and "whole_paper" not in decisions:
+            errors.append(
+                "共享模型、几何/集合或名义—稳健结构出现时，"
+                "whole_paper 缺少首稿前展示图 required/waived 决策"
+            )
+        figures = plan.get("figures", [])
+        for scope, decision in decisions.items():
+            if decision.get("presentation_need") != "required":
+                continue
+            role = "data_portrait" if scope == "whole_paper" else "question_hero"
+            if not any(
+                item.get("presentation_role") == role
+                and (scope == "whole_paper" or item.get("question_id") == scope)
+                for item in figures
+            ):
+                errors.append(f"展示图决策 {scope}=required，但计划中缺少 {role}")
+        return errors
+    except (OSError, TypeError, ValueError) as exc:
+        return [f"无法读取首稿展示图决策：{exc}"]
+
+
+def _reference_count_warnings(run_dir: Path) -> list[str]:
+    """给出方法文献数量建议，不把文献数量伪装成质量硬门。"""
+    paper_dir = run_dir / "paper"
+    count = 0
+    for path in paper_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        if path.suffix.casefold() == ".bib":
+            count += len(re.findall(r"(?m)^\s*@(?!comment|string|preamble)\w+\s*\{", text, re.IGNORECASE))
+        elif path.suffix.casefold() in {".tex", ".typ"}:
+            count += len(re.findall(r"\\bibitem\s*\{", text))
+    if count == 0:
+        return ["未检测到方法或背景文献；建议按实际使用补充约 6–12 篇可核验参考文献。"]
+    if not 6 <= count <= 12:
+        return [f"当前检测到约 {count} 条参考文献；6–12 篇只是紧凑性建议，不构成硬门。"]
+    return []
+
+
 def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
     """从当前答案、结果和图表自动生成后台论证映射。
 
@@ -407,10 +481,18 @@ def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
     return document
 
 
-def _argument_plan_warnings(run_dir: Path) -> list[str]:
-    """检查核心问题是否在 ARGUMENT_PLAN.md 中有对应论证单元。
+def _paper_blueprint_path(run_dir: Path) -> Path:
+    """返回当前论文结构蓝图；旧运行兼容 ``ARGUMENT_PLAN.md``。"""
+    blueprint = run_dir / "paper" / "PAPER_BLUEPRINT.md"
+    if blueprint.is_file():
+        return blueprint
+    return run_dir / "paper" / "ARGUMENT_PLAN.md"
 
-    轻量 warning（不阻断）：核心问题存在但 ARGUMENT_PLAN.md 缺少或
+
+def _argument_plan_warnings(run_dir: Path) -> list[str]:
+    """检查核心问题是否在论文蓝图中有对应论证单元。
+
+    轻量 warning（不阻断）：核心问题存在但论文蓝图缺少或
     没有该问题的论证单元标题时，提醒写作前填写，避免论文仍然流水账。
     """
     import re
@@ -424,11 +506,11 @@ def _argument_plan_warnings(run_dir: Path) -> list[str]:
     if not available:
         return []
 
-    plan_path = run_dir / "paper" / "ARGUMENT_PLAN.md"
+    plan_path = _paper_blueprint_path(run_dir)
     if not plan_path.is_file():
         core_ids = sorted(available)
         return [
-            f"核心问题 {', '.join(core_ids)} 已提炼规律，但缺少 paper/ARGUMENT_PLAN.md；"
+            f"核心问题 {', '.join(core_ids)} 已提炼规律，但缺少 paper/PAPER_BLUEPRINT.md；"
             "建议写论文前为每个核心问题规划论证单元（判断→推导→证据→竞争解释→讨论）。"
         ]
 
@@ -444,7 +526,7 @@ def _argument_plan_warnings(run_dir: Path) -> list[str]:
     if not missing:
         return []
     return [
-        f"核心问题 {', '.join(missing)} 已提炼规律，但 paper/ARGUMENT_PLAN.md "
+        f"核心问题 {', '.join(missing)} 已提炼规律，但 paper/PAPER_BLUEPRINT.md "
         "中没有对应论证单元；写论文前请补充这些问题的论证单元规划。"
     ]
 
@@ -492,14 +574,15 @@ def require_reviewable_draft_argument_readiness(
         unfinished_questions: 草稿披露页明确列出的未完成问题。
 
     Raises:
-        ContractError: 故事板、论证计划或已完成核心问题仍是占位内容。
+        ContractError: 论文蓝图或已完成核心问题仍是占位内容。
     """
     state = read_simple_state(run_dir)
     if not is_competition_first_v32_state(state):
         return
+    blueprint_path = _paper_blueprint_path(run_dir)
     plan, errors = _substantive_markdown(
-        run_dir / "paper" / "ARGUMENT_PLAN.md",
-        label="paper/ARGUMENT_PLAN.md",
+        blueprint_path,
+        label="paper/PAPER_BLUEPRINT.md",
         minimum_chars=120,
     )
     from shumozizi.knowledge.retrieval import (
@@ -509,22 +592,16 @@ def require_reviewable_draft_argument_readiness(
 
     try:
         require_paper_knowledge_application(run_dir)
-        errors.extend(evaluate_paper_knowledge_consumption(run_dir)["errors"])
+        # 知识迁移只提供写作启发，不再拥有首稿放行权。
+        evaluate_paper_knowledge_consumption(run_dir)
     except ContractError as exc:
-        errors.append(str(exc))
-    storyboard, storyboard_errors = _substantive_markdown(
-        run_dir / "paper" / "STORYBOARD.md",
-        label="paper/STORYBOARD.md",
-        minimum_chars=100,
-    )
-    errors.extend(storyboard_errors)
-    if storyboard:
-        if not re.search(r"中心判断|总体判断|一句话主旨", storyboard):
-            errors.append("STORYBOARD.md 缺少中心判断")
-        if not re.search(r"论证链|章节作用|各问递进", storyboard):
-            errors.append("STORYBOARD.md 缺少跨问题论证链")
+        # 文件缺失或未填只影响建议质量；当前题证据仍由 answer-map 和真实结果控制。
+        _ = exc
     if plan and not re.search(r"总体判断|中心判断|核心判断", plan):
-        errors.append("ARGUMENT_PLAN.md 缺少全篇总体判断")
+        errors.append("PAPER_BLUEPRINT.md 缺少全篇总体判断")
+    if plan and not re.search(r"论证链|章节作用|各问递进", plan):
+        errors.append("PAPER_BLUEPRINT.md 缺少跨问题论证链")
+    errors.extend(_presentation_decision_errors(run_dir))
 
     unfinished = set(unfinished_questions)
     core_questions: set[str] = set()
@@ -551,7 +628,7 @@ def require_reviewable_draft_argument_readiness(
             continue
         section = _markdown_question_section(plan, question_id) if plan else None
         if section is None or len(re.sub(r"\s+", "", section)) < 60:
-            errors.append(f"已完成问题 {question_id} 在 ARGUMENT_PLAN.md 中缺少实质完整性卡")
+            errors.append(f"已完成问题 {question_id} 在 PAPER_BLUEPRINT.md 中缺少实质完整性卡")
             continue
         if question_id not in core_questions:
             continue
@@ -576,9 +653,12 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         )
 
         try:
-            errors.extend(evaluate_paper_knowledge_consumption(run_dir)["errors"])
+            knowledge = evaluate_paper_knowledge_consumption(run_dir)
+            warnings.extend(
+                "知识迁移建议未兑现：" + message for message in knowledge["errors"]
+            )
         except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
-            errors.append(str(exc))
+            warnings.append(f"知识迁移建议不可用：{exc}")
         try:
             require_cumcm_structure_map(run_dir)
             realization = evaluate_presentation_contract(run_dir)
@@ -632,8 +712,8 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
             primary_result_id = item.get("primary_result_id")
             if primary_result_id != selection["result_id"]:
                 errors.append(
-                    f"必答问题 {question_id} 的 primary_result_id 必须使用路线晋级/回退决定"
-                    f"选中的 {selection['result_id']}"
+                    f"必答问题 {question_id} 的 primary_result_id 必须使用题面 "
+                    f"objective_answer {selection['result_id']}"
                 )
             elif isinstance(result_ids, list) and primary_result_id not in result_ids:
                 errors.append(f"必答问题 {question_id} 的 primary_result_id 未列入 result_ids")
@@ -658,13 +738,14 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
                     errors.append("答案映射引用了不存在或失效图表: " + ", ".join(missing))
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         errors.append(str(exc))
-    if not (run_dir / "paper" / "STORYBOARD.md").is_file():
-        warnings.append("缺少 paper/STORYBOARD.md；建议先明确最强问题、篇幅与核心图表。")
+    if not _paper_blueprint_path(run_dir).is_file():
+        warnings.append("缺少 paper/PAPER_BLUEPRINT.md；建议先明确主线、各问递进与核心图表。")
     if not (run_dir / "paper" / "CONTRIBUTION_BRIEF.md").is_file():
         warnings.append("缺少 paper/CONTRIBUTION_BRIEF.md；这不阻断普通问题的正确回答。")
     warnings.extend(_insight_figure_warnings(run_dir))
     warnings.extend(_argument_plan_warnings(run_dir))
     warnings.extend(presentation_figure_warnings(run_dir))
+    warnings.extend(_reference_count_warnings(run_dir))
     errors.extend(_code_appendix_errors(run_dir))
     errors.extend(_core_insight_usage_errors(run_dir, answers))
     if is_competition_first_v32_state(read_simple_state(run_dir)):

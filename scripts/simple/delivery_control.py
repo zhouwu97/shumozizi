@@ -12,14 +12,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from shumozizi.core.io import ContractError
 from shumozizi.simple.delivery import (
     advance_delivery_phase,
-    approve_workflow_p0_patch,
     freeze_pdf_milestone,
     next_required_action,
     record_work_session,
     start_work_session,
     stop_work_session,
-    verify_workflow_source_lock,
-    work_log_summary,
 )
 from shumozizi.simple.revisions import classify_revision
 
@@ -46,14 +43,11 @@ def main() -> int:
     stop.add_argument("--summary", required=True)
     stop.add_argument("--finished-at")
     stop.add_argument("--blocking-delivery-repair", action="store_true")
-    freeze = subparsers.add_parser("freeze-pdf", help="冻结第一版或候选 PDF")
+    freeze = subparsers.add_parser("freeze-pdf", help="记录首版、候选版或显式最终锁定")
     freeze.add_argument("run_dir", type=Path)
-    freeze.add_argument("milestone", choices=("first_reviewable", "candidate"))
-    patch = subparsers.add_parser("approve-p0-patch", help="登记阻断当前交付的唯一源码修补")
-    patch.add_argument("run_dir", type=Path)
-    patch.add_argument("--reason", required=True)
-    source = subparsers.add_parser("verify-source-lock", help="复验运行期源码锁")
-    source.add_argument("run_dir", type=Path)
+    freeze.add_argument(
+        "milestone", choices=("first_reviewable", "candidate", "final")
+    )
     advance = subparsers.add_parser("advance", help="在真实门禁通过时自动推进一阶段")
     advance.add_argument("run_dir", type=Path)
     revision = subparsers.add_parser("revision-impact", help="判定返修需要重做的最小层级")
@@ -84,10 +78,6 @@ def main() -> int:
             )
         elif args.command == "freeze-pdf":
             document = freeze_pdf_milestone(args.run_dir, args.milestone)
-        elif args.command == "approve-p0-patch":
-            document = approve_workflow_p0_patch(args.run_dir, reason=args.reason)
-        elif args.command == "verify-source-lock":
-            document = {"source_lock": verify_workflow_source_lock(args.run_dir), "work_log": work_log_summary(args.run_dir)}
         elif args.command == "revision-impact":
             document = classify_revision(args.paths)
         else:

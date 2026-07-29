@@ -176,6 +176,14 @@ def read_simple_state(run_dir: Path) -> dict[str, Any]:
         payload.setdefault("paper_render_revision", 0)
         payload.setdefault("paper_reviewed_revision", 0)
         payload.setdefault("layout_audited_revision", 0)
+        payload.setdefault("render_revision", payload["paper_render_revision"])
+        payload.setdefault("argument_revision", payload["paper_render_revision"])
+        payload.setdefault(
+            "reviewed_argument_revision", payload["paper_reviewed_revision"]
+        )
+        payload.setdefault(
+            "layout_audited_render_revision", payload["layout_audited_revision"]
+        )
     mapped = _map_legacy_state(payload)
     require_simple_state(mapped)
     return mapped
@@ -190,12 +198,23 @@ def paper_revision_status(state: dict[str, Any]) -> dict[str, Any]:
     Returns:
         包含三个修订号和用户可见状态的摘要。
     """
-    render = int(state.get("paper_render_revision", 0))
-    reviewed = int(state.get("paper_reviewed_revision", 0))
-    audited = int(state.get("layout_audited_revision", 0))
+    render = int(state.get("render_revision", state.get("paper_render_revision", 0)))
+    argument = int(state.get("argument_revision", render))
+    reviewed = int(
+        state.get(
+            "reviewed_argument_revision",
+            state.get("paper_reviewed_revision", 0),
+        )
+    )
+    audited = int(
+        state.get(
+            "layout_audited_render_revision",
+            state.get("layout_audited_revision", 0),
+        )
+    )
     if render == 0:
         status = "NOT_RENDERED"
-    elif render != reviewed:
+    elif argument != reviewed:
         status = "UNREVIEWED_DRAFT"
     elif str(state.get("competition", "")).strip().casefold() == "cumcm" and audited != render:
         status = "REVIEWED_LAYOUT_PENDING"
@@ -203,7 +222,11 @@ def paper_revision_status(state: dict[str, Any]) -> dict[str, Any]:
         status = "REVIEWED"
     return {
         "status": status,
+        "argument_revision": argument,
         "render_revision": render,
+        "reviewed_argument_revision": reviewed,
+        "layout_audited_render_revision": audited,
+        # 兼容旧状态消费者。
         "reviewed_revision": reviewed,
         "layout_audited_revision": audited,
     }
@@ -244,33 +267,81 @@ def _record_paper_revision(
 
 
 def record_paper_render(run_dir: Path, *, previous_revision: int) -> dict[str, Any]:
-    """在受控 PDF 编译成功后递增渲染修订号。"""
-    return _record_paper_revision(
+    """兼容旧调用：递增纯渲染修订，首轮同时建立论证修订。"""
+    return record_paper_compilation(
         run_dir,
-        field="paper_render_revision",
-        value=previous_revision + 1,
-        expected_render_revision=previous_revision,
+        previous_render_revision=previous_revision,
+        argument_changed=False,
     )
 
 
-def record_paper_review(run_dir: Path, *, render_revision: int) -> dict[str, Any]:
-    """记录独立 PDF 盲评已覆盖当前渲染修订。"""
-    return _record_paper_revision(
-        run_dir,
-        field="paper_reviewed_revision",
-        value=render_revision,
-        expected_render_revision=render_revision,
+def record_paper_compilation(
+    run_dir: Path,
+    *,
+    previous_render_revision: int,
+    argument_changed: bool,
+) -> dict[str, Any]:
+    """记录一次编译，并仅在论证变化时递增 argument revision。"""
+    state = read_simple_state(run_dir)
+    if not is_competition_first_v32_state(state):
+        return state
+    render = int(state.get("render_revision", state.get("paper_render_revision", 0)))
+    if render != previous_render_revision:
+        raise ContractError(
+            f"论文渲染修订已漂移：预期 {previous_render_revision}，实际 {render}"
+        )
+    argument = int(state.get("argument_revision", render))
+    if argument == 0 or argument_changed:
+        argument += 1
+    render += 1
+    state["render_revision"] = render
+    state["argument_revision"] = argument
+    state["paper_render_revision"] = render
+    state["revision"] += 1
+    state["updated_at"] = utc_now()
+    write_simple_state(run_dir, state)
+    return state
+
+
+def record_paper_review(
+    run_dir: Path,
+    *,
+    argument_revision: int | None = None,
+    render_revision: int | None = None,
+) -> dict[str, Any]:
+    """记录独立 PDF 盲评已覆盖当前论证修订。"""
+    state = read_simple_state(run_dir)
+    current_argument = int(
+        state.get(
+            "argument_revision",
+            state.get("paper_render_revision", 0),
+        )
     )
+    value = argument_revision if argument_revision is not None else render_revision
+    if value != current_argument:
+        raise ContractError("盲评只能绑定当前论文论证修订")
+    state["reviewed_argument_revision"] = current_argument
+    state["paper_reviewed_revision"] = current_argument
+    state["revision"] += 1
+    state["updated_at"] = utc_now()
+    write_simple_state(run_dir, state)
+    return state
 
 
 def record_layout_audit(run_dir: Path, *, render_revision: int) -> dict[str, Any]:
     """记录 CUMCM 论证与版面审计已覆盖当前渲染修订。"""
-    return _record_paper_revision(
-        run_dir,
-        field="layout_audited_revision",
-        value=render_revision,
-        expected_render_revision=render_revision,
+    state = read_simple_state(run_dir)
+    current_render = int(
+        state.get("render_revision", state.get("paper_render_revision", 0))
     )
+    if render_revision != current_render:
+        raise ContractError("版面审计只能绑定当前论文渲染修订")
+    state["layout_audited_render_revision"] = current_render
+    state["layout_audited_revision"] = current_render
+    state["revision"] += 1
+    state["updated_at"] = utc_now()
+    write_simple_state(run_dir, state)
+    return state
 
 
 def write_simple_state(run_dir: Path, payload: dict[str, Any]) -> None:

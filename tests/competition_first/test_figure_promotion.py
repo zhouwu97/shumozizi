@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 from pypdf import PdfWriter
 
-from shumozizi.core.io import ContractError, atomic_json
+from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.simple.capabilities import write_local_tooling
 from shumozizi.simple.figure_promotion import (
     audit_figure_candidate,
@@ -34,7 +34,7 @@ def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str
         "figure-candidate-collision" if collision else "figure-candidate-valid",
         workflow_version="3.2",
     )
-    folder = run_dir / "figures/candidates/overall-workflow/v1"
+    folder = run_dir / "figures/work/overall-workflow/v1"
     folder.mkdir(parents=True)
     png = folder / "overall-workflow.png"
     pdf = folder / "overall-workflow.pdf"
@@ -106,7 +106,7 @@ def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str
 
 def _promote_plot(run_dir: Path, figure_id: str) -> dict[str, object]:
     """创建并晋级一张用于索引兼容测试的空白图。"""
-    folder = run_dir / f"figures/candidates/{figure_id}/v1"
+    folder = run_dir / f"figures/work/{figure_id}/v1"
     folder.mkdir(parents=True)
     png = folder / f"{figure_id}.png"
     pdf = folder / f"{figure_id}.pdf"
@@ -163,7 +163,7 @@ def test_plot_layout_blocks_wasted_axis_and_covered_takeaway(tmp_path: Path) -> 
         "plot-layout-invalid",
         workflow_version="3.2",
     )
-    folder = run_dir / "figures/candidates/poor-plot/v1"
+    folder = run_dir / "figures/work/poor-plot/v1"
     folder.mkdir(parents=True)
     png = folder / "poor-plot.png"
     pdf = folder / "poor-plot.pdf"
@@ -223,7 +223,7 @@ def test_spatial_plot_requires_equal_scale_orthographic_metadata(tmp_path: Path)
         "spatial-layout-invalid",
         workflow_version="3.2",
     )
-    folder = run_dir / "figures/candidates/spatial-scene/v1"
+    folder = run_dir / "figures/work/spatial-scene/v1"
     folder.mkdir(parents=True)
     png = folder / "spatial-scene.png"
     pdf = folder / "spatial-scene.pdf"
@@ -545,8 +545,8 @@ def test_figure_index_13_supports_mixed_result_and_presentation_entries(
     assert verify_current_figure_files(run_dir, figure_stage="current")["success"] is True
 
 
-def test_v32_render_never_overwrites_candidate_version(tmp_path: Path) -> None:
-    """候选渲染必须换版本目录，不能覆盖已经看过的同名预览。"""
+def test_v32_work_render_can_be_overwritten_during_iteration(tmp_path: Path) -> None:
+    """work 区允许反复调试，只有晋级后的 current 才进入历史归档。"""
     run_dir = initialize_simple_run(
         tmp_path, "render-versioned-candidate", workflow_version="3.2"
     )
@@ -564,7 +564,7 @@ def test_v32_render_never_overwrites_candidate_version(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     source.write_text("{}\n", encoding="utf-8")
-    output = "figures/candidates/workflow/v1/workflow.png"
+    output = "figures/work/workflow/v1/workflow.png"
     run_figure_render(
         run_dir,
         figure_id="workflow",
@@ -576,14 +576,14 @@ def test_v32_render_never_overwrites_candidate_version(tmp_path: Path) -> None:
         arguments=[output],
     )
 
-    with pytest.raises(ContractError, match="新的 version 目录"):
-        run_figure_render(
-            run_dir,
-            figure_id="workflow",
-            engine="python",
-            rendering_mode="diagram",
-            script_path="code/figures/render.py",
-            input_paths=["analysis/source.json"],
-            output_paths=[output],
-            arguments=[output],
-        )
+    second = run_figure_render(
+        run_dir,
+        figure_id="workflow",
+        engine="python",
+        rendering_mode="diagram",
+        script_path="code/figures/render.py",
+        input_paths=["analysis/source.json"],
+        output_paths=[output],
+        arguments=[output],
+    )
+    assert load_json(run_dir / second["path"])["outputs"][0]["path"] == output

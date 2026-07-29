@@ -362,7 +362,7 @@ def write_next_experiments(run_dir: Path, payload: dict[str, Any]) -> dict[str, 
         from shumozizi.simple.delivery import require_delivery_action_allowed
 
         findings = [
-            str(item.get("review_finding", ""))
+            item.get("revision_case", str(item.get("review_finding", "")))
             for item in experiments
             if isinstance(item, dict) and item.get("experiment_id") in added_ids
         ]
@@ -398,9 +398,9 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     missing = sorted(questions - set(mapping))
     if missing:
         raise ContractError("answer_map 缺少必答问题: " + ", ".join(missing))
-    from shumozizi.simple.modeling_units import final_answer_selections
+    from shumozizi.simple.modeling_units import question_outcome_selections
 
-    selections = final_answer_selections(run_dir)
+    outcomes = question_outcome_selections(run_dir)
     for question_id in questions:
         item = mapping[question_id]
         if not isinstance(item, dict):
@@ -410,22 +410,32 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(result_ids, list) or not result_ids or not all(isinstance(value, str) for value in result_ids):
             raise ContractError(f"{question_id} 必须绑定至少一个 result_id")
         _require_text(location, f"{question_id}.direct_answer_location")
-        selection = selections.get(question_id)
-        if selection is not None:
-            if selection["status"] == "redesign_required":
+        outcome = outcomes.get(question_id)
+        if outcome is not None:
+            objective_answer = outcome.get("objective_answer")
+            if not isinstance(objective_answer, dict):
                 raise ContractError(
-                    f"{question_id} 的实验决定为 redesign_required，必须返回分析/实验后再写论文"
+                    f"{question_id} 尚无满足题面 endpoint、exact 指标、硬约束与"
+                    "可行性的 objective_answer，必须返回分析/实验"
                 )
             primary_result_id = _require_text(
                 item.get("primary_result_id"), f"{question_id}.primary_result_id"
             )
-            if primary_result_id != selection["result_id"]:
+            if primary_result_id != objective_answer["result_id"]:
                 raise ContractError(
-                    f"{question_id}.primary_result_id 必须等于路线晋级/回退决定选中的 "
-                    f"{selection['result_id']}"
+                    f"{question_id}.primary_result_id 必须等于题面原目标下的 "
+                    f"objective_answer {objective_answer['result_id']}，"
+                    "不得由稳健建议替换"
                 )
             if primary_result_id not in result_ids:
                 raise ContractError(f"{question_id}.primary_result_id 必须列入 result_ids")
+            item["objective_answer"] = dict(objective_answer)
+            item["recommended_plan"] = outcome.get("recommended_plan")
+            item["evidence_grade"] = dict(outcome["evidence_grade"])
+            item["warnings"] = list(outcome.get("warnings", []))
+        excel_location = item.get("excel_output_location")
+        if excel_location is not None:
+            _require_text(excel_location, f"{question_id}.excel_output_location")
         insight_ids = item.get("insight_ids")
         if insight_ids is not None and (
             not isinstance(insight_ids, list)
@@ -433,7 +443,7 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         ):
             raise ContractError(f"{question_id}.insight_ids 必须是非空文本数组")
     document = {
-        "schema_version": "1.0",
+        "schema_version": "1.1" if outcomes else "1.0",
         "run_id": run_dir.name,
         "answers": mapping,
         "generated_at": utc_now(),

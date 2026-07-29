@@ -41,6 +41,13 @@ _FAILURE_MODE_SECTIONS = {
     "decomposition_conditions": "分解的成立条件",
     "validity_scope": "结论有效范围",
 }
+_GENERIC_PAPER_PATTERNS = (
+    "先给数据画像或题面对象图，再进入统一模型",
+    "共享符号、状态与判据只建立一次，后问只写增量",
+    "每问按直接答案—机制解释—局部验证—边界闭环",
+    "名义最优与稳健建议分栏呈现，避免相互替换",
+    "主图承担一个清晰论点，稳定性与机械复算进入附录",
+)
 
 
 def _atomic_text(path: Path, value: str) -> None:
@@ -437,7 +444,12 @@ def write_paper_knowledge_application(
     if not patterns:
         lines.extend(
             [
-                "本次没有可供写作迁移的候选模式，论文仍只依据当前题面、数据和真实结果组织。",
+                "本次没有结构相似论文卡。以下通用结构模式仅用于组织论文，"
+                "不提供当前题事实、方法选择、数值结论或引用：",
+                "",
+                *[f"- {pattern}" for pattern in _GENERIC_PAPER_PATTERNS],
+                "",
+                "论文的模型、答案和证据仍只依据当前题面、数据和真实结果。",
                 "",
             ]
         )

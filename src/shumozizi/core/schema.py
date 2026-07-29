@@ -41,6 +41,7 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         ("knowledge_retrieval", "1.0"),
         ("cumcm_structure_map", "1.0"),
         ("cumcm_structure_map", "1.1"),
+        ("cumcm_structure_map", "1.2"),
         ("cumcm_layout_audit", "1.0"),
         ("cumcm_layout_audit", "1.1"),
         ("cumcm_layout_audit", "1.2"),

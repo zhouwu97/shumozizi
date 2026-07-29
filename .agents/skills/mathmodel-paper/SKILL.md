@@ -9,7 +9,7 @@ description: 从 Competition-First v3.2 的当前真实结果组织、编译和�
 
 ## 第零步：确认可以写论文
 
-逐问读取 `MODELING_UNITS.json` 由真实结果指标系统派生的答案资格：只有 `promoted` 或 `fallback_selected` 才能成为正式主答案，`redesign_required` 必须按 `rollback_target` 回到分析/实验。`answer_map.primary_result_id` 必须等于系统最终晋级或回退选中的结果。任一必答问题没有合格答案时，不得编译正式候选版，但可以按下述专用通道形成带披露的可审阅草稿。
+逐问读取 `MODELING_UNITS.json` 1.4 的三层结果。`objective_answer` 是题面原目标下的正式答案，`recommended_plan` 是附加风险偏好或稳健条件下的建议，`evidence_grade` 说明证书、搜索与稳定性边界；后两者不得替换前者。`answer_map.primary_result_id` 必须等于 `objective_answer.result_id`。任一必答问题没有有效 objective answer 时，不得编译正式候选版，但可以形成带披露的可审阅草稿。
 
 科学挑战中的发现必须绑定 `action_type`、`rollback_target`、`invalidates`、`required_action` 和关闭证据。未关闭的 `MODEL_REPAIR`、`OBJECTIVE_REDESIGN`、`ANSWER_REJECTION` 阻断论文；只有 `WRITING_FIX` 和已说明不可修复原因的 `DATA_LIMITATION` 可留在 paper 阶段。正式论文检查自然论证内容，不要求出现 `result_id`、实验收据、证明义务或“问题继承”等内部工作流术语。
 
@@ -21,25 +21,25 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 该专用入口生成 `paper/draft-1.pdf` 和独立草稿回执，允许正式答案资格或科学挑战尚未全部完成，但不允许虚构数字，且 PDF 必须明确“本稿不可作为最终提交”。没有证据支持的候选结论保持空数组，由状态页显示“暂无”。不要用正式 `compile_paper` 冒充首版草稿。
 
-该入口不是“能编译即可”的排版检查：编译前必须完成非占位的 `ARGUMENT_PLAN.md` 与 `STORYBOARD.md`，写清全篇中心判断和跨问题论证链；披露为已完成的核心问题必须已有判断、证据、竞争解释和适用边界。未完成问题可以保留，但必须在草稿状态页显式列出。
+该入口不是“能编译即可”的排版检查：编译前必须完成非占位的 `PAPER_BLUEPRINT.md`，写清全篇中心判断、跨问题论证链和逐问完整性卡；披露为已完成的核心问题必须已有判断、证据、竞争解释和适用边界。每个必答问题还须在 `FIGURE_PLAN` 2.3 中于首稿前决定展示图 required 或 waived。
 
-候选截止前必须先闭合所有正式答案资格与科学挑战，再执行严格 `compile_paper.py` 生成当前 `paper/final.pdf`，并冻结为 `paper/candidate.pdf`。候选 PDF 缺失、正式编译回执失效或与当前 `final.pdf` 不一致时，不得进入 `paper_review`；草稿 PDF 和草稿回执永远不能替代候选门禁。不要为了补充新框架或非阻断性实验而推迟第一版可审阅 PDF。
+候选截止前先闭合所有正式答案资格与科学挑战，再执行严格 `compile_paper.py` 生成当前 `paper/final.pdf`，并保存 candidate 版本进入 `paper_review`。candidate 是可返修版本，不是科学内容的不可逆冻结；只有用户显式 final lock 才停止新增科学内容。
 
 ---
 
-## 第一步：填写 ARGUMENT_PLAN.md
+## 第一步：填写 PAPER_BLUEPRINT.md
 
-在动笔前，先执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper`。分析检索最多保留 3 张结构相似卡、每卡 2 个安全模式；写作模板默认只展示分析阶段已采用的模式，分析阶段已拒绝项自动继承，不重复填写。确需重开时使用 `--force --reopen <pattern_id>`，并填写实质 reopen 理由。实际采用的模式最多来自 1--2 张卡，采用项必须说明应用位置、当前题证据、实际正文源码和一个可核对的兑现锚点。写作时把锚点对应的结构真正写入声明源码；草稿和候选稿就绪检查会打开源码复验。知识卡不是当前题证据，不得迁移原题参数、公式和代码、数值结论或奖项评价。
+在动笔前，可执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper` 获得结构建议。零匹配时使用内置通用结构模式；知识应用与兑现只作 advisory。可以检索实际采用方法的原始文献，但禁止同题答案、题解和现成结论；约 6–12 篇只作参考文献紧凑性建议。
 
-完成迁移判断后，再填写 `paper/ARGUMENT_PLAN.md`（见格式规范）。该文件在实验结束后填写，在论文写完前人工检视——不得在写作过程中自动生成再立即消费。
+作者只维护 `paper/PAPER_BLUEPRINT.md`、`paper/answer-map.json`、`figures/FIGURE_PLAN.json` 和 `paper/PAPER_REVIEW.md` 四个主要控制文件。旧 `ARGUMENT_PLAN.md`、`STORYBOARD.md` 与 `KNOWLEDGE_APPLICATION.md` 仅作兼容或后台建议。
 
 每个必答问题先填写逐问完整性卡：题面要求、与前问的继承、数学对象、关键推导、算法、主结果、机制解释、验证边界和直接答案。核心问题（`core_question=true`）在此基础上再填写完整论证单元；普通问题可以更短，但不能退化为只有 answer map 位置和一张结果表。
 
 ---
 
-## 第二步：写故事板
+## 第二步：在同一蓝图中规划主线
 
-写 `paper/STORYBOARD.md`，包含：
+在 `paper/PAPER_BLUEPRINT.md` 中继续填写：
 
 - **中心判断**：本文最终要主张什么？
 - **论证链**：从哪些题面事实出发 → 导出什么数学关系 → 哪一步需要数值求解 → 什么证据支持结论 → 哪种替代解释被排除 → 结论在哪些边界内成立
@@ -83,7 +83,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 → 直接答案
 ```
 
-核心问题必须把 `ARGUMENT_PLAN.md` 里的论证单元真正写进正文。
+核心问题必须把 `PAPER_BLUEPRINT.md` 里的论证单元真正写进正文。
 
 ## 展开深度与篇幅
 
@@ -143,7 +143,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 图与论证绑定
 
-每张正文图必须在 STORYBOARD.md 中对应一步论证，而不仅仅是 `role=insight` 标签。
+每张正文图必须在 `PAPER_BLUEPRINT.md` 中对应一步论证，而不仅仅是 `role=insight` 标签。
 
 | 图应回答 | 不是 |
 |---------|------|
@@ -154,7 +154,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
-每个核心问题必须在 `FIGURE_PLAN.json` 2.3 中分别声明 `evidence_need` 和 `presentation_need`；前者控制科学证据硬门，后者只提示评委阅读缺口。正文图用 `presentation_role` 区分数据画像、逐问主图和辅助图；纯解析题可以说明理由后豁免主图。`evidence_need=required` 至少有一张非 `stability` 且 `required=true` 的正文图；纯呈现图保持 `required=false`，由 CUMCM 呈现合同 advisory 检查，避免为了过硬门制造低价值图。计划通过 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 受控写入。图必须有冻结来源、实际绘图脚本、候选晋级回执和 current 输出，并在指定 LaTeX 小节插图、图注、label、正文交叉引用和机制解释。图只生成而未被论文消费不算完成；`stability` 图只能在附录消费。
+每个必答问题必须在首稿前于 `FIGURE_PLAN.json` 2.3 中分别声明 `evidence_need` 和 `presentation_need`；几何关系、并集/交集、名义—稳健对比和共享模型还要声明 `whole_paper` 决策。required 必须规划对应图，waived 必须说明理由。图在 `figures/work/` 迭代，经 QA 晋级 current，旧 current 自动归档；`stability` 图只能在附录消费。
 
 ---
 
@@ -174,7 +174,7 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 
 ## 修订范围
 
-- `render`：字号、箭头、留白、分页和不改论证的图形样式，不重做科学挑战或论证内容；正式重编后仍须让盲评、版式审计和图像/PDF 检查绑定新修订。
+- `render`：字号、箭头、留白、分页和不改论证的图形样式，只递增 `render_revision`，不使盲评失效；重做版式和机械 QA。
 - `argument`：正文结构、推导表达、图表论证位置或直接答案表述，重做论证、编译和 PDF 盲评。
 - `science`：代码、数据、目标、主要结果或行动建议，回到实验和科学挑战，再重做论证与渲染。
 
@@ -184,12 +184,30 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 
 ## CUMCM 结构适配
 
-仅对 Competition-First v3.2 的 CUMCM 正式候选稿，在编译前写 1.1 版
-`paper/CUMCM_STRUCTURE_MAP.json`。`profile=classic` 保留固定国赛外层栏目作为稳定兜底；
-`profile=semantic` 是实验画像，允许拆出数据处理和逐问章节，但当前仍必须覆盖问题重述、问题分析、假设、
-符号或数据定义、数据处理、逐问求解、近端验证、综合评价、参考文献和附录，并保留
-`ARGUMENT_PLAN` 的论证顺序及全部必答问题。结构自由不得改变模型、数字、结论或证据等级。
-在 held-out A/B 证明收益前，不把 semantic 设为默认，也不在本轮放宽 local validation、appendix 或前置角色约束。
+仅对 Competition-First v3.2 的 CUMCM 正式候选稿，在编译前写 1.2 版
+`paper/CUMCM_STRUCTURE_MAP.json`；1.1 只用于旧运行兼容。`profile=classic` 保留固定国赛栏目作为稳定兜底；
+`profile=semantic` 定义为“经典国赛外壳 + 语义内核”，不是自由结构。必答问题不少于三问、
+至少两问共享同一数学对象，且问题链新增资源、共享约束或聚合层时，省略 `profile`
+会自动选择 `semantic`；证据不足时自动使用 `classic`，作者仍可显式选择兜底画像。
+
+`semantic` 必须保持以下外层顺序：
+
+```text
+摘要
+1 问题重述与分析
+2 模型假设与符号
+3 统一数学对象、共享模型与判据
+4...n 按共享对象和新增困难组织的问题链求解
+n+1 模型检验、评价与结论
+参考文献
+附录
+```
+
+同一一级章可以承担相邻语义角色，所以问题重述与分析、模型假设与符号、检验评价与结论
+可以分别合并；Q1--Q3 等共享模型的问题也可合并讲述。必须保留一个标题同时包含“假设”
+和“符号”的明确入口。支持主结论的近端验证与对应求解同章，综合检验只汇总跨问题内容；
+数据处理仅在数据结构影响统计单位、聚合或模型选择时单列。全部必答问题仍须覆盖并保持
+首次出现顺序，`PAPER_BLUEPRINT` 的论证顺序不得打乱。结构适配不得改变模型、数字、结论或证据等级。
 
 1.1 同时填写轻量 `presentation_contract`：前五页阅读路线、跨问题主线、直接答案总览、
 数据画像和逐问 hero figure。每项必须给源码锚点或具体豁免理由；初期使用 `mode=advisory`，
@@ -203,8 +221,9 @@ PDF 内只保留核心算法伪代码、一段真正关键的数学判断代码�
 24–30 页软规划：少于 18 页检查论证缺失，18–23 页检查过度压缩，超过 30 页核对
 官方上限和重复内容；页数本身不构成质量证据。
 
-每次正式编译成功会递增 `paper_render_revision`。只有独立 PDF 盲评与版式审计都绑定同一
-修订号时，当前稿才显示为已审；重新编译后自动回到 `UNREVIEWED_DRAFT`，不得沿用旧审查。
+每次正式编译递增 `render_revision`；正文论证变化时才递增 `argument_revision`。独立 PDF
+盲评绑定 argument，版式审计绑定 render。纯渲染重编沿用仍有效的论证盲评，但必须重做当前
+render 的版式与机械检查。
 
 ---
 

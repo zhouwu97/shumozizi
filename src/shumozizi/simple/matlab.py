@@ -65,14 +65,14 @@ def _validate_image_outputs(output_files: list[str]) -> list[str]:
     ]
     grouped: dict[str, set[str]] = {}
     for item in image_files:
-        if not item.startswith("figures/candidates/"):
+        if not item.startswith("figures/work/"):
             raise ContractError(
-                "MATLAB 图片无论由何种角色生成，都必须先输出到 figures/candidates/"
+                "MATLAB 图片无论由何种角色生成，都必须先输出到 figures/work/"
             )
         path = Path(item)
         if len(path.parts) < 5:
             raise ContractError(
-                "MATLAB 图片必须位于 figures/candidates/<figure_id>/<version>/"
+                "MATLAB 图片必须位于 figures/work/<figure_id>/<version>/"
             )
         stem = path.with_suffix("").as_posix()
         grouped.setdefault(stem, set()).add(path.suffix.casefold())

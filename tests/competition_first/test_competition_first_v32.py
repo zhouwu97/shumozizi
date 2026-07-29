@@ -16,6 +16,7 @@ from shumozizi.simple import review as simple_review
 from shumozizi.simple.competition import write_answer_map
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import (
+    question_outcome_selections,
     require_v32_experiment_evidence,
     semantic_reconstruction_input_bindings,
     write_modeling_units,
@@ -126,6 +127,7 @@ def _register_result(
     metrics: dict[str, float | bool] = {
         "objective": objective,
         "feasible": True,
+        "hard_constraints_passed": True,
         "endpoint_action_shift": 0.5,
         "max_action_shift": 0.5,
         "guard_pass_rate": 0.9,
@@ -175,7 +177,9 @@ def _register_objective_probes(run_dir: Path) -> None:
     )
 
 
-def _semantic_reconstruction(run_dir: Path, suffix: str) -> dict[str, str]:
+def _semantic_reconstruction(
+    run_dir: Path, suffix: str, role: str | None = None
+) -> dict[str, str]:
     """构造带真实 create_thread 事件的独立题意重建回执夹具。"""
     report_file = f"review/SEMANTIC_RECONSTRUCTION_{suffix}.md"
     report = run_dir / report_file
@@ -194,17 +198,259 @@ def _semantic_reconstruction(run_dir: Path, suffix: str) -> dict[str, str]:
             "created_at": "2026-07-25T00:00:00Z",
         },
     )
+    bindings = semantic_reconstruction_input_bindings(run_dir, role=role)
     receipt = create_review_task_receipt(
         run_dir,
         task_id=f"semantic-{suffix}",
         task_type="semantic_reconstruction",
         model_id="fixture-model",
         prompt_sha256="a" * 64,
-        input_bindings=semantic_reconstruction_input_bindings(run_dir),
+        input_bindings=bindings,
         report_file=report_file,
         creation_event_file=event.relative_to(run_dir).as_posix(),
     )
-    return {"task_receipt": receipt.relative_to(run_dir).as_posix(), "report_file": report_file}
+    result = {
+        "task_receipt": receipt.relative_to(run_dir).as_posix(),
+        "report_file": report_file,
+    }
+    if role is not None:
+        result["role"] = role
+    return result
+
+
+def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
+    """构造评价或 exact-oracle 单元，证明非搜索题型不被路线门绑架。"""
+    unit: dict[str, object] = {
+        "unit_id": f"Q1-{unit_kind}",
+        "question_id": "Q1",
+        "core_question": True,
+        "unit_kind": unit_kind,
+        "question_delta": {
+            "inherits_from": None,
+            "added_entities": [],
+            "added_resources": [],
+            "shared_resources": [],
+            "changed_constraints": [],
+            "semantic_risk_signals": [],
+            "possible_objective_change": "本问直接按题面给定指标计算，不改变目标聚合。",
+            "must_recheck_aggregation": False,
+        },
+        "answer_contract": {
+            "required_output": "给出题面指标的精确计算值与可行结论。",
+            "decision_scope": "当前题面规定的全部对象和时间范围。",
+            "natural_baseline": "按定义直接计算的手工核对值。",
+            "fallback_rule": "只有独立复算冲突时返回模型检查。",
+            "primary_endpoint": {
+                "endpoint_id": "objective",
+                "name": "题面精确指标",
+                "definition": "对全部题面对象按给定口径计算的总指标。",
+                "formula": "J=sum_i value_i",
+                "aggregation": {
+                    "atomic_success": "单个对象的指标按题面定义计算。",
+                    "within_entity": "对象内部先完成全部组成项求和。",
+                    "across_resources": "资源维度按题面指定权重聚合。",
+                    "across_entities": "全部对象的指标再执行总体求和。",
+                    "temporal": "时间维度覆盖题面给定完整区间。",
+                    "quantifier_order": "先对每个对象计算，再对全部对象求和。",
+                },
+                "exact_metric_alignment": "与生产结果 objective 字段完全一致。",
+            },
+            "primary_criterion": "结果可行、endpoint 已确定且 exact 指标可复验。",
+            "endpoint_resolution": {
+                "status": "determined",
+                "basis": "题面直接给出评价定义，不存在合理的替代聚合。",
+            },
+        },
+        "objective": {"exact_metric": "objective", "direction": "minimize"},
+        "expected_outcome": "主方法给出可行且可由独立计算复验的直接答案。",
+        "validation": {
+            "oracle": {"required": False},
+            "sensitivity": {"required": False},
+            "robustness": {"required": False},
+        },
+    }
+    if unit_kind == "exact_oracle":
+        unit["oracle"] = {
+            "oracle_kind": "独立枚举积分算法",
+            "independence": "独立实现且不复用主计算的区间构造代码。",
+            "agreement": {
+                "metric": "objective",
+                "absolute_tolerance": 1e-6,
+                "relative_tolerance": 1e-6,
+                "interval_structure_must_match": True,
+                "structure_metric": "interval_count",
+            },
+        }
+    else:
+        unit["primary_method"] = {
+            "method_id": "direct-evaluation",
+            "mathematical_structure": "固定方案上的确定性评价计算。",
+        }
+        unit["natural_comparison"] = "与按定义直接计算的手工核对值比较。"
+        if unit_kind == "evaluation":
+            unit["fixed_inputs"] = ["题面给定方案", "题面给定参数"]
+            unit["endpoint_refinement"] = "连续端点细化直到指标变化低于预设容差。"
+        elif unit_kind == "data_modeling":
+            unit["data_contract"] = {
+                "observational_unit": "以题面定义的独立实体作为统计单位。",
+                "split_or_validation": "按实体分组完成训练验证隔离。",
+                "diagnostic_plan": "检查残差、异常值与关键假设偏离。",
+            }
+        elif unit_kind == "simulation":
+            unit["simulation_contract"] = {
+                "calibration": "使用题面基准情形校准仿真参数。",
+                "convergence": "逐级细化时间步长并检查输出收敛。",
+                "sensitivity": "按预登记范围扰动关键参数并记录结论边界。",
+            }
+    return {
+        "schema_version": "1.4",
+        "run_id": run_dir.name,
+        "semantic_reconstructions": [
+            _semantic_reconstruction(run_dir, "faithful", "faithful_reconstruction"),
+            _semantic_reconstruction(run_dir, "adversary", "semantic_adversary"),
+        ],
+        "research_story": {
+            "central_tension": "在保持题面评价口径的前提下给出可复验直接答案。",
+            "central_mathematical_object": "统一评价指标及其跨对象聚合算子。",
+            "question_progression": [
+                {
+                    "question_id": "Q1",
+                    "role": "建立固定方案的统一评价口径。",
+                    "upgrade": "用独立实现检查数值和区间结构。",
+                    "inherits_from": [],
+                    "inherited_object": "本问首次建立统一评价指标。",
+                    "new_difficulty": "需要区分数值一致与结构一致。",
+                    "new_mechanism": "独立计算直接核对题面指标。",
+                    "why_previous_insufficient": "当前是首问，没有可继承计算。",
+                    "answer_increment": "给出可定位的题面直接答案。",
+                }
+            ],
+        },
+        "units": [unit],
+    }
+
+
+def _v14_optimization_plan(run_dir: Path) -> dict[str, object]:
+    """构造只含一条结构 challenger 的 v1.4 优化合同。"""
+    plan = _v14_non_search_plan(run_dir, "evaluation")
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["unit_kind"] = "optimization"
+    unit.pop("primary_method")
+    unit["objective"] = {
+        "exact_metric": "objective",
+        "direction": "minimize",
+        "significant_improvement_ratio": 0.1,
+    }
+    unit["budget"] = {"kind": "wall_seconds", "tolerance_ratio": 0.1}
+    unit["baseline"] = {
+        "route_id": "R0",
+        "mathematical_structure": "题面规则构造",
+        "natural_rationale": "不使用复杂搜索即可得到的自然可行参照。",
+        "composition": {
+            "mode": "joint",
+            "joint_rationale": "直接在统一 scorer 上评价完整联合方案。",
+        },
+    }
+    unit["competitive_routes"] = [
+        {
+            "route_id": "R1",
+            "mathematical_structure": "约束规划与精确剪枝",
+            "structure_exploited": "利用约束传播缩小联合可行域。",
+            "expected_upside": "预计相对自然基线改善至少百分之十五。",
+            "expected_improvement_ratio": 0.15,
+            "composition": {
+                "mode": "joint",
+                "joint_rationale": "候选路线始终由统一联合 scorer 评价。",
+            },
+        }
+    ]
+    unit["first_batch_attack"] = {
+        "attack": "用独立小实例攻击可行性和路线排序。",
+        "decision": "发现冲突时返回分析修正目标或约束。",
+    }
+    unit["refinement"] = {
+        "strategy_families": ["约束结构深化"],
+        "stop_reason_whitelist": ["budget_exhausted", "verified_stagnation"],
+    }
+    unit["search_repetition"] = {
+        "planned_repeats": 1,
+        "instability_action": "若单次结果明显不稳定则增加独立随机种子并继续搜索。",
+    }
+    return plan
+
+
+def _attach_v14_optimization_actual(
+    plan: dict[str, object], *, search_health: dict[str, object] | None = None
+) -> None:
+    """给 v1.4 优化合同附上单 challenger 的真实结果映射。"""
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    actual: dict[str, object] = {
+        "expectation_status": "confirmed",
+        "summary": "结构 challenger 在统一 exact scorer 下优于自然基线。",
+        "comparison": {
+            "route_result_ids": {"R0": "baseline", "R1": "challenger"},
+            "winner_route_id": "R1",
+        },
+        "actual_endpoint_resolution": {
+            "status": "determined",
+            "selected_endpoint_id": "objective",
+            "problem_text_basis": "题面直接要求总指标最小。",
+            "evidence_result_ids": ["check"],
+            "winner_route_ids": {"objective": "R1"},
+        },
+        "qualification_evidence": {
+            "endpoint_checks": [
+                {
+                    "result_id": "check",
+                    "metric": "endpoint_action_shift",
+                    "operator": "<=",
+                    "threshold": 1.0,
+                }
+            ],
+            "guards": [
+                {
+                    "result_id": "check",
+                    "metric": "guard_pass_rate",
+                    "operator": ">=",
+                    "threshold": 0.8,
+                }
+            ],
+            "decision_stability": [
+                {
+                    "result_id": "check",
+                    "metric": "max_action_shift",
+                    "operator": "<=",
+                    "threshold": 1.0,
+                }
+            ],
+        },
+        "first_batch_attack": {
+            "result_ids": ["attack"],
+            "conclusion": "独立小实例未发现可行性或排序冲突。",
+        },
+        "refinement": {
+            "first_feasible_result_id": "first-feasible",
+            "final_result_id": "final",
+            "family_result_ids": {"约束结构深化": ["challenger", "final"]},
+            "stop_reason": "budget_exhausted",
+        },
+        "validation": {},
+        "insights": [
+            {
+                "insight_id": "Q1-constraint",
+                "kind": "active_constraint",
+                "observation": "最终方案由两类共享约束共同限制。",
+                "mechanism": "约束传播提前删除了不可能改善的分支。",
+                "boundary": "仅覆盖当前题面规模和预算。",
+                "evidence_result_ids": ["challenger", "final"],
+            }
+        ],
+    }
+    if search_health is not None:
+        actual["search_health"] = search_health
+    unit["actual"] = actual
 
 
 def _plan(run_dir: Path) -> dict[str, object]:
@@ -481,8 +727,8 @@ def test_v32_requires_two_fresh_reconstructions_then_real_comparison_evidence(tm
     require_objective_consequences(run_dir)
 
 
-def test_modeling_units_cannot_add_route_after_delivery_cutoff(tmp_path: Path) -> None:
-    """首版 PDF 截止后不得借更新建模单元继续扩张候选路线。"""
+def test_modeling_units_can_add_route_after_delivery_cutoff(tmp_path: Path) -> None:
+    """时间截止只调度优先级，不再替代科学判断冻结候选路线。"""
     run_dir = initialize_simple_run(
         tmp_path,
         "v32-late-route",
@@ -512,8 +758,9 @@ def test_modeling_units_cannot_add_route_after_delivery_cutoff(tmp_path: Path) -
         }
     )
 
-    with pytest.raises(ContractError, match="add_new_route"):
-        write_modeling_units(run_dir, plan)
+    assert write_modeling_units(run_dir, plan)["units"][0]["competitive_routes"][-1][
+        "route_id"
+    ] == "R3"
 
 
 def test_v32_rejects_first_feasible_as_final_result(tmp_path: Path) -> None:
@@ -569,8 +816,8 @@ def test_v32_requires_direct_answer_contract_before_experiment(tmp_path: Path) -
         write_modeling_units(run_dir, plan)
 
 
-def test_v32_failed_stability_cannot_promote_exact_winner(tmp_path: Path) -> None:
-    """exact 最优但决策不稳定时必须回退或重设计，不能直接成为主答案。"""
+def test_v32_failed_stability_warns_without_replacing_objective_answer(tmp_path: Path) -> None:
+    """扰动不稳定降低证据等级，但不能替换题面原目标答案。"""
     run_dir = initialize_simple_run(
         tmp_path,
         "v32-promotion-stability",
@@ -594,7 +841,175 @@ def test_v32_failed_stability_cannot_promote_exact_winner(tmp_path: Path) -> Non
     _actual(plan)
     write_modeling_units(run_dir, plan)
 
-    with pytest.raises(ContractError, match="validation_insufficient.*experiment"):
+    require_v32_experiment_evidence(run_dir)
+    outcome = question_outcome_selections(run_dir)["Q1"]
+    assert outcome["objective_answer"]["result_id"] == "final"
+    assert outcome["evidence_grade"]["perturbation_stability"] == "weak"
+    assert any("扰动敏感" in warning for warning in outcome["warnings"])
+
+
+@pytest.mark.parametrize("unit_kind", ["evaluation", "data_modeling", "simulation"])
+def test_v14_non_search_unit_needs_no_competitive_routes(
+    tmp_path: Path, unit_kind: str
+) -> None:
+    """评价、数据建模和仿真按主方法合同验收，不伪造优化路线赛马。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        f"v14-{unit_kind}",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    _register_result(run_dir, "primary", objective=4.0)
+    plan = _v14_non_search_plan(run_dir, unit_kind)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["actual"] = {
+        "expectation_status": "confirmed",
+        "summary": "主方法完成题面评价并得到可复验的可行结果。",
+        "primary_result_id": "primary",
+        "validation": {},
+        "insights": [
+            {
+                "insight_id": "Q1-mechanism",
+                "kind": "mechanism",
+                "observation": "全部组成项均按统一口径进入总指标。",
+                "mechanism": "先实体内后实体间聚合避免重复计数。",
+                "boundary": "结论仅覆盖当前题面给定数据范围。",
+                "evidence_result_ids": ["primary"],
+            }
+        ],
+    }
+    write_modeling_units(run_dir, plan)
+
+    require_v32_experiment_evidence(run_dir)
+    outcome = question_outcome_selections(run_dir)["Q1"]
+    assert outcome["objective_answer"]["result_id"] == "primary"
+    assert outcome["evidence_grade"]["search_confidence"] == "not_applicable"
+
+
+def test_v14_exact_oracle_checks_metric_and_interval_structure(tmp_path: Path) -> None:
+    """exact oracle 同时核对指标容差和区间结构，而非仅比较成功布尔值。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-exact-oracle",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    _register_result(
+        run_dir,
+        "primary",
+        objective=4.0,
+        extra_metrics={"interval_count": 3.0},
+    )
+    _register_result(
+        run_dir,
+        "oracle",
+        objective=4.0,
+        extra_metrics={"interval_count": 3.0},
+    )
+    plan = _v14_non_search_plan(run_dir, "exact_oracle")
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["actual"] = {
+        "expectation_status": "confirmed",
+        "summary": "独立 oracle 与主计算在数值和区间结构上完全一致。",
+        "primary_result_id": "primary",
+        "oracle_result_id": "oracle",
+        "validation": {},
+        "insights": [
+            {
+                "insight_id": "Q1-active",
+                "kind": "active_constraint",
+                "observation": "三个有效区间共同构成最终评价集合。",
+                "mechanism": "区间端点由同一组活跃约束决定。",
+                "boundary": "只覆盖当前参数与时间区间。",
+                "evidence_result_ids": ["primary", "oracle"],
+            }
+        ],
+    }
+    write_modeling_units(run_dir, plan)
+    require_v32_experiment_evidence(run_dir)
+
+    # 数值一致但区间数量不一致仍是正式冲突。
+    index = load_json(run_dir / "results/index.json")
+    oracle = next(item for item in index["results"] if item["result_id"] == "oracle")
+    oracle["metrics"]["interval_count"] = 4.0
+    atomic_json(run_dir / "results/index.json", index)
+    with pytest.raises(ContractError, match="区间结构冲突"):
+        require_v32_experiment_evidence(run_dir)
+
+    oracle["metrics"]["interval_count"] = 3.0
+    oracle["metrics"]["objective"] = 5.0
+    atomic_json(run_dir / "results/index.json", index)
+    with pytest.raises(ContractError, match="正式指标冲突"):
+        require_v32_experiment_evidence(run_dir)
+
+
+def test_v14_optimization_accepts_one_challenger_and_one_refinement_family(
+    tmp_path: Path,
+) -> None:
+    """核心优化默认只要求 baseline + 一条结构 challenger，第二条按需触发。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-one-challenger",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("challenger", 8.0),
+        ("attack", 8.0),
+        ("check", 8.0),
+        ("first-feasible", 9.0),
+        ("final", 7.5),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    plan = _v14_optimization_plan(run_dir)
+    _attach_v14_optimization_actual(plan)
+    write_modeling_units(run_dir, plan)
+
+    require_v32_experiment_evidence(run_dir)
+    assert question_outcome_selections(run_dir)["Q1"]["objective_answer"]["result_id"] == "final"
+
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["second_challenger_required"] = True
+    with pytest.raises(ContractError, match="第二条 challenger"):
+        write_modeling_units(run_dir, plan)
+
+
+@pytest.mark.parametrize(
+    ("health", "message"),
+    [
+        ({"seed_count": 1, "materially_unstable": True}, "一个随机种子"),
+        ({"challenger_still_improving": True}, "持续快速改善"),
+        ({"stop_reason_matches_log": False}, "搜索日志冲突"),
+    ],
+)
+def test_v14_search_health_keeps_only_real_insufficiency_as_hard_block(
+    tmp_path: Path, health: dict[str, object], message: str
+) -> None:
+    """只阻断真实未搜索、单种子不稳定、仍在改善或停止记录冲突。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-search-health-" + message[:4],
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("challenger", 8.0),
+        ("attack", 8.0),
+        ("check", 8.0),
+        ("first-feasible", 9.0),
+        ("final", 7.5),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    plan = _v14_optimization_plan(run_dir)
+    _attach_v14_optimization_actual(plan, search_health=health)
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match=message):
         require_v32_experiment_evidence(run_dir)
 
 
@@ -714,8 +1129,10 @@ def test_v32_endpoint_resolution_must_cover_all_planned_candidates(tmp_path: Pat
         require_v32_experiment_evidence(run_dir)
 
 
-def test_answer_map_must_follow_selected_fallback(tmp_path: Path) -> None:
-    """赢家未晋级而启用 fallback 后，论文不能继续把失败赢家列为主答案。"""
+def test_answer_map_keeps_objective_answer_and_records_robust_recommendation(
+    tmp_path: Path,
+) -> None:
+    """名义解不稳定时，题面答案不被稳健 fallback 替换。"""
     run_dir = initialize_simple_run(
         tmp_path,
         "v32-fallback-answer",
@@ -760,13 +1177,13 @@ def test_answer_map_must_follow_selected_fallback(tmp_path: Path) -> None:
     write_modeling_units(run_dir, plan)
     require_v32_experiment_evidence(run_dir)
 
-    with pytest.raises(ContractError, match="必须等于路线晋级/回退决定"):
+    with pytest.raises(ContractError, match="objective_answer"):
         write_answer_map(
             run_dir,
             {
                 "Q1": {
-                    "result_ids": ["global", "final"],
-                    "primary_result_id": "final",
+                    "result_ids": ["structural"],
+                    "primary_result_id": "structural",
                     "direct_answer_location": "paper/sections/q1.tex",
                 }
             },
@@ -776,13 +1193,17 @@ def test_answer_map_must_follow_selected_fallback(tmp_path: Path) -> None:
         run_dir,
         {
             "Q1": {
-                "result_ids": ["structural"],
-                "primary_result_id": "structural",
+                "result_ids": ["global", "final"],
+                "primary_result_id": "final",
                 "direct_answer_location": "paper/sections/q1.tex",
             }
         },
     )
-    assert answer_map["answers"]["Q1"]["primary_result_id"] == "structural"
+    answer = answer_map["answers"]["Q1"]
+    assert answer["primary_result_id"] == "final"
+    assert answer["objective_answer"]["result_id"] == "final"
+    assert answer["recommended_plan"]["result_id"] == "structural"
+    assert question_outcome_selections(run_dir)["Q1"]["objective_answer"]["result_id"] == "final"
 
 
 def test_v32_rejects_typst_even_when_a_template_engine_is_available(tmp_path: Path) -> None:
@@ -1151,7 +1572,7 @@ def test_v32_verify_reachable_without_web_audit(
         task_receipt_file=receipt.relative_to(run_dir).as_posix(),
     )
     blind_record = imported["paper_blind_review"]
-    assert blind_record["schema_version"] == "1.1"
+    assert blind_record["schema_version"] == "1.2"
     assert blind_record["cold_read"]["direct_answers_found_within_3_minutes"] == {
         "Q1": True
     }

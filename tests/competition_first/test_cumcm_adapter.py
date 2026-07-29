@@ -20,6 +20,7 @@ from shumozizi.paper.cumcm_adapter import (
     evaluate_presentation_contract,
     finalize_cumcm_layout_audit,
     probe_pdf_page_rhythm,
+    recommend_cumcm_structure_profile,
     require_cumcm_layout_audit,
     require_cumcm_paper_review_audit,
     write_cumcm_paper_review_audit,
@@ -261,6 +262,66 @@ def _write_map_11(run_dir: Path, *, mode: str = "advisory") -> Path:
     """写入测试用 1.1 classic 映射。"""
     template = _write_map_sources(run_dir)
     return write_cumcm_structure_map(run_dir, _map_11_payload(run_dir, template, mode=mode))
+
+
+def _semantic_sections(question_ids: list[str]) -> list[dict[str, object]]:
+    """构造“经典外壳 + 语义内核”的最小章节链。"""
+
+    def section(
+        section_id: str,
+        target: str,
+        roles: list[str],
+        *,
+        questions: list[str] | None = None,
+        forbidden: list[str] | None = None,
+    ) -> dict[str, object]:
+        """构造允许一章承担多个相邻语义角色的章节。"""
+        return {
+            "section_id": section_id,
+            "roles": roles,
+            "question_ids": questions or [],
+            "target": target,
+            "sources": questions or ["argument_plan"],
+            "purpose": f"明确 {target} 在论文论证中的作用。",
+            "required_claims": [],
+            "forbidden_content": forbidden or [],
+            "preserve_argument_order": True,
+            "compression": "deduplicate_only",
+            "scope": "local",
+        }
+
+    solutions = [
+        section(
+            f"solution-{index}",
+            f"{index + 3} 问题链求解：{question_id}",
+            ["question_solution", *(["local_validation"] if index == 0 else [])],
+            questions=[question_id],
+        )
+        for index, question_id in enumerate(question_ids)
+    ]
+    return [
+        section("abstract", "摘要", ["abstract"]),
+        section(
+            "problem",
+            "1 问题重述与分析",
+            ["problem_restatement", "problem_analysis"],
+            forbidden=["模型名称", "最终数值", "大段题面复制"],
+        ),
+        section(
+            "assumptions-symbols",
+            "2 模型假设与符号",
+            ["assumptions", "symbols_or_data_definition"],
+        ),
+        section("shared-model", "3 统一数学对象与判据", ["shared_model"]),
+        *solutions,
+        section(
+            "validation-conclusion",
+            f"{len(question_ids) + 4} 模型检验、评价与结论",
+            ["overall_evaluation", "conclusion"],
+        ),
+        section("references", "参考文献", ["references"]),
+        section("appendix", "附录", ["appendix"]),
+    ]
 
 
 def _cold_read(*, q2_answer_found: bool = True) -> dict[str, object]:
@@ -543,57 +604,20 @@ def test_non_cumcm_v32_does_not_require_adapter(tmp_path: Path) -> None:
 
 
 def test_semantic_structure_requires_order_and_question_coverage(tmp_path: Path) -> None:
-    """semantic 画像允许拆章，但角色顺序和逐问首次出现顺序必须确定。"""
+    """semantic 使用经典外壳，同时允许按共享主线组织问题链。"""
     run_dir = _run(tmp_path)
     template = _write_map_sources(run_dir)
     payload = _map_11_payload(run_dir, template)
+    payload["schema_version"] = "1.2"
     payload["profile"] = "semantic"
-
-    def section(
-        section_id: str,
-        role: str,
-        *,
-        question_ids: list[str] | None = None,
-        forbidden: list[str] | None = None,
-    ) -> dict[str, object]:
-        """构造一个显式语义章节。"""
-        sources = question_ids or ["argument_plan"]
-        return {
-            "section_id": section_id,
-            "role": role,
-            "question_ids": question_ids or [],
-            "target": section_id,
-            "sources": sources,
-            "purpose": f"明确 {section_id} 在论文论证中的作用。",
-            "required_claims": [],
-            "forbidden_content": forbidden or [],
-            "preserve_argument_order": True,
-            "compression": "deduplicate_only",
-            "scope": "local",
-        }
-
-    payload["sections"] = [
-        section(
-            "restatement",
-            "problem_restatement",
-            forbidden=["模型名称", "最终数值", "大段题面复制"],
-        ),
-        section("analysis", "problem_analysis"),
-        section("assumptions", "assumptions"),
-        section("symbols", "symbols_or_data_definition"),
-        section("data", "data_processing"),
-        section("q1", "question_solution", question_ids=["Q1"]),
-        section("q1-check", "local_validation", question_ids=["Q1"]),
-        section("q2", "question_solution", question_ids=["Q2"]),
-        section("evaluation", "overall_evaluation"),
-        section("references", "references"),
-        section("appendix", "appendix"),
-    ]
+    payload["sections"] = _semantic_sections(["Q1", "Q2"])
     assert write_cumcm_structure_map(run_dir, payload).is_file()
 
     missing_question = copy.deepcopy(payload)
     missing_question["sections"] = [
-        item for item in missing_question["sections"] if item["section_id"] != "q2"
+        item
+        for item in missing_question["sections"]
+        if item["section_id"] != "solution-1"
     ]
     with pytest.raises(ContractError, match="未覆盖必答问题"):
         write_cumcm_structure_map(run_dir, missing_question)
@@ -601,8 +625,68 @@ def test_semantic_structure_requires_order_and_question_coverage(tmp_path: Path)
     wrong_order = copy.deepcopy(payload)
     references = wrong_order["sections"].pop(-2)
     wrong_order["sections"].insert(4, references)
-    with pytest.raises(ContractError, match="顺序无效"):
+    with pytest.raises(ContractError, match="国赛外壳"):
         write_cumcm_structure_map(run_dir, wrong_order)
+
+    split_assumptions = copy.deepcopy(payload)
+    entry = split_assumptions["sections"][2]
+    entry["roles"] = ["assumptions"]
+    split_assumptions["sections"].insert(
+        3,
+        {
+            **copy.deepcopy(entry),
+            "section_id": "symbols",
+            "target": "2.1 符号说明",
+            "roles": ["symbols_or_data_definition"],
+        },
+    )
+    with pytest.raises(ContractError, match="模型假设与符号"):
+        write_cumcm_structure_map(run_dir, split_assumptions)
+
+
+def test_semantic_profile_is_auto_selected_from_question_chain(tmp_path: Path) -> None:
+    """三问共享对象且资源或聚合递进时，1.1 默认选择 semantic。"""
+    run_dir = _run(tmp_path, questions=["Q1", "Q2", "Q3"])
+    template = _write_map_sources(run_dir)
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {
+            "schema_version": "1.3",
+            "run_id": run_dir.name,
+            "research_story": {
+                "central_tension": "在共享约束下逐步扩大决策范围。",
+                "central_mathematical_object": "贯穿三问的统一状态、评价判据与可行域对象。",
+                "question_progression": [
+                    {"question_id": "Q1", "inherits_from": []},
+                    {"question_id": "Q2", "inherits_from": ["Q1"]},
+                    {"question_id": "Q3", "inherits_from": ["Q2"]},
+                ],
+            },
+            "units": [
+                {
+                    "question_id": "Q2",
+                    "question_delta": {
+                        "added_resources": ["新增一个共享决策资源"],
+                        "shared_resources": [],
+                        "changed_constraints": [],
+                        "must_recheck_aggregation": True,
+                    },
+                }
+            ],
+        },
+    )
+    recommendation = recommend_cumcm_structure_profile(run_dir)
+    assert recommendation["profile"] == "semantic"
+
+    payload = _map_11_payload(run_dir, template)
+    payload["schema_version"] = "1.2"
+    payload.pop("profile")
+    payload["sections"] = _semantic_sections(["Q1", "Q2", "Q3"])
+    payload["presentation_contract"]["question_hero_figures"]["Q3"] = copy.deepcopy(
+        payload["presentation_contract"]["question_hero_figures"]["Q2"]
+    )
+    path = write_cumcm_structure_map(run_dir, payload)
+    assert load_json(path)["profile"] == "semantic"
 
 
 def test_presentation_contract_distinguishes_advisory_and_required(tmp_path: Path) -> None:

@@ -139,7 +139,7 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         from shumozizi.simple.delivery import require_delivery_action_allowed
 
         findings = [
-            str(item.get("review_finding", ""))
+            item.get("revision_case", str(item.get("review_finding", "")))
             for item in payload.get("figures", [])
             if isinstance(item, dict) and item.get("figure_id") in added_ids
         ]
