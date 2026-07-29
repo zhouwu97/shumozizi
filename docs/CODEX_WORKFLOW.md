@@ -6,13 +6,13 @@
 analysis -> experiment -> paper -> paper_review -> verify -> complete
 ```
 
-进入 `experiment` 前，v3.2 要有包含两次仅题面的真实 fresh-thread 重建的 `analysis/MODELING_UNITS.json`；这是最终分析计划的独立性证据，而不是“流程合规即模型正确”的证明。专家库和网页讨论可在其前后用于提出或攻击假设，但不得替代它；发现冲突后回到分析、修订、重跑即可。仅当 `analysis/objective-ambiguities.json` 表明存在未解决的高影响歧义时，才要求目标语义审查。进入 `paper` 前必须有每个必答问题的 current production 答案、已回填的攻击/深化/条件验证证据、没有已知负面证据、无回退 LaTeX 模板和一次有效科学挑战。进入 `verify` 前必须有 PDF、有效 PDF 盲评或明确跳过原因、没有 P0/P1；跳过盲评只能继续机械 QA，状态为 `unreviewed`。进入 `complete` 前必须重新验证科学挑战、通过真实 PDF 盲评和机械 QA，且当前结果、图表和 PDF 都没有漂移。
+进入 `experiment` 前，v3.2 要有包含题面语义结论的 `analysis/MODELING_UNITS.json`：低风险题只需一次 `faithful_reconstruction`；任一问题要求重查聚合或 endpoint 尚待比较时，再增加 `semantic_adversary` 和最小反例。fresh-thread 回执、thread ID 和题面树哈希只记录独立性，不作为科学否决权。专家库和网页讨论可在其前后用于提出或攻击假设，但不得替代语义结论；发现冲突后回到分析、修订、重跑即可。仅当 `analysis/objective-ambiguities.json` 表明存在未解决的高影响歧义时，才要求目标语义审查。进入 `paper` 前必须有每个必答问题的 current production 答案、已回填的攻击/深化/条件验证证据、没有已知负面证据、无回退 LaTeX 模板和一次有效科学挑战。进入 `verify` 前必须有 PDF、有效 PDF 盲评或明确跳过原因、没有 P0/P1；跳过盲评只能继续机械 QA，状态为 `unreviewed`。进入 `complete` 前必须重新验证科学挑战、通过真实 PDF 盲评和机械 QA，且当前结果、图表、Excel 提交产物和 PDF 都没有漂移。
 
 旧 v3.0 状态按内存映射读取，更新时生成 `state/migrations.json`，不改写历史审核产物。
 
 ## 分析
 
-v3.2 前期完成两次 problem-only 语义重建，再写 `MODELING_UNITS` 1.4。逐问选择 `evaluation`、`optimization`、`exact_oracle`、`data_modeling`、`simulation` 或 `coordination`；固定评价类问题使用主方法与自然核对，exact oracle 同时核对数值容差和区间结构，核心优化/协同默认 baseline + 一条结构 challenger。正式结果分为题面 `objective_answer`、条件化 `recommended_plan` 和 `evidence_grade`，证书或稳定性不足不得改写题面答案。
+v3.2 前期先预扫描语义风险，再按风险完成一次 faithful 或 faithful + adversary 重建并写 `MODELING_UNITS` 1.4。逐问选择 `evaluation`、`optimization`、`exact_oracle`、`data_modeling`、`simulation` 或 `coordination`；固定评价类问题使用主方法与自然核对，exact oracle 同时核对数值容差和区间结构，核心优化/协同默认 baseline + 一条结构 challenger。正式结果分为题面 `objective_answer`、条件化 `recommended_plan` 和 `evidence_grade`：名义答案稳定时推荐层仍指向题面赢家，只有不稳定或题面答案不可用时才考虑已验证 fallback。旧 `oracle_only` 必须迁移到 1.4 并完成 agreement 才能进入正式候选稿；Excel 提交产物通过 `submission_export` 绑定 objective result 和核心单元格。
 
 专家库运行时只读取 `knowledge/award-experts/library.json`：21 张跨题结构卡与 15 个规则组合角色，覆盖 2012--2025 年官方展示的 A/B 论文。来源 URL、页码、论文 ID 和哈希只留在离线 `provenance.json`。路由按 A/B、当前阶段和受限 `topic_key` 选择少量结构建议；同题资料只能在 baseline 快照后进入 answer-filter，不能改变当前题模型、参数、结果或论文结构。网页版 GPT 也只能对用户提供的题面进行讨论或批评，禁止联网检索题目答案、题解、往届答案或相近题的现成结论，且不得复用这类内容。专家库和网页建议必须由当前 baseline、exact scorer、真实实验、独立复算或 fresh-thread 审核独立确认。审计的 `access_monitoring.enabled=false` 仅说明序列化输出检查的边界，不宣称操作系统级文件访问监控。
 

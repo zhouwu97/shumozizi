@@ -191,16 +191,53 @@ def _require_flagged_validation(value: object, label: str) -> bool:
     return required
 
 
+def _global_semantic_high_risk(value: object) -> bool:
+    """在完整合同验证前识别是否需要独立语义攻击。
+
+    这里只读取决定重建轮数的两个稳定信号；字段形状和内容仍由后续逐单元
+    验证负责，避免预扫描变成第二套协议。
+    """
+    if not isinstance(value, list):
+        return False
+    for raw in value:
+        if not isinstance(raw, dict):
+            continue
+        delta = raw.get("question_delta")
+        if isinstance(delta, dict) and delta.get("must_recheck_aggregation") is True:
+            return True
+        answer_contract = raw.get("answer_contract")
+        if not isinstance(answer_contract, dict):
+            continue
+        resolution = answer_contract.get("endpoint_resolution")
+        if isinstance(resolution, dict) and resolution.get("status") == "comparison_planned":
+            return True
+    return False
+
+
 def _semantic_reconstructions(
-    run_dir: Path, value: object, *, require_asymmetric_roles: bool
+    run_dir: Path,
+    value: object,
+    *,
+    schema_version: str,
+    semantic_high_risk: bool,
 ) -> None:
-    """验证两轮 problem-only 重建的独立性与非对称职责。"""
+    """按语义风险验证结论报告，并把线程元数据降为可选记录。"""
     reconstructions = value
-    if not isinstance(reconstructions, list) or len(reconstructions) < 2:
+    if schema_version == "1.4":
+        required_roles = {"faithful_reconstruction"}
+        if semantic_high_risk:
+            required_roles.add("semantic_adversary")
+        if not isinstance(reconstructions, list) or len(reconstructions) < len(required_roles):
+            raise ContractError(
+                "semantic_reconstructions 缺少语义结论：低风险题需要 faithful_reconstruction，"
+                "高风险题还需要 semantic_adversary"
+            )
+    elif not isinstance(reconstructions, list) or len(reconstructions) < 2:
         raise ContractError("semantic_reconstructions 至少需要两轮真实 fresh-thread 重建")
+    require_asymmetric_roles = schema_version == "1.3"
     if require_asymmetric_roles and len(reconstructions) != 2:
         raise ContractError(
-            "MODELING_UNITS 1.3/1.4 只使用两轮重建：一次忠实重建和一次语义攻击"
+            "MODELING_UNITS 1.3 只使用两轮重建：一次忠实重建和一次语义攻击"
         )
     thread_ids: set[str] = set()
     reports: set[str] = set()
@@ -208,37 +245,44 @@ def _semantic_reconstructions(
     for index, raw in enumerate(reconstructions):
         item = _require_mapping(raw, f"semantic_reconstructions[{index}]")
         role = item.get("role")
-        if require_asymmetric_roles:
+        if schema_version in {"1.3", "1.4"}:
             if role not in _RECONSTRUCTION_ROLES:
                 raise ContractError(
                     f"semantic_reconstructions[{index}].role 必须为 "
                     "faithful_reconstruction 或 semantic_adversary"
                 )
             roles.add(str(role))
-        bindings = semantic_reconstruction_input_bindings(
-            run_dir, role=str(role) if role in _RECONSTRUCTION_ROLES else None
-        )
-        receipt_file = _require_text(item.get("task_receipt"), f"semantic_reconstructions[{index}].task_receipt")
         report_file = _require_text(item.get("report_file"), f"semantic_reconstructions[{index}].report_file")
-        receipt = validate_review_task_receipt(
-            run_dir,
-            receipt_file,
-            expected_type="semantic_reconstruction",
-            expected_report=report_file,
-            expected_input_bindings=bindings,
-            require_fresh_thread=True,
-        )
         report = run_dir / report_file
         if not report.is_file() or not report.read_text(encoding="utf-8").strip():
             raise ContractError(f"semantic_reconstructions[{index}] 的报告为空")
-        if receipt["thread_id"] in thread_ids:
-            raise ContractError("两轮题意重建必须来自不同 fresh thread")
-        if report_file in reports:
-            raise ContractError("两轮题意重建必须各自绑定独立报告")
-        thread_ids.add(receipt["thread_id"])
+        if schema_version != "1.4":
+            bindings = semantic_reconstruction_input_bindings(
+                run_dir, role=str(role) if role in _RECONSTRUCTION_ROLES else None
+            )
+            receipt_file = _require_text(
+                item.get("task_receipt"),
+                f"semantic_reconstructions[{index}].task_receipt",
+            )
+            receipt = validate_review_task_receipt(
+                run_dir,
+                receipt_file,
+                expected_type="semantic_reconstruction",
+                expected_report=report_file,
+                expected_input_bindings=bindings,
+                require_fresh_thread=True,
+            )
+            if receipt["thread_id"] in thread_ids:
+                raise ContractError("两轮题意重建必须来自不同 fresh thread")
+            if report_file in reports:
+                raise ContractError("两轮题意重建必须各自绑定独立报告")
+            thread_ids.add(receipt["thread_id"])
         reports.add(report_file)
     if require_asymmetric_roles and roles != _RECONSTRUCTION_ROLES:
         raise ContractError("两轮题意重建必须分别承担忠实重建与语义攻击职责")
+    if schema_version == "1.4" and not required_roles.issubset(roles):
+        missing = "、".join(sorted(required_roles - roles))
+        raise ContractError(f"semantic_reconstructions 缺少必需语义角色: {missing}")
 
 
 def _text_list_allow_empty(value: object, label: str) -> list[str]:
@@ -1165,7 +1209,13 @@ def derive_question_outcome(
         }
         fallback_passed = fallback_guards["passed"] and fallback_stability["passed"]
     recommended_plan: dict[str, Any] | None = None
-    if fallback_passed and plan.get("fallback_route"):
+    if objective_answer_available and stability["passed"]:
+        recommended_plan = {
+            "route_id": winner,
+            "result_id": final_result_id,
+            "condition": "题面条件及当前执行精度下采用。",
+        }
+    elif fallback_passed and plan.get("fallback_route"):
         fallback_route = plan["fallback_route"]
         recommended_plan = {
             "route_id": fallback_route,
@@ -2068,19 +2118,20 @@ def validate_modeling_units(
     question_ids = set(state["required_questions"])
     if not question_ids:
         raise ContractError("v3.2 运行必须先声明 required_questions")
+    raw_units = payload.get("units")
+    if not isinstance(raw_units, list) or not raw_units:
+        raise ContractError("MODELING_UNITS 至少需要一个建模单元")
     _semantic_reconstructions(
         run_dir,
         payload.get("semantic_reconstructions"),
-        require_asymmetric_roles=schema_version in {"1.3", "1.4"},
+        schema_version=str(schema_version),
+        semantic_high_risk=_global_semantic_high_risk(raw_units),
     )
     _validate_research_story(
         payload.get("research_story"),
         question_ids,
         require_progression_contract=schema_version in {"1.2", "1.3", "1.4"},
     )
-    raw_units = payload.get("units")
-    if not isinstance(raw_units, list) or not raw_units:
-        raise ContractError("MODELING_UNITS 至少需要一个建模单元")
     plans: list[dict[str, Any]] = []
     seen_units: set[str] = set()
     covered_questions: set[str] = set()
@@ -2382,28 +2433,43 @@ def question_outcome_selections(run_dir: Path) -> dict[str, dict[str, Any]]:
                     refinement.get("final_result_id"),
                     f"{plan['unit_id']}.actual.refinement.final_result_id",
                 )
-                _production_result(
+                legacy_result = _production_result(
                     results,
                     result_id=result_id,
                     question_id=plan["question_id"],
                     label=f"{plan['unit_id']}.final_answer",
                 )
+                metrics = legacy_result.get("metrics", {})
+                try:
+                    _finite_metric(
+                        legacy_result,
+                        plan["exact_metric"],
+                        f"{plan['unit_id']}.final_answer",
+                    )
+                    exact_metric_available = True
+                except ContractError:
+                    exact_metric_available = False
                 selections[plan["question_id"]] = {
                     "objective_answer": {
                         "route_id": "oracle_only",
                         "result_id": result_id,
-                        "claim_level": "verified",
+                        "claim_level": "legacy_unverified",
                     },
                     "recommended_plan": None,
                     "evidence_grade": {
-                        "feasible": True,
-                        "endpoint_consistent": True,
-                        "exact_metric_available": True,
-                        "hard_constraints_passed": True,
+                        "feasible": metrics.get("feasible") is True,
+                        "endpoint_consistent": False,
+                        "exact_metric_available": exact_metric_available,
+                        "hard_constraints_passed": (
+                            metrics.get("hard_constraints_passed") is True
+                        ),
                         "search_confidence": "not_applicable",
                         "perturbation_stability": "not_assessed",
+                        "verification_status": "legacy_unverified",
                     },
-                    "warnings": [],
+                    "warnings": [
+                        "旧 oracle-only 缺少 1.4 agreement，必须迁移后才能作为正式答案。"
+                    ],
                 }
                 continue
             comparison = _require_mapping(

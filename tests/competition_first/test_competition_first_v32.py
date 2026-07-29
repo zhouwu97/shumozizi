@@ -7,13 +7,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from openpyxl import Workbook
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.knowledge.retrieval import write_analysis_knowledge_retrieval
 from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.templates import select_paper_template
 from shumozizi.simple import review as simple_review
-from shumozizi.simple.competition import write_answer_map
+from shumozizi.simple.competition import verify_submission_exports, write_answer_map
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import (
     question_outcome_selections,
@@ -307,7 +308,6 @@ def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
         "run_id": run_dir.name,
         "semantic_reconstructions": [
             _semantic_reconstruction(run_dir, "faithful", "faithful_reconstruction"),
-            _semantic_reconstruction(run_dir, "adversary", "semantic_adversary"),
         ],
         "research_story": {
             "central_tension": "在保持题面评价口径的前提下给出可复验直接答案。",
@@ -887,6 +887,53 @@ def test_v14_non_search_unit_needs_no_competitive_routes(
     assert outcome["evidence_grade"]["search_confidence"] == "not_applicable"
 
 
+def test_v14_low_semantic_risk_needs_only_local_faithful_reconstruction(
+    tmp_path: Path,
+) -> None:
+    """低风险题只需一份忠实语义结论，线程回执仅作独立性记录。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-low-semantic-risk",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_non_search_plan(run_dir, "evaluation")
+    faithful = plan["semantic_reconstructions"][0]
+    assert isinstance(faithful, dict)
+    faithful.pop("task_receipt")
+    plan["semantic_reconstructions"] = [faithful]
+
+    write_modeling_units(run_dir, plan)
+
+
+def test_v14_high_semantic_risk_requires_adversary_and_counterexample(
+    tmp_path: Path,
+) -> None:
+    """高风险题必须增加语义攻击，并用最小反例闭合聚合歧义。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-high-semantic-risk",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_non_search_plan(run_dir, "evaluation")
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    delta = unit["question_delta"]
+    assert isinstance(delta, dict)
+    delta["must_recheck_aggregation"] = True
+    plan["semantic_reconstructions"] = [plan["semantic_reconstructions"][0]]
+
+    with pytest.raises(ContractError, match="semantic_adversary"):
+        write_modeling_units(run_dir, plan)
+
+    plan["semantic_reconstructions"].append(
+        _semantic_reconstruction(run_dir, "risk-adversary", "semantic_adversary")
+    )
+    with pytest.raises(ContractError, match="semantic_counterexample"):
+        write_modeling_units(run_dir, plan)
+
+
 def test_v14_exact_oracle_checks_metric_and_interval_structure(tmp_path: Path) -> None:
     """exact oracle 同时核对指标容差和区间结构，而非仅比较成功布尔值。"""
     run_dir = initialize_simple_run(
@@ -943,6 +990,45 @@ def test_v14_exact_oracle_checks_metric_and_interval_structure(tmp_path: Path) -
     atomic_json(run_dir / "results/index.json", index)
     with pytest.raises(ContractError, match="正式指标冲突"):
         require_v32_experiment_evidence(run_dir)
+
+
+def test_legacy_oracle_only_is_viewable_but_cannot_become_formal_answer(
+    tmp_path: Path,
+) -> None:
+    """旧 oracle-only 缺少 agreement 时只能读取，不能伪装 verified 进入论文。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "legacy-oracle-only",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    _register_result(run_dir, "final", objective=9.184696)
+    plan = _plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["mode"] = "oracle_only"
+    unit["oracle"] = {
+        "oracle_kind": "独立解析复算",
+        "independence": "不复用主求解器实现。",
+    }
+    _actual(plan)
+    atomic_json(run_dir / "analysis/MODELING_UNITS.json", plan)
+
+    outcome = question_outcome_selections(run_dir)["Q1"]
+
+    assert outcome["objective_answer"]["claim_level"] == "legacy_unverified"
+    assert outcome["evidence_grade"]["verification_status"] == "legacy_unverified"
+    with pytest.raises(ContractError, match="迁移.*1.4"):
+        write_answer_map(
+            run_dir,
+            {
+                "Q1": {
+                    "result_ids": ["final"],
+                    "primary_result_id": "final",
+                    "direct_answer_location": "paper/sections/q1.tex",
+                }
+            },
+        )
 
 
 def test_v14_optimization_accepts_one_challenger_and_one_refinement_family(
@@ -1151,7 +1237,14 @@ def test_answer_map_keeps_objective_answer_and_records_robust_recommendation(
         ("sensitivity", 7.2),
         ("robustness", 7.3),
     ):
-        _register_result(run_dir, result_id, objective=objective)
+        _register_result(
+            run_dir,
+            result_id,
+            objective=objective,
+            extra_metrics={"max_action_shift": 2.0}
+            if result_id == "sensitivity"
+            else None,
+        )
     _actual(plan)
     unit = plan["units"][0]
     assert isinstance(unit, dict)
@@ -1204,6 +1297,145 @@ def test_answer_map_keeps_objective_answer_and_records_robust_recommendation(
     assert answer["objective_answer"]["result_id"] == "final"
     assert answer["recommended_plan"]["result_id"] == "structural"
     assert question_outcome_selections(run_dir)["Q1"]["objective_answer"]["result_id"] == "final"
+
+
+def test_stable_objective_answer_is_not_replaced_by_fallback_recommendation(
+    tmp_path: Path,
+) -> None:
+    """名义答案稳定时，即使 fallback 通过也继续推荐题面赢家。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-stable-objective-recommendation",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    _actual(plan)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["actual"]["qualification_evidence"]["fallback"] = {
+        "guards": [
+            {
+                "result_id": "structural",
+                "metric": "guard_pass_rate",
+                "operator": ">=",
+                "threshold": 0.8,
+            }
+        ],
+        "decision_stability": [
+            {
+                "result_id": "structural",
+                "metric": "max_action_shift",
+                "operator": "<=",
+                "threshold": 1.0,
+            }
+        ],
+    }
+    write_modeling_units(run_dir, plan)
+
+    outcome = question_outcome_selections(run_dir)["Q1"]
+
+    assert outcome["objective_answer"]["result_id"] == "final"
+    assert outcome["recommended_plan"]["route_id"] == "R2"
+    assert outcome["recommended_plan"]["result_id"] == "final"
+
+
+def test_workbook_export_must_use_objective_answer_metrics(tmp_path: Path) -> None:
+    """Excel 即使存在 fallback 建议，也必须写入题面 objective answer 的核心数值。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-q4-workbook-export",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        extra_metrics: dict[str, float] = {}
+        if result_id == "final":
+            extra_metrics["duration"] = 9.184696
+        elif result_id == "structural":
+            extra_metrics["duration"] = 4.536088
+        if result_id == "sensitivity":
+            extra_metrics["max_action_shift"] = 2.0
+        _register_result(
+            run_dir,
+            result_id,
+            objective=objective,
+            extra_metrics=extra_metrics or None,
+        )
+    _actual(plan)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["actual"]["qualification_evidence"]["fallback"] = {
+        "guards": [
+            {
+                "result_id": "structural",
+                "metric": "guard_pass_rate",
+                "operator": ">=",
+                "threshold": 0.8,
+            }
+        ],
+        "decision_stability": [
+            {
+                "result_id": "structural",
+                "metric": "max_action_shift",
+                "operator": "<=",
+                "threshold": 1.0,
+            }
+        ],
+    }
+    write_modeling_units(run_dir, plan)
+    workbook_path = run_dir / "artifacts/result2.xlsx"
+    workbook_path.parent.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    workbook.active.title = "Sheet1"
+    workbook["Sheet1"]["H2"] = 4.536088
+    workbook.save(workbook_path)
+    answer_payload = {
+        "Q1": {
+            "result_ids": ["final", "structural"],
+            "primary_result_id": "final",
+            "direct_answer_location": "paper/sections/q1.tex",
+            "excel_output_location": "artifacts/result2.xlsx",
+            "submission_export": {
+                "path": "artifacts/result2.xlsx",
+                "source_result_id": "final",
+                "metric_cells": {"duration": "Sheet1!H2"},
+            },
+        }
+    }
+
+    with pytest.raises(ContractError, match="duration.*不一致"):
+        write_answer_map(run_dir, answer_payload)
+
+    workbook["Sheet1"]["H2"] = 9.184696
+    workbook.save(workbook_path)
+    answer_map = write_answer_map(run_dir, answer_payload)
+
+    assert answer_map["answers"]["Q1"]["submission_export"]["source_result_id"] == "final"
+    assert verify_submission_exports(run_dir)["success"] is True
 
 
 def test_v32_rejects_typst_even_when_a_template_engine_is_available(tmp_path: Path) -> None:

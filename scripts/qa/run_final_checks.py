@@ -35,6 +35,7 @@ from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.references import verify_paper_references
 from shumozizi.paper.sufficiency import run_paper_structure_signal_check
 from shumozizi.paper.templates import require_materialized_template
+from shumozizi.simple.competition import verify_submission_exports
 from shumozizi.simple.figures import verify_current_figure_files
 from shumozizi.simple.results import verify_current_result_files
 from shumozizi.simple.review import (
@@ -328,6 +329,14 @@ def run_final_checks(
     checks.append(_check("placeholders", placeholders, "论文源文件占位符"))
     references = check_result_references(root)
     checks.append(_check("result-references", references, "论文显式结果引用"))
+    submission_exports = verify_submission_exports(root)
+    checks.append(
+        _check(
+            "submission-exports",
+            submission_exports,
+            "Excel 提交产物绑定 objective answer，并复核核心指标单元格",
+        )
+    )
     numeric = check_numeric_consistency(root)
     checks.append(_check("numeric-consistency", numeric, "论文显式关键指标"))
     central_metric = check_central_metric_coherence(root)

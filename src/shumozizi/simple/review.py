@@ -1131,6 +1131,14 @@ def materialize_submission_package(run_dir: Path) -> dict[str, Any]:
     pdf = root / "paper" / "final.pdf"
     if not pdf.is_file() or pdf.stat().st_size == 0:
         raise ContractError("标准提交包需要非空 paper/final.pdf")
+    from shumozizi.simple.competition import verify_submission_exports
+
+    export_check = verify_submission_exports(root)
+    if not export_check["success"]:
+        raise ContractError(
+            "标准提交包的 Excel 来源或核心数值不一致: "
+            + "; ".join(export_check["errors"])
+        )
     # DOCX 是否必交由竞赛交付配置决定，而非全局硬编码。缺少 pandoc 的环境仍可提交
     # 纯 PDF；只有显式声明 docx_required 的竞赛才在缺少 Word 时阻断。
     delivery = delivery_requirements_for_competition(

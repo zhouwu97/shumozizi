@@ -5,7 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
+from shumozizi.core.io import (
+    ContractError,
+    atomic_json,
+    load_json,
+    resolve_inside,
+    sha256_file,
+)
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state, utc_now
 
@@ -380,6 +386,165 @@ def write_next_experiments(run_dir: Path, payload: dict[str, Any]) -> dict[str, 
     return document
 
 
+def verify_submission_exports(
+    run_dir: Path, answer_map: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """复核提交工作簿的来源结果与核心指标单元格。
+
+    Args:
+        run_dir: 当前运行目录。
+        answer_map: 可选的待写答案映射；省略时读取正式答案映射。
+
+    Returns:
+        含 ``success``、``errors`` 和已复核导出记录的机械检查结果。
+    """
+    if answer_map is None:
+        path = run_dir / ANSWER_MAP_PATH
+        if not path.is_file():
+            return {"success": True, "skipped": True, "errors": [], "exports": []}
+        answer_map = load_json(path)
+    mapping = answer_map.get("answers", answer_map)
+    if not isinstance(mapping, dict):
+        return {
+            "success": False,
+            "errors": ["answer_map 必须包含 answers 对象"],
+            "exports": [],
+        }
+    results = {
+        item["result_id"]: item for item in read_result_index(run_dir)["results"]
+    }
+    errors: list[str] = []
+    verified: list[dict[str, Any]] = []
+    for question_id, raw in mapping.items():
+        if not isinstance(raw, dict):
+            continue
+        export = raw.get("submission_export")
+        excel_location = raw.get("excel_output_location")
+        if excel_location is not None and not isinstance(export, dict):
+            errors.append(
+                f"{question_id}.excel_output_location 必须配套 submission_export，"
+                "声明 source_result_id 与 metric_cells"
+            )
+            continue
+        if export is None:
+            continue
+        if not isinstance(export, dict):
+            errors.append(f"{question_id}.submission_export 必须是对象")
+            continue
+        try:
+            relative_path = _require_text(
+                export.get("path"), f"{question_id}.submission_export.path"
+            )
+            source_result_id = _require_text(
+                export.get("source_result_id"),
+                f"{question_id}.submission_export.source_result_id",
+            )
+            metric_cells = export.get("metric_cells")
+            if not isinstance(metric_cells, dict) or not metric_cells:
+                raise ContractError(
+                    f"{question_id}.submission_export.metric_cells 必须是非空对象"
+                )
+            objective_answer = raw.get("objective_answer")
+            if not isinstance(objective_answer, dict):
+                raise ContractError(
+                    f"{question_id}.submission_export 缺少 objective_answer 绑定"
+                )
+            if source_result_id != objective_answer.get("result_id"):
+                raise ContractError(
+                    f"{question_id}.submission_export.source_result_id 必须等于 "
+                    f"objective_answer {objective_answer.get('result_id')}"
+                )
+            if excel_location is not None and relative_path != excel_location:
+                raise ContractError(
+                    f"{question_id}.submission_export.path 必须与 excel_output_location 一致"
+                )
+            result = results.get(source_result_id)
+            if (
+                result is None
+                or result.get("question_id") != question_id
+                or result.get("execution_mode") != "production"
+                or result.get("execution_valid") is not True
+            ):
+                raise ContractError(
+                    f"{question_id}.submission_export.source_result_id "
+                    "必须是本问有效 production 结果"
+                )
+            workbook_path = resolve_inside(run_dir, relative_path, must_exist=True)
+            if workbook_path.suffix.casefold() not in {".xlsx", ".xlsm"}:
+                raise ContractError(
+                    f"{question_id}.submission_export.path 必须是 xlsx 或 xlsm 工作簿"
+                )
+            try:
+                from openpyxl import load_workbook
+            except ImportError as exc:
+                raise ContractError(
+                    "复核 Excel 提交产物需要安装 openpyxl"
+                ) from exc
+            try:
+                workbook = load_workbook(
+                    workbook_path,
+                    read_only=True,
+                    data_only=True,
+                )
+            except Exception as exc:
+                # 第三方解析器会针对损坏 ZIP、旧格式和加密文件抛出不同异常；
+                # 在机械 QA 边界统一转换为可定位的合同失败，不能让终检直接崩溃。
+                raise ContractError(
+                    f"{question_id}.submission_export 无法读取工作簿 {relative_path}: {exc}"
+                ) from exc
+            try:
+                checked_cells: dict[str, dict[str, Any]] = {}
+                for metric, reference in metric_cells.items():
+                    metric_name = _require_text(
+                        metric, f"{question_id}.submission_export.metric_cells metric"
+                    )
+                    cell_reference = _require_text(
+                        reference,
+                        f"{question_id}.submission_export.metric_cells.{metric_name}",
+                    )
+                    sheet_name, separator, coordinate = cell_reference.rpartition("!")
+                    if not separator or not sheet_name or not coordinate:
+                        raise ContractError(
+                            f"{question_id}.{metric_name} 单元格必须使用 Sheet!A1 格式"
+                        )
+                    normalized_sheet = sheet_name.strip("'").replace("''", "'")
+                    if normalized_sheet not in workbook.sheetnames:
+                        raise ContractError(
+                            f"{question_id}.{metric_name} 引用不存在的工作表 {normalized_sheet}"
+                        )
+                    expected = _number(
+                        result.get("metrics", {}).get(metric_name),
+                        f"{question_id}.{source_result_id}.{metric_name}",
+                    )
+                    actual = _number(
+                        workbook[normalized_sheet][coordinate].value,
+                        f"{question_id}.{cell_reference}",
+                    )
+                    tolerance = max(1e-9, abs(expected) * 1e-9)
+                    if abs(actual - expected) > tolerance:
+                        raise ContractError(
+                            f"{question_id}.{metric_name} 工作簿值 {actual:g} 与 "
+                            f"objective result {source_result_id} 的 {expected:g} 不一致"
+                        )
+                    checked_cells[metric_name] = {
+                        "cell": cell_reference,
+                        "value": actual,
+                    }
+            finally:
+                workbook.close()
+            verified.append(
+                {
+                    "question_id": question_id,
+                    "path": relative_path,
+                    "source_result_id": source_result_id,
+                    "metric_cells": checked_cells,
+                }
+            )
+        except (ContractError, OSError, ValueError) as exc:
+            errors.append(str(exc))
+    return {"success": not errors, "errors": errors, "exports": verified}
+
+
 def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """保存逐问直接答案映射，不把它提升为贡献主张合同。
 
@@ -418,6 +583,11 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
                     f"{question_id} 尚无满足题面 endpoint、exact 指标、硬约束与"
                     "可行性的 objective_answer，必须返回分析/实验"
                 )
+            if objective_answer.get("claim_level") == "legacy_unverified":
+                raise ContractError(
+                    f"{question_id} 使用旧 oracle-only 且缺少真实 agreement；"
+                    "必须迁移 MODELING_UNITS 到 1.4 后才能生成正式答案映射"
+                )
             primary_result_id = _require_text(
                 item.get("primary_result_id"), f"{question_id}.primary_result_id"
             )
@@ -448,5 +618,8 @@ def write_answer_map(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         "answers": mapping,
         "generated_at": utc_now(),
     }
+    export_check = verify_submission_exports(run_dir, document)
+    if not export_check["success"]:
+        raise ContractError("; ".join(export_check["errors"]))
     atomic_json(run_dir / ANSWER_MAP_PATH, document)
     return document
