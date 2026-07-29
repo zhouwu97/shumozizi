@@ -1904,6 +1904,27 @@ def final_answer_selections(run_dir: Path) -> dict[str, dict[str, str]]:
             actual = _require_mapping(
                 unit.get("actual"), f"{plan['unit_id']}.actual"
             )
+            if plan["mode"] == "oracle_only":
+                refinement = _require_mapping(
+                    actual.get("refinement"),
+                    f"{plan['unit_id']}.actual.refinement",
+                )
+                result_id = _require_text(
+                    refinement.get("final_result_id"),
+                    f"{plan['unit_id']}.actual.refinement.final_result_id",
+                )
+                _production_result(
+                    results,
+                    result_id=result_id,
+                    question_id=plan["question_id"],
+                    label=f"{plan['unit_id']}.final_answer",
+                )
+                selections[plan["question_id"]] = {
+                    "status": "promoted",
+                    "route_id": "oracle_only",
+                    "result_id": result_id,
+                }
+                continue
             comparison = _require_mapping(
                 actual.get("comparison"), f"{plan['unit_id']}.actual.comparison"
             )
