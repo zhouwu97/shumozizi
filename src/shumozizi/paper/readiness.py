@@ -955,6 +955,22 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
             warnings.append(f"知识迁移建议不可用：{exc}")
         try:
+            from shumozizi.knowledge.usage import (
+                build_knowledge_usage_report,
+                build_paper_knowledge_context,
+                knowledge_usage_errors,
+                knowledge_usage_warnings,
+            )
+
+            usage = build_knowledge_usage_report(run_dir, stage="paper")
+            usage_errors = knowledge_usage_errors(usage)
+            errors.extend("知识使用合同：" + item for item in usage_errors)
+            warnings.extend("知识使用建议：" + item for item in knowledge_usage_warnings(usage))
+            if not usage_errors:
+                build_paper_knowledge_context(run_dir)
+        except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+            warnings.append(f"知识使用报告不可用：{exc}")
+        try:
             require_cumcm_structure_map(run_dir)
             realization = evaluate_presentation_contract(run_dir)
             if realization is not None:

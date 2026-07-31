@@ -181,6 +181,15 @@
               "expected_benefit": {"type": "string", "minLength": 8},
               "stop_condition": {"type": "string", "minLength": 8}
             }
+          },
+          "learned_pattern_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 3}
+          },
+          "learned_pattern_adaptation": {
+            "type": "string",
+            "minLength": 16
           }
         },
         "allOf": [

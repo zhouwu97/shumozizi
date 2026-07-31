@@ -5,6 +5,8 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 # 洞察驱动图表
 
+若考虑论文卡的 `visual_patterns`，先执行 `python scripts/knowledge/suggest_visual_patterns.py <run_dir>`。报告会同时标记尚未采用的 `candidate` 和已采用的 `adopted`，但只在当前 `visual_outputs.required_data` 覆盖模式的 `required_data_fields` 时给出推荐；推荐不等于采用，被拒绝的模式也不能为了模仿优秀论文强行作图。选用时只能在图中登记 `learned_pattern_ids` 和当前题 `learned_pattern_adaptation`；模式必须先在分析阶段以 `visual_design` 显式采用，并把 `target_ids`/`figure_ids` 绑定当前图，其原型、论证义务和 `argument_unit_ids` 均须与当前结构数据一致。学习模式只提供面板和阅读顺序建议，最终图仍必须由当前题真实数据、当前 renderer 和 `visual_manifest.json` 生成，不能复制来源图。
+
 每张图先回答三个问题：它回答什么、读者一眼看见什么、删除后论文失去什么。第三问答不出时不画。
 
 先读 [visual-pattern-cards.md](references/visual-pattern-cards.md)，从题目的数学对象选择视觉原型，不从图库名称反推图。二维或三维都不是质量标签：空间、场或三变量结构才使用 3D；精确比较阈值、区间和剖面时优先 2D。核心标准是一张图能否联合呈现数学对象、机制、约束边界、最终决策，以及不确定性或对照。

@@ -311,7 +311,47 @@ def validate_visual_manifest(
         "sha256": sha256_file(path),
         "output_sha256": current_sha256,
         "panels": panels,
+        "verified_element_types": sorted({key[0] for key in keys}),
         "verified_visible_elements": human_review["visible_elements"],
+    }
+
+
+def _required_learned_visual_elements(run_dir: Path, figure_id: str) -> set[str]:
+    """返回当前图从论文视觉模式明确承诺的可见元素类型。"""
+    plan_path = run_dir / "figures/FIGURE_PLAN.json"
+    retrieval_path = run_dir / "knowledge/analysis-retrieval.json"
+    if not plan_path.is_file() or not retrieval_path.is_file():
+        return set()
+    try:
+        plan = load_json(plan_path)
+        retrieval = load_json(retrieval_path)
+    except (OSError, ValueError):
+        return set()
+    figure = next(
+        (
+            item
+            for item in plan.get("figures", [])
+            if isinstance(item, dict) and item.get("figure_id") == figure_id
+        ),
+        None,
+    )
+    if figure is None:
+        return set()
+    selected = {
+        str(value)
+        for value in figure.get("learned_pattern_ids", [])
+        if isinstance(value, str)
+    }
+    if not selected:
+        return set()
+    return {
+        str(element)
+        for card in retrieval.get("matched_cards", [])
+        if isinstance(card, dict)
+        for pattern in card.get("visual_patterns", [])
+        if isinstance(pattern, dict) and pattern.get("pattern_id") in selected
+        for element in pattern.get("visible_elements", [])
+        if isinstance(element, str)
     }
 
 
@@ -827,6 +867,25 @@ def promote_figure_candidate(
         candidate_png=candidate_png,
         human_review=validated_review,
     )
+    required_learned_elements = _required_learned_visual_elements(root, figure_id)
+    manifest_types = set(manifest_binding["verified_element_types"])
+    reviewed_types = {
+        str(item["type"])
+        for item in validated_review.get("visible_elements", [])
+        if isinstance(item, dict) and isinstance(item.get("type"), str)
+    }
+    missing_manifest = sorted(required_learned_elements - manifest_types)
+    missing_review = sorted(required_learned_elements - reviewed_types)
+    if missing_manifest:
+        raise ContractError(
+            "学习视觉模式要求的元素未出现在 visual_manifest: "
+            + "、".join(missing_manifest)
+        )
+    if missing_review:
+        raise ContractError(
+            "人工复核未确认学习视觉模式要求的可见元素: "
+            + "、".join(missing_review)
+        )
     version = candidates[0].parent.name
     work_digest = sha256_bytes(
         json_bytes(

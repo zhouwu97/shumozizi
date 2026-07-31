@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from shumozizi.core.io import (
     ContractError,
     atomic_json,
@@ -169,6 +171,55 @@ def _failure_mode_lessons(body: str) -> dict[str, str]:
     return lessons
 
 
+def _visual_patterns(body: str, paper_id: str) -> list[dict[str, Any]]:
+    """从论文卡的“视觉模式”小节读取结构化作图语法。
+
+    视觉卡只保存面板、阅读顺序和适用边界，不保存来源论文的坐标、数据、
+    数值结论或代码；缺少该小节的旧卡继续按纯文字模式兼容。
+    """
+    section = _card_section(body, "视觉模式")
+    if not section:
+        return []
+    fenced = re.search(r"```(?:yaml|yml)\s*(.*?)```", section, re.IGNORECASE | re.DOTALL)
+    source = fenced.group(1) if fenced else section
+    try:
+        parsed = yaml.safe_load(source)
+    except yaml.YAMLError as exc:
+        raise ContractError(f"论文卡 {paper_id} 的视觉模式 YAML 无法解析: {exc}") from exc
+    if isinstance(parsed, dict):
+        parsed = parsed.get("visual_patterns", [parsed])
+    if not isinstance(parsed, list):
+        raise ContractError(f"论文卡 {paper_id} 的视觉模式必须是数组")
+    patterns: list[dict[str, Any]] = []
+    for index, item in enumerate(parsed, start=1):
+        if not isinstance(item, dict):
+            raise ContractError(f"论文卡 {paper_id} 的视觉模式第 {index} 项必须是对象")
+        pattern = dict(item)
+        pattern_id = pattern.get("pattern_id") or f"{paper_id}:V{index}"
+        if not isinstance(pattern_id, str) or len(pattern_id.strip()) < 3:
+            raise ContractError(f"论文卡 {paper_id} 的视觉模式缺少有效 pattern_id")
+        pattern["pattern_id"] = pattern_id.strip()
+        required = (
+            "visual_archetype",
+            "argument_roles",
+            "reading_order",
+            "visible_elements",
+            "required_data_fields",
+            "applicable_when",
+            "not_applicable_when",
+            "transferable_principle",
+        )
+        missing = [field for field in required if not pattern.get(field)]
+        if missing:
+            raise ContractError(
+                f"论文卡 {paper_id} 的视觉模式 {pattern['pattern_id']} 缺少: {', '.join(missing)}"
+            )
+        patterns.append(pattern)
+    if len(patterns) > 4:
+        raise ContractError(f"论文卡 {paper_id} 的视觉模式最多保留 4 项")
+    return patterns
+
+
 def _decision_lists(
     existing: dict[str, Any] | None,
     decisions: dict[str, Any] | None,
@@ -265,6 +316,9 @@ def write_analysis_knowledge_retrieval(
                         for pattern_index, pattern in enumerate(patterns, start=1)
                     ],
                 }
+                visual_patterns = _visual_patterns(card["body"], str(item["paper_id"]))
+                if visual_patterns:
+                    matched_card["visual_patterns"] = visual_patterns
                 failure_lessons = _failure_mode_lessons(card["body"])
                 if failure_lessons:
                     matched_card["failure_mode_lessons"] = failure_lessons
@@ -382,7 +436,14 @@ def require_analysis_knowledge_retrieval(run_dir: Path) -> dict[str, Any]:
         raise ContractError(
             "进入实验前必须执行仓内知识检索并完成 knowledge/analysis-retrieval.json"
         )
-    return _validate_analysis_retrieval_document(run_dir, load_json(path))
+    document = _validate_analysis_retrieval_document(run_dir, load_json(path))
+    from shumozizi.knowledge.usage import build_knowledge_usage_report, knowledge_usage_errors
+
+    usage = build_knowledge_usage_report(run_dir, stage="analysis")
+    errors = knowledge_usage_errors(usage)
+    if errors:
+        raise ContractError("采用知识尚未绑定当前建模或图表合同: " + "；".join(errors))
+    return document
 
 
 def _analysis_decisions(document: dict[str, Any]) -> dict[str, str]:
@@ -721,7 +782,8 @@ def _manuscript_source_closure(run_dir: Path) -> set[str]:
             target = next((item for item in candidates if item.is_file()), None)
             if target is None:
                 continue
-            resolved = resolve_inside(paper_dir, target, must_exist=True)
+            target_relative = relative_inside(paper_dir, target).as_posix()
+            resolved = resolve_inside(paper_dir, target_relative, must_exist=True)
             if resolved.suffix.casefold() in _MANUSCRIPT_SUFFIXES:
                 pending.append(resolved)
     return closure

@@ -508,6 +508,96 @@ def test_visual_manifest_hash_must_match_candidate_png(tmp_path: Path) -> None:
         )
 
 
+def test_learned_visual_elements_must_exist_in_manifest_and_human_review(
+    tmp_path: Path,
+) -> None:
+    """论文视觉模式承诺的元素必须在最终图和人工复核中同时出现。"""
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "figures": [
+                {
+                    "figure_id": "overall-workflow",
+                    "learned_pattern_ids": ["paper-1:V1"],
+                }
+            ]
+        },
+    )
+    atomic_json(
+        run_dir / "knowledge/analysis-retrieval.json",
+        {
+            "matched_cards": [
+                {
+                    "visual_patterns": [
+                        {
+                            "pattern_id": "paper-1:V1",
+                            "visible_elements": ["selected_point", "active_constraint"],
+                        }
+                    ]
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(ContractError, match="未出现在 visual_manifest"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/overall-workflow",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="model_understanding",
+            human_review=_human_review(),
+            visual_manifest=manifest,
+        )
+
+    png = run_dir / outputs[0]
+    manifest = _write_manifest(
+        run_dir,
+        png,
+        elements=[
+            {
+                "type": "selected_point",
+                "label": "Final plan",
+                "panel": "main",
+                "bbox": [0.4, 0.4, 0.6, 0.6],
+                "paper_width_visible": True,
+            },
+            {
+                "type": "active_constraint",
+                "label": "Capacity boundary",
+                "panel": "main",
+                "bbox": [0.1, 0.2, 0.8, 0.3],
+                "paper_width_visible": True,
+            },
+        ],
+    )
+    receipt = promote_figure_candidate(
+        run_dir,
+        figure_id="overall-workflow",
+        candidate_outputs=outputs,
+        target_stem="figures/current/overall-workflow",
+        rendering_mode="diagram",
+        layout_report=layout,
+        figure_role="model_understanding",
+        human_review=_human_review(
+            visible_elements=[
+                {"type": "selected_point", "label": "Final plan", "panel": "main"},
+                {
+                    "type": "active_constraint",
+                    "label": "Capacity boundary",
+                    "panel": "main",
+                },
+            ]
+        ),
+        visual_manifest=manifest,
+    )
+
+    assert "active_constraint" in receipt["visual_manifest"]["verified_element_types"]
+
+
 def test_reading_order_panel_must_exist_in_manifest(tmp_path: Path) -> None:
     """阅读顺序不能引用 renderer 未生成的面板。"""
     run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)

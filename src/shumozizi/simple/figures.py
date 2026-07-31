@@ -288,6 +288,100 @@ def _require_argument_obligation_contract(payload: dict[str, Any]) -> None:
             )
 
 
+def _require_learned_visual_pattern_contract(
+    run_dir: Path, payload: dict[str, Any]
+) -> None:
+    """验证视觉知识只作为当前题的受限建议进入图计划。"""
+    selected: list[tuple[str, dict[str, Any]]] = []
+    for figure in payload.get("figures", []):
+        if not isinstance(figure, dict):
+            continue
+        ids = figure.get("learned_pattern_ids", [])
+        if not ids:
+            continue
+        if not isinstance(ids, list):
+            raise ContractError(
+                f"{figure.get('figure_id', '<unknown>')}.learned_pattern_ids 必须为数组"
+            )
+        for pattern_id in ids:
+            selected.append((str(pattern_id), figure))
+    if not selected:
+        return
+    retrieval_path = run_dir / "knowledge/analysis-retrieval.json"
+    if not retrieval_path.is_file():
+        raise ContractError("图计划声明学习视觉模式，但缺少 knowledge/analysis-retrieval.json")
+    retrieval = load_json(retrieval_path)
+    visual_patterns = {
+        str(pattern["pattern_id"]): pattern
+        for card in retrieval.get("matched_cards", [])
+        if isinstance(card, dict)
+        for pattern in card.get("visual_patterns", [])
+        if isinstance(pattern, dict) and isinstance(pattern.get("pattern_id"), str)
+    }
+    adopted = {
+        str(visual_id): item
+        for item in retrieval.get("accepted_patterns", [])
+        if isinstance(item, dict) and item.get("application_layer") == "visual_design"
+        for visual_id in item.get("visual_pattern_ids", [item.get("pattern_id")])
+        if visual_id
+    }
+    from shumozizi.knowledge.usage import build_visual_pattern_suggestions
+
+    suggestion_report = build_visual_pattern_suggestions(run_dir)
+    eligible = {
+        (str(item.get("question_id")), str(item.get("learned_pattern_id"))): item
+        for item in suggestion_report.get("recommendations", [])
+        if isinstance(item, dict)
+    }
+    rejected = {
+        (str(item.get("question_id")), str(item.get("learned_pattern_id"))): item
+        for item in suggestion_report.get("rejections", [])
+        if isinstance(item, dict)
+    }
+    for pattern_id, figure in selected:
+        figure_id = figure.get("figure_id", "<unknown>")
+        question_id = str(figure.get("question_id", ""))
+        if pattern_id not in visual_patterns:
+            raise ContractError(f"图 {figure_id} 引用了不存在的学习视觉模式 {pattern_id}")
+        if pattern_id not in adopted:
+            raise ContractError(f"图 {figure_id} 使用的视觉模式 {pattern_id} 未在分析阶段采用")
+        adoption = adopted[pattern_id]
+        if figure_id not in set(map(str, adoption.get("figure_ids", []))):
+            raise ContractError(
+                f"图 {figure_id} 未出现在视觉知识模式 {adoption.get('pattern_id')} 的 figure_ids"
+            )
+        pattern = visual_patterns[pattern_id]
+        archetype = figure.get("visual_archetype")
+        if archetype and pattern.get("visual_archetype") not in {archetype, "custom"}:
+            raise ContractError(
+                f"图 {figure_id} 的 renderer 原型 {archetype} 与学习模式 {pattern_id} 不一致"
+            )
+        obligations = {str(value) for value in figure.get("obligation_types", [])}
+        roles = {str(value) for value in pattern.get("argument_roles", [])}
+        if obligations and roles and not obligations.intersection(roles):
+            raise ContractError(f"图 {figure_id} 的论证义务与学习模式 {pattern_id} 没有交集")
+        adaptation = figure.get("learned_pattern_adaptation")
+        if not isinstance(adaptation, str) or len(adaptation.strip()) < 16:
+            raise ContractError(f"图 {figure_id} 必须说明学习视觉模式的当前题改造方式")
+        suggestion_key = (question_id, pattern_id)
+        if suggestion_key not in eligible:
+            rejection = rejected.get(suggestion_key, {})
+            missing = rejection.get("missing_data_fields", [])
+            detail = (
+                "，缺少当前题结构数据: " + "、".join(map(str, missing))
+                if missing
+                else "，当前题视觉义务与该模式不匹配"
+            )
+            raise ContractError(f"图 {figure_id} 不能采用学习视觉模式 {pattern_id}{detail}")
+        suggestion = eligible[suggestion_key]
+        declared_arguments = set(map(str, figure.get("argument_unit_ids", [])))
+        supporting_arguments = set(map(str, suggestion.get("argument_unit_ids", [])))
+        if declared_arguments and not declared_arguments.intersection(supporting_arguments):
+            raise ContractError(
+                f"图 {figure_id} 的 argument_unit_ids 未绑定视觉模式所需的当前题结构输出"
+            )
+
+
 def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """受控保存 v3.2 正文图表计划与逐问视觉决策。
 
@@ -306,6 +400,7 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
         raise ContractError("FIGURE_PLAN 的 run_id 与当前运行不一致")
     _require_structure_aware_visual_grammar(payload)
     _require_argument_obligation_contract(payload)
+    _require_learned_visual_pattern_contract(run_dir, payload)
     path = run_dir / FIGURE_PLAN_PATH
     old_ids: set[str] = set()
     if path.is_file():
