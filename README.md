@@ -1,4 +1,4 @@
-# shumozizi：Competition-First v3.2 数学建模工作台
+# shumozizi：Competition-First v3.3 数学建模工作台
 
 shumozizi 帮助参赛者在有限时间内完成题意分析、路线竞争、真实实验、洞察提炼和论文交付。它的主目标是提高路线质量、实验价值和论文的题目特定性，而不是增加 Schema、审核任务或哈希绑定数量。
 
@@ -12,7 +12,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 `blocked` 只表示真实生产错误或已验证的负面证据，绝不因为缺少方法画像、主张清单、覆盖声明、图表合同或手工 argument map 而进入该状态。
 
-新运行默认使用 v3.2：`MODELING_UNITS` 1.4 将每问分为 `evaluation`、`optimization`、`exact_oracle`、`data_modeling`、`simulation` 或 `coordination`。固定评价、数据建模与仿真不再被迫比较多条优化路线；核心优化/协同默认使用自然 baseline 加一条结构 challenger，第二条只在仍有决策价值时增加。逐问输出始终分开 `objective_answer`、`recommended_plan` 与 `evidence_grade`，稳健建议不能替换题面原目标答案。
+新运行使用 v3.3 论文竞争力闭环，并兼容 v3.2 科学主链：`MODELING_UNITS` 1.4 将每问分为 `evaluation`、`optimization`、`exact_oracle`、`data_modeling`、`simulation` 或 `coordination`。固定评价、数据建模与仿真不再被迫比较多条优化路线；核心优化/协同默认使用自然 baseline 加一条结构 challenger，第二条只在仍有决策价值时增加。逐问输出始终分开 `objective_answer`、`recommended_plan` 与 `evidence_grade`，稳健建议不能替换题面原目标答案。
 
 旧 v3.0/v3.1 运行可继续打开。读取 v3.0 时会把旧阶段映射为 v3.1 内存状态；第一次显式更新才写入 `state/migrations.json`，原始阶段保存在 `legacy_phase`，历史审核产物仍可查看。
 
@@ -151,7 +151,7 @@ runs/<run-id>/
 
 论文只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 与 `PAPER_REVIEW.md` 四个主要控制文件。知识应用、argument map、版式审计等由系统派生或作为 advisory；零匹配时使用通用结构模式。可检索实际使用的方法文献，禁止同题答案和现成结论。
 
-CUMCM v3.2 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.3 分开科学证据需要与评委阅读需要，`CUMCM_STRUCTURE_MAP` 1.2 选择固定 `classic` 或“经典外壳 + 语义内核”的 `semantic`，并声明前五页阅读路线、答案总览、数据画像和逐问主图；1.1 仅兼容旧运行。三问以上且存在共享数学对象与资源、约束或聚合递进时，省略 `profile` 会自动选择 `semantic`；否则使用 `classic` 兜底。`semantic` 仍明确保留“模型假设与符号”、参考文献和附录，但允许围绕共享模型合并多问章节。数据画像可直接绑定运行内冻结数据与审计文件，不需要伪造实验结果。
+CUMCM v3.3 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.4 把图绑定到论证单元与义务，结构性 waived 需要独立复核，图表晋级按角色检查实际信息价值。`PAPER_BLUEPRINT` 自动派生逐问论证覆盖矩阵，写作前蓝图审核和首稿 PDF 冷读把最多五项高价值修改批量导入 `PAPER_REVIEW`。`CUMCM_STRUCTURE_MAP` 1.2 继续选择 `classic` 或“经典外壳 + 语义内核”的 `semantic`；旧 FIGURE_PLAN 2.1--2.3 保持兼容。
 
 写作采用三种可往返的逻辑动作：先做结构蓝图，再统一共享模型并逐问成文，最后以证据、边界和严格返修收束。`templates/competition-first/WRITING_ACTIONS.md` 提供提示；它吸收“蓝图、共享模型、逐问章节、证据局限、返修”的优点，但不把五轮写作机械固定为状态机。
 

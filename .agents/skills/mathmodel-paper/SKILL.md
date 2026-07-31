@@ -1,6 +1,6 @@
 ---
 name: mathmodel-paper
-description: 从 Competition-First v3.2 的当前真实结果组织、编译和修订数学建模论文。
+description: 从 Competition-First v3.3 的当前真实结果组织、编译和修订数学建模论文。
 ---
 
 # 论证驱动论文
@@ -21,7 +21,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 该专用入口生成 `paper/draft-1.pdf` 和独立草稿回执，允许正式答案资格或科学挑战尚未全部完成，但不允许虚构数字，且 PDF 必须明确“本稿不可作为最终提交”。没有证据支持的候选结论保持空数组，由状态页显示“暂无”。不要用正式 `compile_paper` 冒充首版草稿。
 
-该入口不是“能编译即可”的排版检查：编译前必须完成非占位的 `PAPER_BLUEPRINT.md`，写清全篇中心判断、跨问题论证链和逐问完整性卡；披露为已完成的核心问题必须已有判断、证据、竞争解释和适用边界。每个必答问题还须在 `FIGURE_PLAN` 2.3 中于首稿前决定展示图 required 或 waived。
+该入口不是“能编译即可”的排版检查：编译前必须完成非占位的 `PAPER_BLUEPRINT.md` 逐问论证覆盖；每个必答问题须在 `FIGURE_PLAN` 2.4 中于首稿前决定展示图 required 或经过复核的 waived，并完成写作前蓝图审核和第一版 PDF 冷读。
 
 候选截止前先闭合所有正式答案资格与科学挑战，再执行严格 `compile_paper.py` 生成当前 `paper/final.pdf`，并保存 candidate 版本进入 `paper_review`。candidate 是可返修版本，不是科学内容的不可逆冻结；只有用户显式 final lock 才停止新增科学内容。
 
@@ -149,7 +149,9 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 python scripts/paper/audit_report_style.py <run_dir>
 ```
 
-该命令只产生 advisory warning，不新增 Schema、阶段或编译硬门。逐项复核多问重复小节、`result_id`/fallback/scorer/晋级/回执等内部词、“本问采用/结果见表”等重复句式、摘要按 Q1—Q5 报账、列表或表格替代推导、标题碎片化、核心问题缺少推导或机制，以及主图未进入观察—机制—结论链。自动信号只能定位风险，最终由独立 PDF 盲评结合页码裁决。
+该命令输出可机读的 `errors` 与 `warnings`。E001--E005 是可由源文直接复核的高置信度错误：正式正文泄漏工作流内部术语、同一任务报账模板高频重复、摘要逐问流水账且缺统一主线、核心问题由列表/表格主导且同时缺推导与机制、正文图未形成有序的观察—机制—结论消费。候选稿必须修复这些错误；运行说明可以留在附录，但不能进入正式正文。
+
+标题碎片化、列表密度、重复问题模板，以及仅缺推导或仅缺机制等依赖上下文的信号继续保留为 `warnings`，由 `PAPER_REVIEW.md` 记录 `accepted`、`repaired`、`false_positive` 或 `deferred_with_reason`，并交给独立 PDF 盲评结合页码裁决。自动信号不能判断数学正确性，也不能替代独立阅读。
 
 ---
 
@@ -166,7 +168,7 @@ python scripts/paper/audit_report_style.py <run_dir>
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
-每个必答问题必须在首稿前于 `FIGURE_PLAN.json` 2.3 中分别声明 `evidence_need` 和 `presentation_need`；几何关系、并集/交集、名义—稳健对比和共享模型还要声明 `whole_paper` 决策。required 必须规划对应图，waived 必须说明理由。图在 `figures/work/` 迭代，经 QA 晋级 current，旧 current 自动归档；`stability` 图只能在附录消费。
+每个必答问题必须在首稿前于 `FIGURE_PLAN.json` 2.4 中分别声明 `evidence_need` 和 `presentation_need`，每张图绑定 `argument_unit_ids` 与 `obligation_types`。结构性 waived 必须有独立 `waiver_review`；required 图在 `figures/work/` 迭代，经机械 QA 与内容化人工复核后晋级 current，旧 current 自动归档；`stability` 图只能在附录消费。
 
 ---
 

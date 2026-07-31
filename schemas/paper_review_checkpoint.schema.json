@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_review_checkpoint.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "kind", "decision",
+    "reviewer_context_id", "source_report", "inputs", "paper_review_import",
+    "recorded_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_review_checkpoint"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"enum": ["paper_blueprint_review", "first_draft_cold_read"]},
+    "decision": {
+      "enum": ["continue_writing", "continue_revision", "ready_for_candidate"]
+    },
+    "reviewer_context_id": {"type": "string", "minLength": 1},
+    "source_report": {"$ref": "#/$defs/file_binding"},
+    "inputs": {"type": "object"},
+    "paper_review_import": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "confirmed", "paper_review_path", "paper_review_sha256_at_import",
+        "finding_ids", "finding_count"
+      ],
+      "properties": {
+        "confirmed": {"const": true},
+        "paper_review_path": {"const": "paper/PAPER_REVIEW.md"},
+        "paper_review_sha256_at_import": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "finding_ids": {
+          "type": "array", "maxItems": 5, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "finding_count": {"type": "integer", "minimum": 0, "maximum": 5}
+      }
+    },
+    "recorded_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "file_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "paper_blueprint_review"}}},
+      "then": {
+        "properties": {
+          "decision": {"const": "continue_writing"},
+          "inputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "paper_blueprint", "paper_blueprint_sha256", "answer_map",
+              "answer_map_sha256", "figure_plan", "figure_plan_sha256"
+            ],
+            "properties": {
+              "paper_blueprint": {"const": "paper/PAPER_BLUEPRINT.md"},
+              "paper_blueprint_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "answer_map": {"const": "paper/answer-map.json"},
+              "answer_map_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "figure_plan": {"const": "figures/FIGURE_PLAN.json"},
+              "figure_plan_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "first_draft_cold_read"}}},
+      "then": {
+        "properties": {
+          "decision": {"enum": ["continue_revision", "ready_for_candidate"]},
+          "inputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pdf", "pdf_sha256", "argument_revision"],
+            "properties": {
+              "pdf": {"type": "string", "pattern": "^paper/.+\\.pdf$"},
+              "pdf_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "argument_revision": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

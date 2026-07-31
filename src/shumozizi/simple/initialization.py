@@ -99,6 +99,66 @@ def _copy_problem(problem_path: Path, run_dir: Path) -> dict[str, str]:
     return artifacts
 
 
+def _paper_blueprint_template(question_ids: list[str]) -> str:
+    """生成与论证覆盖解析器同源的作者蓝图模板。"""
+    cards: list[str] = []
+    for question_id in question_ids:
+        cards.append(
+            f"## {question_id} 完整性卡\n\n"
+            "- **题面要求**：待填写。\n"
+            "- **继承**：待填写。\n"
+            "- **新增困难**：待填写。\n"
+            "- **数学对象**：待填写。\n"
+            "- **建模依据**：待填写。\n"
+            "- **关键推导**：待填写。\n"
+            "- **求解过程**：待填写。\n"
+            "- **主结果**：待填写。\n"
+            "- **结果解释**：待填写。\n"
+            "- **机制或规律**：待填写。\n"
+            "- **验证**：待填写。\n"
+            "- **适用边界**：待填写。\n"
+            "- **直接答案**：待填写。\n\n"
+            "核心问题另填：\n\n"
+            "### 要支持的判断\n\n待填写。\n\n"
+            "### 计算证据\n\n待填写。\n\n"
+            "### 竞争解释\n\n待填写。"
+        )
+    return (
+        "# PAPER_BLUEPRINT\n\n"
+        "## 全篇中心判断\n\n"
+        "待填写：一句话说明统一数学对象、主答案、关键规律与证据边界。\n\n"
+        "## 跨问题论证链\n\n"
+        "待填写：说明各问继承的对象以及新增实体、资源、约束、聚合层和章节作用。\n\n"
+        "## 摘要主线\n\n"
+        "按“核心困难—统一结构—关键方法—主要结果—机制—边界”规划，禁止逐问报账。\n\n"
+        + ("\n\n".join(cards) if cards else "## 各问完整性卡\n\n待题面审计后逐问填写。")
+        + "\n\n## 贡献（最多三项）\n\n"
+        "待填写：只写由当前模型、实验或洞察支持的贡献。\n\n"
+        "## 图表与篇幅\n\n"
+        "按论证义务规划模型理解、决定性证据、机制、边界和决策表达；"
+        "纯解析豁免必须说明替代表达。\n"
+    )
+
+
+def _paper_review_template(run_id: str) -> str:
+    """生成可由审核导入器原子维护的批量返修模板。"""
+    return (
+        "# PAPER_REVIEW\n\n"
+        "以评委视角一次性汇总结构、论证、文风、图表和版式问题。"
+        "每项 finding 必须有验收测试、停止条件和关闭证据；P0/P1 不得仅接受风险或延期。\n\n"
+        "<!-- PAPER_REVIEW_FINDINGS:START -->\n"
+        "```json\n"
+        "{\n"
+        '  "schema_name": "paper_review",\n'
+        '  "schema_version": "2.0",\n'
+        f'  "run_id": "{run_id}",\n'
+        '  "findings": []\n'
+        "}\n"
+        "```\n"
+        "<!-- PAPER_REVIEW_FINDINGS:END -->\n"
+    )
+
+
 def initialize_simple_run(
     repo_root: Path,
     run_id: str,
@@ -220,33 +280,12 @@ def initialize_simple_run(
             },
         )
         (run_dir / "paper" / "PAPER_BLUEPRINT.md").write_text(
-            "# PAPER_BLUEPRINT\n\n"
-            "## 全篇总体判断\n\n"
-            "待填写：一句话说明统一数学对象、主答案与证据边界。\n\n"
-            "## 跨问题论证链\n\n"
-            "待填写：说明各问新增的实体、资源、约束与聚合层，以及章节作用。\n\n"
-            "## 各问完整性卡\n\n"
-            "按必答问题分别填写：关键判断、模型与推导、直接答案、证据、"
-            "竞争解释、局部验证和适用边界。\n\n"
-            "## 贡献（最多三项）\n\n"
-            "待填写：只写由当前题真实模型、实验或洞察支持的贡献。\n\n"
-            "## 各章主张与最强/最弱问题\n\n"
-            "待填写：每章要让评委接受什么判断；哪一问最强、哪一问最弱及补救方式。\n\n"
-            "## 图表与篇幅\n\n"
-            "待填写：每张主图的论点、数据画像、共享模型图、逐问主图及必要豁免。\n\n"
-            "## 参考结构模式\n\n"
-            "待填写：只记录可迁移的组织模式，不迁移原题公式、参数或结论。\n",
+            _paper_blueprint_template(list(required_questions or [])),
             encoding="utf-8",
             newline="\n",
         )
         (run_dir / "paper" / "PAPER_REVIEW.md").write_text(
-            "# PAPER_REVIEW\n\n"
-            "以评委视角一次性检查：三分钟内能否定位逐问答案、共享数学主线是否"
-            "清楚、最强与最弱问题、主图论点、证据等级、工作报告痕迹及最高价值"
-            "修改。先运行 `python scripts/paper/audit_report_style.py <run_dir>`，逐项"
-            "复核重复小节、内部工作流词、逐问报账式摘要、列表堆叠、核心问缺少"
-            "推导/机制及主图脱离论证等非阻断告警。每项发现记录处理决定。独立"
-            "盲评记录和机械版式审计由系统派生，不在此重复填写或伪造。\n",
+            _paper_review_template(identifier),
             encoding="utf-8",
             newline="\n",
         )

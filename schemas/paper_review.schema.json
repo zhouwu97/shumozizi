@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_review.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "findings"],
+  "properties": {
+    "schema_name": {"const": "paper_review"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id", "source", "severity", "finding", "impact",
+          "affected_argument_units", "repair_type", "target_files",
+          "expected_benefit", "estimated_cost", "acceptance_test",
+          "stop_condition", "status", "evidence_of_closure"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "source": {"type": "string", "minLength": 2},
+          "severity": {"enum": ["P0", "P1", "P2", "P3"]},
+          "finding": {"type": "string", "minLength": 4},
+          "impact": {"type": "string", "minLength": 4},
+          "affected_argument_units": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "repair_type": {
+            "type": "string",
+            "pattern": "^(science|argument|style|figure|render)(\\+(science|argument|style|figure|render))*$"
+          },
+          "target_files": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "expected_benefit": {"type": "string", "minLength": 4},
+          "estimated_cost": {"type": "string", "minLength": 2},
+          "acceptance_test": {"type": "string", "minLength": 4},
+          "stop_condition": {"type": "string", "minLength": 4},
+          "status": {
+            "enum": [
+              "open", "in_progress", "accepted", "repaired", "false_positive",
+              "deferred_with_reason"
+            ]
+          },
+          "evidence_of_closure": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 2}
+          }
+        }
+      }
+    }
+  }
+}
