@@ -16,6 +16,7 @@ from typing import Any
 from shumozizi.core.io import ContractError
 from shumozizi.core.schema import validate_document
 from shumozizi.paper.readiness import (
+    _reference_count_warnings,
     argument_map_bindings,
     check_paper_readiness,
     require_paper_readiness,
@@ -29,6 +30,20 @@ from tests.quality_protocol_helpers import (
     adapter_backed_assessment,
     run_synthetic_verification_protocol,
 )
+
+
+def test_reference_warning_catches_sparse_and_unbound_citations(tmp_path: Path) -> None:
+    """文献少和只列不引都应给出可执行的补齐提示。"""
+    run_dir = initialize_simple_run(tmp_path, "citation-warnings", workflow_version="3.2")
+    (run_dir / "paper" / "references.tex").write_text(
+        "% references\n\\bibitem{method} A method source.\n", encoding="utf-8"
+    )
+
+    warnings = _reference_count_warnings(run_dir)
+
+    assert any("CITATION_PLAN.md" in item for item in warnings)
+    assert any("正文没有可识别的引用绑定" in item for item in warnings)
+    assert any("当前检测到约 1 条" in item for item in warnings)
 
 
 def _valid_argument_map(

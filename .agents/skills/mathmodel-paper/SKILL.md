@@ -45,7 +45,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 第一步：填写 PAPER_BLUEPRINT.md
 
-在动笔前，可执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper` 获得结构建议。零匹配时使用内置通用结构模式；知识应用与兑现只作 advisory。可以检索实际采用方法的原始文献，但禁止同题答案、题解和现成结论；约 6–12 篇只作参考文献紧凑性建议。
+在动笔前，可执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper` 获得结构建议。零匹配时使用内置通用结构模式；知识应用与兑现只作 advisory。按 `paper/CITATION_PLAN.md` 分配题型/领域背景、核心数学方法、验证与不确定性来源，可以检索实际采用方法的原始文献，但禁止同题答案、题解和现成结论。约 6–12 条只作紧凑性建议，不是数量门禁；每条参考文献必须至少绑定正文一个具体方法、指标、背景判断或验证动作，不能只列在文后。离线优秀论文卡只提供结构启发，明确禁止作为 citation 或当前事实来源。
 
 作者只维护 `paper/PAPER_BLUEPRINT.md`、`paper/answer-map.json`、`figures/FIGURE_PLAN.json` 和 `paper/PAPER_REVIEW.md` 四个主要控制文件。旧 `ARGUMENT_PLAN.md`、`STORYBOARD.md` 与 `KNOWLEDGE_APPLICATION.md` 仅作兼容或后台建议。
 

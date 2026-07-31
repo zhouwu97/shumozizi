@@ -148,6 +148,9 @@ def test_new_run_templates_add_author_layer_without_breaking_machine_contract(
     assert "## 全局证据蒸馏" in blueprint_text
     assert "## 跨问题论证链与连续成文" in blueprint_text
     assert "## 正文与附录边界" in blueprint_text
+    citation_plan = (run_dir / "paper/CITATION_PLAN.md").read_text(encoding="utf-8")
+    assert "## 来源分配" in citation_plan
+    assert "## 正文绑定表" in citation_plan
     assert "## Q1 完整性卡" in blueprint_text
     assert "## Q2 完整性卡" in blueprint_text
     parsed = parse_paper_blueprint(
@@ -162,6 +165,7 @@ def test_new_run_templates_add_author_layer_without_breaking_machine_contract(
 
     review_text = (run_dir / "paper/PAPER_REVIEW.md").read_text(encoding="utf-8")
     assert "## 评委冷读" in review_text
+    assert "核心方法与验证" in review_text
     assert "## 返修原则" in review_text
     assert "<!-- PAPER_REVIEW_FINDINGS:START -->" in review_text
     review = parse_paper_review(review_text)

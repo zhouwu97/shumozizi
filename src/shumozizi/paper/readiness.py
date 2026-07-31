@@ -428,9 +428,10 @@ def validate_presentation_decisions(run_dir: Path) -> list[str]:
 
 
 def _reference_count_warnings(run_dir: Path) -> list[str]:
-    """给出方法文献数量建议，不把文献数量伪装成质量硬门。"""
+    """检查文献条目、正文引用和分类型计划，不把数量伪装成质量硬门。"""
     paper_dir = run_dir / "paper"
     count = 0
+    citation_count = 0
     for path in paper_dir.rglob("*"):
         if not path.is_file():
             continue
@@ -442,11 +443,38 @@ def _reference_count_warnings(run_dir: Path) -> list[str]:
             count += len(re.findall(r"(?m)^\s*@(?!comment|string|preamble)\w+\s*\{", text, re.IGNORECASE))
         elif path.suffix.casefold() in {".tex", ".typ"}:
             count += len(re.findall(r"\\bibitem\s*\{", text))
+            citation_count += len(
+                re.findall(
+                    r"\\cite[a-zA-Z*]*\s*\{[^}]+\}|\[[0-9][0-9,;\- ]*\]",
+                    text,
+                )
+            )
+    plan_path = paper_dir / "CITATION_PLAN.md"
+    try:
+        plan_missing = not plan_path.is_file() or "来源分配" not in plan_path.read_text(
+            encoding="utf-8"
+        )
+    except (OSError, UnicodeError):
+        plan_missing = True
     if count == 0:
-        return ["未检测到方法或背景文献；建议按实际使用补充约 6–12 篇可核验参考文献。"]
-    if not 6 <= count <= 12:
-        return [f"当前检测到约 {count} 条参考文献；6–12 篇只是紧凑性建议，不构成硬门。"]
-    return []
+        warnings = [
+            "未检测到方法或背景文献；请按 CITATION_PLAN.md 的题型背景、核心方法、验证与不确定性类别补充约 6–12 条可核验参考文献。"
+        ]
+    elif not 6 <= count <= 12:
+        warnings = [
+            f"当前检测到约 {count} 条参考文献；建议按 CITATION_PLAN.md 补齐题型背景、核心方法、验证与不确定性类别，6–12 条只是紧凑性建议，不构成硬门。"
+        ]
+    else:
+        warnings = []
+    if count and citation_count == 0:
+        warnings.append(
+            "检测到文后参考文献但正文没有可识别的引用绑定；请在具体方法、指标、验证或背景判断后加入对应 citation key。"
+        )
+    if plan_missing:
+        warnings.append(
+            "缺少 paper/CITATION_PLAN.md；建议先按来源类别和正文判断建立引用计划，避免只列文献不引用。"
+        )
+    return warnings
 
 
 def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
