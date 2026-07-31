@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 from pypdf import PdfWriter
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.simple.capabilities import write_local_tooling
 from shumozizi.simple.figure_promotion import (
     audit_figure_candidate,
@@ -41,6 +41,12 @@ def _human_review(**overrides: object) -> dict[str, object]:
         "caption_matches_figure": True,
         "font_readable": True,
         "panel_mapping_valid": True,
+        "focal_claim": "最终方案由图中可见的活跃约束与决策点共同支持。",
+        "visible_elements": [
+            {"type": "selected_point", "label": "Final plan", "panel": "main"}
+        ],
+        "reading_order": ["main"],
+        "panel_takeaways": {"main": "最终方案位于当前约束允许的有效区域内。"},
         "issues": [],
         "verdict": "promote",
     }
@@ -48,7 +54,39 @@ def _human_review(**overrides: object) -> dict[str, object]:
     return review
 
 
-def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str]:
+def _write_manifest(
+    run_dir: Path,
+    png: Path,
+    *,
+    panels: list[str] | None = None,
+    elements: list[dict[str, object]] | None = None,
+) -> str:
+    """写入与当前候选 PNG 哈希绑定的视觉元素清单。"""
+    manifest = png.parent / "visual_manifest.json"
+    normalized_elements = elements or [
+        {
+            "type": "selected_point",
+            "label": "Final plan",
+            "panel": "main",
+            "bbox": [0.4, 0.4, 0.6, 0.6],
+            "paper_width_visible": True,
+        }
+    ]
+    atomic_json(
+        manifest,
+        {
+            "schema_version": "1.0",
+            "output_sha256": sha256_file(png),
+            "canvas": {"width": 400, "height": 200},
+            "panels": panels or ["main"],
+            "labels": [str(item["label"]) for item in normalized_elements],
+            "elements": normalized_elements,
+        },
+    )
+    return manifest.relative_to(run_dir).as_posix()
+
+
+def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str, str]:
     """创建同尺寸 PNG/PDF 和可选箭头穿字的流程图几何报告。"""
     run_dir = initialize_simple_run(
         tmp_path,
@@ -122,7 +160,8 @@ def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str
         png.relative_to(run_dir).as_posix(),
         pdf.relative_to(run_dir).as_posix(),
     ]
-    return run_dir, outputs, layout.relative_to(run_dir).as_posix()
+    manifest = _write_manifest(run_dir, png)
+    return run_dir, outputs, layout.relative_to(run_dir).as_posix(), manifest
 
 
 def _promote_plot(
@@ -168,6 +207,7 @@ def _promote_plot(
             ],
         },
     )
+    manifest = _write_manifest(run_dir, png)
     return promote_figure_candidate(
         run_dir,
         figure_id=figure_id,
@@ -181,6 +221,7 @@ def _promote_plot(
         figure_role=figure_role,
         presentation_role=presentation_role,
         human_review=_human_review(),
+        visual_manifest=manifest,
     )
 
 
@@ -315,7 +356,7 @@ def test_spatial_plot_requires_equal_scale_orthographic_metadata(tmp_path: Path)
 
 def test_diagram_arrow_text_collision_blocks_promotion(tmp_path: Path) -> None:
     """箭头穿过文字时，即使文件可打开也不能进入论文。"""
-    run_dir, outputs, layout = _candidate(tmp_path, collision=True)
+    run_dir, outputs, layout, _ = _candidate(tmp_path, collision=True)
 
     audit = audit_figure_candidate(
         run_dir,
@@ -331,7 +372,7 @@ def test_diagram_arrow_text_collision_blocks_promotion(tmp_path: Path) -> None:
 
 def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path) -> None:
     """机械检查通过后仍需人工看 PNG/PDF，且同一版本不能反复覆盖。"""
-    run_dir, outputs, layout = _candidate(tmp_path, collision=False)
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
 
     with pytest.raises(ContractError, match="角色内容检查"):
         promote_figure_candidate(
@@ -343,6 +384,7 @@ def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path
             layout_report=layout,
             figure_role="model_understanding",
             human_review=_human_review(reviewed=False),
+            visual_manifest=manifest,
         )
     receipt = promote_figure_candidate(
         run_dir,
@@ -353,6 +395,7 @@ def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path
         layout_report=layout,
         figure_role="model_understanding",
         human_review=_human_review(),
+        visual_manifest=manifest,
     )
 
     assert receipt["qa"]["success"] is True
@@ -368,12 +411,13 @@ def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path
             layout_report=layout,
             figure_role="model_understanding",
             human_review=_human_review(),
+            visual_manifest=manifest,
         )
 
 
 def test_human_review_requires_content_fields_for_declared_role(tmp_path: Path) -> None:
     """人工勾选不能替代角色内容检查，insight 图必须真实显示机制。"""
-    run_dir, outputs, layout = _candidate(tmp_path, collision=False)
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
     incomplete = _human_review()
     del incomplete["paper_width_preview_checked"]
 
@@ -387,6 +431,7 @@ def test_human_review_requires_content_fields_for_declared_role(tmp_path: Path) 
             layout_report=layout,
             figure_role="insight",
             human_review=incomplete,
+            visual_manifest=manifest,
         )
     with pytest.raises(ContractError, match="mechanism_or_relation_visible"):
         promote_figure_candidate(
@@ -398,12 +443,175 @@ def test_human_review_requires_content_fields_for_declared_role(tmp_path: Path) 
             layout_report=layout,
             figure_role="insight",
             human_review=_human_review(mechanism_or_relation_visible=False),
+            visual_manifest=manifest,
         )
+
+
+def test_advanced_custom_figure_requires_visual_manifest(tmp_path: Path) -> None:
+    """高级 custom 图不能只靠人工勾选而缺少 renderer 元素清单。"""
+    run_dir, outputs, layout, _ = _candidate(tmp_path, collision=False)
+
+    with pytest.raises(ContractError, match="缺少 renderer 生成的 visual_manifest"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/no-manifest",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="insight",
+            human_review=_human_review(),
+        )
+
+
+def test_claimed_threshold_must_exist_in_visual_manifest(tmp_path: Path) -> None:
+    """人工声称阈值可见时，manifest 必须有同面板同类型标签。"""
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
+    review = _human_review(
+        visible_elements=[
+            {"type": "decision_threshold", "label": "Safety threshold", "panel": "main"}
+        ]
+    )
+
+    with pytest.raises(ContractError, match="可见元素未出现在 visual_manifest"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/missing-threshold",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="insight",
+            human_review=review,
+            visual_manifest=manifest,
+        )
+
+
+def test_visual_manifest_hash_must_match_candidate_png(tmp_path: Path) -> None:
+    """旧图或手改清单不能借用当前候选的人工回执。"""
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
+    document = load_json(run_dir / manifest)
+    document["output_sha256"] = "0" * 64
+    atomic_json(run_dir / manifest, document)
+
+    with pytest.raises(ContractError, match="output_sha256 与当前候选 PNG 不一致"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/stale-manifest",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="insight",
+            human_review=_human_review(),
+            visual_manifest=manifest,
+        )
+
+
+def test_reading_order_panel_must_exist_in_manifest(tmp_path: Path) -> None:
+    """阅读顺序不能引用 renderer 未生成的面板。"""
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
+    review = _human_review(
+        reading_order=["main", "B"],
+        panel_takeaways={
+            "main": "最终方案位于当前约束允许的有效区域内。",
+            "B": "第二面板应解释活跃约束的边际影响。",
+        },
+    )
+
+    with pytest.raises(ContractError, match="不存在的面板: B"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/missing-panel",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="insight",
+            human_review=review,
+            visual_manifest=manifest,
+        )
+
+
+def test_visual_manifest_rejects_out_of_canvas_bbox(tmp_path: Path) -> None:
+    """元素定位越出归一化画布时不得晋级。"""
+    run_dir, outputs, layout, _ = _candidate(tmp_path, collision=False)
+    png = run_dir / outputs[0]
+    manifest = _write_manifest(
+        run_dir,
+        png,
+        elements=[
+            {
+                "type": "selected_point",
+                "label": "Final plan",
+                "panel": "main",
+                "bbox": [0.4, 0.4, 1.2, 0.6],
+                "paper_width_visible": True,
+            }
+        ],
+    )
+
+    with pytest.raises(ContractError, match="bbox 超出画布"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/outside-bbox",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="insight",
+            human_review=_human_review(),
+            visual_manifest=manifest,
+        )
+
+
+def test_dense_multi_panel_manifest_can_be_promoted(tmp_path: Path) -> None:
+    """高密度四面板只要元素和阅读链真实对应即可晋级。"""
+    run_dir, outputs, layout, _ = _candidate(tmp_path, collision=False)
+    png = run_dir / outputs[0]
+    panels = ["A", "B", "C", "D"]
+    elements = [
+        {
+            "type": "panel_takeaway",
+            "label": f"Evidence {panel}",
+            "panel": panel,
+            "bbox": [0.1, 0.1, 0.3, 0.2],
+            "paper_width_visible": True,
+        }
+        for panel in panels
+    ]
+    manifest = _write_manifest(run_dir, png, panels=panels, elements=elements)
+    review = _human_review(
+        focal_claim="四个面板依次连接数据结构、模型约束、比较证据与最终决策。",
+        visible_elements=[
+            {"type": "panel_takeaway", "label": "Evidence D", "panel": "D"}
+        ],
+        reading_order=panels,
+        panel_takeaways={
+            panel: f"面板 {panel} 提供当前证据链中的独立且可核对结论。"
+            for panel in panels
+        },
+    )
+
+    receipt = promote_figure_candidate(
+        run_dir,
+        figure_id="overall-workflow",
+        candidate_outputs=outputs,
+        target_stem="figures/current/dense-evidence-chain",
+        rendering_mode="diagram",
+        layout_report=layout,
+        figure_role="insight",
+        human_review=review,
+        visual_manifest=manifest,
+    )
+
+    assert receipt["schema_version"] == "1.2"
+    assert receipt["visual_manifest"]["panels"] == panels
 
 
 def test_v32_registration_requires_promotion_receipt(tmp_path: Path) -> None:
     """current 文件存在还不够，v3.2 图索引必须绑定候选晋级证据。"""
-    run_dir, outputs, layout = _candidate(tmp_path, collision=False)
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
     promotion = promote_figure_candidate(
         run_dir,
         figure_id="overall-workflow",
@@ -413,6 +621,7 @@ def test_v32_registration_requires_promotion_receipt(tmp_path: Path) -> None:
         layout_report=layout,
         figure_role="model_understanding",
         human_review=_human_review(),
+        visual_manifest=manifest,
     )
     script = run_dir / "code/figures/overall-workflow.py"
     result_file = run_dir / "results/raw/workflow.json"
@@ -471,7 +680,7 @@ def test_v32_registration_requires_promotion_receipt(tmp_path: Path) -> None:
 
 def test_presentation_figure_binds_frozen_inputs_without_fake_result(tmp_path: Path) -> None:
     """数据画像可追溯到冻结输入，但不需要伪造实验 result_id。"""
-    run_dir, outputs, layout = _candidate(tmp_path, collision=False)
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
     promotion = promote_figure_candidate(
         run_dir,
         figure_id="overall-workflow",
@@ -482,6 +691,7 @@ def test_presentation_figure_binds_frozen_inputs_without_fake_result(tmp_path: P
         figure_role="model_understanding",
         presentation_role="data_portrait",
         human_review=_human_review(),
+        visual_manifest=manifest,
     )
     source = run_dir / "analysis/DATA_AUDIT.json"
     script = run_dir / "code/figures/data_portrait.py"

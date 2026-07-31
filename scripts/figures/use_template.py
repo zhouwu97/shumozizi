@@ -205,7 +205,12 @@ def generate_from_result(
         expected_takeaway=expected_takeaway,
         cannot_prove=cannot_prove,
     )
-    return {"success": True, "figure": entry, "outputs": outputs}
+    return {
+        "success": True,
+        "figure": entry,
+        "outputs": outputs,
+        "visual_manifest": f"{relative_stem}.visual_manifest.json",
+    }
 
 
 def main() -> int:

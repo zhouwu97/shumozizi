@@ -9,7 +9,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError
+from shumozizi.core.io import ContractError, atomic_json, sha256_file
 
 SUPPORTED_TEMPLATES = (
     "correlation-pairgrid",
@@ -685,8 +685,15 @@ def _render_feasible_region_active_constraints(
         if point["label"]:
             axis.annotate(point["label"], (point["x"], point["y"]), xytext=(5, 5), textcoords="offset points")
     selected = data["selected_point"]
+    selected_label = selected["label"] or "Selected"
     axis.scatter(
-        selected["x"], selected["y"], marker="*", s=190, color="#b73333", zorder=6, label=selected["label"] or "Selected"
+        selected["x"],
+        selected["y"],
+        marker="*",
+        s=190,
+        color="#b73333",
+        zorder=6,
+        label=selected_label,
     )
     axis.set(
         xlabel=data["x_label"],
@@ -696,6 +703,18 @@ def _render_feasible_region_active_constraints(
     axis.grid(alpha=0.2)
     axis.legend(fontsize=8, loc="best")
     figure.tight_layout()
+    figure._shumozizi_panels = ["main"]
+    figure._shumozizi_elements = [
+        {"type": "selected_point", "label": selected_label, "panel": "main"},
+        *[
+            {
+                "type": "active_constraint",
+                "label": f"{label} (active)",
+                "panel": "main",
+            }
+            for label in data["active_constraints"]
+        ],
+    ]
     return figure
 
 
@@ -724,6 +743,11 @@ def _render_interval_event_timeline(data: dict[str, Any], plt: Any, np: Any) -> 
     axis.set_ylim(0.4, len(groups) + 0.9)
     axis.grid(axis="x", alpha=0.2)
     figure.tight_layout()
+    figure._shumozizi_panels = ["main"]
+    figure._shumozizi_elements = [
+        {"type": "critical_event", "label": item["label"], "panel": "main"}
+        for item in data["events"]
+    ] or [{"type": "interval", "label": data["intervals"][0]["label"], "panel": "main"}]
     return figure
 
 
@@ -755,6 +779,19 @@ def _render_uncertainty_fan_threshold(data: dict[str, Any], plt: Any, np: Any) -
     axis.grid(alpha=0.2)
     axis.legend(fontsize=8)
     figure.tight_layout()
+    figure._shumozizi_panels = ["main"]
+    figure._shumozizi_elements = [
+        {
+            "type": "decision_threshold",
+            "label": data["threshold_label"],
+            "panel": "main",
+        },
+        {"type": "center_estimate", "label": "Median", "panel": "main"},
+        *[
+            {"type": "uncertainty_band", "label": band["label"], "panel": "main"}
+            for band in data["bands"]
+        ],
+    ]
     return figure
 
 
@@ -806,6 +843,15 @@ def _render_multi_panel_evidence_chain(data: dict[str, Any], plt: Any, np: Any) 
         axis.remove()
     figure.suptitle("Evidence chain", y=1.0)
     figure.tight_layout()
+    figure._shumozizi_panels = [panel["panel"] for panel in panels]
+    figure._shumozizi_elements = [
+        {
+            "type": "panel_takeaway",
+            "label": panel["takeaway"],
+            "panel": panel["panel"],
+        }
+        for panel in panels
+    ]
     return figure
 
 
@@ -844,6 +890,92 @@ def _text_boxes(figure: Any) -> list[dict[str, float | str]]:
             }
         )
     return boxes
+
+
+def _figure_text_artists(figure: Any) -> list[Any]:
+    """收集实际参与当前渲染的文字 artist。"""
+    texts = list(figure.texts)
+    for axis in figure.axes:
+        texts.extend([axis.title, axis.xaxis.label, axis.yaxis.label, *axis.texts])
+        legend = axis.get_legend()
+        if legend is not None:
+            texts.extend([legend.get_title(), *legend.get_texts()])
+    return [item for item in texts if item.get_visible() and item.get_text().strip()]
+
+
+def _write_visual_manifest(figure: Any, output_stem: Path) -> Path:
+    """把 renderer 声明绑定到实际文字 artist 与当前 PNG 哈希。"""
+    from PIL import Image
+
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    width, height = figure.canvas.get_width_height()
+    panels = list(getattr(figure, "_shumozizi_panels", []))
+    if not panels:
+        panels = ["main"] if len(figure.axes) == 1 else [chr(65 + index) for index in range(len(figure.axes))]
+    declarations = list(getattr(figure, "_shumozizi_elements", []))
+    if not declarations:
+        declarations = [
+            {
+                "type": "panel_title",
+                "label": axis.title.get_text().strip(),
+                "panel": panels[index],
+            }
+            for index, axis in enumerate(figure.axes)
+            if axis.title.get_text().strip()
+        ]
+    if not declarations:
+        declarations = [
+            {"type": "figure_title", "label": item.get_text().strip(), "panel": panels[0]}
+            for item in figure.texts
+            if item.get_visible() and item.get_text().strip()
+        ][:1]
+    if not declarations:
+        raise ContractError("renderer 未生成可绑定 visual_manifest 的可见标签")
+    text_artists = _figure_text_artists(figure)
+    elements: list[dict[str, Any]] = []
+    for declaration in declarations:
+        label = str(declaration["label"]).strip()
+        panel = str(declaration["panel"]).strip()
+        artist = next(
+            (item for item in text_artists if item.get_text().strip() == label),
+            None,
+        )
+        if artist is None:
+            raise ContractError(f"renderer 声明的视觉标签未实际绘制: {label}")
+        extent = artist.get_window_extent(renderer)
+        bbox = [
+            float(extent.x0) / width,
+            float(extent.y0) / height,
+            float(extent.x1) / width,
+            float(extent.y1) / height,
+        ]
+        visible = 0 <= bbox[0] < bbox[2] <= 1 and 0 <= bbox[1] < bbox[3] <= 1
+        elements.append(
+            {
+                "type": str(declaration["type"]).strip(),
+                "label": label,
+                "panel": panel,
+                "bbox": [round(value, 6) for value in bbox],
+                "paper_width_visible": visible,
+            }
+        )
+    png_path = output_stem.with_suffix(".png")
+    with Image.open(png_path) as image:
+        png_size = image.size
+    manifest_path = output_stem.with_suffix(".visual_manifest.json")
+    atomic_json(
+        manifest_path,
+        {
+            "schema_version": "1.0",
+            "output_sha256": sha256_file(png_path),
+            "canvas": {"width": png_size[0], "height": png_size[1]},
+            "panels": panels,
+            "labels": [item["label"] for item in elements],
+            "elements": elements,
+        },
+    )
+    return manifest_path
 
 
 def render(template_id: str, data: dict[str, Any], output_stem: Path) -> Path:
@@ -899,6 +1031,7 @@ def render(template_id: str, data: dict[str, Any], output_stem: Path) -> Path:
             encoding="utf-8",
             newline="\n",
         )
+        _write_visual_manifest(figure, output_stem)
         return boxes_path
     finally:
         plt.close(figure)

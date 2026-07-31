@@ -89,6 +89,7 @@ def validate_human_figure_review(
     *,
     figure_role: str,
     presentation_role: str | None,
+    require_element_binding: bool = True,
 ) -> dict[str, Any]:
     """验证人工复核已检查图的论证内容，而不只是文件可读性。
 
@@ -96,6 +97,7 @@ def validate_human_figure_review(
         review: 人工检查结果。
         figure_role: 科学叙事角色。
         presentation_role: 可选呈现角色。
+        require_element_binding: 是否要求 v1.2 的元素、面板与阅读顺序字段。
 
     Returns:
         可直接写入晋级回执的复核对象副本。
@@ -126,6 +128,48 @@ def validate_human_figure_review(
         raise ContractError("人工晋级复核 issues 必须是字符串列表")
     if review.get("verdict") != "promote" or issues:
         raise ContractError("人工晋级复核必须 verdict=promote 且 issues 为空")
+    normalized_visible: list[dict[str, str]] = []
+    reading_order: list[str] = []
+    panel_takeaways: dict[str, Any] = {}
+    focal_claim = review.get("focal_claim", "")
+    if require_element_binding:
+        if not isinstance(focal_claim, str) or len(focal_claim.strip()) < 8:
+            raise ContractError("人工晋级复核 focal_claim 必须是具体中心主张")
+        visible_elements = review.get("visible_elements")
+        if not isinstance(visible_elements, list) or not visible_elements:
+            raise ContractError("人工晋级复核 visible_elements 必须是非空数组")
+        for index, raw in enumerate(visible_elements):
+            if not isinstance(raw, dict):
+                raise ContractError(f"visible_elements[{index}] 必须是对象")
+            normalized: dict[str, str] = {}
+            for key in ("type", "label", "panel"):
+                value = raw.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    raise ContractError(
+                        f"visible_elements[{index}].{key} 必须是非空文本"
+                    )
+                normalized[key] = value.strip()
+            normalized_visible.append(normalized)
+        raw_reading_order = review.get("reading_order")
+        if (
+            not isinstance(raw_reading_order, list)
+            or not raw_reading_order
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in raw_reading_order
+            )
+            or len(raw_reading_order) != len(set(raw_reading_order))
+        ):
+            raise ContractError("人工晋级复核 reading_order 必须是唯一非空面板数组")
+        reading_order = [item.strip() for item in raw_reading_order]
+        raw_takeaways = review.get("panel_takeaways")
+        if not isinstance(raw_takeaways, dict):
+            raise ContractError("人工晋级复核 panel_takeaways 必须是对象")
+        panel_takeaways = raw_takeaways
+        for panel in reading_order:
+            takeaway = panel_takeaways.get(panel)
+            if not isinstance(takeaway, str) or len(takeaway.strip()) < 8:
+                raise ContractError(f"人工晋级复核面板 {panel} 缺少具体 takeaway")
     required_true = set(_COMMON_HUMAN_REVIEW_REQUIREMENTS)
     required_true.update(_ROLE_HUMAN_REVIEW_REQUIREMENTS[figure_role])
     if presentation_role is not None:
@@ -136,7 +180,139 @@ def validate_human_figure_review(
         raise ContractError(
             f"{roles} 图未通过角色内容检查: " + "、".join(failed)
         )
-    return dict(review)
+    if not require_element_binding:
+        return dict(review)
+    return {
+        **review,
+        "focal_claim": focal_claim.strip(),
+        "visible_elements": normalized_visible,
+        "reading_order": reading_order,
+        "panel_takeaways": {
+            str(key): str(value).strip() for key, value in panel_takeaways.items()
+        },
+    }
+
+
+def validate_visual_manifest(
+    run_dir: Path,
+    *,
+    manifest_path: str,
+    candidate_png: Path,
+    human_review: dict[str, Any],
+) -> dict[str, Any]:
+    """把人工声明绑定到同版本 PNG 中登记的实际视觉元素。
+
+    Args:
+        run_dir: 当前运行目录。
+        manifest_path: renderer 生成的视觉清单相对路径。
+        candidate_png: 当前候选 PNG。
+        human_review: 已规范化的人工复核对象。
+
+    Returns:
+        可写入晋级回执的 manifest 绑定摘要。
+
+    Raises:
+        ContractError: 哈希、面板、元素或边界框与当前候选不一致。
+    """
+    root = run_dir.resolve()
+    path = resolve_inside(root, manifest_path, must_exist=True)
+    if path.parent.resolve() != candidate_png.parent.resolve():
+        raise ContractError("visual_manifest 必须与候选 PNG/PDF 位于同一版本目录")
+    manifest = load_json(path)
+    if manifest.get("schema_version") != "1.0":
+        raise ContractError("visual_manifest.schema_version 必须为 1.0")
+    output_sha256 = manifest.get("output_sha256")
+    current_sha256 = sha256_file(candidate_png)
+    if output_sha256 != current_sha256:
+        raise ContractError("visual_manifest 的 output_sha256 与当前候选 PNG 不一致")
+    canvas = manifest.get("canvas")
+    if not isinstance(canvas, dict):
+        raise ContractError("visual_manifest 缺少 canvas")
+    try:
+        from PIL import Image
+
+        with Image.open(candidate_png) as image:
+            png_size = image.size
+    except OSError as exc:
+        raise ContractError(f"无法复验 visual_manifest 画布: {exc}") from exc
+    if [canvas.get("width"), canvas.get("height")] != list(png_size):
+        raise ContractError("visual_manifest 的 canvas 与候选 PNG 尺寸不一致")
+    panels = manifest.get("panels")
+    if (
+        not isinstance(panels, list)
+        or not panels
+        or any(not isinstance(item, str) or not item.strip() for item in panels)
+        or len(panels) != len(set(panels))
+    ):
+        raise ContractError("visual_manifest.panels 必须是唯一非空面板数组")
+    panel_set = set(panels)
+    missing_reading_panels = sorted(set(human_review["reading_order"]) - panel_set)
+    if missing_reading_panels:
+        raise ContractError(
+            "reading_order 引用了 manifest 中不存在的面板: "
+            + "、".join(missing_reading_panels)
+        )
+    unknown_takeaway_panels = sorted(set(human_review["panel_takeaways"]) - panel_set)
+    if unknown_takeaway_panels:
+        raise ContractError(
+            "panel_takeaways 引用了 manifest 中不存在的面板: "
+            + "、".join(unknown_takeaway_panels)
+        )
+    elements = manifest.get("elements")
+    if not isinstance(elements, list) or not elements:
+        raise ContractError("visual_manifest.elements 必须是非空数组")
+    keys: set[tuple[str, str, str]] = set()
+    labels: set[str] = set()
+    for index, raw in enumerate(elements):
+        if not isinstance(raw, dict):
+            raise ContractError(f"visual_manifest.elements[{index}] 必须是对象")
+        element_type = raw.get("type")
+        panel = raw.get("panel")
+        label = raw.get("label")
+        if not all(isinstance(value, str) and value.strip() for value in (element_type, panel, label)):
+            raise ContractError(
+                f"visual_manifest.elements[{index}] 需要非空 type、panel 和 label"
+            )
+        if panel not in panel_set:
+            raise ContractError(f"visual_manifest 元素 {label} 引用了不存在的面板 {panel}")
+        bbox = raw.get("bbox")
+        if (
+            not isinstance(bbox, list)
+            or len(bbox) != 4
+            or any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not isfinite(float(value))
+                for value in bbox
+            )
+        ):
+            raise ContractError(f"visual_manifest 元素 {label} 的 bbox 必须是四个有限数")
+        x0, y0, x1, y1 = (float(value) for value in bbox)
+        if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+            raise ContractError(f"visual_manifest 元素 {label} 的 bbox 超出画布")
+        if raw.get("paper_width_visible") is not True:
+            raise ContractError(f"visual_manifest 元素 {label} 未通过论文宽度裁切检查")
+        normalized_key = (element_type.strip(), label.strip(), panel.strip())
+        if normalized_key in keys:
+            raise ContractError(f"visual_manifest 元素重复: {normalized_key}")
+        keys.add(normalized_key)
+        labels.add(label.strip())
+    declared_labels = manifest.get("labels")
+    if not isinstance(declared_labels, list) or set(declared_labels) != labels:
+        raise ContractError("visual_manifest.labels 必须与 elements 中的可见标签完全一致")
+    for visible in human_review["visible_elements"]:
+        key = (visible["type"], visible["label"], visible["panel"])
+        if key not in keys:
+            raise ContractError(
+                "人工声明的可见元素未出现在 visual_manifest: " + "/".join(key)
+            )
+    return {
+        "path": relative_inside(root, path).as_posix(),
+        "sha256": sha256_file(path),
+        "output_sha256": current_sha256,
+        "panels": panels,
+        "verified_visible_elements": human_review["visible_elements"],
+    }
 
 
 def _box(item: dict[str, Any], label: str) -> tuple[float, float, float, float]:
@@ -602,6 +778,7 @@ def promote_figure_candidate(
     layout_report: str | None = None,
     figure_role: str,
     human_review: dict[str, Any],
+    visual_manifest: str | None = None,
     presentation_role: str | None = None,
 ) -> dict[str, Any]:
     """在机械 QA 和内容化人工复核都通过后，将工作图晋级到 current。
@@ -615,6 +792,7 @@ def promote_figure_candidate(
         layout_report: 与候选同目录的流程图几何或统计图语义布局报告。
         figure_role: model_understanding、decisive_evidence、insight 或 stability。
         human_review: 含论文宽度预览、对象、观察、机制、边界和决策检查的复核对象。
+        visual_manifest: renderer 生成且与候选 PNG 同版本的视觉元素清单。
         presentation_role: 可选的 data_portrait、question_hero、supporting 或 appendix。
 
     Returns:
@@ -640,6 +818,15 @@ def promote_figure_candidate(
     if not qa["success"]:
         raise ContractError("工作图未通过版式 QA: " + "；".join(qa["errors"]))
     candidates = [resolve_inside(root, item["path"], must_exist=True) for item in qa["candidate_outputs"]]
+    if visual_manifest is None:
+        raise ContractError("高级或自定义工作图缺少 renderer 生成的 visual_manifest.json")
+    candidate_png = next(path for path in candidates if path.suffix.casefold() == ".png")
+    manifest_binding = validate_visual_manifest(
+        root,
+        manifest_path=visual_manifest,
+        candidate_png=candidate_png,
+        human_review=validated_review,
+    )
     version = candidates[0].parent.name
     work_digest = sha256_bytes(
         json_bytes(
@@ -682,7 +869,7 @@ def promote_figure_candidate(
             }
         )
     receipt = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "run_id": root.name,
         "figure_id": figure_id,
         "figure_role": figure_role,
@@ -690,6 +877,7 @@ def promote_figure_candidate(
         "candidate_version": version,
         "qa": qa,
         "human_review": validated_review,
+        "visual_manifest": manifest_binding,
         "promoted_outputs": promoted,
         "promoted_at": utc_now(),
     }

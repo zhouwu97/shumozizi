@@ -125,6 +125,7 @@ class V3FigureTests(unittest.TestCase):
             self.assertTrue(generated["success"])
             for output in generated["outputs"]:
                 self.assertGreater((self.run_dir / output).stat().st_size, 0)
+            self.assertTrue((self.run_dir / generated["visual_manifest"]).is_file())
         index = read_figure_index(self.run_dir)
         self.assertEqual(8, len(index["figures"]))
         self.assertTrue(
@@ -148,6 +149,14 @@ class V3FigureTests(unittest.TestCase):
             stem = self.root / "fixture-renders" / template_id
             boxes = render(template_id, data, stem)
             self.assertTrue(boxes.is_file())
+            manifest = json.loads(
+                stem.with_suffix(".visual_manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(manifest["elements"])
+            self.assertEqual(
+                {item["label"] for item in manifest["elements"]},
+                set(manifest["labels"]),
+            )
             for suffix in (".png", ".pdf", ".svg"):
                 self.assertGreater(stem.with_suffix(suffix).stat().st_size, 0)
 

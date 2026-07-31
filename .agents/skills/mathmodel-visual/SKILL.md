@@ -23,6 +23,8 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 图不能由脚本直接覆盖 `figures/current/`。每次修改使用新版本目录 `figures/work/<figure_id>/<version>/` 同时生成 PNG/PDF，先独立打开检查，再执行 `python scripts/figures/promote_figure_candidate.py` 晋级。普通统计图检查文件可读和 PNG/PDF 宽高比；`diagram` 还必须输出同目录 layout JSON，检查画布边界、节点内文字、文字重叠、最小字号、箭头穿字和节点连接点居中。机械 QA 通过后仍要填写人工看图结论；同一候选版本不得反复覆盖。
 
+renderer 还要在同一候选版本输出 `visual_manifest.json`（允许文件名前带图 ID），以当前 PNG 的 SHA-256 绑定实际 panels、labels 和带归一化 bbox 的 typed elements。人工回执除原有角色布尔项外，填写 `focal_claim`、`visible_elements`、`reading_order` 和 `panel_takeaways`；晋级器会逐项核对面板、类型、标签、画布边界与论文宽度可见性。高级 `custom` 图同样必须输出 manifest，不能用文字自述替代实际元素定位。
+
 用 `audit_figure_information_value()` 查看五维建议分：数学对象、机制、约束/边界、最终决策、不确定性/对照各 0--2 分，正文主图建议至少 6 分。该分数只根据原型判断设计机会，不是门禁；必须打开 PNG/PDF 检查是否真的兑现。以下情况应返修：空间题无布局或剖面，多目标题无 Pareto/可行域，动态题无状态轨迹和控制量，不确定性题只有均值，热力图只是彩色数字表，主图只比较算法分数，或图后正文没有观察、机制和决策后果。
 
 按题目需要选择图种。不要默认要求每问有图、3D、收敛图、敏感性图、多种子图、雷达图或 evidence/publication 双份，也不靠输出份数凑数量。模板示例数据绝不能进入论文。

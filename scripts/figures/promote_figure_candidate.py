@@ -42,6 +42,11 @@ def main() -> int:
         required=True,
         help="内容化人工复核 JSON；必须包含角色所需的可见性检查和 promote 结论",
     )
+    parser.add_argument(
+        "--visual-manifest",
+        required=True,
+        help="与候选同目录、绑定当前 PNG 哈希的 renderer 视觉元素清单",
+    )
     args = parser.parse_args()
     try:
         review = json.loads(args.human_review.read_text(encoding="utf-8"))
@@ -55,6 +60,7 @@ def main() -> int:
             figure_role=args.figure_role,
             presentation_role=args.presentation_role,
             human_review=review,
+            visual_manifest=args.visual_manifest,
         )
     except (ContractError, OSError, json.JSONDecodeError) as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}, ensure_ascii=False))

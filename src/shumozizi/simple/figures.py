@@ -445,13 +445,34 @@ def _promotion_record(
     }
     receipt_figure_role = receipt.get("figure_role")
     receipt_presentation_role = receipt.get("presentation_role")
+    receipt_version = receipt.get("schema_version")
     validate_human_figure_review(
         receipt.get("human_review"),
         figure_role=receipt_figure_role,
         presentation_role=receipt_presentation_role,
+        require_element_binding=receipt_version == "1.2",
     )
+    manifest_valid = True
+    if receipt_version == "1.2":
+        manifest = receipt.get("visual_manifest")
+        manifest_valid = (
+            isinstance(manifest, dict)
+            and isinstance(manifest.get("path"), str)
+            and isinstance(manifest.get("sha256"), str)
+            and isinstance(manifest.get("output_sha256"), str)
+            and sha256_file(
+                resolve_inside(run_dir, manifest.get("path"), must_exist=True)
+            )
+            == manifest.get("sha256")
+            and any(
+                item.get("sha256") == manifest.get("output_sha256")
+                and str(item.get("path", "")).casefold().endswith(".png")
+                for item in receipt.get("qa", {}).get("candidate_outputs", [])
+                if isinstance(item, dict)
+            )
+        )
     if (
-        receipt.get("schema_version") != "1.1"
+        receipt_version not in {"1.1", "1.2"}
         or receipt.get("figure_id") != figure_id
         or receipt_figure_role != role
         or receipt_presentation_role != presentation_role
@@ -459,6 +480,7 @@ def _promotion_record(
         or receipt.get("human_review", {}).get("reviewed") is not True
         or receipt.get("human_review", {}).get("verdict") != "promote"
         or receipt.get("human_review", {}).get("issues") != []
+        or not manifest_valid
         or any(promoted_hashes.get(item["path"]) != item["sha256"] for item in output_records)
     ):
         raise ContractError("图表晋级回执未绑定当前角色、输出、机械 QA 或内容化人工复核")
