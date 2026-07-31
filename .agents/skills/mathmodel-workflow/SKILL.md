@@ -19,6 +19,10 @@ python scripts/codex/init_simple_run.py <problem_path> --run-id <run-id> --workf
 
 ## 交付控制
 
+知识库的优先级始终低于当前题面、当前数据、当前生产实验和独立验证。采用模式必须登记 `application_layer`、`target_ids`、当前题依据、适配动作、预期效果和可推翻条件；`validation_design` 另绑验证类型、指标与通过准则，`paper_structure` 另绑蓝图与正文锚点。进入实验前验证目标存在，进入论文前只允许 `validated` 或 `revised` 状态。视觉模式先用 `python scripts/knowledge/suggest_visual_patterns.py <run_dir>` 与当前义务和 `visual_outputs.required_data` 匹配，再由作者决定是否写入 `FIGURE_PLAN 2.4`；不能照搬来源图，也不能为匹配模式补造结构数据。
+
+实验完成后用 `python scripts/knowledge/record_usage_outcomes.py <run_dir> --input <outcomes.json>` 回填 `validated`、`revised`、`rejected_by_evidence` 或 `not_executed`。回填会复核 current production result ID；候选论文只读取自动生成的 `paper/generated/knowledge_context.json`，不得把整份论文卡或未兑现模式灌入写作上下文。
+
 初始化 v3.2 运行后，先执行 `python scripts/simple/delivery_control.py status <run_dir>`，并在阶段切换或准备扩展协议前重查。运行时按阶段自动记录一个 phase session，不再要求每段命令手动 `start-work/stop-work`，也不追查 20 分钟墙钟空档。只有协议、执行器或 P0 交付修复需要精确核算开销时，才用细粒度工时命令登记，不能用实验耗时掩盖协议开销。
 
 交付状态返回的唯一最高优先级动作覆盖普通探索：第一版 PDF 截止后，将四类披露写入 JSON（`completed_content`、`unfinished_questions`、`remaining_experiments`、`provisional_conclusions`），执行 `python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>`；该命令直接生成、复验并冻结 `paper/draft-1.pdf`。它允许答案资格尚未全部完成，但必须使用当前真实内容，并在 PDF 中明确“本稿不可作为最终提交”。候选截止后仍用严格 `compile_paper.py` 生成 `paper/final.pdf`，再执行 `freeze-pdf candidate`；盲评截止后先创建或恢复盲评。
@@ -32,6 +36,7 @@ python scripts/codex/init_simple_run.py <problem_path> --run-id <run-id> --workf
 5. 结束实验后进行一次自由科学挑战；必要时只允许一个专项追问。阶段 A 先判断核心风险在目标语义/分解还是模型/搜索；多主体、嵌套量词、聚合词、问题实体变化或分解后组合存在时，第一攻击必须针对语义并给出独立玩具反例。只有语义风险低时才优先攻击搜索和数值。其余发现分类、回退和更强路线闭合规则不变。
 6. 图表在 `figures/work/` 迭代，通过 QA 后晋级 `figures/current/`，旧版进入 `figures/archive/`。首稿前每个必答问题都须在 `FIGURE_PLAN` 2.3 中把展示图决定为 required 或 waived；几何、并集/交集、名义—稳健和共享模型还须作 whole-paper 决策。正文 hero 先声明 `information_structure`，再按空间、时间/集合、网络、场、权衡或不确定性选择原型，并标注临界事件、活跃约束、边界和最终决策。普通柱形图/折线图不能成为这些结构的默认唯一主图；确实最合适时必须显式登记 override 理由。稳定性图入附录。
 7. 进入论文后只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 和 `PAPER_REVIEW.md` 四个主要控制文件。写作交接先过滤控制层：正文上下文只提供题面事实、模型与关键推导、逐问直接答案、少量决定性结果、当前正文主图、必要文献、机制、竞争解释和结论边界；日志、manifest、哈希、回执、工具探测、阶段状态、完整搜索轨迹和普通 QA 默认留在控制层。先在蓝图的全局层完成“结论—数学原因—决定性证据—竞争解释—适用边界”蒸馏并写成连续论证，再映射到逐问机器字段和国赛章节；不得用控制台账直接生成正文。知识应用是 advisory；零匹配时使用通用结构模式，可检索实际采用的方法文献，禁止同题答案和现成结论。CUMCM 使用 `CUMCM_STRUCTURE_MAP` 1.2：多问共享对象并有资源/约束/聚合递进时默认 semantic，保留明确“模型假设与符号”入口；否则 classic 兜底。候选稿前运行 `python scripts/paper/audit_report_style.py <run_dir>`，把重复问答模板、内部工作流词、报账式摘要、列表堆叠、核心问缺推导/机制和主图脱离论证作为 warning 交给作者与独立盲评复核，不新增状态门。
+   每个问题章节开头先放直接结论，问题一、二、三不得让评委翻到章节末尾寻找答案；CUMCM 中文正文使用宋体小四（12pt），公式变量使用 Times New Roman 系斜体，最终 PDF 盲评必须检查这两项。
 
 返修分别维护 `argument_revision` 与 `render_revision`：`science` 重做科学挑战、论证和渲染，`argument` 使盲评失效，`render` 只使版式和机械 QA 失效。编译默认 `auto`，也可用 `--revision-impact` 显式声明。
 8. PDF 盲评必须使用独立上下文，只接收冻结 PDF 和固定提示词。最终盲评内置一条人工干预：按数学建模国赛标准，对照优秀论文表现审查图表缺口、报告/论文形态、笔法文风、排版、论证链和十几页篇幅原因，并给出带优先级、修复层级和验收标准的修改清单；不得联网或读取题面、源码、运行记录。该干预记录在盲评回执中，不新增阶段，也不创建作者填写的平行表单。导入记录绑定当前 `argument_revision`；纯渲染重编不要求重做盲评。`CUMCM_LAYOUT_AUDIT` 仍绑定当前 `render_revision` 并直接消费盲评事实。

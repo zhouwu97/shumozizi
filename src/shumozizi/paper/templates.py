@@ -240,8 +240,10 @@ def _question_section_content(
         if engine == "typst":
             sec = f"= {title_prefix} {question_id}"
             if is_core:
-                # 核心问题：六步论证骨架
+                # 国赛评委先找答案：每问开头先给直接结论，再展开论证。
                 subsections = [
+                    ("本问结论" if language == "zh" else "Answer First",
+                     "// 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
                     ("核心困难与建模判断" if language == "zh" else "Core Difficulty and Modeling Judgment",
                      "// 为什么这道题需要特别建模？题面中什么事情需要被解释清楚？"),
                     ("关键推导" if language == "zh" else "Key Derivation",
@@ -257,6 +259,8 @@ def _question_section_content(
                 ]
             else:
                 subsections = [
+                    ("本问结论" if language == "zh" else "Answer First",
+                     "// 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
                     ("模型选择与关键关系" if language == "zh" else "Model and Key Relations",
                      "// 为何选择此模型而非候选替代？核心公式是什么？"),
                     ("结果解释与机制" if language == "zh" else "Result and Mechanism",
@@ -278,6 +282,8 @@ def _question_section_content(
             sec = f"\\section{{{title_prefix} {question_id}}}"
             if is_core:
                 subsections = [
+                    ("本问结论" if language == "zh" else "Answer First",
+                     "% 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
                     ("核心困难与建模判断" if language == "zh" else "Core Difficulty and Modeling Judgment",
                      "% 为什么这道题需要特别建模？题面中什么事情需要被解释清楚？"),
                     ("关键推导" if language == "zh" else "Key Derivation",
@@ -293,6 +299,8 @@ def _question_section_content(
                 ]
             else:
                 subsections = [
+                    ("本问结论" if language == "zh" else "Answer First",
+                     "% 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
                     ("模型选择与关键关系" if language == "zh" else "Model and Key Relations",
                      "% 为何选择此模型而非候选替代？核心公式是什么？"),
                     ("结果解释与机制" if language == "zh" else "Result and Mechanism",

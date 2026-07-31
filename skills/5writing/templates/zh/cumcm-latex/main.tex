@@ -36,18 +36,13 @@
 \usepackage{xeCJK}
 
 % 逐字体探测：优先级从低到高依次覆盖，最后被赋值的（存在的最高优先级）胜出。
-% 顺序：Fandol 兜底 → Linux(Noto) → macOS → Windows。
+% Fandol 作为跨平台宋体风格兜底；Windows 通过字体文件存在性切换到 SimSun。
+% 不使用 \IfFontExistsTF 探测缺失的 CJK 字体，因为 MiKTeX 会误触发 maketfm。
 \def\zhSong{FandolSong}\def\zhHei{FandolHei}\def\zhKai{FandolKai}\def\zhFang{FandolFang}
-\IfFontExistsTF{Noto Serif CJK SC}{\def\zhSong{Noto Serif CJK SC}}{}
-\IfFontExistsTF{Noto Sans CJK SC}{\def\zhHei{Noto Sans CJK SC}}{}
-\IfFontExistsTF{Songti SC}{\def\zhSong{Songti SC}}{}
-\IfFontExistsTF{Heiti SC}{\def\zhHei{Heiti SC}}{}
-\IfFontExistsTF{Kaiti SC}{\def\zhKai{Kaiti SC}}{}
-\IfFontExistsTF{STFangsong}{\def\zhFang{STFangsong}}{}
-\IfFontExistsTF{SimSun}{\def\zhSong{SimSun}}{}
-\IfFontExistsTF{SimHei}{\def\zhHei{SimHei}}{}
-\IfFontExistsTF{KaiTi}{\def\zhKai{KaiTi}}{}
-\IfFontExistsTF{FangSong}{\def\zhFang{FangSong}}{}
+\IfFileExists{C:/Windows/Fonts/simsun.ttc}{\def\zhSong{SimSun}}{}
+\IfFileExists{C:/Windows/Fonts/simhei.ttf}{\def\zhHei{SimHei}}{}
+\IfFileExists{C:/Windows/Fonts/simkai.ttf}{\def\zhKai{KaiTi}}{}
+\IfFileExists{C:/Windows/Fonts/simfang.ttf}{\def\zhFang{FangSong}}{}
 
 % 默认中文字体（正文宋体、无衬线黑体、等宽仿宋）与四个具名字族。
 \setCJKmainfont{\zhSong}
@@ -79,6 +74,8 @@
 \usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm, footskip=1.2cm]{geometry}
 \usepackage{setspace}
 \setstretch{1.40}
+% 国赛正文按宋体小四（12pt）排版；数学公式由上面的 Times 数学字体处理。
+\fontsize{12pt}{18pt}\selectfont
 \setlength{\parindent}{2em}
 \setlength{\parskip}{0pt}
 \raggedbottom
@@ -91,8 +88,9 @@
 \renewcommand{\headrulewidth}{0pt}
 \renewcommand{\footrulewidth}{0pt}
 
-% ---------- 数学 ----------
-\usepackage{amsmath,amssymb,mathtools,bm}
+% ---------- 数学：变量使用 Times 系斜体 ----------
+\usepackage{amsmath,mathtools,bm}
+\IfFileExists{newtxmath.sty}{\usepackage{newtxmath}}{\usepackage{amssymb,mathptmx}}
 \allowdisplaybreaks[2]
 
 % ---------- 图表 ----------

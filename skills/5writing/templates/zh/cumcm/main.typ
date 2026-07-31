@@ -20,7 +20,8 @@
   margin: (top: 2.5cm, bottom: 2.5cm, left: 2.5cm, right: 2.5cm),
   numbering: "1",
 )
-#set text(font: body-font, size: 12.05pt, lang: "zh")
+#set text(font: song-font, size: 12pt, lang: "zh")
+#show math.equation: set text(font: ("Times New Roman", "TeX Gyre Termes Math", "STIX Two Math"))
 #set par(
   first-line-indent: (amount: 2em, all: true),
   justify: true,
