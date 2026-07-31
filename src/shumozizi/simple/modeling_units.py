@@ -2710,12 +2710,19 @@ def core_question_insights(run_dir: Path) -> dict[str, list[dict[str, Any]]]:
     return collected
 
 
-def first_feasible_checkpoint_prompt(run_dir: Path, question_id: str) -> str:
+def first_feasible_checkpoint_prompt(
+    run_dir: Path,
+    question_id: str,
+    *,
+    allow_non_search_core: bool = False,
+) -> str:
     """生成核心问题首个可行解的轻量独立 AI 复核提示。
 
     Args:
         run_dir: 当前 Competition-First v3.2 运行目录。
         question_id: 需要复核的核心问题 ID。
+        allow_non_search_core: 显式允许数据建模或 exact oracle 核心问使用同一
+            轻量复核提示；默认保持只审核心搜索问题。
 
     Returns:
         只聚焦下一步建模决策的固定提示词，不创建新阶段或审核文件。
@@ -2749,7 +2756,9 @@ def first_feasible_checkpoint_prompt(run_dir: Path, question_id: str) -> str:
         require_decision_contract=True,
         schema_version="1.4",
     )
-    if not plan["core_question"] or not plan["search_kind"]:
+    if not plan["core_question"] or (
+        not plan["search_kind"] and not allow_non_search_core
+    ):
         raise ContractError(f"{question_id} 不是需要首解 AI checkpoint 的核心搜索问题")
     actual = _require_mapping(
         raw_unit.get("actual"), f"{plan['unit_id']}.actual"

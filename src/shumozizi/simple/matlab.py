@@ -160,6 +160,8 @@ def run_matlab_analysis(
     engine: str = "matlab",
     timeout_seconds: int = 600,
     execution_mode: str = "production",
+    additional_results: list[dict[str, Any]] | None = None,
+    versioned_manifest: bool = False,
 ) -> dict[str, Any]:
     """运行 MATLAB/Octave 入口，写 manifest 并登记真实结果。
 
@@ -181,6 +183,10 @@ def run_matlab_analysis(
         engine: ``matlab`` 或 ``octave``。
         timeout_seconds: 单次执行超时。
         execution_mode: ``production`` 或 ``exploration``。
+        additional_results: 同一次 MATLAB 执行需要按其它问题登记的结果；每项
+            必须给出 ``result_id``、``question_id`` 和 ``metric_sources``。
+        versioned_manifest: 为真时把 manifest 写入按结果 ID 隔离的目录，避免
+            后续异构引擎执行覆盖仍为 current 的凭据。
 
     Returns:
         已写入 ``results/matlab/manifest.json`` 的执行 manifest。
@@ -218,6 +224,25 @@ def run_matlab_analysis(
         normalized = _relative_file(root, source.get("file", ""), must_exist=False)
         if normalized not in output_set:
             raise ContractError("MATLAB 指标来源必须属于本次声明输出")
+    additional_specs = additional_results or []
+    if not isinstance(additional_specs, list):
+        raise ContractError("MATLAB additional_results 必须是列表")
+    for index, spec in enumerate(additional_specs):
+        if not isinstance(spec, dict):
+            raise ContractError(f"MATLAB additional_results[{index}] 必须是对象")
+        if not isinstance(spec.get("result_id"), str) or not spec["result_id"].strip():
+            raise ContractError(f"MATLAB additional_results[{index}] 缺少 result_id")
+        if not isinstance(spec.get("question_id"), str) or not spec["question_id"].strip():
+            raise ContractError(f"MATLAB additional_results[{index}] 缺少 question_id")
+        extra_sources = spec.get("metric_sources")
+        if not isinstance(extra_sources, dict):
+            raise ContractError(
+                f"MATLAB additional_results[{index}] 缺少 metric_sources"
+            )
+        for source in extra_sources.values():
+            normalized = _relative_file(root, source.get("file", ""), must_exist=False)
+            if normalized not in output_set:
+                raise ContractError("MATLAB 附加结果的指标来源必须属于本次声明输出")
 
     logs_dir = root / "logs"
     result_dir = root / "results" / "matlab"
@@ -225,7 +250,11 @@ def run_matlab_analysis(
     result_dir.mkdir(parents=True, exist_ok=True)
     stdout_relative = f"logs/{result_id}.stdout.log"
     stderr_relative = f"logs/{result_id}.stderr.log"
-    manifest_relative = "results/matlab/manifest.json"
+    manifest_relative = (
+        f"results/matlab/manifests/{result_id}.json"
+        if versioned_manifest
+        else "results/matlab/manifest.json"
+    )
     before = {
         item: (root / item).stat().st_mtime_ns
         for item in normalized_outputs
@@ -368,4 +397,34 @@ def run_matlab_analysis(
             "generates_scientific_visualization": role == "scientific_visualization",
         },
     )
+    if execution_valid:
+        for spec in additional_specs:
+            extra_sources = spec["metric_sources"]
+            extra_metrics = _read_metrics(root, extra_sources)
+            register_result(
+                root,
+                result_id=spec["result_id"],
+                question_id=spec["question_id"],
+                kind=f"matlab_{role}",
+                command=" ".join(command),
+                source_script=script,
+                input_files=normalized_inputs,
+                output_files=[*normalized_outputs, manifest_relative],
+                metrics=extra_metrics,
+                metric_sources=extra_sources,
+                exit_code=exit_status,
+                stdout_path=stdout_relative,
+                stderr_path=stderr_relative,
+                started_at=started_at,
+                finished_at=finished_at,
+                duration_seconds=elapsed_seconds,
+                execution_mode=execution_mode,
+                objective_semantics_sha256=objective_semantics_sha256,
+                method_facts={
+                    "uses_independent_oracle": role == "independent_oracle",
+                    "uses_optimizer_challenger": role == "optimizer_challenger",
+                    "generates_scientific_visualization": role
+                    == "scientific_visualization",
+                },
+            )
     return manifest
