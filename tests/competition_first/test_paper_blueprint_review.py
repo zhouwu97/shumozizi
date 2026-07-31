@@ -28,6 +28,7 @@ from shumozizi.paper.paper_review import (
     unclosed_high_priority_findings,
 )
 from shumozizi.paper.readiness import (
+    presentation_figure_warnings,
     validate_figure_argument_obligations,
     validate_presentation_decisions,
 )
@@ -391,6 +392,76 @@ def test_structural_visual_waiver_requires_independent_review(tmp_path: Path) ->
     assert "结构性展示需求 Q1=waived，但缺少独立 waiver_review" in errors
     assert "结构性展示需求 Q2=waived，但缺少独立 waiver_review" in errors
     assert "结构性展示需求 whole_paper=waived，但缺少独立 waiver_review" in errors
+
+
+@pytest.mark.parametrize("schema_version", ["2.3", "2.4"])
+def test_presentation_warning_supports_current_and_legacy_plans(
+    tmp_path: Path, schema_version: str
+) -> None:
+    """2.3/2.4 的 required 呈现需求缺少 hero 时都应产生 advisory。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        f"presentation-warning-{schema_version.replace('.', '-')}",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": schema_version,
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "scope": "Q1",
+                    "evidence_need": "waived",
+                    "presentation_need": "required",
+                    "reason": "Q1 需要主图帮助评委快速识别结论和决策后果。",
+                }
+            ],
+            "figures": [],
+        },
+    )
+
+    assert presentation_figure_warnings(run_dir) == [
+        "呈现需求 Q1 声明为 required，但缺少 question_hero 图；"
+        "当前仅提示，不自动要求增加低价值图。"
+    ]
+
+
+def test_presentation_warning_accepts_v24_question_hero(tmp_path: Path) -> None:
+    """2.4 已规划对应 hero 时不应产生展示缺口 warning。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "presentation-warning-satisfied",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.4",
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "scope": "Q1",
+                    "evidence_need": "required",
+                    "presentation_need": "required",
+                    "reason": "Q1 需要正文主图呈现主要结果和决策依据。",
+                }
+            ],
+            "figures": [
+                {
+                    "figure_id": "q1-hero",
+                    "question_id": "Q1",
+                    "presentation_role": "question_hero",
+                }
+            ],
+        },
+    )
+
+    assert presentation_figure_warnings(run_dir) == []
 
 
 def test_candidate_keeps_historical_checkpoints_after_batch_revision(tmp_path: Path) -> None:

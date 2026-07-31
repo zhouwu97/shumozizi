@@ -15,9 +15,9 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 在 analysis 阶段先列出 `mathematical_objects` 和 `visual_questions`。在模型输出合同中声明 `visual_outputs`，至少按实际需要保存候选解、可行边界、活跃约束、搜索轨迹、Pareto 点、状态轨迹或不确定性样本；只保存最终标量时先修模型输出，不能让绘图阶段猜造结构数据。
 
-新运行使用 `FIGURE_PLAN.json` 2.3，把科学证据需要与竞赛阅读需要分开。每个核心问题按 `scope=Qx` 声明 `evidence_need` 和 `presentation_need`；数据结构本身决定统计单位、删失、聚合或模型选择时，再增加 `scope=whole_paper` 的数据画像判断。`evidence_need=required` 表示缺图会使关键科学证据不完整，继续作为编译硬门；`presentation_need=required` 表示公式和表格虽足以证明，但缺图会使评委难以迅速理解，初期只产生 advisory。两者都可在有具体理由时 `waived`，纯解析题不强制主图。旧 2.1/2.2 只作兼容读取。
+新运行使用 `FIGURE_PLAN.json` 2.4，把科学证据需要与竞赛阅读需要分开。每个核心问题按 `scope=Qx` 声明 `evidence_need` 和 `presentation_need`；数据结构本身决定统计单位、删失、聚合或模型选择时，再增加 `scope=whole_paper` 的数据画像判断。`evidence_need=required` 表示缺图会使关键科学证据不完整，继续作为编译硬门；`presentation_need=required` 表示公式和表格虽足以证明，但缺图会使评委难以迅速理解。两者都可在有具体理由时 `waived`；几何、集合、时间、多阶段、模型选择、不确定性、名义—稳健、共享模型或跨问递进等结构性 waiver 必须包含独立 `waiver_review` 和可核对的替代表达。纯解析题不强制主图，2.1--2.3 只作兼容读取。
 
-每张 2.3 图还声明 `presentation_role`：`data_portrait`、`question_hero`、`supporting` 或 `appendix`。一个问题只确定承担主叙事的 hero figure，不按题号凑固定图数；其余图只有承担独立证据任务时才进正文。纯呈现图可读取当前运行内已冻结的 `problem/`、`analysis/` 或 `results/raw/` 文件，不得为数据画像伪造实验结果；晋级后用 `scripts/figures/register_presentation_figure.py` 登记输入、脚本、输出和人工看图回执。
+每张 2.4 图声明 `presentation_role`：`data_portrait`、`question_hero`、`supporting` 或 `appendix`，并绑定一个或多个 `argument_unit_ids` 和实际承担的 `obligation_types`。逐问字段是覆盖合同，不是“一问一图”指标：一个问题只确定承担主叙事的 hero figure，其余图只有承担独立证据任务时才进正文；一张图承担三项以上独立义务时必须用 `panel_mapping` 把面板、论证单元和 takeaway 对齐。纯呈现图可读取当前运行内已冻结的 `problem/`、`analysis/` 或 `results/raw/` 文件，不得为数据画像伪造实验结果；晋级后用 `scripts/figures/register_presentation_figure.py` 登记输入、脚本、输出和人工看图回执。
 
 需要作为正文论证证据或主叙事入口的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`information_structure`、`renderer`、`visual_question`、`expected_observation`、`decision_consequence`、`generic_chart_considered`、`generic_chart_rejected_because` 和 `mechanism_annotation`。空间、集合、网络、场、决策面、区间或不确定性结构不能把普通柱形图/折线图作为唯一主图；确实最合适时必须用 `generic_chart_override_reason` 说明。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版后若 PDF 评审暴露新的证据缺口，可以新增带 `review_finding` 的图，候选 PDF 冻结后不再扩图。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
 

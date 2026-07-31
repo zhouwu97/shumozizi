@@ -321,13 +321,13 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
 
 
 def presentation_figure_warnings(run_dir: Path) -> list[str]:
-    """对 FIGURE_PLAN 2.3 的呈现需求给出非阻断性缺口提示。"""
+    """对 FIGURE_PLAN 2.3/2.4 的呈现需求给出非阻断性缺口提示。"""
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
         return []
     try:
         plan = load_json(plan_path)
-        if plan.get("schema_version") != "2.3":
+        if plan.get("schema_version") not in {"2.3", "2.4"}:
             return []
         decisions = plan.get("visual_decisions", [])
         figures = plan.get("figures", [])
@@ -353,7 +353,7 @@ def presentation_figure_warnings(run_dir: Path) -> list[str]:
                 )
         return warnings
     except (ContractError, OSError, TypeError, ValueError):
-        return ["FIGURE_PLAN 2.3 呈现需求无法读取，建议人工检查。"]
+        return ["FIGURE_PLAN 2.3/2.4 呈现需求无法读取，建议人工检查。"]
 
 
 def validate_presentation_decisions(run_dir: Path) -> list[str]:
