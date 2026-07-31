@@ -28,6 +28,7 @@ from shumozizi.paper.paper_review import (
     unclosed_high_priority_findings,
 )
 from shumozizi.paper.readiness import (
+    derive_required_visual_obligations,
     presentation_figure_warnings,
     validate_figure_argument_obligations,
     validate_presentation_decisions,
@@ -343,6 +344,190 @@ def test_three_result_figures_do_not_cover_model_and_mechanism(tmp_path: Path) -
     assert "Q2 缺少 mathematical_object/model_structure 图表义务覆盖" in errors
     assert "Q3 缺少 mechanism/comparison/decision 图表义务覆盖" in errors
     assert "whole_paper 缺少共享数学对象或跨问模型结构表达" in errors
+
+
+def test_visual_obligations_derive_uncertainty_from_structured_output() -> None:
+    """bootstrap 场景分布不能被只有均值结果的图掩盖。"""
+    obligations = derive_required_visual_obligations(
+        {
+            "question_id": "Q1",
+            "core_question": False,
+            "visual_outputs": [
+                {
+                    "argument_unit_id": "Q1-uncertainty",
+                    "visual_question": "置信带是否跨过决策阈值",
+                    "required_data": [
+                        "bootstrap_quantiles",
+                        "scenario_distribution",
+                        "decision_threshold",
+                    ],
+                    "output_path": "results/raw/q1-uncertainty.json",
+                }
+            ],
+        }
+    )
+
+    assert {"uncertainty", "boundary"} <= obligations
+
+
+def test_uncertainty_requires_matching_figure_obligation(tmp_path: Path) -> None:
+    """声明 bootstrap 数据后，仅覆盖 result 必须报告 uncertainty 缺口。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "uncertainty-result-only",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {
+            "schema_version": "1.4",
+            "run_id": run_dir.name,
+            "units": [
+                {
+                    "question_id": "Q1",
+                    "core_question": False,
+                    "visual_outputs": [
+                        {
+                            "required_data": ["bootstrap_quantiles", "scenario_distribution"],
+                            "visual_question": "不同场景下排序是否翻转",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_version": "2.4",
+            "visual_decisions": [],
+            "figures": [
+                {
+                    "figure_id": "q1-mean",
+                    "question_id": "Q1",
+                    "required": True,
+                    "role": "decisive_evidence",
+                    "obligation_types": ["result"],
+                }
+            ],
+        },
+    )
+
+    assert "Q1 缺少 uncertainty 图表义务覆盖" in validate_figure_argument_obligations(
+        run_dir
+    )
+
+
+def test_active_constraints_require_boundary_obligation(tmp_path: Path) -> None:
+    """可行域与活跃约束不能由最终得分图替代。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "active-constraint-score-only",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {
+            "schema_version": "1.4",
+            "run_id": run_dir.name,
+            "units": [
+                {
+                    "question_id": "Q1",
+                    "core_question": False,
+                    "visual_outputs": [
+                        {
+                            "required_data": [
+                                "candidate_points",
+                                "feasible_mask",
+                                "active_constraints",
+                            ],
+                            "visual_question": "哪个活跃约束限制最终方案",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_version": "2.4",
+            "visual_decisions": [],
+            "figures": [
+                {
+                    "figure_id": "q1-score",
+                    "question_id": "Q1",
+                    "required": True,
+                    "role": "decisive_evidence",
+                    "obligation_types": ["result"],
+                }
+            ],
+        },
+    )
+
+    errors = validate_figure_argument_obligations(run_dir)
+    assert "Q1 缺少 boundary 图表义务覆盖" in errors
+
+
+def test_three_dense_figures_can_cover_all_derived_obligations(tmp_path: Path) -> None:
+    """完整义务可由三张高密度图覆盖，门禁不退化为图数指标。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "dense-three-figures",
+        required_questions=["Q1", "Q2", "Q3"],
+        workflow_version="3.2",
+    )
+    units = []
+    for question_id in ("Q1", "Q2", "Q3"):
+        units.append(
+            {
+                "question_id": question_id,
+                "core_question": True,
+                "mathematical_structure": "三问共享模型、可行域与稳健决策",
+                "visual_outputs": [
+                    {
+                        "required_data": [
+                            "candidate_points",
+                            "feasible_mask",
+                            "active_constraints",
+                            "bootstrap_quantiles",
+                        ],
+                        "visual_question": "结构、边界与不确定性如何共同决定方案",
+                    }
+                ],
+            }
+        )
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {"schema_version": "1.4", "run_id": run_dir.name, "units": units},
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_version": "2.4",
+            "visual_decisions": [],
+            "figures": [
+                {
+                    "figure_id": f"{question_id.lower()}-evidence-chain",
+                    "question_id": question_id,
+                    "required": True,
+                    "role": "decisive_evidence",
+                    "obligation_types": [
+                        "model_structure",
+                        "mechanism",
+                        "result",
+                        "boundary",
+                        "uncertainty",
+                    ],
+                }
+                for question_id in ("Q1", "Q2", "Q3")
+            ],
+        },
+    )
+
+    assert validate_figure_argument_obligations(run_dir) == []
 
 
 def test_structural_visual_waiver_requires_independent_review(tmp_path: Path) -> None:

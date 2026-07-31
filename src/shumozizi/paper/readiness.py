@@ -546,6 +546,122 @@ def _valid_visual_waiver(decision: object) -> bool:
     )
 
 
+def _visual_contract_text(unit: dict[str, Any]) -> str:
+    """提取用于视觉义务推导的结构化合同文本。"""
+    fields = (
+        "visual_outputs",
+        "data_contract",
+        "simulation_contract",
+        "capability_decision",
+        "mathematical_structure",
+        "primary_method",
+        "answer_contract",
+        "question_delta",
+        "evaluation",
+        "oracle",
+    )
+    return json.dumps(
+        {key: unit[key] for key in fields if key in unit},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def derive_required_visual_obligations(
+    unit: dict[str, Any],
+    blueprint_question: dict[str, Any] | None = None,
+) -> set[str]:
+    """从建模合同推导该问题真正需要的视觉论证义务。
+
+    优先读取 ``visual_outputs``、题型合同和显式布尔决策；旧运行缺少这些
+    字段时，才用数学结构与蓝图文本作兼容判断。函数只推导信息角色，不
+    规定图数，因此一张合理的多面板图可以同时承担多项义务。
+
+    Args:
+        unit: ``MODELING_UNITS`` 中的单个问题单元。
+        blueprint_question: 可选的逐问蓝图结构化记录。
+
+    Returns:
+        该问题需要由非稳定性正文图覆盖的义务集合。
+    """
+    obligations: set[str] = set()
+    contract_text = _visual_contract_text(unit)
+    fallback_text = json.dumps(
+        {"unit": unit, "blueprint": blueprint_question or {}},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+    object_pattern = re.compile(
+        r"几何|轨迹|空间|光路|并集|交集|覆盖|共享模型|共享参数|共享约束|"
+        r"时间区间|事件|多阶段|聚合|aggregation",
+        re.IGNORECASE,
+    )
+    decision_pattern = re.compile(
+        r"模型选择|判别|不确定性|名义|稳健|nominal|robust|优化|权衡|活跃约束",
+        re.IGNORECASE,
+    )
+    if unit.get("core_question") is True or object_pattern.search(fallback_text):
+        obligations.add("model_structure")
+    if unit.get("core_question") is True or decision_pattern.search(fallback_text):
+        obligations.add("mechanism")
+
+    data_pattern = re.compile(
+        r"missing|outlier|censor|imbalance|class_balance|distribution|group(?:ing)?|"
+        r"observational_unit|sampling_unit|cluster|spatial_density|temporal_density|"
+        r"缺失|异常|删失|不平衡|分布|统计单位|观测单位|分组|聚集|密度",
+        re.IGNORECASE,
+    )
+    if data_pattern.search(contract_text):
+        obligations.add("data_intuition")
+
+    uncertainty_pattern = re.compile(
+        r"bootstrap|confidence_interval|prediction_interval|quantile|stochastic|"
+        r"random_seed|scenario_distribution|parameter_distribution|fan_band|"
+        r"nominal|robust|ranking_flip|rank_flip|置信区间|预测区间|分位数|"
+        r"随机仿真|场景分布|参数分布|名义|稳健|排序翻转",
+        re.IGNORECASE,
+    )
+    explicit_uncertainty = any(
+        unit.get(key) is True
+        for key in ("robustness_required", "uncertainty_required")
+    )
+    if explicit_uncertainty or uncertainty_pattern.search(contract_text):
+        obligations.add("uncertainty")
+
+    boundary_pattern = re.compile(
+        r"feasible_(?:mask|region|set)|infeasible|active_constraint|constraint_slack|"
+        r"threshold|critical_event|switch_point|safety_(?:boundary|region)|"
+        r"可行域|不可行区|活跃约束|约束余量|阈值|临界事件|切换点|安全边界",
+        re.IGNORECASE,
+    )
+    if boundary_pattern.search(contract_text):
+        obligations.add("boundary")
+
+    visual_result_pattern = re.compile(
+        r"trajectory|curve|surface|field|pareto|candidate_points|alternative_points|"
+        r"solution_set|spatial_(?:map|distribution)|interval_set|multi_solution|"
+        r"轨迹|曲线|曲面|空间场|候选点|备选方案|解集|多方案|帕累托",
+        re.IGNORECASE,
+    )
+    if visual_result_pattern.search(contract_text):
+        obligations.add("result")
+    return obligations
+
+
+def _waived_visual_obligations(decision: object) -> set[str]:
+    """读取现有 waiver_review 中按义务声明的替代表达。"""
+    if not isinstance(decision, dict):
+        return set()
+    review = decision.get("waiver_review")
+    if not isinstance(review, dict) or review.get("reviewed") is not True:
+        return set()
+    values = review.get("waived_obligation_types", [])
+    if not isinstance(values, list):
+        return set()
+    return {str(value) for value in values if isinstance(value, str)}
+
+
 def validate_figure_argument_obligations(run_dir: Path) -> list[str]:
     """要求结构性和核心问题的图真正承担模型理解与机制义务。
 
@@ -586,38 +702,32 @@ def validate_figure_argument_obligations(run_dir: Path) -> list[str]:
                 str(item) for item in figure.get("obligation_types", [])
             )
 
-    object_pattern = re.compile(
-        r"几何|轨迹|空间|光路|并集|交集|覆盖|共享模型|共享参数|共享约束|"
-        r"时间区间|事件|多阶段|聚合|aggregation",
-        re.IGNORECASE,
-    )
-    decision_pattern = re.compile(
-        r"模型选择|判别|不确定性|名义|稳健|nominal|robust|优化|权衡|活跃约束",
-        re.IGNORECASE,
-    )
     errors: list[str] = []
     for unit in modeling.get("units", []):
         if not isinstance(unit, dict) or not isinstance(unit.get("question_id"), str):
             continue
         question_id = unit["question_id"]
         decision = decisions.get(question_id)
-        text = json.dumps(unit, ensure_ascii=False)
-        object_signal = bool(object_pattern.search(text))
-        decision_signal = bool(decision_pattern.search(text))
-        core = unit.get("core_question") is True
         if _valid_visual_waiver(decision):
             continue
-        obligations = by_question.get(question_id, set())
-        if (object_signal or core) and not obligations.intersection(
+        required = derive_required_visual_obligations(unit)
+        required -= _waived_visual_obligations(decision)
+        covered = by_question.get(question_id, set())
+        if "model_structure" in required and not covered.intersection(
             {"mathematical_object", "model_structure"}
         ):
             errors.append(
                 f"{question_id} 缺少 mathematical_object/model_structure 图表义务覆盖"
             )
-        if (decision_signal or core) and not obligations.intersection(
+        if "mechanism" in required and not covered.intersection(
             {"mechanism", "comparison", "decision"}
         ):
             errors.append(f"{question_id} 缺少 mechanism/comparison/decision 图表义务覆盖")
+        for obligation in sorted(
+            required - {"model_structure", "mechanism"}
+        ):
+            if obligation not in covered:
+                errors.append(f"{question_id} 缺少 {obligation} 图表义务覆盖")
 
     modeling_text = json.dumps(modeling, ensure_ascii=False)
     shared_signal = bool(re.search(r"共享模型|共享参数|跨问题|问题递进", modeling_text))
