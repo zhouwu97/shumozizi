@@ -69,7 +69,7 @@ PDF 盲评需要独立上下文，**不能新开浏览器页面**，平台区分
 - **Codex 桌面端**：用 `create_thread` 新建顶层对话，`provider=codex`，`creation_mode=create_thread`，`parent_context_inherited=false`。
 - **Claude.ai / Claude Code**：用 Agent tool dispatch 一个子 Agent，**不传入任何当前 run 的上下文**，只传冻结 PDF 路径 + 提示词；子 Agent ID 即为 `raw_thread_id`，`provider=claude`，`creation_mode=dispatch_agent`，`parent_context_inherited=false`。
 
-无论哪种平台，新上下文只读取冻结 PDF，提示词由 `scripts/review/show_paper_blind_prompt.py` 生成并原样传入；不读取题面、源码、历史 run、求解上下文、作者说明或前序审核结论。盲评写 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须完成三分钟冷读，并在同一报告末尾按固定提示嵌入 `## 结构化盲评结果` JSON：逐问记录直接答案、论证缺失角色、实际页码、具体 finding、问题继承和叙事风险。导入器把该块写入现有 `review/paper-blind-review.json`，并绑定报告哈希、任务/对话 ID、固定提示词和当前 `paper_render_revision`；不得另交一份作者填写的冷读 JSON。
+无论哪种平台，新上下文只读取冻结 PDF，提示词由 `scripts/review/show_paper_blind_prompt.py` 生成并原样传入；不读取题面、源码、历史 run、求解上下文、作者说明或前序审核结论。最终提示词还固定记录用户人工干预：按国赛标准对照优秀论文，审查图表缺口、报告/论文形态、笔法文风、排版、论证主线、篇幅不足原因和具体修改优先级；不得把它缩减成只看建模思路。盲评写 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须完成三分钟冷读，并在同一报告末尾按固定提示嵌入 `## 结构化盲评结果` JSON：逐问记录直接答案、论证缺失角色、实际页码、具体 finding、问题继承和叙事风险。导入器把该块写入现有 `review/paper-blind-review.json`，并将人工干预来源、PDF-only 边界和覆盖维度写入回执，绑定报告哈希、任务/对话 ID、固定提示词和当前 `paper_render_revision`；不得另交一份作者填写的冷读 JSON。
 
 不得创建 coverage declaration、逐风险 follow-up、final audit 或仅以 pass/fail 代替自由判断。已执行反例、独立复算冲突、不可行和性质失败始终阻断。
 

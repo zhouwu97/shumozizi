@@ -24,6 +24,7 @@ from shumozizi.paper.paper_review import (
     first_draft_cold_read_prompt,
     merge_paper_review_findings,
     paper_review_status,
+    parse_paper_review,
     unclosed_high_priority_findings,
 )
 from shumozizi.paper.readiness import (
@@ -115,7 +116,7 @@ def _finding(*, finding_id: str = "FD-001", severity: str = "P1") -> dict[str, o
 
 
 def test_blueprint_parser_requires_core_specific_obligations() -> None:
-    """核心问题在普通完整性卡之外还必须覆盖判断、计算证据和替代解释。"""
+    """旧蓝图无需新增全局写作区也继续兼容逐问论证合同。"""
     complete = parse_paper_blueprint(
         _complete_blueprint(),
         run_id="run-1",
@@ -133,6 +134,38 @@ def test_blueprint_parser_requires_core_specific_obligations() -> None:
     )
     assert missing["complete"] is False
     assert "Q2 缺少论证义务 alternative_explanation" in validate_argument_coverage(missing)
+
+
+def test_new_run_templates_add_author_layer_without_breaking_machine_contract(
+    tmp_path: Path,
+) -> None:
+    """新模板增加证据蒸馏和冷读说明，同时保留逐问及返修机器接口。"""
+    run_dir = _new_run(tmp_path, "argument-driven-templates")
+    blueprint_text = (run_dir / "paper/PAPER_BLUEPRINT.md").read_text(encoding="utf-8")
+
+    assert "## 全局证据蒸馏" in blueprint_text
+    assert "## 跨问题论证链与连续成文" in blueprint_text
+    assert "## 正文与附录边界" in blueprint_text
+    assert "## Q1 完整性卡" in blueprint_text
+    assert "## Q2 完整性卡" in blueprint_text
+    parsed = parse_paper_blueprint(
+        blueprint_text,
+        run_id=run_dir.name,
+        required_questions=["Q1", "Q2"],
+        core_questions=["Q2"],
+    )
+    assert [item["question_id"] for item in parsed["questions"]] == ["Q1", "Q2"]
+    assert parsed["questions"][1]["core_question"] is True
+    assert "key_judgment" in parsed["questions"][1]["obligations"]
+
+    review_text = (run_dir / "paper/PAPER_REVIEW.md").read_text(encoding="utf-8")
+    assert "## 评委冷读" in review_text
+    assert "## 返修原则" in review_text
+    assert "<!-- PAPER_REVIEW_FINDINGS:START -->" in review_text
+    review = parse_paper_review(review_text)
+    assert review["schema_name"] == "paper_review"
+    assert review["run_id"] == run_dir.name
+    assert review["findings"] == []
 
 
 def test_argument_coverage_is_atomic_run_bound_derivative(tmp_path: Path) -> None:

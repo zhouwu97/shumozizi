@@ -26,6 +26,7 @@ from shumozizi.simple.objective_semantics import (
 )
 from shumozizi.simple.results import register_result
 from shumozizi.simple.review import (
+    MANUAL_INTERVENTION_PROMPT,
     build_review_packet,
     mechanical_qa_status,
     paper_blind_review_prompt,
@@ -352,6 +353,19 @@ def test_final_blind_review_uses_fresh_pdf_only_prompt(tmp_path: Path) -> None:
     # 盲评提示词要求评委判断写作风格是否像流水账/技术报告而非学术论文。
     assert "而非学术论文" in prompt
     assert "第一印象与竞争力定位" in prompt
+    assert MANUAL_INTERVENTION_PROMPT in prompt
+    for dimension in (
+        "优秀论文",
+        "补、替换或移入正文",
+        "报告、技术报告还是完整论文",
+        "笔法、学术文风",
+        "排版、字体字号",
+        "论证主线、问题递进",
+        "十几页的原因",
+        "修复层级（paper/experiment/analysis）",
+    ):
+        assert dimension in prompt
+    assert "只依据这份 PDF" in prompt
     assert str(frozen_pdf) in prompt
     assert "SCIENTIFIC_CHALLENGE" not in prompt
     assert "results" not in prompt

@@ -51,6 +51,27 @@ PAPER_BLIND_REPORT_PATH = REVIEW_ROOT / "PAPER_BLIND_REVIEW.md"
 # v3.2 不写 v3.1 的 review/summary.json（科学挑战不经 import_scientific_review），
 # 因此盲评结论需要独立记录文件，否则 v3.2 永远无法完成 PDF 盲评。
 V32_PAPER_BLIND_RECORD_PATH = REVIEW_ROOT / "paper-blind-review.json"
+MANUAL_INTERVENTION_PROMPT = (
+    "数学建模国赛的标准去严格审核，看看和国赛的优秀论文差在哪里，需要补什么图，"
+    "这个算报告还是论文，要怎么润色，不要只是看思路建模，还要看笔法文风，排版，"
+    "论证思路等等，为什么这个只有十几页，还需要怎么改进"
+)
+MANUAL_INTERVENTION_DIMENSIONS = (
+    "cummcm_excellence_gap",
+    "figure_gaps",
+    "report_or_paper_verdict",
+    "prose_and_academic_style",
+    "layout_and_typography",
+    "argument_structure",
+    "page_depth_diagnosis",
+    "revision_priorities",
+)
+MANUAL_INTERVENTION_RECORD = {
+    "source": "user_fixed_prompt",
+    "prompt": MANUAL_INTERVENTION_PROMPT,
+    "input_scope": "frozen_pdf_only",
+    "dimensions": list(MANUAL_INTERVENTION_DIMENSIONS),
+}
 LEGACY_PAPER_BLIND_PROMPT_PREFIX = (
     "你是一位数学建模竞赛评委，现在做冷读盲评。你只收到这份冻结 PDF，"
     "没有题面、源码、运行记录、作者解释或前序审核结论。\n\n"
@@ -1596,13 +1617,39 @@ def paper_blind_review_prompt(run_dir: Path, manifest_relative: str) -> str:
         state = read_simple_state(run_dir)
         prefix = PAPER_BLIND_PROMPT_PREFIX.replace(
             "除该 PDF 外不要读取任何文件或既有对话。论文 PDF：",
-            _paper_blind_structured_instruction(state["required_questions"])
+            _paper_blind_manual_intervention_instruction()
+            + "\n\n"
+            + _paper_blind_structured_instruction(state["required_questions"])
             + "\n\n除该 PDF 外不要读取任何文件或既有对话。论文 PDF：",
             1,
         )
     else:
         raise ContractError("paper-blind 提示词版本不受支持")
     return prefix + str(frozen_pdf.resolve())
+
+
+def _paper_blind_manual_intervention_instruction() -> str:
+    """生成最终 PDF 盲审中固定记录的人工干预要求。
+
+    人工干预只补充审查维度，不改变 PDF-only 输入边界，也不构成新的工作流阶段。
+    """
+    return (
+        "六、固定人工干预：按数学建模国赛标准严格审核\n"
+        "以下要求来自用户的固定人工干预，必须逐项回答，不得只评价思路或建模方法：\n"
+        f"“{MANUAL_INTERVENTION_PROMPT}”\n"
+        "请只依据这份 PDF，给出有页码或图号定位的判断：\n"
+        "- 与国赛优秀论文相比，具体差距是什么，按影响排序；\n"
+        "- 哪些论点缺少图、图表或机制证据，哪些图应补、替换或移入正文；\n"
+        "- 作品更像竞赛报告、技术报告还是完整论文，并说明达到论文形态还缺什么；\n"
+        "- 检查笔法、学术文风、句式重复、空话、术语一致性和润色优先级；\n"
+        "- 检查排版、字体字号、公式、图注、表注、分页、留白、图表可读性和版面层级；\n"
+        "- 检查论证主线、问题递进、观察—机制—结论链和结果解释是否成立；\n"
+        "- 解释正文只有十几页的原因：区分合理压缩、论证缺失、图表不足和无效重复；\n"
+        "- 给出不超过 8 条可执行修改，标明优先级、修复层级（paper/experiment/analysis）"
+        "和验收标准。\n"
+        "不得联网检索、对照外部论文或补读题面；“优秀论文差距”只能依据 PDF 中可观察的"
+        "竞赛论文表现标准作相对判断，不能声称获奖或名次。\n"
+    )
 
 
 def _paper_blind_structured_instruction(required_questions: list[str]) -> str:
@@ -1648,7 +1695,7 @@ def _paper_blind_structured_instruction(required_questions: list[str]) -> str:
     }
     question_text = "、".join(required_questions)
     return (
-        "六、结构化盲评结果（必须与上文判断一致）\n"
+        "七、结构化盲评结果（必须与上文判断一致）\n"
         f"对必答问题 {question_text}，在报告末尾原样使用标题“{PAPER_BLIND_STRUCTURED_HEADING}”，"
         "并紧跟一个 json 代码块。不要另建文件。missing_roles 只能从以下角色中选择："
         + "、".join(PAPER_BLIND_ARGUMENT_ROLES)
@@ -3742,6 +3789,8 @@ def _import_v32_paper_blind_review(
         "question_progression": structured["question_progression"],
         "narrative_risks": structured["narrative_risks"],
         "review_summary": structured["review_summary"],
+        # 将用户固定的人工干预写入回执，便于后续审计确认审查范围未缩水。
+        "manual_intervention": MANUAL_INTERVENTION_RECORD,
         "structured_results_sha256": sha256_bytes(json_bytes(structured)),
         "reviewed_at": utc_now(),
     }

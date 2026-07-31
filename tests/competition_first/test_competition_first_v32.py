@@ -2162,6 +2162,9 @@ def test_v32_verify_reachable_without_web_audit(
     }
     assert blind_record["argument_findings"]["Q1"]["pages"] == [1]
     assert blind_record["reviewer"]["thread_id"] == "paper-blind-no-web-audit-thread"
+    assert blind_record["manual_intervention"]["source"] == "user_fixed_prompt"
+    assert blind_record["manual_intervention"]["input_scope"] == "frozen_pdf_only"
+    assert "figure_gaps" in blind_record["manual_intervention"]["dimensions"]
 
     assert not any(
         (run_dir / "review" / name).is_file()
