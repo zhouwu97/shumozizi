@@ -45,7 +45,9 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 第一步：填写 PAPER_BLUEPRINT.md
 
-在动笔前，可执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper` 获得结构建议。零匹配时使用内置通用结构模式；知识应用与兑现只作 advisory。按 `paper/CITATION_PLAN.md` 分配题型/领域背景、核心数学方法、验证与不确定性来源，可以检索实际采用方法的原始文献，但禁止同题答案、题解和现成结论。约 6–12 条只作紧凑性建议，不是数量门禁；每条参考文献必须至少绑定正文一个具体方法、指标、背景判断或验证动作，不能只列在文后。离线优秀论文卡只提供结构启发，明确禁止作为 citation 或当前事实来源。
+在动笔前，可执行 `python scripts/knowledge/retrieve_for_run.py <run_dir> --stage paper` 获得结构建议。零匹配时使用内置通用结构模式；知识应用与兑现只作 advisory。按 `paper/CITATION_PLAN.md` 分配 `background`、`core_method`、`validation`、`uncertainty` 和 `extension` 来源，可以检索实际采用方法的原始文献，但禁止同题答案、题解和现成结论。约 6–12 条只作紧凑性建议，不是数量门禁；每条参考文献必须至少绑定正文一个具体方法、指标、背景判断或验证动作，不能只列在文后。离线优秀论文卡只提供结构启发，明确禁止作为 citation 或当前事实来源。
+
+候选稿检查会自动生成 `paper/generated/citation_coverage.json`，逐项核对正文 citation key、BibTeX/`bibitem` 定义、引用计划和结构化建模合同。未定义 key、计划已声明但正文未引用，以及新五列表格中已识别外部核心方法/验证方法却没有对应已兑现类别，属于高置信度合同错误；未使用条目、引用只集中在引言、来源过少或单一来源跨多个类别属于 warning。普通编号 `[1]` 不视为引用，来源权威性与相关性仍由作者和冷读人工核验，不能用 DOI 或数量自动代替。
 
 作者只维护 `paper/PAPER_BLUEPRINT.md`、`paper/answer-map.json`、`figures/FIGURE_PLAN.json` 和 `paper/PAPER_REVIEW.md` 四个主要控制文件。旧 `ARGUMENT_PLAN.md`、`STORYBOARD.md` 与 `KNOWLEDGE_APPLICATION.md` 仅作兼容或后台建议。
 

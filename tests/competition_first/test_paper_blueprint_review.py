@@ -151,6 +151,8 @@ def test_new_run_templates_add_author_layer_without_breaking_machine_contract(
     citation_plan = (run_dir / "paper/CITATION_PLAN.md").read_text(encoding="utf-8")
     assert "## 来源分配" in citation_plan
     assert "## 正文绑定表" in citation_plan
+    assert "| citation key | 类别 |" in citation_plan
+    assert "core_method" in citation_plan
     assert "## Q1 完整性卡" in blueprint_text
     assert "## Q2 完整性卡" in blueprint_text
     parsed = parse_paper_blueprint(
