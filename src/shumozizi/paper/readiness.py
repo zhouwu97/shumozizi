@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -184,7 +185,7 @@ def _normalized_latex_path(value: str) -> str:
 
 
 def validate_required_figure_consumption(run_dir: Path) -> list[str]:
-    """复验 FIGURE_PLAN 2.1/2.2/2.3 的必需图已生成并在 LaTeX 正文中消费。
+    """复验 FIGURE_PLAN 2.1--2.4 的必需图已生成并在 LaTeX 正文中消费。
 
     旧 2.0 图表计划继续只服务兼容收据；只有 v3.2 主动写入 2.1 时才启用
     生成、current 来源、插图、交叉引用和解释闭环。
@@ -212,9 +213,9 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
     try:
         plan = load_json(plan_path)
         plan_version = plan.get("schema_version")
-        if plan_version not in {"2.1", "2.2", "2.3"}:
+        if plan_version not in {"2.1", "2.2", "2.3", "2.4"}:
             return [
-                f"核心问题 {question_id} 必须使用 FIGURE_PLAN 2.1/2.2/2.3 声明显式视觉决策"
+                f"核心问题 {question_id} 必须使用 FIGURE_PLAN 2.1--2.4 声明显式视觉决策"
                 for question_id in sorted(core_questions)
             ]
         errors = validate_document(plan, "figure_plan")
@@ -239,7 +240,7 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                 continue
             evidence_required = (
                 decision.get("evidence_need") == "required"
-                if plan_version == "2.3"
+                if plan_version in {"2.3", "2.4"}
                 else decision.get("status") == "required"
             )
             if evidence_required:
@@ -316,7 +317,7 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                 errors.append(f"稳定性图 {figure_id} 必须放入附录章节")
         return errors
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
-        return ["FIGURE_PLAN 2.1/2.2/2.3 闭环校验失败: " + str(exc)]
+        return ["FIGURE_PLAN 2.1--2.4 闭环校验失败: " + str(exc)]
 
 
 def presentation_figure_warnings(run_dir: Path) -> list[str]:
@@ -355,15 +356,23 @@ def presentation_figure_warnings(run_dir: Path) -> list[str]:
         return ["FIGURE_PLAN 2.3 呈现需求无法读取，建议人工检查。"]
 
 
-def _presentation_decision_errors(run_dir: Path) -> list[str]:
-    """要求首稿前完成结构性展示图的 required/waived 决策。"""
+def validate_presentation_decisions(run_dir: Path) -> list[str]:
+    """要求首稿前完成结构性展示图的 required/waived 决策。
+
+    Args:
+        run_dir: 当前 Competition-First 运行目录。
+
+    Returns:
+        缺失决策、结构性豁免复核或必需图计划的错误列表。
+    """
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
-        return ["首版草稿前缺少 FIGURE_PLAN 2.3，尚未决定展示图是否需要"]
+        return ["首版草稿前缺少 FIGURE_PLAN 2.3/2.4，尚未决定展示图是否需要"]
     try:
         plan = load_json(plan_path)
-        if plan.get("schema_version") != "2.3":
-            return ["首版草稿前必须用 FIGURE_PLAN 2.3 记录展示图 required/waived 决策"]
+        plan_version = plan.get("schema_version")
+        if plan_version not in {"2.3", "2.4"}:
+            return ["首版草稿前必须用 FIGURE_PLAN 2.3/2.4 记录展示图 required/waived 决策"]
         decisions = {
             item.get("scope"): item
             for item in plan.get("visual_decisions", [])
@@ -380,7 +389,8 @@ def _presentation_decision_errors(run_dir: Path) -> list[str]:
             units_text = units_path.read_text(encoding="utf-8")
         structural_signal = bool(
             re.search(
-                r"几何|轨迹|空间|相交|并集|交集|遮蔽|共享模型|共享约束|"
+                r"几何|轨迹|空间|光路|相交|并集|交集|覆盖|遮蔽|共享模型|共享参数|"
+                r"共享约束|时间区间|事件|多阶段|模型选择|不确定性|"
                 r"nominal|robust|名义|稳健|聚合|aggregation",
                 units_text,
                 re.IGNORECASE,
@@ -393,6 +403,16 @@ def _presentation_decision_errors(run_dir: Path) -> list[str]:
             )
         figures = plan.get("figures", [])
         for scope, decision in decisions.items():
+            if (
+                plan_version == "2.4"
+                and structural_signal
+                and decision.get("presentation_need") == "waived"
+            ):
+                review = decision.get("waiver_review")
+                if not isinstance(review, dict) or review.get("reviewed") is not True:
+                    errors.append(
+                        f"结构性展示需求 {scope}=waived，但缺少独立 waiver_review"
+                    )
             if decision.get("presentation_need") != "required":
                 continue
             role = "data_portrait" if scope == "whole_paper" else "question_hero"
@@ -488,6 +508,166 @@ def _paper_blueprint_path(run_dir: Path) -> Path:
     if blueprint.is_file():
         return blueprint
     return run_dir / "paper" / "ARGUMENT_PLAN.md"
+
+
+def _argument_coverage_errors(
+    run_dir: Path, *, unfinished_questions: set[str] | None = None
+) -> list[str]:
+    """生成论证覆盖矩阵并返回当前必须完成的问题缺口。"""
+    try:
+        from shumozizi.paper.blueprint import (
+            build_argument_coverage,
+            validate_argument_coverage,
+        )
+
+        document = build_argument_coverage(run_dir)
+        errors = validate_argument_coverage(document)
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return [f"无法生成 paper/generated/argument_coverage.json: {exc}"]
+    unfinished = unfinished_questions or set()
+    return [
+        item
+        for item in errors
+        if not any(item.startswith(f"{question_id}.") or item.startswith(f"{question_id} ") for question_id in unfinished)
+    ]
+
+
+def _valid_visual_waiver(decision: object) -> bool:
+    """判断 FIGURE_PLAN 2.4 的豁免是否有独立复核和替代表达。"""
+    if not isinstance(decision, dict) or decision.get("presentation_need") != "waived":
+        return False
+    review = decision.get("waiver_review")
+    return (
+        isinstance(review, dict)
+        and review.get("reviewed") is True
+        and review.get("verdict") == "waived"
+        and review.get("replacement_medium")
+        in {"equation", "table", "equation+table", "text"}
+    )
+
+
+def validate_figure_argument_obligations(run_dir: Path) -> list[str]:
+    """要求结构性和核心问题的图真正承担模型理解与机制义务。
+
+    Args:
+        run_dir: 当前 Competition-First 运行目录。
+
+    Returns:
+        逐问及全文图表论证覆盖缺口。
+    """
+    plan_path = run_dir / _FIGURE_PLAN_PATH
+    modeling_path = run_dir / "analysis" / "MODELING_UNITS.json"
+    if not plan_path.is_file() or not modeling_path.is_file():
+        return []
+    try:
+        plan = load_json(plan_path)
+        modeling = load_json(modeling_path)
+    except (OSError, TypeError, ValueError) as exc:
+        return [f"无法复验图表论证义务: {exc}"]
+    if plan.get("schema_version") != "2.4":
+        return []
+    decisions = {
+        item.get("scope"): item
+        for item in plan.get("visual_decisions", [])
+        if isinstance(item, dict) and isinstance(item.get("scope"), str)
+    }
+    figures = [
+        item
+        for item in plan.get("figures", [])
+        if isinstance(item, dict)
+        and item.get("required") is True
+        and item.get("role") != "stability"
+    ]
+    by_question: dict[str, set[str]] = {}
+    for figure in figures:
+        question_id = figure.get("question_id")
+        if isinstance(question_id, str):
+            by_question.setdefault(question_id, set()).update(
+                str(item) for item in figure.get("obligation_types", [])
+            )
+
+    object_pattern = re.compile(
+        r"几何|轨迹|空间|光路|并集|交集|覆盖|共享模型|共享参数|共享约束|"
+        r"时间区间|事件|多阶段|聚合|aggregation",
+        re.IGNORECASE,
+    )
+    decision_pattern = re.compile(
+        r"模型选择|判别|不确定性|名义|稳健|nominal|robust|优化|权衡|活跃约束",
+        re.IGNORECASE,
+    )
+    errors: list[str] = []
+    for unit in modeling.get("units", []):
+        if not isinstance(unit, dict) or not isinstance(unit.get("question_id"), str):
+            continue
+        question_id = unit["question_id"]
+        decision = decisions.get(question_id)
+        text = json.dumps(unit, ensure_ascii=False)
+        object_signal = bool(object_pattern.search(text))
+        decision_signal = bool(decision_pattern.search(text))
+        core = unit.get("core_question") is True
+        if _valid_visual_waiver(decision):
+            continue
+        obligations = by_question.get(question_id, set())
+        if (object_signal or core) and not obligations.intersection(
+            {"mathematical_object", "model_structure"}
+        ):
+            errors.append(
+                f"{question_id} 缺少 mathematical_object/model_structure 图表义务覆盖"
+            )
+        if (decision_signal or core) and not obligations.intersection(
+            {"mechanism", "comparison", "decision"}
+        ):
+            errors.append(f"{question_id} 缺少 mechanism/comparison/decision 图表义务覆盖")
+
+    modeling_text = json.dumps(modeling, ensure_ascii=False)
+    shared_signal = bool(re.search(r"共享模型|共享参数|跨问题|问题递进", modeling_text))
+    all_obligations = {
+        str(value)
+        for figure in figures
+        for value in figure.get("obligation_types", [])
+    }
+    if (
+        shared_signal
+        and not all_obligations.intersection({"mathematical_object", "model_structure"})
+        and not _valid_visual_waiver(decisions.get("whole_paper"))
+    ):
+        errors.append("whole_paper 缺少共享数学对象或跨问模型结构表达")
+    return errors
+
+
+def _paper_review_closure_errors(run_dir: Path) -> list[str]:
+    """复验批量返修 finding 与全部文风 warning 已明确处置。"""
+    try:
+        from shumozizi.paper.paper_review import load_paper_review, paper_review_errors
+
+        document = load_paper_review(run_dir)
+        errors = paper_review_errors(document, run_dir=run_dir)
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        return [f"PAPER_REVIEW 批量返修闭环无效: {exc}"]
+    dispositions = {"accepted", "repaired", "false_positive", "deferred_with_reason"}
+    findings = document.get("findings", [])
+    try:
+        style = audit_report_like_manuscript(run_dir)
+    except (OSError, UnicodeError, KeyError, TypeError, ValueError) as exc:
+        return errors + [f"无法把文风 warning 与 PAPER_REVIEW 对账: {exc}"]
+    for warning in style.get("warnings", []):
+        code = str(warning.get("code", ""))
+        matched = next(
+            (
+                item
+                for item in findings
+                if isinstance(item, dict)
+                and code
+                and code.casefold()
+                in json.dumps(item, ensure_ascii=False).casefold()
+            ),
+            None,
+        )
+        if matched is None or matched.get("status") not in dispositions:
+            errors.append(f"文风 warning [{code}] 尚未在 PAPER_REVIEW 中处置")
+        elif not matched.get("evidence_of_closure"):
+            errors.append(f"文风 warning [{code}] 的处置缺少 closure 证据")
+    return errors
 
 
 def _argument_plan_warnings(run_dir: Path) -> list[str]:
@@ -602,7 +782,23 @@ def require_reviewable_draft_argument_readiness(
         errors.append("PAPER_BLUEPRINT.md 缺少全篇总体判断")
     if plan and not re.search(r"论证链|章节作用|各问递进", plan):
         errors.append("PAPER_BLUEPRINT.md 缺少跨问题论证链")
-    errors.extend(_presentation_decision_errors(run_dir))
+    errors.extend(validate_presentation_decisions(run_dir))
+    figure_plan_path = run_dir / _FIGURE_PLAN_PATH
+    if figure_plan_path.is_file():
+        try:
+            if load_json(figure_plan_path).get("schema_version") == "2.4":
+                errors.extend(
+                    _argument_coverage_errors(
+                        run_dir, unfinished_questions=set(unfinished_questions)
+                    )
+                )
+                from shumozizi.paper.checkpoints import (
+                    validate_paper_blueprint_review_checkpoint,
+                )
+
+                errors.extend(validate_paper_blueprint_review_checkpoint(run_dir))
+        except (ContractError, OSError, TypeError, ValueError) as exc:
+            errors.append(f"写作前蓝图审核 checkpoint 无法复验: {exc}")
 
     unfinished = set(unfinished_questions)
     core_questions: set[str] = set()
@@ -749,6 +945,10 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     warnings.extend(_reference_count_warnings(run_dir))
     try:
         style_audit = audit_report_like_manuscript(run_dir)
+        errors.extend(
+            f"论文文风硬门[{item['code']}]：{item['message']}"
+            for item in style_audit.get("errors", [])
+        )
         warnings.extend(
             f"报告式写作告警[{item['code']}]：{item['message']}"
             for item in style_audit["warnings"]
@@ -760,6 +960,24 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     errors.extend(_core_insight_usage_errors(run_dir, answers))
     if is_competition_first_v32_state(read_simple_state(run_dir)):
         errors.extend(validate_required_figure_consumption(run_dir))
+        plan_path = run_dir / _FIGURE_PLAN_PATH
+        if plan_path.is_file():
+            try:
+                if load_json(plan_path).get("schema_version") == "2.4":
+                    errors.extend(_argument_coverage_errors(run_dir))
+                    errors.extend(validate_presentation_decisions(run_dir))
+                    errors.extend(validate_figure_argument_obligations(run_dir))
+                    from shumozizi.paper.checkpoints import paper_checkpoint_errors
+
+                    errors.extend(paper_checkpoint_errors(run_dir, candidate=True))
+                    errors.extend(_paper_review_closure_errors(run_dir))
+                    from shumozizi.simple.modeling_units import (
+                        validate_visual_output_sources,
+                    )
+
+                    errors.extend(validate_visual_output_sources(run_dir))
+            except (ContractError, OSError, TypeError, ValueError) as exc:
+                errors.append(f"FIGURE_PLAN 2.4 竞争力合同无法复验: {exc}")
     return errors, warnings
 
 

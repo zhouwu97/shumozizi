@@ -27,9 +27,24 @@ def main() -> int:
         required=True,
         help="与候选同目录的流程图几何或统计图语义布局 JSON",
     )
-    parser.add_argument("--human-review-notes", required=True)
+    parser.add_argument(
+        "--figure-role",
+        choices=("model_understanding", "decisive_evidence", "insight", "stability"),
+        required=True,
+    )
+    parser.add_argument(
+        "--presentation-role",
+        choices=("data_portrait", "question_hero", "supporting", "appendix"),
+    )
+    parser.add_argument(
+        "--human-review",
+        type=Path,
+        required=True,
+        help="内容化人工复核 JSON；必须包含角色所需的可见性检查和 promote 结论",
+    )
     args = parser.parse_args()
     try:
+        review = json.loads(args.human_review.read_text(encoding="utf-8"))
         result = promote_figure_candidate(
             args.run_dir,
             figure_id=args.figure_id,
@@ -37,10 +52,11 @@ def main() -> int:
             target_stem=args.target_stem,
             rendering_mode=args.rendering_mode,
             layout_report=args.layout_report,
-            human_reviewed=True,
-            human_review_notes=args.human_review_notes,
+            figure_role=args.figure_role,
+            presentation_role=args.presentation_role,
+            human_review=review,
         )
-    except ContractError as exc:
+    except (ContractError, OSError, json.JSONDecodeError) as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}, ensure_ascii=False))
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))

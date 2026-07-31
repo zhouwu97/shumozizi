@@ -1,7 +1,7 @@
-"""识别数学建模论文中的工作报告式写作模式。
+"""识别数学建模论文中的高置信度错误与报告式写作风险。
 
-本模块只产生可解释 warning，不把启发式文本特征升级为科学硬门。最终判断仍由
-独立 PDF 盲评完成。
+可直接定位的内部术语、机械报账、摘要流水账、核心问空壳和主图未消费进入
+``errors``；需要结合页面与上下文判断的信号仍只进入 ``warnings``。
 """
 
 from __future__ import annotations
@@ -27,28 +27,37 @@ _QUESTION_PATTERN = re.compile(
     r"第\s*(?P<cn_alt>[一二三四五六七八九十]+)\s*问",
     re.IGNORECASE,
 )
-_INTERNAL_TERMS = (
-    "result_id",
-    "production result",
-    "生产结果",
-    "晋级",
-    "fallback",
+_BLOCKING_INTERNAL_TERMS = {
+    "result_id": re.compile(r"\bresult_id\b", re.IGNORECASE),
+    "scorer": re.compile(r"\bscorer\b", re.IGNORECASE),
+    "晋级结果": re.compile(r"晋级结果"),
+    "fallback": re.compile(r"\bfallback(?:_selected)?\b", re.IGNORECASE),
+    "production result": re.compile(r"\bproduction result\b", re.IGNORECASE),
+    "生产结果": re.compile(r"生产结果"),
+    "task receipt": re.compile(r"\btask receipt\b", re.IGNORECASE),
+    "回执": re.compile(r"回执"),
+    "objective_answer": re.compile(r"\bobjective_answer\b", re.IGNORECASE),
+    "current result": re.compile(r"\bcurrent result\b", re.IGNORECASE),
+}
+_ADVISORY_INTERNAL_TERMS = (
     "oracle",
-    "scorer",
     "endpoint",
     "challenger",
-    "task receipt",
-    "回执",
     "工作流",
 )
-_REPORT_PHRASE_PATTERN = re.compile(
-    r"本问(?:采用|使用|选用|得到)|结果见(?:表|图)|由(?:表|图).{0,8}可知|"
-    r"具体结果如下|参数设置如下",
-    re.IGNORECASE,
-)
-_ABSTRACT_QUESTION_PATTERN = re.compile(
-    r"\bQ[1-9]\b|问题[一二三四五六七八九十]|第[一二三四五六七八九十]问",
-    re.IGNORECASE,
+_REPORT_PHRASE_PATTERNS = {
+    "本问采用": re.compile(r"本问(?:采用|使用|选用)", re.IGNORECASE),
+    "结果如表图": re.compile(
+        r"(?:运行|求解|计算)?结果(?:如|见)(?:表|图)|由(?:表|图).{0,8}可知",
+        re.IGNORECASE,
+    ),
+    "最终得到": re.compile(r"(?:最终|最后)(?:得到|获得|求得)", re.IGNORECASE),
+    "清单引导": re.compile(r"具体结果如下|参数设置如下", re.IGNORECASE),
+}
+_ABSTRACT_UNIFIED_PATTERNS = (
+    re.compile(r"困难|非显然|关键矛盾|冲突"),
+    re.compile(r"统一|共享|联合|共同|贯穿|整体|建模结构"),
+    re.compile(r"机制|原因|规律|活跃约束|边际收益|权衡|瓶颈|可信边界"),
 )
 _DERIVATION_PATTERN = re.compile(
     r"关键推导|命题|证明|由此可得|从而得到|可推出|"
@@ -59,10 +68,23 @@ _MECHANISM_PATTERN = re.compile(
     r"机制|原因在于|这是因为|活跃约束|边际收益|权衡|瓶颈|意味着",
     re.IGNORECASE,
 )
-_EXPLANATION_PATTERN = re.compile(
-    r"表明|说明|可见|意味着|原因|机制|因此|由此|约束|边界|权衡",
+_OBSERVATION_PATTERN = re.compile(
+    r"观察|显示|呈现|可见|可以看出|表明|随着|高于|低于|上升|下降|拐点|集中",
     re.IGNORECASE,
 )
+_FIGURE_MECHANISM_PATTERN = re.compile(
+    r"原因|机制|因为|源于|导致|活跃约束|约束开始|瓶颈|权衡|边际",
+    re.IGNORECASE,
+)
+_CONCLUSION_IMPACT_PATTERN = re.compile(
+    r"因此|从而|意味着|对(?:主)?结论|决策|策略|建议|应当|可判定|支持",
+    re.IGNORECASE,
+)
+_APPENDIX_START_PATTERN = re.compile(
+    r"\\appendix\b|\\(?:chapter|section)\*?\{\s*(?:附录|Appendix)\b",
+    re.IGNORECASE,
+)
+_CN_DIGITS = {character: value for value, character in enumerate("零一二三四五六七八九")}
 
 
 def _manuscript_sources(run_dir: Path) -> list[Path]:
@@ -76,12 +98,20 @@ def _manuscript_sources(run_dir: Path) -> list[Path]:
             not path.is_file()
             or path.suffix.casefold() not in _SOURCE_SUFFIXES
             or any(part.casefold() in _EXCLUDED_PARTS for part in path.parts)
+            or "appendix" in path.stem.casefold()
+            or "附录" in path.stem
             or path.name.startswith("PAPER_")
             or path.name in {"ARGUMENT_PLAN.md", "STORYBOARD.md"}
         ):
             continue
         sources.append(path)
     return sources
+
+
+def _formal_body_text(text: str) -> str:
+    """截去同文件中的附录，避免把允许保留的运行说明判为正文泄漏。"""
+    match = _APPENDIX_START_PATTERN.search(text)
+    return text[: match.start()] if match else text
 
 
 def _headings(text: str) -> list[tuple[int, str, int]]:
@@ -105,11 +135,24 @@ def _question_key(title: str) -> str | None:
     match = _QUESTION_PATTERN.search(title)
     if match is None:
         return None
-    return (
+    raw = (
         match.group("arabic")
         or match.group("cn")
         or match.group("cn_alt")
     )
+    return _normalize_question_id(raw)
+
+
+def _normalize_question_id(raw: str) -> str:
+    """把简单中文题号统一为阿拉伯数字，避免同一问题被重复计数。"""
+    if raw.isascii() and raw.isdigit():
+        return str(int(raw))
+    if "十" not in raw:
+        return str(_CN_DIGITS.get(raw, raw))
+    left, right = raw.split("十", maxsplit=1)
+    tens = _CN_DIGITS.get(left, 1) if left else 1
+    units = _CN_DIGITS.get(right, 0) if right else 0
+    return str(tens * 10 + units)
 
 
 def _normalize_heading(title: str) -> str:
@@ -159,6 +202,49 @@ def _abstract_text(sources: list[tuple[Path, str]], combined: str) -> str:
     return match.group("body") if match else ""
 
 
+def _question_ids(text: str) -> set[str]:
+    """提取文本中互异的问题编号。"""
+    return {
+        _normalize_question_id(
+            match.group("arabic") or match.group("cn") or match.group("cn_alt")
+        )
+        for match in _QUESTION_PATTERN.finditer(text)
+    }
+
+
+def _list_item_count(text: str) -> int:
+    """统计 LaTeX、Markdown 和编号列表项。"""
+    return len(
+        re.findall(
+            r"\\item\b|^\s*[-*+]\s+|^\s*\d+[.)、]\s+",
+            text,
+            re.MULTILINE,
+        )
+    )
+
+
+def _table_count(text: str) -> int:
+    """统计 LaTeX 与 Markdown 表格的保守结构信号。"""
+    latex_tables = len(re.findall(r"\\begin\{(?:table\*?|tabular\*?)\}", text))
+    markdown_tables = len(
+        re.findall(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$", text, re.MULTILINE)
+    )
+    return latex_tables + markdown_tables
+
+
+def _continuous_prose_paragraphs(text: str) -> int:
+    """估计具有连续论述能力的自然段数量。"""
+    count = 0
+    for paragraph in re.split(r"\n\s*\n", text):
+        if re.search(r"\\(?:item|begin\{(?:table|tabular|itemize|enumerate))", paragraph):
+            continue
+        prose = re.sub(r"\\[A-Za-z]+\*?(?:\[[^]]*\])?(?:\{[^{}]*\})?", "", paragraph)
+        compact = re.sub(r"\s+", "", prose)
+        if len(compact) >= 45 and re.search(r"[。！？.!?；;]", prose):
+            count += 1
+    return count
+
+
 def _core_question_ids(run_dir: Path) -> set[str]:
     """读取 1.4 建模单元中的核心问题；缺失时不猜测。"""
     path = run_dir / "analysis" / "MODELING_UNITS.json"
@@ -177,20 +263,31 @@ def _core_question_ids(run_dir: Path) -> set[str]:
     }
 
 
-def _hero_figure_warnings(run_dir: Path, combined: str) -> list[dict[str, Any]]:
-    """检查主图是否被正文引用并参与观察—机制—结论链。"""
+def _figure_argument_findings(
+    run_dir: Path, combined: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """检查正文图是否进入有序的观察—机制—结论链。"""
     path = run_dir / "figures" / "FIGURE_PLAN.json"
     if not path.is_file():
-        return []
+        return [], []
     try:
         plan = load_json(path)
     except (OSError, ValueError):
-        return []
+        return [], []
+    errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     for figure in plan.get("figures", []):
+        is_body_figure = isinstance(figure, dict) and (
+            figure.get("placement") == "body"
+            or figure.get("presentation_role")
+            in {"question_hero", "data_portrait", "supporting"}
+        )
         if (
             not isinstance(figure, dict)
-            or figure.get("presentation_role") != "question_hero"
+            or not is_body_figure
+            or figure.get("placement") == "appendix"
+            or figure.get("role") == "stability"
+            or figure.get("presentation_role") == "appendix"
         ):
             continue
         label = figure.get("latex_label")
@@ -200,76 +297,166 @@ def _hero_figure_warnings(run_dir: Path, combined: str) -> list[dict[str, Any]]:
             rf"\\(?:auto|page|c)?ref\{{{re.escape(label)}\}}",
             rf"@{re.escape(label)}\b",
         )
-        reference = next(
-            (
-                match
-                for pattern in reference_patterns
-                if (match := re.search(pattern, combined))
-            ),
-            None,
-        )
-        if reference is None:
+        references = [
+            match
+            for pattern in reference_patterns
+            for match in re.finditer(pattern, combined)
+        ]
+        figure_id = str(figure.get("figure_id", label))
+        if not references:
+            errors.append(
+                {
+                    "code": "E005",
+                    "message": f"正文图 {figure_id} 未被正文引用，无法形成观察—机制—结论闭环。",
+                    "count": 1,
+                    "figure_id": figure_id,
+                    "missing_links": ["reference", "observation", "mechanism", "impact"],
+                }
+            )
             warnings.append(
                 {
                     "code": "hero_figure_not_in_argument",
-                    "message": f"主图 {figure.get('figure_id')} 未被正文交叉引用，仍像附件而非论证证据。",
+                    "message": f"主图 {figure_id} 未被正文交叉引用，仍像附件而非论证证据。",
                     "count": 1,
                 }
             )
             continue
-        context = combined[
-            max(0, reference.start() - 180) : min(len(combined), reference.end() + 260)
-        ]
-        if not _EXPLANATION_PATTERN.search(context):
+
+        best_missing = ["observation", "mechanism", "impact"]
+        for reference in references:
+            # 闭环必须出现在图引用之后；只在图前解释不能证明读者看图后得到结论。
+            context = combined[reference.end() : min(len(combined), reference.end() + 700)]
+            matches = (
+                _OBSERVATION_PATTERN.search(context),
+                _FIGURE_MECHANISM_PATTERN.search(context),
+                _CONCLUSION_IMPACT_PATTERN.search(context),
+            )
+            missing = [
+                name
+                for name, match in zip(
+                    ("observation", "mechanism", "impact"), matches, strict=True
+                )
+                if match is None
+            ]
+            ordered = all(matches) and matches[0].start() <= matches[1].start() <= matches[2].start()
+            if not missing and ordered:
+                best_missing = []
+                break
+            if not missing:
+                missing = ["ordered_chain"]
+            if len(missing) < len(best_missing):
+                best_missing = missing
+        if best_missing:
+            errors.append(
+                {
+                    "code": "E005",
+                    "message": (
+                        f"正文图 {figure_id} 的引用后缺少完整且有序的观察—机制—结论消费。"
+                    ),
+                    "count": 1,
+                    "figure_id": figure_id,
+                    "missing_links": best_missing,
+                }
+            )
             warnings.append(
                 {
                     "code": "hero_figure_without_interpretation",
-                    "message": f"主图 {figure.get('figure_id')} 附近缺少观察、机制或决策后果解释。",
+                    "message": f"主图 {figure_id} 附近缺少观察、机制或决策后果解释。",
                     "count": 1,
                 }
             )
-    return warnings
+    return errors, warnings
 
 
 def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
-    """检测工作报告式语言和重复结构，返回非阻断告警。
+    """检测高置信度写作错误和需要人工复核的文风信号。
 
     Args:
         run_dir: 当前数学建模运行目录。
 
     Returns:
-        advisory 审计结果；warning 需要作者或盲评者结合 PDF 判断。
+        含 ``errors`` 与 ``warnings`` 的可机读结果。E001--E005 可作为候选稿
+        硬门；warning 仍需作者或盲评者结合 PDF 判断。
     """
     root = run_dir.resolve()
     paths = _manuscript_sources(root)
-    sources = [(path, path.read_text(encoding="utf-8")) for path in paths]
+    sources = [
+        (path, _formal_body_text(path.read_text(encoding="utf-8"))) for path in paths
+    ]
     combined = "\n".join(text for _, text in sources)
+    errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     if not combined.strip():
         return {
             "advisory_only": True,
             "source_files": [],
+            "errors": [],
             "warnings": [],
             "metrics": {},
             "limitations": "尚无正文源文件，未执行报告式写作检测。",
         }
 
-    internal_counts = {
-        term: len(re.findall(re.escape(term), combined, re.IGNORECASE))
-        for term in _INTERNAL_TERMS
+    blocking_internal_counts = {
+        term: len(pattern.findall(combined))
+        for term, pattern in _BLOCKING_INTERNAL_TERMS.items()
     }
-    internal_total = sum(internal_counts.values())
-    if internal_total >= 3:
-        used = "、".join(term for term, count in internal_counts.items() if count)
-        warnings.append(
+    blocking_internal_total = sum(blocking_internal_counts.values())
+    if blocking_internal_total:
+        used = [term for term, count in blocking_internal_counts.items() if count]
+        errors.append(
             {
-                "code": "internal_workflow_vocabulary",
-                "message": f"正文出现内部工作流词 {internal_total} 次（{used}），应改写为自然学术语言。",
-                "count": internal_total,
+                "code": "E001",
+                "message": (
+                    f"正式正文暴露工作流内部术语 {blocking_internal_total} 次"
+                    f"（{'、'.join(used)}）。"
+                ),
+                "count": blocking_internal_total,
+                "terms": used,
             }
         )
 
-    report_phrase_count = len(_REPORT_PHRASE_PATTERN.findall(combined))
+    advisory_internal_counts = {
+        term: len(re.findall(re.escape(term), combined, re.IGNORECASE))
+        for term in _ADVISORY_INTERNAL_TERMS
+    }
+    advisory_internal_total = sum(advisory_internal_counts.values())
+    if blocking_internal_total + advisory_internal_total >= 3:
+        used = [
+            term
+            for term, count in {
+                **blocking_internal_counts,
+                **advisory_internal_counts,
+            }.items()
+            if count
+        ]
+        warnings.append(
+            {
+                "code": "internal_workflow_vocabulary",
+                "message": (
+                    "正文密集出现可能属于内部工作流的词汇 "
+                    f"（{'、'.join(used)}），应结合语境改写为自然学术语言。"
+                ),
+                "count": blocking_internal_total + advisory_internal_total,
+            }
+        )
+
+    report_phrase_counts = {
+        name: len(pattern.findall(combined))
+        for name, pattern in _REPORT_PHRASE_PATTERNS.items()
+    }
+    report_phrase_count = sum(report_phrase_counts.values())
+    repeated_templates = {
+        name: count for name, count in report_phrase_counts.items() if count >= 3
+    }
+    if repeated_templates:
+        errors.append(
+            {
+                "code": "E002",
+                "message": "同一任务报账模板在正文中至少重复三次，需要按数学关系重写。",
+                "count": sum(repeated_templates.values()),
+                "templates": repeated_templates,
+            }
+        )
     if report_phrase_count >= 3:
         warnings.append(
             {
@@ -280,15 +467,34 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
         )
 
     abstract = _abstract_text(sources, combined)
-    abstract_questions = set(_ABSTRACT_QUESTION_PATTERN.findall(abstract))
+    abstract_questions = _question_ids(abstract)
     if len(abstract_questions) >= 3:
-        warnings.append(
-            {
-                "code": "abstract_question_enumeration",
-                "message": "摘要按至少三个问题编号流水罗列，应围绕核心困难、结构、结果规律与边界重写。",
-                "count": len(abstract_questions),
-            }
+        unified_signals = sum(
+            pattern.search(abstract) is not None
+            for pattern in _ABSTRACT_UNIFIED_PATTERNS
         )
+        if unified_signals < 2:
+            errors.append(
+                {
+                    "code": "E003",
+                    "message": (
+                        "摘要连续枚举至少三个问题，却未形成统一困难、建模主线与结果规律。"
+                    ),
+                    "count": len(abstract_questions),
+                    "question_ids": sorted(abstract_questions),
+                    "unified_signal_groups": unified_signals,
+                }
+            )
+        else:
+            warnings.append(
+                {
+                    "code": "abstract_question_enumeration",
+                    "message": (
+                        "摘要出现至少三个问题编号；虽检测到统一主线信号，仍需盲评确认是否流水报账。"
+                    ),
+                    "count": len(abstract_questions),
+                }
+            )
 
     question_sections: dict[str, tuple[str, list[str]]] = {}
     for _, text in sources:
@@ -312,13 +518,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                 }
             )
 
-    list_items = len(
-        re.findall(
-            r"\\item\b|^\s*[-*+]\s+|^\s*\d+[.)、]\s+",
-            combined,
-            re.MULTILINE,
-        )
-    )
+    list_items = _list_item_count(combined)
     sentence_count = max(
         1,
         len(re.findall(r"[。！？.!?]", re.sub(r"\\[A-Za-z]+", "", combined))),
@@ -345,12 +545,38 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
 
     core_questions = _core_question_ids(root)
     for question_id in sorted(core_questions):
-        key = re.sub(r"^Q", "", question_id, flags=re.IGNORECASE)
+        key = _normalize_question_id(
+            re.sub(r"^Q", "", question_id, flags=re.IGNORECASE)
+        )
         section = question_sections.get(key)
         if section is None:
             continue
         body = section[0]
-        if not _DERIVATION_PATTERN.search(body):
+        has_derivation = _DERIVATION_PATTERN.search(body) is not None
+        has_mechanism = _MECHANISM_PATTERN.search(body) is not None
+        section_list_items = _list_item_count(body)
+        section_tables = _table_count(body)
+        prose_paragraphs = _continuous_prose_paragraphs(body)
+        if (
+            not has_derivation
+            and not has_mechanism
+            and (section_list_items >= 3 or section_tables >= 1)
+            and prose_paragraphs <= 2
+        ):
+            errors.append(
+                {
+                    "code": "E004",
+                    "message": (
+                        f"核心问题 {question_id} 由列表或表格主导，且同时缺少连续推导与机制解释。"
+                    ),
+                    "count": 1,
+                    "question_id": question_id,
+                    "list_items": section_list_items,
+                    "tables": section_tables,
+                    "prose_paragraphs": prose_paragraphs,
+                }
+            )
+        if not has_derivation:
             warnings.append(
                 {
                     "code": "core_question_without_derivation",
@@ -358,7 +584,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                     "count": 1,
                 }
             )
-        if not _MECHANISM_PATTERN.search(body):
+        if not has_mechanism:
             warnings.append(
                 {
                     "code": "core_question_without_mechanism",
@@ -367,23 +593,29 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                 }
             )
 
-    warnings.extend(_hero_figure_warnings(root, combined))
+    figure_errors, figure_warnings = _figure_argument_findings(root, combined)
+    errors.extend(figure_errors)
+    warnings.extend(figure_warnings)
     return {
-        "advisory_only": True,
+        "advisory_only": not errors,
         "source_files": [
             relative_inside(root, path).as_posix() for path in paths
         ],
+        "errors": errors,
         "warnings": warnings,
         "metrics": {
             "characters": compact_characters,
             "headings": heading_count,
             "list_items": list_items,
             "sentences": sentence_count,
-            "internal_workflow_terms": internal_total,
+            "internal_workflow_terms": (
+                blocking_internal_total + advisory_internal_total
+            ),
+            "blocking_internal_workflow_terms": blocking_internal_total,
             "report_phrases": report_phrase_count,
         },
         "limitations": (
-            "该检测只识别高价值文本信号，不能判断数学正确性、文风优劣或实际阅读体验；"
-            "所有告警必须在独立 PDF 盲评中复核。"
+            "E001--E005 只覆盖可由正文结构直接复核的高置信信号，不判断数学正确性；"
+            "warnings 涉及的主观文风与实际阅读体验仍必须在独立 PDF 盲评中复核。"
         ),
     }

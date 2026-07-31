@@ -20,6 +20,7 @@ from shumozizi.core.io import (
 )
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
+from shumozizi.simple.figure_promotion import validate_human_figure_review
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import (
@@ -191,8 +192,8 @@ def recommended_visual_archetypes(information_structure: str) -> list[str]:
 
 
 def _require_structure_aware_visual_grammar(payload: dict[str, Any]) -> None:
-    """约束 2.3 正文主图从数学结构出发选择表达。"""
-    if payload.get("schema_version") != "2.3":
+    """约束 2.3+ 正文主图从数学结构出发选择表达。"""
+    if payload.get("schema_version") not in {"2.3", "2.4"}:
         return
     for raw in payload.get("figures", []):
         if not isinstance(raw, dict) or raw.get("presentation_role") not in {
@@ -225,12 +226,74 @@ def _require_structure_aware_visual_grammar(payload: dict[str, Any]) -> None:
             )
 
 
+def _require_argument_obligation_contract(payload: dict[str, Any]) -> None:
+    """复验图与论证单元、论证义务和面板之间的可解释映射。
+
+    2.4 强制启用该合同；2.3 只有在作者主动填写任一新字段时才整组复验，
+    从而既允许旧运行继续读取，也避免半迁移数据制造虚假的义务覆盖。
+
+    Args:
+        payload: 已通过 JSON Schema 初检的图表计划。
+
+    Raises:
+        ContractError: 新合同缺字段、面板重复或未覆盖声明的论证单元。
+    """
+    strict = payload.get("schema_version") == "2.4"
+    for raw in payload.get("figures", []):
+        if not isinstance(raw, dict):
+            continue
+        new_contract_present = any(
+            key in raw for key in ("argument_unit_ids", "obligation_types", "panel_mapping")
+        )
+        if not strict and not new_contract_present:
+            continue
+        figure_id = str(raw.get("figure_id", "<unknown>"))
+        argument_unit_ids = raw.get("argument_unit_ids")
+        obligation_types = raw.get("obligation_types")
+        if not isinstance(argument_unit_ids, list) or not argument_unit_ids:
+            raise ContractError(f"{figure_id}.argument_unit_ids 必须是非空列表")
+        if not isinstance(obligation_types, list) or not obligation_types:
+            raise ContractError(f"{figure_id}.obligation_types 必须是非空列表")
+        panel_mapping = raw.get("panel_mapping")
+        if len(obligation_types) <= 2 and panel_mapping is None:
+            continue
+        if not isinstance(panel_mapping, list) or not panel_mapping:
+            raise ContractError(
+                f"{figure_id} 承担 3 项以上论证义务时必须填写 panel_mapping"
+            )
+        if len(obligation_types) > 2 and len(panel_mapping) < 2:
+            raise ContractError(
+                f"{figure_id} 承担 3 项以上论证义务时必须拆成至少两个可辨识面板"
+            )
+        panels = [str(item.get("panel", "")) for item in panel_mapping]
+        if len(panels) != len(set(panels)):
+            raise ContractError(f"{figure_id}.panel_mapping 的 panel 必须唯一")
+        mapped_units = {
+            str(item.get("argument_unit_id", ""))
+            for item in panel_mapping
+            if isinstance(item, dict)
+        }
+        declared_units = set(argument_unit_ids)
+        unknown_units = mapped_units - declared_units
+        missing_units = declared_units - mapped_units
+        if unknown_units:
+            raise ContractError(
+                f"{figure_id}.panel_mapping 引用了未声明论证单元: "
+                + "、".join(sorted(unknown_units))
+            )
+        if missing_units:
+            raise ContractError(
+                f"{figure_id}.panel_mapping 未覆盖论证单元: "
+                + "、".join(sorted(missing_units))
+            )
+
+
 def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """受控保存 v3.2 正文图表计划与逐问视觉决策。
 
     Args:
         run_dir: 当前运行目录。
-        payload: ``FIGURE_PLAN`` 2.1/2.2/2.3 文档。
+        payload: ``FIGURE_PLAN`` 2.1/2.2/2.3/2.4 文档。
 
     Returns:
         已原子写入的图表计划。
@@ -242,6 +305,7 @@ def write_figure_plan(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("run_id") != run_dir.name:
         raise ContractError("FIGURE_PLAN 的 run_id 与当前运行不一致")
     _require_structure_aware_visual_grammar(payload)
+    _require_argument_obligation_contract(payload)
     path = run_dir / FIGURE_PLAN_PATH
     old_ids: set[str] = set()
     if path.is_file():
@@ -368,8 +432,10 @@ def _promotion_record(
     figure_id: str,
     output_records: list[dict[str, str]],
     promotion_receipt: str,
+    role: str | None,
+    presentation_role: str | None = None,
 ) -> dict[str, str]:
-    """复验候选图已通过机械 QA 和人工看图并返回回执记录。"""
+    """复验候选图已通过机械 QA、角色内容检查并返回回执记录。"""
     receipt_record = _file_record(run_dir, promotion_receipt)
     receipt = load_json(resolve_inside(run_dir, receipt_record["path"], must_exist=True))
     promoted_hashes = {
@@ -377,13 +443,25 @@ def _promotion_record(
         for item in receipt.get("promoted_outputs", [])
         if isinstance(item, dict)
     }
+    receipt_figure_role = receipt.get("figure_role")
+    receipt_presentation_role = receipt.get("presentation_role")
+    validate_human_figure_review(
+        receipt.get("human_review"),
+        figure_role=receipt_figure_role,
+        presentation_role=receipt_presentation_role,
+    )
     if (
-        receipt.get("figure_id") != figure_id
+        receipt.get("schema_version") != "1.1"
+        or receipt.get("figure_id") != figure_id
+        or receipt_figure_role != role
+        or receipt_presentation_role != presentation_role
         or receipt.get("qa", {}).get("success") is not True
         or receipt.get("human_review", {}).get("reviewed") is not True
+        or receipt.get("human_review", {}).get("verdict") != "promote"
+        or receipt.get("human_review", {}).get("issues") != []
         or any(promoted_hashes.get(item["path"]) != item["sha256"] for item in output_records)
     ):
-        raise ContractError("图表晋级回执未绑定当前输出、机械 QA 或人工看图结论")
+        raise ContractError("图表晋级回执未绑定当前角色、输出、机械 QA 或内容化人工复核")
     return receipt_record
 
 
@@ -479,6 +557,7 @@ def _register_competition_figure(
             figure_id=figure_id,
             output_records=output_records,
             promotion_receipt=promotion_receipt,
+            role=role,
         )
     for existing in index["figures"]:
         if existing["figure_id"] == figure_id and existing["status"] == "current":
@@ -631,6 +710,8 @@ def register_presentation_figure(
         figure_id=figure_id,
         output_records=output_records,
         promotion_receipt=promotion_receipt,
+        role=role,
+        presentation_role=presentation_role,
     )
     entry = {
         "figure_id": figure_id,

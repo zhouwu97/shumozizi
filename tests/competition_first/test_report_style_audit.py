@@ -1,4 +1,4 @@
-"""验证报告式论文写作检测保持 advisory 且能识别高价值模式。"""
+"""验证报告式论文写作检测区分硬错误与人工复核告警。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def _run(tmp_path: Path, name: str) -> Path:
 def test_report_style_audit_detects_template_repetition_and_internal_terms(
     tmp_path: Path,
 ) -> None:
-    """重复问答模板、内部词和摘要流水账应形成非阻断告警。"""
+    """内部词、重复报账和摘要流水账应形成稳定硬错误。"""
     run_dir = _run(tmp_path, "report-style-patterns")
     source = run_dir / "paper/sections/questions.tex"
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -49,13 +49,14 @@ def test_report_style_audit_detects_template_repetition_and_internal_terms(
     )
 
     report = audit_report_like_manuscript(run_dir)
-    codes = {item["code"] for item in report["warnings"]}
+    error_codes = {item["code"] for item in report["errors"]}
+    warning_codes = {item["code"] for item in report["warnings"]}
 
-    assert report["advisory_only"] is True
-    assert "internal_workflow_vocabulary" in codes
-    assert "report_phrase_repetition" in codes
-    assert "abstract_question_enumeration" in codes
-    assert "repetitive_question_template" in codes
+    assert report["advisory_only"] is False
+    assert {"E001", "E002", "E003"} <= error_codes
+    assert "internal_workflow_vocabulary" in warning_codes
+    assert "report_phrase_repetition" in warning_codes
+    assert "repetitive_question_template" in warning_codes
 
 
 def test_argument_driven_manuscript_avoids_report_style_false_positive(
@@ -79,12 +80,15 @@ def test_argument_driven_manuscript_avoids_report_style_false_positive(
     )
 
     report = audit_report_like_manuscript(run_dir)
-    codes = {item["code"] for item in report["warnings"]}
+    error_codes = {item["code"] for item in report["errors"]}
+    warning_codes = {item["code"] for item in report["warnings"]}
 
-    assert "internal_workflow_vocabulary" not in codes
-    assert "report_phrase_repetition" not in codes
-    assert "abstract_question_enumeration" not in codes
-    assert "repetitive_question_template" not in codes
+    assert error_codes == set()
+    assert report["advisory_only"] is True
+    assert "internal_workflow_vocabulary" not in warning_codes
+    assert "report_phrase_repetition" not in warning_codes
+    assert "abstract_question_enumeration" not in warning_codes
+    assert "repetitive_question_template" not in warning_codes
 
 
 def test_report_style_audit_covers_depth_density_and_hero_binding(
@@ -123,10 +127,66 @@ def test_report_style_audit_covers_depth_density_and_hero_binding(
     )
 
     report = audit_report_like_manuscript(run_dir)
-    codes = {item["code"] for item in report["warnings"]}
+    error_codes = {item["code"] for item in report["errors"]}
+    warning_codes = {item["code"] for item in report["warnings"]}
 
-    assert "excessive_list_density" in codes
-    assert "fragmented_heading_structure" in codes
-    assert "core_question_without_derivation" in codes
-    assert "core_question_without_mechanism" in codes
-    assert "hero_figure_not_in_argument" in codes
+    assert {"E004", "E005"} <= error_codes
+    assert "excessive_list_density" in warning_codes
+    assert "fragmented_heading_structure" in warning_codes
+    assert "core_question_without_derivation" in warning_codes
+    assert "core_question_without_mechanism" in warning_codes
+    assert "hero_figure_not_in_argument" in warning_codes
+
+
+def test_report_style_hard_errors_use_conservative_context(tmp_path: Path) -> None:
+    """附录术语、带统一主线的摘要和单次自然句式不应触发硬错误。"""
+    run_dir = _run(tmp_path, "report-style-context")
+    source = run_dir / "paper/sections/main.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section*{摘要}\n"
+        "共享容量约束是统一困难。Q1、Q2、Q3 均在联合建模结构下求解，"
+        "活跃约束揭示边际收益递减规律。\n"
+        "\\section{Q1}\n本问采用解析消元。由此可得唯一驻点，其原因在于目标严格凸。\n"
+        "\\appendix\n\\section{附录：运行说明}\n"
+        "result_id、fallback_selected 与回执仅用于复现实验。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+    error_codes = {item["code"] for item in report["errors"]}
+
+    assert "E001" not in error_codes
+    assert "E002" not in error_codes
+    assert "E003" not in error_codes
+
+
+def test_figure_argument_chain_closes_e005(tmp_path: Path) -> None:
+    """图引用后的观察、机制与结论影响按序出现时不应报告 E005。"""
+    run_dir = _run(tmp_path, "figure-argument-chain")
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "figures": [
+                {
+                    "figure_id": "q2-hero",
+                    "presentation_role": "question_hero",
+                    "role": "insight",
+                    "placement": "body",
+                    "latex_label": "fig:q2-hero",
+                }
+            ]
+        },
+    )
+    source = run_dir / "paper/sections/main.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section{Q2}\n"
+        "如图\\ref{fig:q2-hero}所示，曲线在容量阈值处呈现明显拐点。"
+        "原因在于容量约束开始活跃，因此继续追加同类资源不再改变主结论。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+
+    assert "E005" not in {item["code"] for item in report["errors"]}

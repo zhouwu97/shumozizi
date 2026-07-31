@@ -625,12 +625,54 @@ def _figure_realization_check(
 ) -> dict[str, Any]:
     """核对呈现图已在计划、current 登记和 LaTeX 消费三处兑现。"""
     if decision["status"] == "waived":
+        issue: str | None = None
+        status = "present"
+        try:
+            plan = load_json(run_dir / "figures" / "FIGURE_PLAN.json")
+            if plan.get("schema_version") == "2.4":
+                scope = expected_question or "whole_paper"
+                visual_decision = next(
+                    (
+                        item
+                        for item in plan.get("visual_decisions", [])
+                        if isinstance(item, dict) and item.get("scope") == scope
+                    ),
+                    None,
+                )
+                modeling_path = run_dir / "analysis" / "MODELING_UNITS.json"
+                modeling_text = (
+                    modeling_path.read_text(encoding="utf-8")
+                    if modeling_path.is_file()
+                    else ""
+                )
+                structural = bool(
+                    re.search(
+                        r"几何|轨迹|空间|光路|并集|交集|覆盖|共享模型|共享参数|"
+                        r"共享约束|时间区间|事件|多阶段|模型选择|不确定性|"
+                        r"nominal|robust|名义|稳健|聚合|aggregation",
+                        modeling_text,
+                        re.IGNORECASE,
+                    )
+                )
+                waiver = (
+                    visual_decision.get("waiver_review")
+                    if isinstance(visual_decision, dict)
+                    else None
+                )
+                if structural and (
+                    not isinstance(waiver, dict) or waiver.get("reviewed") is not True
+                ):
+                    status = "missing"
+                    issue = "结构性展示任务 waived，但 FIGURE_PLAN 2.4 缺少独立豁免复核"
+        except (OSError, TypeError, ValueError):
+            # 旧 2.3 运行可能没有新版图表计划；只有明确采用 2.4 才启用新硬门。
+            pass
         return {
             "check_id": check_id,
-            "status": "present",
+            "status": status,
             "location": "figures/FIGURE_PLAN.json",
-            "issue": None,
-            "classification": "advisory",
+            "issue": issue,
+            "classification": "blocking" if status != "present" else "advisory",
         }
     figure_id = decision["figure_id"]
     issues: list[str] = []

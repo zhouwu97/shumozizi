@@ -27,6 +27,27 @@ from shumozizi.simple.state import utc_now
 from shumozizi.simple.visualization import run_figure_render
 
 
+def _human_review(**overrides: object) -> dict[str, object]:
+    """构造通过所有角色检查的内容化人工复核。"""
+    review: dict[str, object] = {
+        "reviewed": True,
+        "paper_width_preview_checked": True,
+        "mathematical_object_visible": True,
+        "key_observation_visible": True,
+        "mechanism_or_relation_visible": True,
+        "constraint_or_boundary_visible": True,
+        "decision_consequence_visible": True,
+        "not_redundant_with_table": True,
+        "caption_matches_figure": True,
+        "font_readable": True,
+        "panel_mapping_valid": True,
+        "issues": [],
+        "verdict": "promote",
+    }
+    review.update(overrides)
+    return review
+
+
 def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str]:
     """创建同尺寸 PNG/PDF 和可选箭头穿字的流程图几何报告。"""
     run_dir = initialize_simple_run(
@@ -104,7 +125,13 @@ def _candidate(tmp_path: Path, *, collision: bool) -> tuple[Path, list[str], str
     return run_dir, outputs, layout.relative_to(run_dir).as_posix()
 
 
-def _promote_plot(run_dir: Path, figure_id: str) -> dict[str, object]:
+def _promote_plot(
+    run_dir: Path,
+    figure_id: str,
+    *,
+    figure_role: str,
+    presentation_role: str | None = None,
+) -> dict[str, object]:
     """创建并晋级一张用于索引兼容测试的空白图。"""
     folder = run_dir / f"figures/work/{figure_id}/v1"
     folder.mkdir(parents=True)
@@ -151,8 +178,9 @@ def _promote_plot(run_dir: Path, figure_id: str) -> dict[str, object]:
         target_stem=f"figures/current/{figure_id}",
         rendering_mode="plot",
         layout_report=layout.relative_to(run_dir).as_posix(),
-        human_reviewed=True,
-        human_review_notes="已检查测试图的 PNG 与 PDF 尺寸、留白和可读性。",
+        figure_role=figure_role,
+        presentation_role=presentation_role,
+        human_review=_human_review(),
     )
 
 
@@ -305,7 +333,7 @@ def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path
     """机械检查通过后仍需人工看 PNG/PDF，且同一版本不能反复覆盖。"""
     run_dir, outputs, layout = _candidate(tmp_path, collision=False)
 
-    with pytest.raises(ContractError, match="人工检查"):
+    with pytest.raises(ContractError, match="角色内容检查"):
         promote_figure_candidate(
             run_dir,
             figure_id="overall-workflow",
@@ -313,8 +341,8 @@ def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path
             target_stem="figures/current/overall-paper-workflow",
             rendering_mode="diagram",
             layout_report=layout,
-            human_reviewed=False,
-            human_review_notes="",
+            figure_role="model_understanding",
+            human_review=_human_review(reviewed=False),
         )
     receipt = promote_figure_candidate(
         run_dir,
@@ -323,8 +351,8 @@ def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path
         target_stem="figures/current/overall-paper-workflow",
         rendering_mode="diagram",
         layout_report=layout,
-        human_reviewed=True,
-        human_review_notes="已分别检查 PNG 与 PDF，文字、箭头和留白均正常。",
+        figure_role="model_understanding",
+        human_review=_human_review(),
     )
 
     assert receipt["qa"]["success"] is True
@@ -338,8 +366,38 @@ def test_valid_candidate_requires_human_review_and_unique_version(tmp_path: Path
             target_stem="figures/current/overall-paper-workflow",
             rendering_mode="diagram",
             layout_report=layout,
-            human_reviewed=True,
-            human_review_notes="重复检查同一个候选版本不应覆盖既有晋级回执。",
+            figure_role="model_understanding",
+            human_review=_human_review(),
+        )
+
+
+def test_human_review_requires_content_fields_for_declared_role(tmp_path: Path) -> None:
+    """人工勾选不能替代角色内容检查，insight 图必须真实显示机制。"""
+    run_dir, outputs, layout = _candidate(tmp_path, collision=False)
+    incomplete = _human_review()
+    del incomplete["paper_width_preview_checked"]
+
+    with pytest.raises(ContractError, match="缺少内容化字段"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/overall-paper-workflow",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="insight",
+            human_review=incomplete,
+        )
+    with pytest.raises(ContractError, match="mechanism_or_relation_visible"):
+        promote_figure_candidate(
+            run_dir,
+            figure_id="overall-workflow",
+            candidate_outputs=outputs,
+            target_stem="figures/current/overall-paper-workflow",
+            rendering_mode="diagram",
+            layout_report=layout,
+            figure_role="insight",
+            human_review=_human_review(mechanism_or_relation_visible=False),
         )
 
 
@@ -353,8 +411,8 @@ def test_v32_registration_requires_promotion_receipt(tmp_path: Path) -> None:
         target_stem="figures/current/overall-paper-workflow",
         rendering_mode="diagram",
         layout_report=layout,
-        human_reviewed=True,
-        human_review_notes="已分别检查 PNG 与 PDF，流程节点、文字和箭头均清晰。",
+        figure_role="model_understanding",
+        human_review=_human_review(),
     )
     script = run_dir / "code/figures/overall-workflow.py"
     result_file = run_dir / "results/raw/workflow.json"
@@ -396,6 +454,12 @@ def test_v32_registration_requires_promotion_receipt(tmp_path: Path) -> None:
 
     with pytest.raises(ContractError, match="promotion_receipt"):
         register_insight_figure(run_dir, **common)
+    with pytest.raises(ContractError, match="当前角色"):
+        register_insight_figure(
+            run_dir,
+            promotion_receipt=promotion["receipt"]["path"],
+            **{**common, "role": "insight"},
+        )
     entry = register_insight_figure(
         run_dir,
         promotion_receipt=promotion["receipt"]["path"],
@@ -415,8 +479,9 @@ def test_presentation_figure_binds_frozen_inputs_without_fake_result(tmp_path: P
         target_stem="figures/current/data-portrait",
         rendering_mode="diagram",
         layout_report=layout,
-        human_reviewed=True,
-        human_review_notes="已检查数据画像的文字、图例、对齐和打印可读性。",
+        figure_role="model_understanding",
+        presentation_role="data_portrait",
+        human_review=_human_review(),
     )
     source = run_dir / "analysis/DATA_AUDIT.json"
     script = run_dir / "code/figures/data_portrait.py"
@@ -489,7 +554,7 @@ def test_figure_index_13_supports_mixed_result_and_presentation_entries(
         objective_semantics_sha256="e" * 64,
     )
 
-    first = _promote_plot(run_dir, "q1-evidence")
+    first = _promote_plot(run_dir, "q1-evidence", figure_role="decisive_evidence")
     register_insight_figure(
         run_dir,
         figure_id="q1-evidence",
@@ -504,7 +569,12 @@ def test_figure_index_13_supports_mixed_result_and_presentation_entries(
         promotion_receipt=first["receipt"]["path"],
     )
 
-    portrait = _promote_plot(run_dir, "data-portrait")
+    portrait = _promote_plot(
+        run_dir,
+        "data-portrait",
+        figure_role="model_understanding",
+        presentation_role="data_portrait",
+    )
     register_presentation_figure(
         run_dir,
         figure_id="data-portrait",
@@ -520,7 +590,7 @@ def test_figure_index_13_supports_mixed_result_and_presentation_entries(
         promotion_receipt=portrait["receipt"]["path"],
     )
 
-    second = _promote_plot(run_dir, "q1-mechanism")
+    second = _promote_plot(run_dir, "q1-mechanism", figure_role="insight")
     register_insight_figure(
         run_dir,
         figure_id="q1-mechanism",

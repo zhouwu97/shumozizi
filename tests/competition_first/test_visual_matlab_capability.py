@@ -118,6 +118,125 @@ def test_figure_plan_23_accepts_frozen_sources_without_result_id(tmp_path: Path)
         write_figure_plan(run_dir, missing_sources)
 
 
+def test_figure_plan_24_binds_figures_to_argument_obligations(tmp_path: Path) -> None:
+    """2.4 图必须声明论证单元和义务，两项义务不强迫拆面板。"""
+    run_dir = _run(tmp_path, "figure-plan-argument-obligations")
+    figure = {
+        **_figure("pareto_feasible_region"),
+        "presentation_role": "question_hero",
+        "argument_unit_ids": ["Q2-shared-model"],
+        "obligation_types": ["mathematical_object", "decision"],
+    }
+    plan = {
+        "schema_name": "figure_plan",
+        "schema_version": "2.4",
+        "run_id": run_dir.name,
+        "visual_decisions": [
+            {
+                "scope": "Q2",
+                "evidence_need": "required",
+                "presentation_need": "required",
+                "reason": "共享对象及最终方案需要形成一条可快速阅读的视觉主线。",
+            }
+        ],
+        "figures": [figure],
+    }
+
+    assert write_figure_plan(run_dir, plan)["figures"][0]["argument_unit_ids"] == [
+        "Q2-shared-model"
+    ]
+
+    old_plan = {**plan, "schema_version": "2.3", "figures": [_figure("pareto_feasible_region")]}
+    old_plan["figures"][0]["presentation_role"] = "question_hero"
+    assert write_figure_plan(run_dir, old_plan)["schema_version"] == "2.3"
+
+
+def test_figure_plan_24_requires_complete_panel_mapping_for_many_obligations(
+    tmp_path: Path,
+) -> None:
+    """一张图承担三项以上核心义务时，面板必须覆盖全部论证单元。"""
+    run_dir = _run(tmp_path, "figure-plan-panel-mapping")
+    figure = {
+        **_figure("multi_panel_evidence_chain"),
+        "presentation_role": "question_hero",
+        "argument_unit_ids": ["Q2-model", "Q2-uncertainty"],
+        "obligation_types": ["model_structure", "uncertainty", "decision"],
+    }
+    plan = {
+        "schema_name": "figure_plan",
+        "schema_version": "2.4",
+        "run_id": run_dir.name,
+        "visual_decisions": [
+            {
+                "scope": "Q2",
+                "evidence_need": "required",
+                "presentation_need": "required",
+                "reason": "共享模型、不确定性和决策必须分面板建立清晰论证关系。",
+            }
+        ],
+        "figures": [figure],
+    }
+
+    with pytest.raises(ContractError, match="panel_mapping"):
+        write_figure_plan(run_dir, plan)
+    figure["panel_mapping"] = [
+        {
+            "panel": "a",
+            "argument_unit_id": "Q2-model",
+            "takeaway": "共享变量形成统一模型结构。",
+        },
+        {
+            "panel": "b",
+            "argument_unit_id": "Q2-model",
+            "takeaway": "共享结构决定后续不确定性分析入口。",
+        },
+    ]
+    with pytest.raises(ContractError, match="未覆盖论证单元"):
+        write_figure_plan(run_dir, plan)
+    figure["panel_mapping"][1] = {
+        "panel": "b",
+        "argument_unit_id": "Q2-uncertainty",
+        "takeaway": "区间变化不会改变最终判定。",
+    }
+    assert write_figure_plan(run_dir, plan)["figures"][0]["panel_mapping"][1][
+        "panel"
+    ] == "b"
+
+
+def test_figure_plan_24_accepts_structured_waiver_review(tmp_path: Path) -> None:
+    """结构性豁免可携带独立读者问题、替代表达和可追溯审核上下文。"""
+    run_dir = _run(tmp_path, "figure-plan-waiver-review")
+    plan = {
+        "schema_name": "figure_plan",
+        "schema_version": "2.4",
+        "run_id": run_dir.name,
+        "visual_decisions": [
+            {
+                "scope": "Q1",
+                "evidence_need": "waived",
+                "presentation_need": "waived",
+                "reason": "该纯解析小问由一个闭式公式和参数表即可完整表达结论。",
+                "waiver_review": {
+                    "reviewed": True,
+                    "reviewer_context_id": "blueprint-review-001",
+                    "reader_question": "不看图能否在三分钟内准确复述该解析结构？",
+                    "verdict": "waived",
+                    "reason": "闭式公式给出全部变量关系，参数表承担单位与取值说明。",
+                    "replacement_medium": "equation+table",
+                },
+            }
+        ],
+        "figures": [],
+    }
+
+    assert write_figure_plan(run_dir, plan)["visual_decisions"][0]["waiver_review"][
+        "reviewed"
+    ] is True
+    plan["visual_decisions"][0]["waiver_review"]["verdict"] = "approved"
+    with pytest.raises(ContractError, match="waived|not valid"):
+        write_figure_plan(run_dir, plan)
+
+
 def test_figure_plan_23_rejects_generic_hero_without_structure_justification(
     tmp_path: Path,
 ) -> None:

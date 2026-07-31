@@ -20,6 +20,123 @@ from shumozizi.core.io import (
 from shumozizi.simple.state import utc_now
 
 _IMAGE_SUFFIXES = {".png", ".pdf"}
+_FIGURE_ROLES = frozenset(
+    {"model_understanding", "decisive_evidence", "insight", "stability"}
+)
+_PRESENTATION_ROLES = frozenset(
+    {"data_portrait", "question_hero", "supporting", "appendix"}
+)
+_HUMAN_REVIEW_BOOLEAN_FIELDS = frozenset(
+    {
+        "reviewed",
+        "paper_width_preview_checked",
+        "mathematical_object_visible",
+        "key_observation_visible",
+        "mechanism_or_relation_visible",
+        "constraint_or_boundary_visible",
+        "decision_consequence_visible",
+        "not_redundant_with_table",
+        "caption_matches_figure",
+        "font_readable",
+        "panel_mapping_valid",
+    }
+)
+_COMMON_HUMAN_REVIEW_REQUIREMENTS = frozenset(
+    {
+        "reviewed",
+        "paper_width_preview_checked",
+        "key_observation_visible",
+        "not_redundant_with_table",
+        "caption_matches_figure",
+        "font_readable",
+        "panel_mapping_valid",
+    }
+)
+_ROLE_HUMAN_REVIEW_REQUIREMENTS = {
+    "model_understanding": frozenset(
+        {"mathematical_object_visible", "mechanism_or_relation_visible"}
+    ),
+    "decisive_evidence": frozenset(
+        {"key_observation_visible", "constraint_or_boundary_visible"}
+    ),
+    "insight": frozenset(
+        {
+            "key_observation_visible",
+            "mechanism_or_relation_visible",
+            "decision_consequence_visible",
+        }
+    ),
+    "stability": frozenset(
+        {
+            "key_observation_visible",
+            "constraint_or_boundary_visible",
+            "decision_consequence_visible",
+        }
+    ),
+    "data_portrait": frozenset(
+        {"mathematical_object_visible", "decision_consequence_visible"}
+    ),
+    "question_hero": frozenset(
+        {"key_observation_visible", "decision_consequence_visible"}
+    ),
+    "supporting": frozenset(),
+    "appendix": frozenset(),
+}
+
+
+def validate_human_figure_review(
+    review: dict[str, Any],
+    *,
+    figure_role: str,
+    presentation_role: str | None,
+) -> dict[str, Any]:
+    """验证人工复核已检查图的论证内容，而不只是文件可读性。
+
+    Args:
+        review: 人工检查结果。
+        figure_role: 科学叙事角色。
+        presentation_role: 可选呈现角色。
+
+    Returns:
+        可直接写入晋级回执的复核对象副本。
+
+    Raises:
+        ContractError: 角色无效、字段缺失或角色关键内容没有在图中兑现。
+    """
+    if not isinstance(review, dict):
+        raise ContractError("human_review 必须是 JSON 对象")
+    if figure_role not in _FIGURE_ROLES:
+        raise ContractError("figure_role 必须是 " + "、".join(sorted(_FIGURE_ROLES)))
+    if presentation_role is not None and presentation_role not in _PRESENTATION_ROLES:
+        raise ContractError(
+            "presentation_role 必须是 " + "、".join(sorted(_PRESENTATION_ROLES))
+        )
+    missing = sorted(_HUMAN_REVIEW_BOOLEAN_FIELDS - review.keys())
+    if missing:
+        raise ContractError("人工晋级复核缺少内容化字段: " + "、".join(missing))
+    invalid = sorted(
+        key for key in _HUMAN_REVIEW_BOOLEAN_FIELDS if not isinstance(review.get(key), bool)
+    )
+    if invalid:
+        raise ContractError("人工晋级复核字段必须为布尔值: " + "、".join(invalid))
+    issues = review.get("issues")
+    if not isinstance(issues, list) or any(
+        not isinstance(item, str) or not item.strip() for item in issues
+    ):
+        raise ContractError("人工晋级复核 issues 必须是字符串列表")
+    if review.get("verdict") != "promote" or issues:
+        raise ContractError("人工晋级复核必须 verdict=promote 且 issues 为空")
+    required_true = set(_COMMON_HUMAN_REVIEW_REQUIREMENTS)
+    required_true.update(_ROLE_HUMAN_REVIEW_REQUIREMENTS[figure_role])
+    if presentation_role is not None:
+        required_true.update(_ROLE_HUMAN_REVIEW_REQUIREMENTS[presentation_role])
+    failed = sorted(key for key in required_true if review.get(key) is not True)
+    if failed:
+        roles = figure_role if presentation_role is None else f"{figure_role}/{presentation_role}"
+        raise ContractError(
+            f"{roles} 图未通过角色内容检查: " + "、".join(failed)
+        )
+    return dict(review)
 
 
 def _box(item: dict[str, Any], label: str) -> tuple[float, float, float, float]:
@@ -483,10 +600,11 @@ def promote_figure_candidate(
     target_stem: str,
     rendering_mode: str,
     layout_report: str | None = None,
-    human_reviewed: bool,
-    human_review_notes: str,
+    figure_role: str,
+    human_review: dict[str, Any],
+    presentation_role: str | None = None,
 ) -> dict[str, Any]:
-    """在机械 QA 和人工看图都通过后，将版本化工作图晋级到 current。
+    """在机械 QA 和内容化人工复核都通过后，将工作图晋级到 current。
 
     Args:
         run_dir: 当前运行目录。
@@ -495,14 +613,18 @@ def promote_figure_candidate(
         target_stem: 不含后缀的 ``figures/current/`` 目标。
         rendering_mode: ``diagram`` 或普通 ``plot``。
         layout_report: 与候选同目录的流程图几何或统计图语义布局报告。
-        human_reviewed: 是否已分别打开 PNG 和 PDF 检查。
-        human_review_notes: 人工检查结论。
+        figure_role: model_understanding、decisive_evidence、insight 或 stability。
+        human_review: 含论文宽度预览、对象、观察、机制、边界和决策检查的复核对象。
+        presentation_role: 可选的 data_portrait、question_hero、supporting 或 appendix。
 
     Returns:
         晋级回执，后续图表登记可绑定该回执。
     """
-    if human_reviewed is not True or len(human_review_notes.strip()) < 12:
-        raise ContractError("晋级 current 前必须人工检查 PNG/PDF，并填写 12 字以上结论")
+    validated_review = validate_human_figure_review(
+        human_review,
+        figure_role=figure_role,
+        presentation_role=presentation_role,
+    )
     root = run_dir.resolve()
     target = resolve_inside(root, target_stem, must_exist=False)
     target_relative = relative_inside(root, target).as_posix()
@@ -560,15 +682,14 @@ def promote_figure_candidate(
             }
         )
     receipt = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": root.name,
         "figure_id": figure_id,
+        "figure_role": figure_role,
+        "presentation_role": presentation_role,
         "candidate_version": version,
         "qa": qa,
-        "human_review": {
-            "reviewed": True,
-            "notes": human_review_notes.strip(),
-        },
+        "human_review": validated_review,
         "promoted_outputs": promoted,
         "promoted_at": utc_now(),
     }
