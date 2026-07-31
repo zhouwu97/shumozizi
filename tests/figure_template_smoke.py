@@ -19,15 +19,19 @@ RENDERER = (
 EXPECTED_TEMPLATE_IDS = {
     "correlation-pairgrid",
     "cv-roc-ci",
+    "feasible-region-active-constraints",
     "grouped-circular-heatmap",
     "grouped-corr-split-violin",
     "multiclass-shap-combo",
+    "interval-event-timeline",
+    "multi-panel-evidence-chain",
     "nature-chord-diagram",
     "paired-raincloud",
     "prediction-marginal-grid",
     "rf-tpe-surface",
     "taylor-diagram",
     "urban-park-cooling-combo",
+    "uncertainty-fan-threshold",
 }
 GLYPH_WARNING = re.compile(r"glyph\s+\d+.*missing", re.IGNORECASE)
 

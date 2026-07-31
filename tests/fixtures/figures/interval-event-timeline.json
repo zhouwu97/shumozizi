@@ -1,0 +1,15 @@
+{
+  "figure_data": {
+    "intervals": [
+      {"label": "Coverage A", "group": "Platform 1", "start": 0.0, "end": 4.5},
+      {"label": "Coverage B", "group": "Platform 2", "start": 2.0, "end": 7.0},
+      {"label": "Coverage C", "group": "Platform 3", "start": 5.0, "end": 9.0}
+    ],
+    "events": [
+      {"time": 2.0, "label": "Handover"},
+      {"time": 7.0, "label": "Deadline"}
+    ],
+    "final_intervals": [{"start": 2.0, "end": 4.5}],
+    "time_label": "Time (s)"
+  }
+}

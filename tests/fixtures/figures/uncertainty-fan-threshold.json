@@ -1,0 +1,14 @@
+{
+  "figure_data": {
+    "x": [0, 1, 2, 3, 4, 5],
+    "median": [0.20, 0.31, 0.43, 0.56, 0.68, 0.77],
+    "bands": [
+      {"label": "80% interval", "lower": [0.15, 0.25, 0.35, 0.47, 0.58, 0.66], "upper": [0.25, 0.37, 0.51, 0.65, 0.78, 0.88]},
+      {"label": "95% interval", "lower": [0.10, 0.18, 0.27, 0.37, 0.46, 0.53], "upper": [0.30, 0.44, 0.59, 0.74, 0.90, 1.01]}
+    ],
+    "threshold": 0.60,
+    "threshold_label": "Decision threshold",
+    "x_label": "Scenario index",
+    "y_label": "Success probability"
+  }
+}

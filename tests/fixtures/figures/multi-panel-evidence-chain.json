@@ -1,0 +1,10 @@
+{
+  "figure_data": {
+    "panels": [
+      {"panel": "A", "title": "Observed structure", "argument_unit_id": "Q1-data", "takeaway": "Samples concentrate near the feasible boundary.", "kind": "scatter", "data": {"x": [1, 2, 3, 4], "y": [1.2, 2.1, 2.8, 4.2]}},
+      {"panel": "B", "title": "Constraint effect", "argument_unit_id": "Q1-model", "takeaway": "The active constraint limits further improvement.", "kind": "line", "data": {"x": [1, 2, 3, 4], "y": [4.0, 3.1, 2.4, 2.0]}},
+      {"panel": "C", "title": "Route comparison", "argument_unit_id": "Q1-compare", "takeaway": "The challenger improves the exact objective.", "kind": "bar", "data": {"labels": ["Baseline", "Selected"], "values": [0.72, 0.88]}},
+      {"panel": "D", "title": "Decision window", "argument_unit_id": "Q1-boundary", "takeaway": "The selected action remains valid in the central window.", "kind": "interval", "data": {"intervals": [{"start": 1, "end": 4}, {"start": 2, "end": 5}]}}
+    ]
+  }
+}

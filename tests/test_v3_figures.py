@@ -10,7 +10,7 @@ from pathlib import Path
 
 from scripts.figures import use_template
 from scripts.figures.use_template import generate_from_result
-from shumozizi.simple.figure_templates import render
+from shumozizi.simple.figure_templates import load_data, render
 from shumozizi.simple.figures import read_figure_index, verify_current_figure_files
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.quality import assess_result_quality
@@ -27,7 +27,7 @@ from tools.qa.figqa import audit_figure
     "真实绘图测试需要 .[figures] 可选依赖",
 )
 class V3FigureTests(unittest.TestCase):
-    """覆盖四类已接入模板的真实 JSON 入口。"""
+    """覆盖八类已接入模板的真实 JSON 入口。"""
 
     def setUp(self) -> None:
         """建立带可追溯 JSON 输出的临时 v3 运行。"""
@@ -74,6 +74,14 @@ class V3FigureTests(unittest.TestCase):
                 },
             },
         }
+        fixture_root = Path(__file__).parent / "fixtures" / "figures"
+        for key, filename in {
+            "feasible": "feasible-region-active-constraints.json",
+            "timeline": "interval-event-timeline.json",
+            "uncertainty": "uncertainty-fan-threshold.json",
+            "evidence_chain": "multi-panel-evidence-chain.json",
+        }.items():
+            payloads[key] = json.loads((fixture_root / filename).read_text(encoding="utf-8"))
         protocol = run_synthetic_verification_protocol(
             self.run_dir,
             result_id="q1_visual",
@@ -95,12 +103,16 @@ class V3FigureTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_real_json_templates_generate_traceable_outputs(self) -> None:
-        """四类模板应读取真实结果、输出三种格式并进入图表索引。"""
+        """八类模板应读取真实结果、输出三种格式并进入图表索引。"""
         template_inputs = {
             "cv-roc-ci": self.figure_inputs["roc"],
             "prediction-marginal-grid": self.figure_inputs["prediction"],
             "paired-raincloud": self.figure_inputs["paired"],
             "correlation-pairgrid": self.figure_inputs["correlation"],
+            "feasible-region-active-constraints": self.figure_inputs["feasible"],
+            "interval-event-timeline": self.figure_inputs["timeline"],
+            "uncertainty-fan-threshold": self.figure_inputs["uncertainty"],
+            "multi-panel-evidence-chain": self.figure_inputs["evidence_chain"],
         }
         for template_id, input_result in template_inputs.items():
             generated = generate_from_result(
@@ -114,13 +126,30 @@ class V3FigureTests(unittest.TestCase):
             for output in generated["outputs"]:
                 self.assertGreater((self.run_dir / output).stat().st_size, 0)
         index = read_figure_index(self.run_dir)
-        self.assertEqual(4, len(index["figures"]))
+        self.assertEqual(8, len(index["figures"]))
         self.assertTrue(
             all(not item["demo"] and item["paper_allowed"] for item in index["figures"])
         )
         self.assertTrue(all(item["figure_stage"] == "current" for item in index["figures"]))
         verification = verify_current_figure_files(self.run_dir)
         self.assertTrue(verification["success"], verification["errors"])
+
+    def test_structural_fixture_interfaces_render_all_formats(self) -> None:
+        """四个结构 renderer 的冻结 JSON fixture 均应通过验证并成图。"""
+        fixture_root = Path(__file__).parent / "fixtures" / "figures"
+        for template_id in (
+            "feasible-region-active-constraints",
+            "interval-event-timeline",
+            "uncertainty-fan-threshold",
+            "multi-panel-evidence-chain",
+        ):
+            fixture = fixture_root / f"{template_id}.json"
+            data = load_data(template_id, fixture)
+            stem = self.root / "fixture-renders" / template_id
+            boxes = render(template_id, data, stem)
+            self.assertTrue(boxes.is_file())
+            for suffix in (".png", ".pdf", ".svg"):
+                self.assertGreater(stem.with_suffix(suffix).stat().st_size, 0)
 
     def test_source_result_supersession_requires_figure_regeneration(self) -> None:
         """源结果被同问同类的新执行替代后，旧图必须阻断最终检查。"""

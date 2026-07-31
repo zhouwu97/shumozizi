@@ -68,7 +68,9 @@
             "multiclass-shap-combo", "paired-raincloud", "cv-roc-ci", "taylor-diagram",
             "correlation-pairgrid", "prediction-marginal-grid", "rf-tpe-surface",
             "grouped-corr-split-violin", "grouped-circular-heatmap", "urban-park-cooling-combo",
-            "nature-chord-diagram", "custom"
+            "nature-chord-diagram", "feasible-region-active-constraints",
+            "interval-event-timeline", "uncertainty-fan-threshold",
+            "multi-panel-evidence-chain", "custom"
           ]},
           "selection_reason": {"type": "string", "minLength": 1},
           "question_id": {"type": "string", "minLength": 1},

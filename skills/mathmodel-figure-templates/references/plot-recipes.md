@@ -8,6 +8,10 @@ Use bundled scripts first. These notes are only for customization after a templa
 - Taylor diagram: polar coordinates with angle `arccos(correlation)` and radius as model standard deviation.
 - Correlation grid: lower scatter/fitted CI, diagonal histograms, upper coefficient cells with diverging colors and stars.
 - Prediction marginal grid: predicted-vs-actual scatter plus top/right histograms and KDE-like curves.
+- Feasible region: distinguish feasible/infeasible candidates, emphasize active boundaries, and label the selected and fallback points.
+- Interval timeline: align resources or subjects on a common time axis, annotate critical events, and shade the final union/intersection windows.
+- Uncertainty fan: render nested quantile bands, a center estimate, tails, and the threshold that can change the decision.
+- Evidence chain: keep 2--4 panels in a single reading order and give every panel an argument-unit id and one takeaway.
 - 3D tuning surface: `mpl_toolkits.mplot3d`, smooth response surface, colorbar, and checked camera angle.
 - Split violin + correlation matrix: signed lower-triangle marker matrix plus left/right half-violin distribution comparison.
 - Circular heatmap: polar bars, flipped outer labels, central legend, and ring-specific color scales.

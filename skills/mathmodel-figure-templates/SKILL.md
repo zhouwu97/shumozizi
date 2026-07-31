@@ -43,6 +43,10 @@ python3 /home/user/.claude/skills/mathmodel-figure-templates/scripts/render_temp
 - `taylor-diagram`
 - `correlation-pairgrid`
 - `prediction-marginal-grid`
+- `feasible-region-active-constraints`
+- `interval-event-timeline`
+- `uncertainty-fan-threshold`
+- `multi-panel-evidence-chain`
 - `rf-tpe-surface`
 - `grouped-corr-split-violin`
 - `grouped-circular-heatmap`

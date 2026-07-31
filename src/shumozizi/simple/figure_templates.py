@@ -14,8 +14,12 @@ from shumozizi.core.io import ContractError
 SUPPORTED_TEMPLATES = (
     "correlation-pairgrid",
     "cv-roc-ci",
+    "feasible-region-active-constraints",
+    "interval-event-timeline",
+    "multi-panel-evidence-chain",
     "paired-raincloud",
     "prediction-marginal-grid",
+    "uncertainty-fan-threshold",
 )
 
 
@@ -100,6 +104,29 @@ def _object(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ContractError(f"{label} 必须是 JSON 对象")
     return value
+
+
+def _point(value: Any, label: str) -> dict[str, Any]:
+    """验证带可选标签的二维点。"""
+    item = _object(value, label)
+    try:
+        x = float(item.get("x"))
+        y = float(item.get("y"))
+    except (TypeError, ValueError) as exc:
+        raise ContractError(f"{label}.x/y 必须是有限数值") from exc
+    if not all(float("-inf") < number < float("inf") for number in (x, y)):
+        raise ContractError(f"{label}.x/y 必须是有限数值")
+    name = item.get("label", "")
+    if not isinstance(name, str):
+        raise ContractError(f"{label}.label 必须是文本")
+    return {"x": x, "y": y, "label": name.strip()}
+
+
+def _points(value: Any, label: str, *, minimum: int = 1) -> list[dict[str, Any]]:
+    """验证二维点数组。"""
+    if not isinstance(value, list) or len(value) < minimum:
+        raise ContractError(f"{label} 必须至少包含 {minimum} 个点")
+    return [_point(item, f"{label}[{index}]") for index, item in enumerate(value)]
 
 
 def _payload_from_file(path: Path) -> dict[str, Any]:
@@ -208,6 +235,189 @@ def load_data(template_id: str, path: Path) -> dict[str, Any]:
         if len(rows) < 3 or any(len(row) != len(names) for row in rows):
             raise ContractError("相关矩阵 values 至少三行，且每行必须与 columns 等长")
         return {"columns": names, "values": rows}
+    if template_id == "feasible-region-active-constraints":
+        points = _points(payload.get("points"), "points", minimum=3)
+        feasible = payload.get("feasible_mask")
+        if (
+            not isinstance(feasible, list)
+            or len(feasible) != len(points)
+            or any(not isinstance(item, bool) for item in feasible)
+        ):
+            raise ContractError("feasible_mask 必须是与 points 等长的布尔数组")
+        boundaries = payload.get("boundaries")
+        if not isinstance(boundaries, list) or not boundaries:
+            raise ContractError("boundaries 必须是非空约束边界数组")
+        normalized_boundaries = []
+        for index, raw in enumerate(boundaries):
+            item = _object(raw, f"boundaries[{index}]")
+            label = item.get("label")
+            x = _number_list(item.get("x"), f"boundaries[{index}].x")
+            y = _number_list(item.get("y"), f"boundaries[{index}].y")
+            if not isinstance(label, str) or not label.strip() or len(x) != len(y):
+                raise ContractError(f"boundaries[{index}] 需要非空 label 和等长 x/y")
+            normalized_boundaries.append({"label": label.strip(), "x": x, "y": y})
+        active = payload.get("active_constraints")
+        if not isinstance(active, list) or not active or any(
+            not isinstance(item, str) or not item.strip() for item in active
+        ):
+            raise ContractError("active_constraints 必须是非空约束标签数组")
+        selected = _point(payload.get("selected_point"), "selected_point")
+        alternatives = [
+            _point(item, f"alternative_points[{index}]")
+            for index, item in enumerate(payload.get("alternative_points", []))
+        ]
+        return {
+            "points": points,
+            "feasible_mask": feasible,
+            "boundaries": normalized_boundaries,
+            "active_constraints": [item.strip() for item in active],
+            "selected_point": selected,
+            "alternative_points": alternatives,
+            "x_label": str(payload.get("x_label", "Decision x")),
+            "y_label": str(payload.get("y_label", "Decision y")),
+        }
+    if template_id == "interval-event-timeline":
+        intervals = payload.get("intervals")
+        if not isinstance(intervals, list) or not intervals:
+            raise ContractError("intervals 必须是非空时间区间数组")
+        normalized_intervals = []
+        for index, raw in enumerate(intervals):
+            item = _object(raw, f"intervals[{index}]")
+            label = item.get("label")
+            group = item.get("group")
+            try:
+                start, end = float(item.get("start")), float(item.get("end"))
+            except (TypeError, ValueError) as exc:
+                raise ContractError(f"intervals[{index}].start/end 必须是数值") from exc
+            if (
+                not isinstance(label, str)
+                or not label.strip()
+                or not isinstance(group, str)
+                or not group.strip()
+                or not start < end
+            ):
+                raise ContractError(f"intervals[{index}] 需要 label、group 且 start < end")
+            normalized_intervals.append(
+                {"label": label.strip(), "group": group.strip(), "start": start, "end": end}
+            )
+        events = payload.get("events", [])
+        if not isinstance(events, list):
+            raise ContractError("events 必须是数组")
+        normalized_events = []
+        for index, raw in enumerate(events):
+            item = _object(raw, f"events[{index}]")
+            label = item.get("label")
+            try:
+                time = float(item.get("time"))
+            except (TypeError, ValueError) as exc:
+                raise ContractError(f"events[{index}].time 必须是数值") from exc
+            if not isinstance(label, str) or not label.strip():
+                raise ContractError(f"events[{index}].label 必须是非空文本")
+            normalized_events.append({"label": label.strip(), "time": time})
+        final_intervals = payload.get("final_intervals", [])
+        if not isinstance(final_intervals, list):
+            raise ContractError("final_intervals 必须是数组")
+        normalized_final = []
+        for index, raw in enumerate(final_intervals):
+            item = _object(raw, f"final_intervals[{index}]")
+            try:
+                start, end = float(item.get("start")), float(item.get("end"))
+            except (TypeError, ValueError) as exc:
+                raise ContractError(f"final_intervals[{index}] 端点必须是数值") from exc
+            if not start < end:
+                raise ContractError(f"final_intervals[{index}] 必须满足 start < end")
+            normalized_final.append({"start": start, "end": end})
+        return {
+            "intervals": normalized_intervals,
+            "events": normalized_events,
+            "final_intervals": normalized_final,
+            "time_label": str(payload.get("time_label", "Time")),
+        }
+    if template_id == "uncertainty-fan-threshold":
+        x = _number_list(payload.get("x"), "x", minimum=3)
+        median = _number_list(payload.get("median"), "median", minimum=3)
+        if len(x) != len(median):
+            raise ContractError("x 与 median 必须等长")
+        bands = payload.get("bands")
+        if not isinstance(bands, list) or not bands:
+            raise ContractError("bands 必须是非空分位带数组")
+        normalized_bands = []
+        for index, raw in enumerate(bands):
+            item = _object(raw, f"bands[{index}]")
+            label = item.get("label")
+            lower = _number_list(item.get("lower"), f"bands[{index}].lower", minimum=3)
+            upper = _number_list(item.get("upper"), f"bands[{index}].upper", minimum=3)
+            if (
+                not isinstance(label, str)
+                or not label.strip()
+                or len(lower) != len(x)
+                or len(upper) != len(x)
+                or any(left > right for left, right in zip(lower, upper, strict=True))
+            ):
+                raise ContractError(f"bands[{index}] 需要等长且 lower <= upper 的分位带")
+            normalized_bands.append({"label": label.strip(), "lower": lower, "upper": upper})
+        threshold = payload.get("threshold")
+        if isinstance(threshold, list):
+            normalized_threshold: float | list[float] = _number_list(
+                threshold, "threshold", minimum=3
+            )
+            if len(normalized_threshold) != len(x):
+                raise ContractError("threshold 数组必须与 x 等长")
+        else:
+            try:
+                normalized_threshold = float(threshold)
+            except (TypeError, ValueError) as exc:
+                raise ContractError("threshold 必须是数值或与 x 等长的数组") from exc
+        return {
+            "x": x,
+            "median": median,
+            "bands": normalized_bands,
+            "threshold": normalized_threshold,
+            "threshold_label": str(payload.get("threshold_label", "Decision threshold")),
+            "x_label": str(payload.get("x_label", "Scenario")),
+            "y_label": str(payload.get("y_label", "Outcome")),
+        }
+    if template_id == "multi-panel-evidence-chain":
+        panels = payload.get("panels")
+        if not isinstance(panels, list) or not 2 <= len(panels) <= 4:
+            raise ContractError("panels 必须包含 2--4 个连续论证面板")
+        normalized_panels = []
+        panel_ids: set[str] = set()
+        for index, raw in enumerate(panels):
+            item = _object(raw, f"panels[{index}]")
+            panel = item.get("panel")
+            title = item.get("title")
+            takeaway = item.get("takeaway")
+            argument_unit_id = item.get("argument_unit_id")
+            kind = item.get("kind")
+            if (
+                not isinstance(panel, str)
+                or not panel.strip()
+                or panel in panel_ids
+                or not isinstance(title, str)
+                or not title.strip()
+                or not isinstance(takeaway, str)
+                or len(takeaway.strip()) < 8
+                or not isinstance(argument_unit_id, str)
+                or not argument_unit_id.strip()
+                or kind not in {"line", "scatter", "bar", "interval"}
+            ):
+                raise ContractError(
+                    f"panels[{index}] 需要唯一 panel、title、argument_unit_id、takeaway 和受支持 kind"
+                )
+            panel_ids.add(panel)
+            panel_data = _object(item.get("data"), f"panels[{index}].data")
+            normalized_panels.append(
+                {
+                    "panel": panel.strip(),
+                    "title": title.strip(),
+                    "takeaway": takeaway.strip(),
+                    "argument_unit_id": argument_unit_id.strip(),
+                    "kind": kind,
+                    "data": panel_data,
+                }
+            )
+        return {"panels": normalized_panels}
     raise ContractError(
         f"模板尚未接入真实数据接口: {template_id}；当前可用: {', '.join(SUPPORTED_TEMPLATES)}"
     )
@@ -447,6 +657,158 @@ def _render_correlation_pairgrid(data: dict[str, Any], plt: Any, np: Any) -> Any
     return figure
 
 
+def _render_feasible_region_active_constraints(
+    data: dict[str, Any], plt: Any, np: Any
+) -> Any:
+    """绘制可行点、活跃约束、候选方案与最终选点。"""
+    figure, axis = plt.subplots(figsize=(7.6, 6.2))
+    points = np.asarray([[item["x"], item["y"]] for item in data["points"]])
+    feasible = np.asarray(data["feasible_mask"], dtype=bool)
+    axis.scatter(
+        points[~feasible, 0], points[~feasible, 1], s=22, color="#c7c7c7", label="Infeasible"
+    )
+    axis.scatter(
+        points[feasible, 0], points[feasible, 1], s=26, color="#4d9b78", label="Feasible"
+    )
+    active = set(data["active_constraints"])
+    for boundary in data["boundaries"]:
+        is_active = boundary["label"] in active
+        axis.plot(
+            boundary["x"],
+            boundary["y"],
+            linewidth=2.3 if is_active else 1.1,
+            linestyle="-" if is_active else "--",
+            label=f"{boundary['label']}{' (active)' if is_active else ''}",
+        )
+    for point in data["alternative_points"]:
+        axis.scatter(point["x"], point["y"], marker="D", s=52, color="#d08a36")
+        if point["label"]:
+            axis.annotate(point["label"], (point["x"], point["y"]), xytext=(5, 5), textcoords="offset points")
+    selected = data["selected_point"]
+    axis.scatter(
+        selected["x"], selected["y"], marker="*", s=190, color="#b73333", zorder=6, label=selected["label"] or "Selected"
+    )
+    axis.set(
+        xlabel=data["x_label"],
+        ylabel=data["y_label"],
+        title="Feasible region and active constraints",
+    )
+    axis.grid(alpha=0.2)
+    axis.legend(fontsize=8, loc="best")
+    figure.tight_layout()
+    return figure
+
+
+def _render_interval_event_timeline(data: dict[str, Any], plt: Any, np: Any) -> Any:
+    """绘制多主体区间、关键事件与最终有效区间。"""
+    groups = list(dict.fromkeys(item["group"] for item in data["intervals"]))
+    figure, axis = plt.subplots(figsize=(9.2, max(4.4, 0.72 * len(groups) + 2.2)))
+    colors = plt.get_cmap("tab10").colors
+    y_by_group = {group: len(groups) - index for index, group in enumerate(groups)}
+    for index, interval in enumerate(data["intervals"]):
+        y = y_by_group[interval["group"]]
+        axis.broken_barh(
+            [(interval["start"], interval["end"] - interval["start"])],
+            (y - 0.28, 0.56),
+            facecolors=colors[index % len(colors)],
+            alpha=0.72,
+        )
+        axis.text((interval["start"] + interval["end"]) / 2, y, interval["label"], ha="center", va="center", fontsize=8)
+    for interval in data["final_intervals"]:
+        axis.axvspan(interval["start"], interval["end"], color="#75b798", alpha=0.16)
+    for event in data["events"]:
+        axis.axvline(event["time"], color="#8c3f3f", linestyle="--", linewidth=1)
+        axis.text(event["time"], len(groups) + 0.65, event["label"], rotation=90, ha="right", va="top", fontsize=8)
+    axis.set_yticks([y_by_group[group] for group in groups], groups)
+    axis.set(xlabel=data["time_label"], title="Intervals, events, and effective windows")
+    axis.set_ylim(0.4, len(groups) + 0.9)
+    axis.grid(axis="x", alpha=0.2)
+    figure.tight_layout()
+    return figure
+
+
+def _render_uncertainty_fan_threshold(data: dict[str, Any], plt: Any, np: Any) -> Any:
+    """绘制多层不确定性带、中心估计与决策阈值。"""
+    figure, axis = plt.subplots(figsize=(8.0, 5.8))
+    x = np.asarray(data["x"], dtype=float)
+    colors = ["#c9ddec", "#94bdd8", "#5d9bc3", "#367ea8"]
+    for index, band in enumerate(reversed(data["bands"])):
+        axis.fill_between(
+            x,
+            np.asarray(band["lower"]),
+            np.asarray(band["upper"]),
+            color=colors[index % len(colors)],
+            alpha=0.38,
+            label=band["label"],
+        )
+    axis.plot(x, data["median"], color="#1f5875", linewidth=2.0, label="Median")
+    threshold = data["threshold"]
+    if isinstance(threshold, list):
+        axis.plot(x, threshold, "--", color="#ad3f3f", linewidth=1.5, label=data["threshold_label"])
+    else:
+        axis.axhline(threshold, linestyle="--", color="#ad3f3f", linewidth=1.5, label=data["threshold_label"])
+    axis.set(
+        xlabel=data["x_label"],
+        ylabel=data["y_label"],
+        title="Uncertainty fan and decision threshold",
+    )
+    axis.grid(alpha=0.2)
+    axis.legend(fontsize=8)
+    figure.tight_layout()
+    return figure
+
+
+def _render_multi_panel_evidence_chain(data: dict[str, Any], plt: Any, np: Any) -> Any:
+    """按固定阅读顺序绘制 2--4 个相互关联的证据面板。"""
+    panels = data["panels"]
+    columns = 2 if len(panels) > 2 else len(panels)
+    rows = (len(panels) + columns - 1) // columns
+    figure, axes = plt.subplots(rows, columns, figsize=(6.0 * columns, 4.7 * rows), squeeze=False)
+    for axis, panel in zip(axes.ravel(), panels, strict=False):
+        values = panel["data"]
+        kind = panel["kind"]
+        if kind in {"line", "scatter"}:
+            x = _number_list(values.get("x"), f"panel {panel['panel']}.data.x")
+            y = _number_list(values.get("y"), f"panel {panel['panel']}.data.y")
+            if len(x) != len(y):
+                raise ContractError(f"panel {panel['panel']} 的 x/y 必须等长")
+            if kind == "line":
+                axis.plot(x, y, marker="o", linewidth=1.6, color="#2b7297")
+            else:
+                axis.scatter(x, y, s=28, color="#2b7297")
+        elif kind == "bar":
+            labels = values.get("labels")
+            y = _number_list(values.get("values"), f"panel {panel['panel']}.data.values")
+            if not isinstance(labels, list) or len(labels) != len(y):
+                raise ContractError(f"panel {panel['panel']} 的 labels/values 必须等长")
+            axis.bar([str(item) for item in labels], y, color="#5b9a78")
+        else:
+            intervals = values.get("intervals")
+            if not isinstance(intervals, list) or not intervals:
+                raise ContractError(f"panel {panel['panel']} 需要 intervals")
+            for row_index, raw in enumerate(intervals):
+                item = _object(raw, f"panel {panel['panel']}.intervals[{row_index}]")
+                start, end = float(item["start"]), float(item["end"])
+                axis.broken_barh([(start, end - start)], (row_index - 0.3, 0.6))
+            axis.set_yticks([])
+        axis.set_title(f"{panel['panel']}  {panel['title']}", loc="left", fontsize=10)
+        axis.text(
+            0.01,
+            -0.20,
+            panel["takeaway"],
+            transform=axis.transAxes,
+            fontsize=8,
+            va="top",
+            wrap=True,
+        )
+        axis.grid(alpha=0.18)
+    for axis in axes.ravel()[len(panels) :]:
+        axis.remove()
+    figure.suptitle("Evidence chain", y=1.0)
+    figure.tight_layout()
+    return figure
+
+
 def _text_boxes(figure: Any) -> list[dict[str, float | str]]:
     """导出 Matplotlib 文字 artist 的像素边界，供图表 QA 检查。
 
@@ -501,9 +863,13 @@ def render(template_id: str, data: dict[str, Any], output_stem: Path) -> Path:
     _, plt, np = _plot_modules()
     renderers = {
         "cv-roc-ci": _render_cv_roc_ci,
+        "feasible-region-active-constraints": _render_feasible_region_active_constraints,
+        "interval-event-timeline": _render_interval_event_timeline,
+        "multi-panel-evidence-chain": _render_multi_panel_evidence_chain,
         "prediction-marginal-grid": _render_prediction_marginal_grid,
         "paired-raincloud": _render_paired_raincloud,
         "correlation-pairgrid": _render_correlation_pairgrid,
+        "uncertainty-fan-threshold": _render_uncertainty_fan_threshold,
     }
     renderer = renderers.get(template_id)
     if renderer is None:

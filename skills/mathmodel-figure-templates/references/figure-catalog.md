@@ -10,6 +10,10 @@ Each id maps to a bundled script under `scripts/templates/`.
 | `taylor-diagram` | `make_taylor_diagram.py` | 多模型评价泰勒图 |
 | `correlation-pairgrid` | `make_correlation_pairgrid.py` | 数据分布、拟合线、置信区间、相关系数组合图 |
 | `prediction-marginal-grid` | `make_prediction_marginal_grid.py` | 预测值与真实值边缘分布组合图 |
+| `feasible-region-active-constraints` | `make_feasible_region_active_constraints.py` | 可行域、活跃约束、候选点与最终方案 |
+| `interval-event-timeline` | `make_interval_event_timeline.py` | 多主体区间、临界事件与最终有效窗口 |
+| `uncertainty-fan-threshold` | `make_uncertainty_fan_threshold.py` | 多层分位带、尾部与决策阈值 |
+| `multi-panel-evidence-chain` | `make_multi_panel_evidence_chain.py` | 按论证顺序组织的 2--4 面板联合证据链 |
 | `rf-tpe-surface` | `make_rf_tpe_surface.py` | TPE 优化 RF 模型 3D 曲面图 |
 | `grouped-corr-split-violin` | `make_grouped_corr_split_violin.py` | 下三角相关矩阵 + 特征分组与半边小提琴图 |
 | `grouped-circular-heatmap` | `make_grouped_circular_heatmap.py` | 分组环形热图 |
