@@ -20,6 +20,7 @@ from shumozizi.core.io import (
     ContractError,
     atomic_json,
     load_json,
+    resolve_inside,
     sha256_file,
     sha256_tree,
 )
@@ -74,6 +75,7 @@ _INSIGHT_KINDS = frozenset(
         "decision_rule",
     }
 )
+_VISUAL_OUTPUT_ROOT = Path("results/raw")
 UNIT_KINDS = frozenset(
     {
         "evaluation",
@@ -1066,6 +1068,10 @@ def _validate_unit_plan(
                     contract.get(field), f"{unit_id}.simulation_contract.{field}"
                 )
 
+    visual_outputs = _validate_visual_outputs(
+        unit.get("visual_outputs", []), f"{unit_id}.visual_outputs"
+    )
+
     return {
         "unit_id": unit_id,
         "schema_version": schema_version,
@@ -1098,7 +1104,142 @@ def _validate_unit_plan(
         "oracle_required": oracle_required,
         "sensitivity_required": sensitivity_required,
         "robustness_required": robustness_required,
+        "visual_outputs": visual_outputs,
     }
+
+
+def _validate_visual_outputs(value: object, label: str) -> list[dict[str, Any]]:
+    """校验实验阶段为论文图预留的结构化输出合同。"""
+    if not isinstance(value, list):
+        raise ContractError(f"{label} 必须是列表")
+    outputs: list[dict[str, Any]] = []
+    argument_units: set[str] = set()
+    output_paths: set[str] = set()
+    for index, raw in enumerate(value):
+        item_label = f"{label}[{index}]"
+        item = _require_mapping(raw, item_label)
+        visual_question = _require_substantive_plan_text(
+            item.get("visual_question"), f"{item_label}.visual_question"
+        )
+        argument_unit_id = _require_text(
+            item.get("argument_unit_id"), f"{item_label}.argument_unit_id"
+        )
+        required_data = _require_text_list(
+            item.get("required_data"), f"{item_label}.required_data"
+        )
+        if len(required_data) != len(set(required_data)):
+            raise ContractError(f"{item_label}.required_data 不得重复")
+        output_path = _require_text(
+            item.get("output_path"), f"{item_label}.output_path"
+        ).replace("\\", "/")
+        path = Path(output_path)
+        if path.is_absolute() or ".." in path.parts:
+            raise ContractError(f"{item_label}.output_path 必须是运行目录内的相对路径")
+        try:
+            path.relative_to(_VISUAL_OUTPUT_ROOT)
+        except ValueError as exc:
+            raise ContractError(
+                f"{item_label}.output_path 必须位于 results/raw/ 下"
+            ) from exc
+        if path.suffix.casefold() != ".json":
+            raise ContractError(
+                f"{item_label}.output_path 必须是可复验的 JSON 结构化输出"
+            )
+        if argument_unit_id in argument_units:
+            raise ContractError(f"{label}.argument_unit_id 不得重复")
+        if output_path in output_paths:
+            raise ContractError(f"{label}.output_path 不得重复")
+        argument_units.add(argument_unit_id)
+        output_paths.add(output_path)
+        outputs.append(
+            {
+                "visual_question": visual_question,
+                "argument_unit_id": argument_unit_id,
+                "required_data": required_data,
+                "output_path": output_path,
+            }
+        )
+    return outputs
+
+
+def validate_visual_output_sources(run_dir: Path) -> list[str]:
+    """复验 FIGURE_PLAN 2.4 所需的实验中间数据已经真实保存。
+
+    Args:
+        run_dir: 当前 Competition-First 运行目录。
+
+    Returns:
+        数据缺失、字段缺失或图表来源未绑定的错误列表。
+    """
+    plan_path = run_dir / MODELING_UNITS_PATH
+    figure_path = run_dir / "figures" / "FIGURE_PLAN.json"
+    if not plan_path.is_file() or not figure_path.is_file():
+        return []
+    try:
+        modeling = load_json(plan_path)
+        figure_plan = load_json(figure_path)
+    except (ContractError, OSError, ValueError) as exc:
+        return [f"无法复验绘图数据合同: {exc}"]
+    if figure_plan.get("schema_version") != "2.4":
+        return []
+
+    contracts: dict[str, dict[str, Any]] = {}
+    for unit in modeling.get("units", []):
+        if not isinstance(unit, dict):
+            continue
+        question_id = unit.get("question_id")
+        for raw in unit.get("visual_outputs", []):
+            if not isinstance(raw, dict) or not isinstance(raw.get("argument_unit_id"), str):
+                continue
+            contracts[raw["argument_unit_id"]] = {**raw, "question_id": question_id}
+
+    data_backed = {
+        "algorithm",
+        "result",
+        "mechanism",
+        "comparison",
+        "uncertainty",
+        "boundary",
+        "decision",
+    }
+    errors: list[str] = []
+    for figure in figure_plan.get("figures", []):
+        if not isinstance(figure, dict) or figure.get("required") is not True:
+            continue
+        figure_id = str(figure.get("figure_id", "<unknown>"))
+        argument_ids = figure.get("argument_unit_ids", [])
+        obligations = set(figure.get("obligation_types", []))
+        source_files = set(figure.get("source_files", []))
+        matched = [contracts[item] for item in argument_ids if item in contracts]
+        if obligations & data_backed and not matched and not source_files:
+            errors.append(
+                f"必需图 {figure_id} 承担数据型论证义务，但没有 visual_outputs 或冻结源文件；"
+                "不能只凭最终标量在绘图阶段补造结构"
+            )
+            continue
+        for contract in matched:
+            output_path = str(contract.get("output_path", ""))
+            if output_path not in source_files:
+                errors.append(
+                    f"必需图 {figure_id} 未在 source_files 绑定 visual_outputs {output_path}"
+                )
+                continue
+            try:
+                output = resolve_inside(run_dir, output_path, must_exist=True)
+                document = load_json(output)
+            except (ContractError, OSError, ValueError) as exc:
+                errors.append(f"必需图 {figure_id} 的结构化绘图数据无效: {exc}")
+                continue
+            if not isinstance(document, dict):
+                errors.append(f"必需图 {figure_id} 的 {output_path} 顶层必须是 JSON 对象")
+                continue
+            missing = sorted(set(contract.get("required_data", [])) - set(document))
+            if missing:
+                errors.append(
+                    f"必需图 {figure_id} 的 {output_path} 缺少绘图字段: "
+                    + ", ".join(missing)
+                )
+    return errors
 
 
 def _production_result(

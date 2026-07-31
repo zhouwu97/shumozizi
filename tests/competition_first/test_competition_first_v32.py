@@ -21,6 +21,7 @@ from shumozizi.simple.modeling_units import (
     question_outcome_selections,
     require_v32_experiment_evidence,
     semantic_reconstruction_input_bindings,
+    validate_visual_output_sources,
     write_modeling_units,
 )
 from shumozizi.simple.objective_consequences import (
@@ -430,6 +431,113 @@ def _v14_optimization_plan(run_dir: Path) -> dict[str, object]:
         "instability_action": "若单次结果明显不稳定则增加独立随机种子并继续搜索。",
     }
     return plan
+
+
+def test_visual_outputs_reject_paths_outside_results_raw(tmp_path: Path) -> None:
+    """绘图中间数据必须留在运行目录的可追溯 raw 区域。"""
+    run_dir = initialize_simple_run(
+        tmp_path, "visual-output-path", workflow_version="3.2", required_questions=["Q1"]
+    )
+    plan = _v14_non_search_plan(run_dir, "evaluation")
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["visual_outputs"] = [
+        {
+            "visual_question": "统一评价指标如何由各对象的组成项逐层聚合形成？",
+            "argument_unit_id": "Q1-aggregation",
+            "required_data": ["entities", "aggregate"],
+            "output_path": "../outside.json",
+        }
+    ]
+
+    with pytest.raises(ContractError, match="运行目录内的相对路径"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_figure_plan_24_requires_declared_structured_visual_data(tmp_path: Path) -> None:
+    """数据型论证图不能等到论文阶段再从最终标量猜造结构。"""
+    run_dir = initialize_simple_run(
+        tmp_path, "visual-output-binding", workflow_version="3.2", required_questions=["Q1"]
+    )
+    plan = _v14_non_search_plan(run_dir, "evaluation")
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["visual_outputs"] = [
+        {
+            "visual_question": "统一评价指标如何由各对象的组成项逐层聚合形成？",
+            "argument_unit_id": "Q1-aggregation",
+            "required_data": ["entities", "aggregate"],
+            "output_path": "results/raw/q1_aggregation.json",
+        }
+    ]
+    write_modeling_units(run_dir, plan)
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.4",
+            "run_id": run_dir.name,
+            "figures": [
+                {
+                    "figure_id": "q1-aggregation",
+                    "required": True,
+                    "argument_unit_ids": ["Q1-aggregation"],
+                    "obligation_types": ["mechanism", "decision"],
+                    "source_files": ["results/raw/q1_aggregation.json"],
+                }
+            ],
+        },
+    )
+
+    errors = validate_visual_output_sources(run_dir)
+    assert any("结构化绘图数据无效" in item for item in errors)
+
+    atomic_json(
+        run_dir / "results/raw/q1_aggregation.json",
+        {"entities": [{"id": 1}], "aggregate": 1.0},
+    )
+    assert validate_visual_output_sources(run_dir) == []
+
+
+def test_visual_output_source_checks_required_fields(tmp_path: Path) -> None:
+    """已存在的 JSON 仍必须包含事前声明的绘图字段。"""
+    run_dir = initialize_simple_run(
+        tmp_path, "visual-output-fields", workflow_version="3.2", required_questions=["Q1"]
+    )
+    plan = _v14_non_search_plan(run_dir, "evaluation")
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["visual_outputs"] = [
+        {
+            "visual_question": "统一评价指标如何由各对象的组成项逐层聚合形成？",
+            "argument_unit_id": "Q1-aggregation",
+            "required_data": ["entities", "aggregate"],
+            "output_path": "results/raw/q1_aggregation.json",
+        }
+    ]
+    write_modeling_units(run_dir, plan)
+    atomic_json(run_dir / "results/raw/q1_aggregation.json", {"entities": []})
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.4",
+            "run_id": run_dir.name,
+            "figures": [
+                {
+                    "figure_id": "q1-aggregation",
+                    "required": True,
+                    "argument_unit_ids": ["Q1-aggregation"],
+                    "obligation_types": ["mechanism"],
+                    "source_files": ["results/raw/q1_aggregation.json"],
+                }
+            ],
+        },
+    )
+
+    assert validate_visual_output_sources(run_dir) == [
+        "必需图 q1-aggregation 的 results/raw/q1_aggregation.json 缺少绘图字段: aggregate"
+    ]
 
 
 def _attach_v14_optimization_actual(
