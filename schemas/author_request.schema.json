@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/author_request.schema.json",
+  "title": "External author material request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "requests"],
+  "properties": {
+    "schema_name": {"const": "author_request"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "requests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gap_id", "kind", "affected_argument", "request", "why_needed",
+          "can_continue_without_it", "fallback", "recommended_route",
+          "expected_benefit", "estimated_cost"
+        ],
+        "properties": {
+          "gap_id": {"type": "string", "minLength": 1},
+          "kind": {
+            "enum": ["argument_material", "visual", "evidence", "citation", "clarification"]
+          },
+          "affected_argument": {"type": "string", "minLength": 1},
+          "request": {"type": "string", "minLength": 1},
+          "why_needed": {"type": "string", "minLength": 1},
+          "can_continue_without_it": {"type": "boolean"},
+          "fallback": {"type": "string", "minLength": 1},
+          "recommended_route": {
+            "enum": ["author", "visual", "experiment", "analysis"]
+          },
+          "expected_benefit": {"type": "string", "minLength": 1},
+          "estimated_cost": {"enum": ["low", "medium", "high"]}
+        }
+      }
+    }
+  }
+}
