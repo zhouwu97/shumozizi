@@ -24,11 +24,12 @@
     "source_bindings": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["production_results_digest", "figure_index_digest", "modeling_units_digest"],
+      "required": ["production_results_digest", "modeling_units_digest"],
       "properties": {
         "production_results_digest": {"type": ["string", "null"]},
-        "figure_index_digest": {"type": ["string", "null"]},
-        "modeling_units_digest": {"type": ["string", "null"]}
+        "modeling_units_digest": {"type": ["string", "null"]},
+        "analysis_inputs_digest": {"type": ["string", "null"]},
+        "figure_index_digest": {"type": ["string", "null"]}
       }
     },
     "items": {

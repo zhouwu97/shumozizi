@@ -14,7 +14,7 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
-from shumozizi.paper.materials import material_pool_digest
+from shumozizi.paper.materials import material_pool_digest, read_material_pool
 from shumozizi.paper.policy import policy_fingerprint
 from shumozizi.simple.state import read_simple_state, utc_now
 
@@ -33,6 +33,19 @@ STORYBOARD_FIELDS = (
     "boundary",
     "best_media",
     "handoff_to_next",
+)
+_PLACEHOLDER_MARKERS = ("待填写", "待补", "todo", "tbd", "placeholder")
+_SUBSTANTIVE_FIELDS = (
+    "reader_needs",
+    "phenomenon",
+    "why_math_object",
+    "model_evolution",
+    "key_derivation",
+    "structural_finding",
+    "decision_determinant",
+    "mechanism",
+    "contrast",
+    "boundary",
 )
 
 
@@ -194,13 +207,94 @@ def validate_storyboard_freshness(run_dir: Path) -> dict[str, Any]:
     return {"current": not stale_fields, "stale_fields": stale_fields, "run_id": payload["run_id"]}
 
 
-def require_research_storyboard(run_dir: Path, *, fresh: bool = True) -> dict[str, Any]:
-    """要求故事板存在并可选地绑定当前素材。"""
+def storyboard_quality_report(run_dir: Path) -> dict[str, Any]:
+    """检查故事板是否是可写的研究叙事，而不是带占位符的表单。"""
+    root = run_dir.resolve()
+    payload = read_research_storyboard(root)
+    errors: list[str] = []
+    if payload.get("status") != "current":
+        errors.append("status 不是 current")
+    required_questions = [str(item) for item in read_simple_state(root).get("required_questions", [])]
+    cards = payload.get("question_cards", [])
+    by_question = {
+        str(card.get("question_id")): card
+        for card in cards
+        if isinstance(card, dict) and card.get("question_id")
+    }
+    missing_questions = sorted(set(required_questions) - set(by_question))
+    if missing_questions:
+        errors.append("缺少问题卡: " + ", ".join(missing_questions))
+    pool_ids: set[str] = set()
+    try:
+        pool_ids = {
+            str(item.get("material_id"))
+            for item in read_material_pool(root).get("items", [])
+            if isinstance(item, dict)
+        }
+    except (ContractError, OSError, ValueError):
+        pass
+    placeholder_fields: list[dict[str, str]] = []
+    for question_id in required_questions:
+        card = by_question.get(question_id)
+        if card is None:
+            continue
+        for field in _SUBSTANTIVE_FIELDS:
+            value = card.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"{question_id} 缺少 {field}")
+                continue
+            if any(marker in value.casefold() for marker in _PLACEHOLDER_MARKERS):
+                placeholder_fields.append({"question_id": question_id, "field": field})
+        media = card.get("best_media")
+        if not isinstance(media, list) or not any(str(item).strip() for item in media):
+            errors.append(f"{question_id} 缺少 best_media")
+        if required_questions and question_id != required_questions[-1]:
+            handoff = card.get("handoff_to_next")
+            if not isinstance(handoff, str) or not handoff.strip():
+                errors.append(f"{question_id} 缺少 handoff_to_next")
+        material_ids = card.get("material_ids", [])
+        if isinstance(material_ids, list) and pool_ids:
+            unknown = sorted(str(item) for item in material_ids if str(item) not in pool_ids)
+            if unknown:
+                errors.append(f"{question_id} 引用了未知素材: " + ", ".join(unknown))
+    if placeholder_fields:
+        errors.append(
+            "存在占位问题卡字段: "
+            + ", ".join(f"{item['question_id']}.{item['field']}" for item in placeholder_fields)
+        )
+    progression = storyboard_progression_report(root)
+    if not progression["valid"]:
+        errors.append("问题继承/交接未闭合")
+    return {
+        "substantive": not errors,
+        "errors": errors,
+        "question_count": len(cards),
+        "placeholder_fields": placeholder_fields,
+        "progression": progression,
+        "run_id": payload["run_id"],
+    }
+
+
+def require_research_storyboard(
+    run_dir: Path, *, fresh: bool = True, substantive: bool = False
+) -> dict[str, Any]:
+    """要求故事板存在并可选地绑定当前素材。
+
+    ``substantive=True`` 是长篇论文编译门；普通版面探针可以只读取新鲜的
+    渐进式骨架，以保持作者逐步填写故事板的工作流。
+    """
     payload = read_research_storyboard(run_dir)
     if fresh:
         freshness = validate_storyboard_freshness(run_dir)
         if not freshness["current"]:
             raise ContractError("研究故事板已失效: " + "、".join(freshness["stale_fields"]))
+    if substantive:
+        quality = storyboard_quality_report(run_dir)
+        if not quality["substantive"]:
+            raise ContractError(
+                "研究故事板不具备长篇写作所需的实质内容: "
+                + "；".join(quality["errors"])
+            )
     return payload
 
 

@@ -30,8 +30,15 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "src/shumozizi/paper/style_audit.py",
             root / "src/shumozizi/paper/templates.py",
             root / "src/shumozizi/paper/editorial.py",
+            root / "src/shumozizi/paper/materials.py",
+            root / "src/shumozizi/paper/storyboard.py",
+            root / "src/shumozizi/paper/compiler.py",
+            root / "src/shumozizi/paper/page_budget.py",
+            root / "src/shumozizi/paper/docx_qa.py",
             root / "schemas/paper_material_pool.schema.json",
             root / "schemas/research_storyboard.schema.json",
+            root / "schemas/paper_cold_reader_waiver.schema.json",
+            root / "schemas/paper_page_budget.schema.json",
             root / "schemas/figure_template_registry.schema.json",
             root / "src/shumozizi/paper/layout_optimizer.py",
             root / "schemas/paper_layout_optimization.schema.json",
@@ -45,6 +52,7 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "src/shumozizi/knowledge/usage.py",
             root / "schemas/figure_plan.schema.json",
             root / "schemas/visual_opportunity_pool.schema.json",
+            root / "schemas/figure_design_contract.schema.json",
             root / "schemas/figure_template_registry.schema.json",
         )
     raise ContractError(f"未知政策域: {kind}")
@@ -150,6 +158,8 @@ def evaluate_staleness(
     storyboard = load_json(storyboard_path) if storyboard_path.is_file() else None
     opportunities = load_json(opportunity_path) if opportunity_path.is_file() else None
     compile_receipt = load_json(compile_path) if compile_path.is_file() else None
+    current_pool_digest = _optional_digest(pool_path)
+    current_storyboard_digest = _optional_digest(storyboard_path)
 
     result_changed = bool(
         pool is not None
@@ -160,12 +170,16 @@ def evaluate_staleness(
         storyboard is not None
         and (
             storyboard.get("policy_fingerprint") != policies["paper"]
-            or storyboard.get("material_pool_digest") != _optional_digest(pool_path)
+            or storyboard.get("material_pool_digest") != current_pool_digest
         )
     )
     visual_changed = bool(
         opportunities is not None
-        and opportunities.get("policy_fingerprint") != policies["visual"]
+        and (
+            opportunities.get("policy_fingerprint") != policies["visual"]
+            or opportunities.get("material_pool_digest") != current_pool_digest
+            or opportunities.get("storyboard_digest") != current_storyboard_digest
+        )
     )
     paper_compile_changed = bool(
         compile_receipt is not None
@@ -183,7 +197,7 @@ def evaluate_staleness(
     if storyboard_changed:
         reasons.append("研究故事板依赖的素材池或论文政策已变化")
     if visual_changed:
-        reasons.append("视觉政策指纹已变化")
+        reasons.append("视觉机会池依赖的素材池、故事板或视觉政策已变化")
     if paper_compile_changed:
         reasons.append("论文编译回执不再绑定当前政策或正式结果")
     status = {

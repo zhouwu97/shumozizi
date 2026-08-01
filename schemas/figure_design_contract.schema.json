@@ -42,6 +42,8 @@
     "paper_location": {"type": ["string", "null"]},
     "review_verdict": {"enum": ["PROMOTE", "REVISE", "SPLIT", "DROP", null]},
     "policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "material_pool_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "storyboard_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
     "panels": {
       "type": "array",
       "minItems": 1,

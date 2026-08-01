@@ -14,11 +14,20 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
+from shumozizi.paper.materials import material_pool_digest
 from shumozizi.paper.policy import policy_fingerprint
 from shumozizi.simple.state import read_simple_state, utc_now
 
 FIGURE_DESIGN_CONTRACT_SCHEMA = "figure_design_contract"
 FIGURE_DESIGN_ROOT = Path("figures/work")
+
+
+def _storyboard_digest(run_dir: Path) -> str | None:
+    """返回设计合同所依赖的故事板摘要。"""
+    path = run_dir.resolve() / "paper/generated/research_storyboard.json"
+    from shumozizi.core.io import sha256_file
+
+    return sha256_file(path) if path.is_file() else None
 
 
 def _atomic_text(path: Path, value: str) -> None:
@@ -80,6 +89,8 @@ def build_figure_design_contract(
         "paper_location": paper_location,
         "review_verdict": None,
         "policy_fingerprint": policy_fingerprint(resolve_repo_root(Path(__file__)), "visual"),
+        "material_pool_digest": material_pool_digest(root),
+        "storyboard_digest": _storyboard_digest(root),
         "panels": panel_list,
         "mechanism_annotation": mechanism_annotation,
         "boundary_annotation": boundary_annotation,
@@ -102,3 +113,15 @@ def read_figure_design_contract(run_dir: Path, opportunity_id: str, candidate_ve
     if payload.get("run_id") != read_simple_state(root)["run_id"]:
         raise ContractError("设计合同 run_id 与运行不一致")
     return payload
+
+
+def figure_design_contract_freshness(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """复验设计合同仍绑定当前素材、故事板和视觉政策。"""
+    root = run_dir.resolve()
+    expected = {
+        "policy_fingerprint": policy_fingerprint(resolve_repo_root(Path(__file__)), "visual"),
+        "material_pool_digest": material_pool_digest(root),
+        "storyboard_digest": _storyboard_digest(root),
+    }
+    stale_fields = [key for key, value in expected.items() if payload.get(key) != value]
+    return {"current": not stale_fields, "stale_fields": stale_fields, "run_id": payload.get("run_id")}

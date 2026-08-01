@@ -1,10 +1,10 @@
-# shumozizi Competition-First v3.3 项目约定
+# shumozizi Competition-First v3.4 项目约定
 
 ## 目标
 
 这是 Codex 桌面版驱动的数学建模工作台。生产主链的唯一目标是在同等模型、时间、Token、算力和资料条件下，提高路线质量、实验价值、结果洞察和匿名论文表现。不要把 Schema、审核任务、哈希、回执或全绿测试当作竞争力证明。
 
-新 v3.3 运行继续使用六阶段主链，v3.2 运行保持兼容：
+新 v3.4 运行继续使用六阶段主链，v3.2 运行保持兼容：
 
 ```text
 analysis -> experiment -> paper -> paper_review -> verify -> complete
@@ -78,11 +78,11 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 - `PAPER_BLUEPRINT.md` 必须逐问覆盖题面要求、继承、新困难、数学对象、建模依据、关键推导、算法、主结果、解释、机制、验证、边界和直接答案；核心问题另需关键判断、计算证据与替代解释。系统自动生成 `paper/generated/argument_coverage.json`，缺项阻断首稿或候选稿。
 - 写作前必须记录 `review/paper-blueprint-review.json`，第一版 PDF 后必须记录 `review/first-draft-cold-read.json`；两次审核最多各导入五项最高价值 finding 到 `PAPER_REVIEW.md`。它们是 paper 阶段内 checkpoint，不新增状态阶段。
 - 图表在 `figures/work/<figure_id>/<version>/` 迭代，通过文件可读性、PNG/PDF 几何一致性和人工看图后晋级 `figures/current/`；被替换的 current 自动留入 `figures/archive/`。流程图另查文字越界、重叠、最小字号、箭头穿字和连接点居中。
-- v3.3 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。晋级回执必须按角色复核对象、观察、机制、边界、决策后果、表格冗余、图注、字号和面板映射；只有 `reviewed=true` 不再放行。`stability` 一律进入附录。
+- v3.4 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。晋级回执必须按角色复核对象、观察、机制、边界、决策后果、表格冗余、图注、字号和面板映射；只有 `reviewed=true` 不再放行。`stability` 一律进入附录。
 - `FIGURE_PLAN` 2.3 的正文 hero 必须声明 `information_structure`、普通图取舍理由和机制标注，并按空间、时间/集合、网络、场、权衡或不确定性优先选择原型。当数据具有空间、集合、网络、场、决策面或区间结构时，普通柱形图/折线图不得作为唯一正文主图；确实最合适时必须登记 `generic_chart_override_reason`，且人工看图仍需确认声明已在 PNG/PDF 中兑现。
 - 图必须由当前数据和当前脚本实际生成，PNG/PDF 可读，并在结果变化后失效。
 - 论文每个必答问题都要有问题分析、与前问的继承、数学对象与关键推导、算法步骤、结果机制、验证边界和直接答案；普通问题可以合并小节，但不能只剩方法名和结果表。`analysis/answer_map.json` 或 `paper/answer-map.json` 的 `primary_result_id` 必须与实验晋级/回退决定一致。核心问题另需用 `insight_ids` 引用实验阶段登记的机制或边际收益类规律。
-- PDF 内源码默认不超过一页（`source_code_appendix.pdf_page_budget`），完整代码走 `mode: attachment`；确有赛事要求时显式声明 `competition_requires_full` 与依据。运行时会自动生成 `paper/generated/argument_map.json` 与 `paper/generated/argument_coverage.json`；v3.3 只能使用无回退 LaTeX 学术模板。
+- PDF 内源码默认不超过一页（`source_code_appendix.pdf_page_budget`），完整代码走 `mode: attachment`；确有赛事要求时显式声明 `competition_requires_full` 与依据。运行时会自动生成 `paper/generated/argument_map.json` 与 `paper/generated/argument_coverage.json`；v3.4 只能使用无回退 LaTeX 学术模板。
 - 论文采用可往返的三种逻辑动作：在 `PAPER_BLUEPRINT.md` 定义结构与跨问主线，统一共享模型并逐问成文，在 `PAPER_REVIEW.md` 收束证据边界与返修。贡献最多三项，不能把常规方法组合包装为创新。
 - 不把约 13 页当作复杂论文的默认目标。先服从赛事页数上限；没有紧上限时，多问且推导/验证复杂的论文可用约 25–33 页正文作为初始规划区间，再按真实内容调整。该区间只帮助防止过度压缩，不是硬门或获奖证明。正文优先完整讲清一个主模型、一个自然 baseline 和一条真正不同的 challenger；中央推导、必要伪代码和参考文献留在正文，完整代码与稳定性审计进附件。
 - 正式编译分别维护 `argument_revision` 与 `render_revision`。正文论证变化才使独立盲评失效；字号、箭头、留白、分页等纯渲染变化只重做当前 render 的版式与机械 QA。科学事实变化仍重做科学挑战、论证和渲染。首稿或 candidate 都不是不可逆冻结；首稿后新增路线、实验、图或审核须记录 review finding、预计成本、预期收益和停止条件。只有用户显式 `final lock` 后才停止新增科学内容。工作流源码哈希只作信息提示，不拥有阶段否决权。

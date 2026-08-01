@@ -18,6 +18,7 @@ from shumozizi.simple.state import read_simple_state, utc_now
 from shumozizi.simple.visual_opportunities import add_companion_figure_opportunity
 
 EDITORIAL_ACTIONS_PATH = Path("review/PAPER_COLD_READER_EDITORIAL.json")
+EDITORIAL_WAIVER_PATH = Path("review/PAPER_COLD_READER_WAIVER.json")
 EDITORIAL_ACTIONS = frozenset(
     {
         "EXPAND",
@@ -124,22 +125,96 @@ def close_editorial_action(
     return target
 
 
-def editorial_readiness(run_dir: Path) -> dict[str, Any]:
-    """返回编辑动作是否全部关闭，供竞赛候选编译前使用。"""
-    path = run_dir.resolve() / EDITORIAL_ACTIONS_PATH
+def _valid_editorial_waiver(run_dir: Path) -> dict[str, Any] | None:
+    """读取明确的应急/回退冷读豁免，不把缺失冷读伪装成完成。"""
+    root = run_dir.resolve()
+    path = root / EDITORIAL_WAIVER_PATH
     if not path.is_file():
-        return {"ready": True, "open_actions": [], "reason": "尚未记录冷读编辑动作"}
+        return None
     payload = load_json(path)
+    require_valid(payload, "paper_cold_reader_waiver")
+    if payload.get("run_id") != read_simple_state(root)["run_id"]:
+        raise ContractError("冷读豁免 run_id 与当前运行不一致")
+    if payload.get("mode") not in {"emergency", "fallback"}:
+        raise ContractError("冷读豁免 mode 必须为 emergency 或 fallback")
+    reason = payload.get("reason")
+    if not isinstance(reason, str) or len(reason.strip()) < 20:
+        raise ContractError("冷读豁免必须记录不少于 20 个字符的具体原因")
+    return payload
+
+
+def editorial_readiness(
+    run_dir: Path, *, require_record: bool = False
+) -> dict[str, Any]:
+    """返回冷读编辑动作、来源 PDF 和政策绑定是否满足候选稿门。"""
+    root = run_dir.resolve()
+    path = root / EDITORIAL_ACTIONS_PATH
+    if not path.is_file():
+        if not require_record:
+            return {"ready": True, "open_actions": [], "reason": "尚未记录冷读编辑动作"}
+        try:
+            waiver = _valid_editorial_waiver(root)
+        except (ContractError, OSError, ValueError) as exc:
+            return {
+                "ready": False,
+                "open_actions": [],
+                "errors": [str(exc)],
+                "reason": "冷读记录缺失且豁免无效",
+            }
+        if waiver is not None:
+            return {
+                "ready": True,
+                "open_actions": [],
+                "waiver": waiver,
+                "reason": "使用明确记录的应急/回退冷读豁免",
+            }
+        return {
+            "ready": False,
+            "open_actions": [],
+            "errors": ["缺少 PAPER_COLD_READER_EDITORIAL.json，且没有有效豁免"],
+            "reason": "正常竞赛候选稿必须有独立冷读记录",
+        }
+    try:
+        payload = load_json(path)
+        require_valid(payload, "paper_editorial_actions")
+    except (ContractError, OSError, ValueError) as exc:
+        return {"ready": False, "open_actions": [], "errors": [str(exc)], "reason": "冷读记录无效"}
+    errors: list[str] = []
+    state = read_simple_state(root)
+    if payload.get("run_id") != state["run_id"]:
+        errors.append("冷读记录 run_id 与当前运行不一致")
+    if not str(payload.get("reviewer_context_id", "")).strip():
+        errors.append("冷读记录缺少 reviewer_context_id")
+    if require_record:
+        source_pdf = payload.get("source_pdf")
+        try:
+            pdf_path = resolve_inside(root, str(source_pdf), must_exist=True)
+            if payload.get("source_pdf_sha256") != sha256_file(pdf_path):
+                errors.append("冷读来源 PDF 已变化，必须重新冷读")
+        except (ContractError, OSError, ValueError) as exc:
+            errors.append(f"冷读来源 PDF 无效: {exc}")
+        expected_policy = policy_fingerprint(resolve_repo_root(Path(__file__)), "paper")
+        if payload.get("paper_policy_fingerprint") != expected_policy:
+            errors.append("冷读记录未绑定当前论文政策")
     open_actions = [
         item.get("action_id")
         for item in payload.get("actions", [])
         if isinstance(item, dict) and item.get("status") != "closed"
     ]
-    return {"ready": not open_actions, "open_actions": open_actions, "reason": "存在未关闭编辑动作" if open_actions else "全部关闭"}
+    return {
+        "ready": not open_actions and not errors,
+        "open_actions": open_actions,
+        "errors": errors,
+        "source_pdf": payload.get("source_pdf"),
+        "source_pdf_sha256": payload.get("source_pdf_sha256"),
+        "reviewer_context_id": payload.get("reviewer_context_id"),
+        "reason": "存在未关闭编辑动作" if open_actions else ("全部关闭" if not errors else "冷读绑定无效"),
+    }
 
 
-def require_editorial_readiness(run_dir: Path) -> None:
+def require_editorial_readiness(run_dir: Path, *, require_record: bool = False) -> None:
     """要求冷读提出的编辑动作均有关闭证据。"""
-    status = editorial_readiness(run_dir)
+    status = editorial_readiness(run_dir, require_record=require_record)
     if not status["ready"]:
-        raise ContractError("论文编辑动作尚未关闭: " + "、".join(map(str, status["open_actions"])))
+        details = [*map(str, status.get("open_actions", [])), *map(str, status.get("errors", []))]
+        raise ContractError("论文冷读门未通过: " + "；".join(details))

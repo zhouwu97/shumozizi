@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_cold_reader_waiver.schema.json",
+  "title": "Paper cold-reader emergency waiver",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "mode", "reason", "recorded_at"],
+  "properties": {
+    "schema_name": {"const": "paper_cold_reader_waiver"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "mode": {"enum": ["emergency", "fallback"]},
+    "reason": {"type": "string", "minLength": 20},
+    "recorded_at": {"type": "string", "format": "date-time"}
+  }
+}

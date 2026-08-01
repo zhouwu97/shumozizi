@@ -820,6 +820,7 @@ def promote_figure_candidate(
     human_review: dict[str, Any],
     visual_manifest: str | None = None,
     presentation_role: str | None = None,
+    visual_opportunity_id: str | None = None,
 ) -> dict[str, Any]:
     """在机械 QA 和内容化人工复核都通过后，将工作图晋级到 current。
 
@@ -834,6 +835,7 @@ def promote_figure_candidate(
         human_review: 含论文宽度预览、对象、观察、机制、边界和决策检查的复核对象。
         visual_manifest: renderer 生成且与候选 PNG 同版本的视觉元素清单。
         presentation_role: 可选的 data_portrait、question_hero、supporting 或 appendix。
+        visual_opportunity_id: v3.4 视觉机会 ID；提供后必须经过真实视觉批评晋级门。
 
     Returns:
         晋级回执，后续图表登记可绑定该回执。
@@ -887,6 +889,100 @@ def promote_figure_candidate(
             + "、".join(missing_review)
         )
     version = candidates[0].parent.name
+    visual_critic_gate: dict[str, Any] = {
+        "mode": "legacy_compatibility",
+        "required": False,
+        "reason": "当前调用未声明 v3.4 视觉机会；旧版直接图路径保留兼容。",
+    }
+    opportunity_path = root / "figures/visual-opportunities.json"
+    if visual_opportunity_id is not None or opportunity_path.is_file():
+        from shumozizi.simple.figure_design import (
+            figure_design_contract_freshness,
+            read_figure_design_contract,
+        )
+        from shumozizi.simple.visual_opportunities import (
+            read_visual_opportunity_pool,
+            validate_visual_critic_record,
+            visual_opportunity_pool_freshness,
+        )
+
+        opportunity_payload = read_visual_opportunity_pool(root)
+        # 初始化时的空 draft 池仍允许旧测试/旧运行走兼容路径；一旦进入
+        # current 研究机会池，缺少机会 ID 或批评回执就必须阻断。
+        strict_opportunity_pool = bool(
+            visual_opportunity_id
+            or (
+                opportunity_payload.get("status") == "current"
+                and (
+                    opportunity_payload.get("material_pool_digest") is not None
+                    or opportunity_payload.get("storyboard_digest") is not None
+                    or opportunity_payload.get("opportunities")
+                )
+            )
+        )
+        if strict_opportunity_pool:
+            if not visual_opportunity_id:
+                raise ContractError("current 视觉机会池中的图必须声明 visual_opportunity_id")
+            freshness = visual_opportunity_pool_freshness(root)
+            if not freshness["current"]:
+                raise ContractError("视觉机会池已失效: " + "、".join(freshness["stale_fields"]))
+            opportunity = next(
+                (
+                    item
+                    for item in opportunity_payload.get("opportunities", [])
+                    if isinstance(item, dict) and item.get("opportunity_id") == visual_opportunity_id
+                ),
+                None,
+            )
+            if opportunity is None or opportunity.get("status") != "promote":
+                raise ContractError("视觉候选必须绑定机会池中已 PROMOTE 的机会")
+            critic = validate_visual_critic_record(
+                root,
+                visual_opportunity_id,
+                version,
+                require_artifact_binding=True,
+            )
+            if critic.get("verdict") != "PROMOTE":
+                raise ContractError("视觉候选晋级要求视觉批评 verdict=PROMOTE")
+            if critic.get("fresh") is not True or not str(critic.get("reviewer_context_id", "")).strip():
+                raise ContractError("视觉候选晋级要求新鲜且有独立上下文的视觉批评")
+            candidate_png_path = next(
+                (path for path in candidates if path.suffix.casefold() == ".png"), None
+            )
+            candidate_pdf_path = next(
+                (path for path in candidates if path.suffix.casefold() == ".pdf"), None
+            )
+            if candidate_png_path is None or candidate_pdf_path is None:
+                raise ContractError("视觉批评晋级门要求同一候选版本同时有 PNG 与 PDF")
+            if critic.get("candidate_png_sha256") != sha256_file(candidate_png_path):
+                raise ContractError("视觉批评未绑定当前候选 PNG")
+            if critic.get("candidate_pdf_sha256") != sha256_file(candidate_pdf_path):
+                raise ContractError("视觉批评未绑定当前候选 PDF")
+            contract = read_figure_design_contract(root, visual_opportunity_id, version)
+            contract_path = root / "figures/work" / visual_opportunity_id / version / "design-contract.json"
+            if critic.get("design_contract_sha256") != sha256_file(contract_path):
+                raise ContractError("视觉批评未绑定当前 design-contract.json")
+            contract_freshness = figure_design_contract_freshness(root, contract)
+            if not contract_freshness["current"]:
+                raise ContractError("视觉设计合同已失效: " + "、".join(contract_freshness["stale_fields"]))
+            if critic.get("visual_policy_fingerprint") != contract.get("policy_fingerprint"):
+                raise ContractError("视觉批评和设计合同的视觉政策指纹不一致")
+            visual_critic_gate = {
+                "mode": "v34_visual_critic",
+                "required": True,
+                "opportunity_id": visual_opportunity_id,
+                "critic_path": relative_inside(
+                    root,
+                    root / "figures/reviews" / visual_opportunity_id / f"{version}.json",
+                ).as_posix(),
+                "critic_sha256": sha256_file(
+                    root / "figures/reviews" / visual_opportunity_id / f"{version}.json"
+                ),
+                "design_contract_sha256": sha256_file(contract_path),
+                "candidate_png_sha256": sha256_file(candidate_png_path),
+                "candidate_pdf_sha256": sha256_file(candidate_pdf_path),
+                "visual_policy_fingerprint": critic.get("visual_policy_fingerprint"),
+            }
     work_digest = sha256_bytes(
         json_bytes(
             [
@@ -937,6 +1033,7 @@ def promote_figure_candidate(
         "qa": qa,
         "human_review": validated_review,
         "visual_manifest": manifest_binding,
+        "visual_critic": visual_critic_gate,
         "promoted_outputs": promoted,
         "promoted_at": utc_now(),
     }

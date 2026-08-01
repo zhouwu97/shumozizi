@@ -11,7 +11,7 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 ## v3.4 视觉机会池与新鲜批评
 
-视觉机会池的最小字段是 `visual_question`、`atomic_claim`、`source_result_ids`、候选原型和当前状态。先从素材池和研究故事板产生机会，再为候选版本生成图，最后让不读取作者解释的独立视觉评阅者给出 `PROMOTE`、`REVISE`、`SPLIT` 或 `DROP`。评阅记录必须绑定新的 `reviewer_context_id`，同时写清图上观察、机制、边界和下一动作；`PROMOTE` 也不替代正文图后解释。
+视觉机会池的最小字段是 `visual_question`、`atomic_claim`、`source_result_ids`、候选原型和当前状态。先从当前素材池和研究故事板产生机会，再为候选版本生成图，最后让不读取作者解释的独立视觉评阅者给出 `PROMOTE`、`REVISE`、`SPLIT` 或 `DROP`。机会池必须绑定素材池摘要和故事板摘要；任一上游变化都会使机会和设计合同失效。评阅记录必须绑定新的 `reviewer_context_id`，并绑定实际候选 PNG、PDF、design-contract.json 的摘要以及当前视觉政策指纹；`PROMOTE` 也不替代正文图后解释。
 
 Figure Design System 只约束表达决策：原型、renderer、面板 takeaway、机制标注、边界标注和最终决策标注。设计合同写到 `figures/work/<opportunity>/<version>/design-contract.json`，候选版本和正文位置随后写回图索引；它不把 obligation 数量当成视觉充分性证明。
 
@@ -35,7 +35,7 @@ Figure Design System 只约束表达决策：原型、renderer、面板 takeaway
 
 需要作为正文论证证据或主叙事入口的图，除原有来源和 LaTeX 字段外，还声明 `visual_archetype`、`information_structure`、`renderer`、`visual_question`、`expected_observation`、`decision_consequence`、`generic_chart_considered`、`generic_chart_rejected_because` 和 `mechanism_annotation`。空间、集合、网络、场、决策面、区间或不确定性结构不能把普通柱形图/折线图作为唯一主图；确实最合适时必须用 `generic_chart_override_reason` 说明。renderer 由结构与已有计算选择，不强制 MATLAB。使用 `python scripts/figures/write_figure_plan.py <run_dir> --input <json>` 校验并原子写入；首版后若 PDF 评审暴露新的证据缺口，可以新增带 `review_finding` 的图，候选 PDF 冻结后不再扩图。生成后检查该图已在目标 LaTeX 小节插入、标号、交叉引用并解释；缺任何一环，先补消费闭环再继续画下一张图。
 
-图不能由脚本直接覆盖 `figures/current/`。每次修改使用新版本目录 `figures/work/<figure_id>/<version>/` 同时生成 PNG/PDF，先独立打开检查，再执行 `python scripts/figures/promote_figure_candidate.py` 晋级。普通统计图检查文件可读和 PNG/PDF 宽高比；`diagram` 还必须输出同目录 layout JSON，检查画布边界、节点内文字、文字重叠、最小字号、箭头穿字和节点连接点居中。机械 QA 通过后仍要填写人工看图结论；同一候选版本不得反复覆盖。
+图不能由脚本直接覆盖 `figures/current/`。每次修改使用新版本目录 `figures/work/<figure_id>/<version>/` 同时生成 PNG/PDF，先独立打开检查，再执行 `python scripts/figures/promote_figure_candidate.py` 晋级。普通统计图检查文件可读和 PNG/PDF 宽高比；`diagram` 还必须输出同目录 layout JSON，检查画布边界、节点内文字、文字重叠、最小字号、箭头穿字和节点连接点居中。机械 QA 和人工看图通过后仍必须有真实视觉批评 `PROMOTE`；晋级器拒绝没有产物摘要、设计合同摘要或新鲜上下文的批评记录。同一候选版本不得反复覆盖。
 
 renderer 还要在同一候选版本输出 `visual_manifest.json`（允许文件名前带图 ID），以当前 PNG 的 SHA-256 绑定实际 panels、labels 和带归一化 bbox 的 typed elements。人工回执除原有角色布尔项外，填写 `focal_claim`、`visible_elements`、`reading_order` 和 `panel_takeaways`；晋级器会逐项核对面板、类型、标签、画布边界与论文宽度可见性。高级 `custom` 图同样必须输出 manifest，不能用文字自述替代实际元素定位。
 

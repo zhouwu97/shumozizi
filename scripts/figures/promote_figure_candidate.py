@@ -19,6 +19,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="审核并晋级论文图候选")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--figure-id", required=True)
+    parser.add_argument(
+        "--visual-opportunity-id",
+        help="v3.4 视觉机会 ID；提供后必须有绑定真实候选产物的 PROMOTE 批评",
+    )
     parser.add_argument("--candidate", action="append", required=True)
     parser.add_argument("--target-stem", required=True)
     parser.add_argument("--rendering-mode", choices=("plot", "diagram"), required=True)
@@ -61,6 +65,7 @@ def main() -> int:
             presentation_role=args.presentation_role,
             human_review=review,
             visual_manifest=args.visual_manifest,
+            visual_opportunity_id=args.visual_opportunity_id,
         )
     except (ContractError, OSError, json.JSONDecodeError) as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}, ensure_ascii=False))

@@ -910,6 +910,10 @@ def register_presentation_figure(
     }
     if visual_opportunity_id is not None:
         from shumozizi.paper.policy import policy_fingerprint
+        from shumozizi.simple.visual_opportunities import (
+            validate_visual_critic_record,
+            visual_opportunity_pool_freshness,
+        )
 
         if critic_verdict != "PROMOTE":
             raise ContractError("进入 figures/current 的机会必须有 PROMOTE 批评结论")
@@ -926,6 +930,28 @@ def register_presentation_figure(
         )
         if opportunity is None or opportunity.get("status") != "promote":
             raise ContractError("进入 figures/current 的机会必须已在机会池中 PROMOTE")
+        freshness = visual_opportunity_pool_freshness(run_dir)
+        if not freshness["current"]:
+            raise ContractError("视觉机会池已失效: " + "、".join(freshness["stale_fields"]))
+        critic_version = selected_version
+        promotion_payload: dict[str, Any] | None = None
+        if promotion_receipt is not None:
+            promotion_path = resolve_inside(run_dir, promotion_receipt, must_exist=True)
+            promotion_payload = load_json(promotion_path)
+            critic_version = critic_version or promotion_payload.get("candidate_version")
+            critic_gate = promotion_payload.get("visual_critic", {})
+            if not isinstance(critic_gate, dict) or critic_gate.get("mode") != "v34_visual_critic":
+                raise ContractError("图晋级回执没有记录 v3.4 视觉批评硬门")
+        if not isinstance(critic_version, str) or not critic_version.strip():
+            raise ContractError("登记视觉机会图时必须提供 selected_version 或含候选版本的 promotion_receipt")
+        critic = validate_visual_critic_record(
+            run_dir,
+            visual_opportunity_id,
+            critic_version,
+            require_artifact_binding=True,
+        )
+        if critic.get("verdict") != "PROMOTE":
+            raise ContractError("进入 figures/current 的机会必须绑定 PROMOTE 视觉批评")
         entry["visual_opportunity_id"] = visual_opportunity_id
         entry["critic_verdict"] = critic_verdict
         entry["visual_policy_fingerprint"] = policy_fingerprint(
@@ -962,6 +988,7 @@ def _verify_competition_figures(run_dir: Path) -> dict[str, Any]:
         opportunity_id = figure.get("visual_opportunity_id")
         if opportunity_id is not None:
             from shumozizi.paper.policy import policy_fingerprint
+            from shumozizi.simple.visual_opportunities import validate_visual_critic_record
 
             if figure.get("critic_verdict") != "PROMOTE":
                 errors.append({"figure_id": figure_id, "message": "视觉机会没有 PROMOTE 批评结论"})
@@ -982,8 +1009,22 @@ def _verify_competition_figures(run_dir: Path) -> dict[str, Any]:
                 )
                 if opportunity is None or opportunity.get("status") != "promote":
                     errors.append({"figure_id": figure_id, "message": "视觉机会已失效或未 PROMOTE"})
+                critic_version = figure.get("selected_version")
+                if not isinstance(critic_version, str) or not critic_version.strip():
+                    promotion = figure.get("promotion_receipt", {})
+                    if isinstance(promotion, dict):
+                        critic_version = promotion.get("candidate_version")
+                if not isinstance(critic_version, str) or not critic_version.strip():
+                    errors.append({"figure_id": figure_id, "message": "当前图缺少视觉批评候选版本"})
+                else:
+                    validate_visual_critic_record(
+                        run_dir,
+                        str(opportunity_id),
+                        critic_version,
+                        require_artifact_binding=True,
+                    )
             except (ContractError, OSError, ValueError, TypeError):
-                errors.append({"figure_id": figure_id, "message": "视觉机会池缺失或无法读取"})
+                errors.append({"figure_id": figure_id, "message": "视觉机会或视觉批评绑定缺失、失效或无法读取"})
         if figure.get("provenance_type") == "frozen_inputs":
             source_records = [
                 *figure.get("source_files", []),
