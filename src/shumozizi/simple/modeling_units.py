@@ -76,6 +76,9 @@ _INSIGHT_KINDS = frozenset(
     }
 )
 _VISUAL_OUTPUT_ROOT = Path("results/raw")
+_STRUCTURED_VISUAL_OUTPUT_UNIT_KINDS = frozenset(
+    {"optimization", "data_modeling", "simulation", "coordination"}
+)
 UNIT_KINDS = frozenset(
     {
         "evaluation",
@@ -1240,6 +1243,25 @@ def validate_visual_output_sources(run_dir: Path) -> list[str]:
                     + ", ".join(missing)
                 )
     return errors
+
+
+def _require_experiment_visual_output_contracts(payload: dict[str, Any]) -> None:
+    """要求数据丰富型单元在实验前冻结至少一项结构化绘图输出。"""
+    if payload.get("schema_version") != "1.4":
+        return
+    missing = [
+        str(unit.get("question_id", unit.get("unit_id", "<unknown>")))
+        for unit in payload.get("units", [])
+        if isinstance(unit, dict)
+        and unit.get("unit_kind") in _STRUCTURED_VISUAL_OUTPUT_UNIT_KINDS
+        and not unit.get("visual_outputs")
+    ]
+    if missing:
+        raise ContractError(
+            "进入实验前，数据丰富型建模单元必须声明 visual_outputs，"
+            "以冻结论证问题、所需结构字段和 results/raw 输出路径；缺失问题: "
+            + "、".join(missing)
+        )
 
 
 def _production_result(
@@ -2768,7 +2790,10 @@ def require_v32_modeling_plan(run_dir: Path) -> None:
     path = run_dir / MODELING_UNITS_PATH
     if not path.is_file():
         raise ContractError("进入实验前必须完成 analysis/MODELING_UNITS.json")
-    validate_modeling_units(run_dir, load_json(path), require_actual=False)
+    payload = load_json(path)
+    validate_modeling_units(run_dir, payload, require_actual=False)
+    # 只有进入真实实验才提升为硬门，允许分析阶段迭代保存尚未完成的合同。
+    _require_experiment_visual_output_contracts(payload)
 
 
 def semantic_high_risk_questions(run_dir: Path) -> set[str]:

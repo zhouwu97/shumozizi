@@ -80,6 +80,16 @@ _CONCLUSION_IMPACT_PATTERN = re.compile(
     r"因此|从而|意味着|对(?:主)?结论|决策|策略|建议|应当|可判定|支持",
     re.IGNORECASE,
 )
+_GENERIC_HEADING_ROLES = (
+    ("问题分析", re.compile(r"^(?:问题)?分析$")),
+    ("模型建立与求解", re.compile(r"模型(?:的)?建立与求解")),
+    ("模型求解结果", re.compile(r"模型求解结果")),
+    ("结果分析与结论", re.compile(r"结果分析.*(?:结论|答案)")),
+    ("模型建立", re.compile(r"^(?:问题)?模型(?:的)?建立$|^模型建立$")),
+    ("模型求解", re.compile(r"^(?:参数估计与)?模型求解(?:方法)?$|^模型求解$")),
+    ("结果分析", re.compile(r"^结果分析$")),
+    ("模型检验", re.compile(r"^模型(?:的)?检验$|^模型检验$")),
+)
 _APPENDIX_START_PATTERN = re.compile(
     r"\\appendix\b|\\(?:chapter|section)\*?\{\s*(?:附录|Appendix)\b",
     re.IGNORECASE,
@@ -163,25 +173,78 @@ def _normalize_heading(title: str) -> str:
 
 
 def _question_sections(text: str) -> dict[str, tuple[str, list[str]]]:
-    """按问题一级标题切分正文并保留其子标题序列。"""
+    """按任意层级的问题标题切分正文并保留其下级标题序列。"""
     headings = _headings(text)
     sections: dict[str, tuple[str, list[str]]] = {}
     for index, (level, title, start) in enumerate(headings):
-        question = _question_key(title) if level == 1 else None
+        question = _question_key(title)
         if question is None:
             continue
         end = len(text)
         subheadings: list[str] = []
         for next_level, next_title, next_start in headings[index + 1 :]:
-            if next_level == 1:
+            if next_level <= level:
                 end = next_start
                 break
-            if next_level >= 2:
+            if next_level > level:
                 normalized = _normalize_heading(next_title)
                 if normalized:
                     subheadings.append(normalized)
-        sections[question] = (text[start:end], subheadings)
+        body = text[start:end]
+        if question in sections:
+            previous_body, previous_headings = sections[question]
+            sections[question] = (
+                f"{previous_body}\n{body}",
+                [*previous_headings, *subheadings],
+            )
+        else:
+            sections[question] = (body, subheadings)
     return sections
+
+
+def _merged_question_sections(
+    sources: list[tuple[Path, str]],
+) -> dict[str, tuple[str, list[str]]]:
+    """合并同一问题散落在不同正文源文件中的论证片段。"""
+    merged: dict[str, tuple[str, list[str]]] = {}
+    for _, text in sources:
+        for question, (body, headings) in _question_sections(text).items():
+            previous_body, previous_headings = merged.get(question, ("", []))
+            merged[question] = (
+                "\n".join(part for part in (previous_body, body) if part),
+                [*previous_headings, *headings],
+            )
+    return merged
+
+
+def _generic_heading_role(title: str) -> str | None:
+    """把通用流程标题归并为稳定功能角色，题目特定标题保持未分类。"""
+    normalized = _normalize_heading(title)
+    for role, pattern in _GENERIC_HEADING_ROLES:
+        if pattern.search(normalized):
+            return role
+    return None
+
+
+def _generic_question_heading_usage(
+    sources: list[tuple[Path, str]],
+) -> dict[str, set[str]]:
+    """统计各通用标题角色覆盖的问题，兼容国赛常见的嵌套章节。"""
+    usage: dict[str, set[str]] = {}
+    for _, text in sources:
+        active_question: tuple[int, str] | None = None
+        for level, title, _ in _headings(text):
+            question = _question_key(title)
+            if question is not None:
+                active_question = (level, question)
+            elif active_question is not None and level <= active_question[0]:
+                active_question = None
+            if active_question is None:
+                continue
+            role = _generic_heading_role(title)
+            if role is not None:
+                usage.setdefault(role, set()).add(active_question[1])
+    return usage
 
 
 def _abstract_text(sources: list[tuple[Path, str]], combined: str) -> str:
@@ -496,9 +559,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                 }
             )
 
-    question_sections: dict[str, tuple[str, list[str]]] = {}
-    for _, text in sources:
-        question_sections.update(_question_sections(text))
+    question_sections = _merged_question_sections(sources)
     sequences = [
         tuple(subheadings)
         for _, subheadings in question_sections.values()
@@ -592,6 +653,32 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                     "count": 1,
                 }
             )
+
+    generic_usage = _generic_question_heading_usage(sources)
+    repeated_generic_roles = {
+        role: len(questions)
+        for role, questions in generic_usage.items()
+        if len(questions) >= 3
+    }
+    if repeated_generic_roles:
+        warnings.append(
+            {
+                "code": "generic_question_heading_repetition",
+                "message": (
+                    "至少三个问题复用了通用流程标题，应改为包含当前数学对象、"
+                    "约束或机制的题目特定标题。"
+                ),
+                "count": sum(repeated_generic_roles.values()),
+                "question_ids": sorted(
+                    {
+                        question
+                        for role in repeated_generic_roles
+                        for question in generic_usage[role]
+                    }
+                ),
+                "generic_roles": repeated_generic_roles,
+            }
+        )
 
     figure_errors, figure_warnings = _figure_argument_findings(root, combined)
     errors.extend(figure_errors)

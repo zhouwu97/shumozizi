@@ -190,3 +190,34 @@ def test_figure_argument_chain_closes_e005(tmp_path: Path) -> None:
     report = audit_report_like_manuscript(run_dir)
 
     assert "E005" not in {item["code"] for item in report["errors"]}
+
+
+def test_nested_question_headings_report_generic_template_repetition(
+    tmp_path: Path,
+) -> None:
+    """总章下的逐问二级标题复用通用功能名时仍应被识别。"""
+    run_dir = _run(tmp_path, "nested-question-template")
+    source = run_dir / "paper/sections/solutions.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section{模型的建立与求解}\n"
+        "\\subsection{问题一模型的建立与求解}\n"
+        "\\subsubsection{模型求解结果}\n结果显示第一问满足约束。\n"
+        "\\subsubsection{结果分析与本问结论}\n原因在于容量约束活跃。\n"
+        "\\subsection{问题二模型的建立与求解}\n"
+        "\\subsubsection{模型求解结果}\n结果显示第二问满足约束。\n"
+        "\\subsubsection{结果分析与本问结论}\n原因在于时间约束活跃。\n"
+        "\\subsection{问题三模型的建立与求解}\n"
+        "\\subsubsection{模型求解结果}\n结果显示第三问满足约束。\n"
+        "\\subsubsection{结果分析与本问结论}\n原因在于共享约束活跃。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+    warnings = {item["code"]: item for item in report["warnings"]}
+
+    finding = warnings["generic_question_heading_repetition"]
+    assert finding["question_ids"] == ["1", "2", "3"]
+    assert finding["generic_roles"]["模型建立与求解"] == 3
+    assert finding["generic_roles"]["模型求解结果"] == 3
+    assert finding["generic_roles"]["结果分析与结论"] == 3

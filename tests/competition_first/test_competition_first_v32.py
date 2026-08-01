@@ -20,6 +20,7 @@ from shumozizi.simple.modeling_units import (
     first_feasible_checkpoint_prompt,
     question_outcome_selections,
     require_v32_experiment_evidence,
+    require_v32_modeling_plan,
     semantic_reconstruction_input_bindings,
     validate_visual_output_sources,
     write_modeling_units,
@@ -452,6 +453,24 @@ def test_visual_outputs_reject_paths_outside_results_raw(tmp_path: Path) -> None
 
     with pytest.raises(ContractError, match="运行目录内的相对路径"):
         write_modeling_units(run_dir, plan)
+
+
+def test_data_rich_unit_requires_visual_output_contract_before_experiment(
+    tmp_path: Path,
+) -> None:
+    """数据建模不能等到论文阶段才决定保存哪些结构化绘图数据。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "visual-output-before-experiment",
+        workflow_version="3.2",
+        required_questions=["Q1"],
+    )
+    plan = _v14_non_search_plan(run_dir, "data_modeling")
+    _record_fixture_knowledge_retrieval(run_dir)
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="进入实验前.*visual_outputs"):
+        require_v32_modeling_plan(run_dir)
 
 
 def test_figure_plan_24_requires_declared_structured_visual_data(tmp_path: Path) -> None:
