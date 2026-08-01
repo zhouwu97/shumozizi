@@ -1,7 +1,7 @@
 {
   "schema_name": "paper_card_index",
   "schema_version": "1.0",
-  "paper_count": 21,
+  "paper_count": 24,
   "papers": [
     {
       "paper_id": "cumcm-2012-a-wine-evaluation",
@@ -211,6 +211,64 @@
       "card_path": "knowledge/cards/papers/cumcm-2023-a-a127-heliostat-output.md"
     },
     {
+      "paper_id": "cumcm-2023-a-a165-heliostat-mechanistic",
+      "title": "基于机理分析法的定日镜场优化设计模型",
+      "problem_type": "空间光学机理仿真与镜场布局优化",
+      "data_structure": "定日镜空间坐标、镜面几何、吸收塔/集热器几何与离散太阳时刻",
+      "task_types": [
+        "三维几何与光线追迹",
+        "网格化效率计算",
+        "约束布局优化",
+        "单变量结构搜索",
+        "敏感性与对称性检验"
+      ],
+      "domain_terms": [
+        "定日镜场",
+        "光学效率",
+        "阴影遮挡",
+        "集热器截断",
+        "输出热功率"
+      ],
+      "structural_tags": [
+        "共享几何评分器",
+        "机理模型到优化",
+        "镜面网格化",
+        "降维搜索",
+        "空间对称性验证"
+      ],
+      "source_sha256": "63e129d60639f2a84beb094818290ab1035ddc0aa1d4b94c8189689d0523b401",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a165-heliostat-mechanistic.md"
+    },
+    {
+      "paper_id": "cumcm-2023-a-a175-heliostat-coordinate",
+      "title": "定日镜场的优化设计模型",
+      "problem_type": "光学几何仿真与结构化镜场优化",
+      "data_structure": "定日镜位置/尺寸/高度、吸收塔几何与离散太阳光锥样本",
+      "task_types": [
+        "多坐标系光线建模",
+        "阴影与遮挡几何判定",
+        "蜂窝布局构造",
+        "蒙特卡洛搜索",
+        "网格离散敏感性分析"
+      ],
+      "domain_terms": [
+        "定日镜场",
+        "光锥束",
+        "坐标变换",
+        "蜂窝排列",
+        "单位镜面面积输出功率"
+      ],
+      "structural_tags": [
+        "镜场共享评分器",
+        "三坐标系接口",
+        "结构化布局先验",
+        "先粗后细搜索",
+        "前问布局继承"
+      ],
+      "source_sha256": "904914537e950e7faabbad018ebd1ecb410d5ff94d19731a79e2f3b971a28ac1",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a175-heliostat-coordinate.md"
+    },
+    {
       "paper_id": "cumcm-2023-b-b226-multibeam-survey",
       "title": "多波束测线布设",
       "problem_type": "空间覆盖几何与路径规划",
@@ -287,6 +345,37 @@
       ],
       "source_sha256": "07329ac31d14177997c01035dcac29e1c03243ad71cb7ccaa381cf016595e1c6",
       "card_path": "knowledge/cards/papers/cumcm-2023-b-b47700-terrain-survey-routing.md"
+    },
+    {
+      "paper_id": "cumcm-2023-c-c050-vegetable-pricing",
+      "title": "某商超蔬菜类商品动态定价与补货决策研究",
+      "problem_type": "零售销售分析、需求预测与定价补货优化",
+      "data_structure": "多年单品交易流水、品类层级、进价/定价/损耗、退货与促销记录",
+      "task_types": [
+        "描述统计与分布分析",
+        "相关性与回归",
+        "K-means++ 聚类",
+        "季节性时间序列预测",
+        "价格与补货优化",
+        "灰色关联分析"
+      ],
+      "domain_terms": [
+        "蔬菜销售",
+        "动态定价",
+        "补货决策",
+        "成本加成定价",
+        "模拟退火",
+        "灰色关联分析"
+      ],
+      "structural_tags": [
+        "品类到单品层级",
+        "描述到决策递进",
+        "预测嵌套优化",
+        "业务约束显式化",
+        "关联分析边界"
+      ],
+      "source_sha256": "8842b1e70acb03dc82171ea016b19aaabd0da043ce16878b384bc3c212adb510",
+      "card_path": "knowledge/cards/papers/cumcm-2023-c-c050-vegetable-pricing.md"
     },
     {
       "paper_id": "cumcm-2023-c-c126-vegetable-sales",

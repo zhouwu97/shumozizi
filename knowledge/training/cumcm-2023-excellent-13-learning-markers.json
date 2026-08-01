@@ -1,0 +1,123 @@
+{
+  "schema_name": "offline_paper_learning_markers",
+  "schema_version": "1.0",
+  "collection": "2023年高教社杯全国大学生数学建模竞赛优秀论文",
+  "marked_at": "2026-08-01T00:00:00Z",
+  "selection_policy": "在既有10篇学习记录之外，尝试学习剩余候选；按实际可读性完成3篇，C228因中文字体映射损坏保留为不可用，不以乱码推断论文内容。标记不代表独立核验奖项等级。",
+  "source_inventory": "knowledge/training/cumcm-2023-excellent-round3-source-inventory.json",
+  "previous_marker": "knowledge/training/cumcm-2023-excellent-10-learning-markers.json",
+  "learned_count": 13,
+  "newly_learned_count": 3,
+  "attempted_count": 4,
+  "papers": [
+    {
+      "source_file": "A092.pdf",
+      "status": "learned",
+      "learning_round": 1,
+      "paper_id": "cumcm-2023-a-a092-heliostat-field",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a092-heliostat-field.md"
+    },
+    {
+      "source_file": "A127.pdf",
+      "status": "learned",
+      "learning_round": 2,
+      "paper_id": "cumcm-2023-a-a127-heliostat-output",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a127-heliostat-output.md"
+    },
+    {
+      "source_file": "A165.pdf",
+      "status": "learned",
+      "learning_round": 3,
+      "paper_id": "cumcm-2023-a-a165-heliostat-mechanistic",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a165-heliostat-mechanistic.md"
+    },
+    {
+      "source_file": "A175.pdf",
+      "status": "learned",
+      "learning_round": 3,
+      "paper_id": "cumcm-2023-a-a175-heliostat-coordinate",
+      "card_path": "knowledge/cards/papers/cumcm-2023-a-a175-heliostat-coordinate.md"
+    },
+    {
+      "source_file": "B226.pdf",
+      "status": "learned",
+      "learning_round": 1,
+      "paper_id": "cumcm-2023-b-b226-multibeam-survey",
+      "card_path": "knowledge/cards/papers/cumcm-2023-b-b226-multibeam-survey.md"
+    },
+    {
+      "source_file": "B311.pdf",
+      "status": "learned",
+      "learning_round": 2,
+      "paper_id": "cumcm-2023-b-b311-primary-objective-survey",
+      "card_path": "knowledge/cards/papers/cumcm-2023-b-b311-primary-objective-survey.md"
+    },
+    {
+      "source_file": "B47700.pdf",
+      "status": "learned",
+      "learning_round": 2,
+      "paper_id": "cumcm-2023-b-b47700-terrain-survey-routing",
+      "card_path": "knowledge/cards/papers/cumcm-2023-b-b47700-terrain-survey-routing.md"
+    },
+    {
+      "source_file": "C050.pdf",
+      "status": "learned",
+      "learning_round": 3,
+      "paper_id": "cumcm-2023-c-c050-vegetable-pricing",
+      "card_path": "knowledge/cards/papers/cumcm-2023-c-c050-vegetable-pricing.md"
+    },
+    {
+      "source_file": "C126.pdf",
+      "status": "learned",
+      "learning_round": 1,
+      "paper_id": "cumcm-2023-c-c126-vegetable-sales",
+      "card_path": "knowledge/cards/papers/cumcm-2023-c-c126-vegetable-sales.md"
+    },
+    {
+      "source_file": "C228.pdf",
+      "status": "unavailable_with_reason",
+      "reason": "中文字体映射损坏，文本层为乱码，渲染后中文缺失，无法建立可靠的结构卡和来源页码。"
+    },
+    {
+      "source_file": "C235.pdf",
+      "status": "learned",
+      "learning_round": 2,
+      "paper_id": "cumcm-2023-c-c235-prophet-replenishment",
+      "card_path": "knowledge/cards/papers/cumcm-2023-c-c235-prophet-replenishment.md"
+    },
+    {
+      "source_file": "D039.pdf",
+      "status": "learned",
+      "learning_round": 1,
+      "paper_id": "cumcm-2023-d-d039-sheep-pen-scheduling",
+      "card_path": "knowledge/cards/papers/cumcm-2023-d-d039-sheep-pen-scheduling.md"
+    },
+    {
+      "source_file": "E032.pdf",
+      "status": "learned",
+      "learning_round": 1,
+      "paper_id": "cumcm-2023-e-e032-yellow-river",
+      "card_path": "knowledge/cards/papers/cumcm-2023-e-e032-yellow-river.md"
+    },
+    {
+      "source_file": "E176.pdf",
+      "status": "learned",
+      "learning_round": 2,
+      "paper_id": "cumcm-2023-e-e176-monitoring-knapsack",
+      "card_path": "knowledge/cards/papers/cumcm-2023-e-e176-monitoring-knapsack.md"
+    }
+  ],
+  "identity": {
+    "collection_label": "user_provided",
+    "award_identity": "user_asserted_not_independently_verified",
+    "license_status": "not_provided",
+    "usage_mode": "offline_structure_learning_only"
+  },
+  "forbidden_transfer": [
+    "原论文数值结论",
+    "原论文代码",
+    "原始公式段或文字段落",
+    "题目特定参数",
+    "把论文卡作为当前赛题证据或引用"
+  ]
+}
