@@ -408,6 +408,62 @@ def test_latex_compile_receipt_uses_selected_latex_entrypoint(
     assert verify_paper_compile_receipt(run_dir)["valid"] is True
 
 
+def test_compile_passes_explicit_word_reference_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """显式 Word 模板必须传入 Pandoc，并在编译回执中绑定摘要。"""
+    _set_engines(monkeypatch, latex=True, typst=True)
+    _isolate_compiler_receipt(monkeypatch)
+    run_dir = _new_run(tmp_path, "explicit-word-template", questions=["Q1"])
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="latex",
+        selection_reason="验证国赛 Word 参考模板的显式传递与回执绑定。",
+    )
+    materialize_selected_template(run_dir)
+    fake_compiler = tmp_path / "fake_reference_xelatex.py"
+    fake_compiler.write_text(
+        "from pathlib import Path\n"
+        "Path('main.log').write_text('generated log', encoding='utf-8')\n"
+        "Path('main.pdf').write_bytes(b'%PDF-1.4\\nreference template test')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        paper_compiler,
+        "_compiler_steps",
+        lambda engine: (
+            "xelatex",
+            [[sys.executable, str(fake_compiler), "main.tex"]] if engine == "latex" else [],
+        ),
+    )
+    reference_docx = tmp_path / "国赛word论文模版.docx"
+    reference_docx.write_bytes(b"reference-template")
+    captured: dict[str, Path | None] = {}
+
+    def _fake_compile_docx(
+        paper_dir: Path,
+        *,
+        engine: str,
+        timeout_seconds: int = 120,
+        reference_docx: Path | None = None,
+    ) -> Path:
+        """记录编译器收到的参考模板，避免测试依赖本机 Pandoc。"""
+        captured["reference_docx"] = reference_docx
+        out = paper_dir / "final.docx"
+        out.write_bytes(b"PK\\x03\\x04fake-docx-stub")
+        return out
+
+    monkeypatch.setattr(paper_compiler, "compile_docx", _fake_compile_docx)
+    receipt = compile_paper(run_dir, reference_docx=reference_docx)
+
+    assert captured["reference_docx"] == reference_docx.resolve()
+    assert receipt["reference_docx_path"] == str(reference_docx.resolve())
+    assert receipt["reference_docx_sha256"]
+    assert verify_paper_compile_receipt(run_dir)["valid"] is True
+
+
 def test_v32_compile_increments_render_revision_and_invalidates_old_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

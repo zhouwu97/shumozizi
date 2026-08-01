@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
+from pypdf import PdfReader
 
-from shumozizi.core.io import atomic_json
+from shumozizi.core.io import atomic_json, sha256_file
 
 _DOCX_NUMBER = re.compile(r"(?<![0-9A-Za-z.])([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)")
 
@@ -102,7 +103,14 @@ def audit_docx(run_dir: Path, docx_path: Path, *, timeout_seconds: int = 120) ->
 
     render_pdf: str | None = None
     contact_sheet: str | None = None
-    office = shutil.which("soffice") or shutil.which("libreoffice")
+    render_page_count: int | None = None
+    render_pdf_sha256: str | None = None
+    office = (
+        shutil.which("soffice.exe")
+        or shutil.which("soffice")
+        or shutil.which("libreoffice.exe")
+        or shutil.which("libreoffice")
+    )
     if office:
         qa_dir = run_dir / "qa"
         qa_dir.mkdir(parents=True, exist_ok=True)
@@ -119,6 +127,11 @@ def audit_docx(run_dir: Path, docx_path: Path, *, timeout_seconds: int = 120) ->
             if completed.returncode == 0 and candidate.is_file() and candidate.stat().st_size > 0:
                 candidate.replace(target)
                 render_pdf = str(target.relative_to(run_dir))
+                render_pdf_sha256 = sha256_file(target)
+                try:
+                    render_page_count = len(PdfReader(str(target)).pages)
+                except Exception as exc:  # pypdf 的损坏 PDF 异常随版本变化。
+                    warnings.append(f"DOCX 渲染 PDF 页数读取失败: {exc}")
                 try:
                     from tools.qa.make_contact_sheet import make_contact_sheet
 
@@ -149,6 +162,8 @@ def audit_docx(run_dir: Path, docx_path: Path, *, timeout_seconds: int = 120) ->
         "key_metric_ids": key_metric_ids,
         "missing_key_metric_ids": missing_key_metric_ids,
         "render_pdf": render_pdf,
+        "render_pdf_sha256": render_pdf_sha256,
+        "render_page_count": render_page_count,
         "contact_sheet": contact_sheet,
     }
     atomic_json(run_dir / "qa" / "docx-structure.json", report)

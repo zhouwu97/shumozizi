@@ -27,12 +27,25 @@ def main() -> int:
         default="auto",
         help="本次改动影响层级；首轮编译会自动建立 argument revision",
     )
+    parser.add_argument(
+        "--reference-docx",
+        type=Path,
+        help="Word 样式参考模板；CUMCM 候选稿会绑定其摘要",
+    )
+    parser.add_argument(
+        "--strict-competition",
+        action="store_true",
+        help="启用独立冷读和低于 18 页硬门",
+    )
     args = parser.parse_args()
     try:
         payload = compile_paper(
             args.run_dir,
             timeout_seconds=args.timeout,
             revision_impact=args.revision_impact,
+            reference_docx=args.reference_docx,
+            strict_editorial=args.strict_competition,
+            enforce_page_budget=args.strict_competition,
         )
     except ContractError as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}, ensure_ascii=False))

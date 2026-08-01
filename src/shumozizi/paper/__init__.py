@@ -34,6 +34,7 @@ from .layout_optimizer import (
     layout_optimization_freshness,
     read_layout_optimization,
 )
+from .page_budget import audit_page_budget, verify_page_budget
 from .receipts import verify_figure_receipts, verify_paper_build_receipt, verify_production_receipts
 from .references import (
     register_paper_references,
@@ -64,6 +65,8 @@ __all__ = [
     "build_layout_optimization",
     "read_layout_optimization",
     "layout_optimization_freshness",
+    "audit_page_budget",
+    "verify_page_budget",
     "record_paper_cold_reader_actions",
     "close_editorial_action",
     "editorial_readiness",

@@ -360,8 +360,8 @@ def compile_longform_draft(
     from shumozizi.paper.storyboard import require_research_storyboard
 
     require_scientific_readiness(run_dir)
-    require_material_pool(run_dir)
-    require_research_storyboard(run_dir)
+    require_material_pool(run_dir, substantive=True)
+    require_research_storyboard(run_dir, substantive=True)
     manifest = require_materialized_template(run_dir)
     engine = manifest["engine"]
     root = run_dir.resolve()
@@ -394,6 +394,9 @@ def compile_longform_draft(
     executions = _run_compiler_steps(paper_dir, steps, timeout_seconds=timeout_seconds)
     artifact = paper_dir / "longform-draft.pdf"
     _require_pdf(artifact)
+    from shumozizi.paper.page_budget import PAGE_BUDGET_PATH, audit_page_budget
+
+    page_budget = audit_page_budget(root, artifact, enforce_minimum=True)
     receipt = {
         "schema_version": "1.0",
         "run_id": read_simple_state(root)["run_id"],
@@ -408,6 +411,10 @@ def compile_longform_draft(
         "paper_source_sha256": source_sha256,
         "material_pool_sha256": sha256_file(root / "paper/generated/material_pool.json"),
         "storyboard_sha256": sha256_file(root / "paper/generated/research_storyboard.json"),
+        "page_budget_path": PAGE_BUDGET_PATH.as_posix(),
+        "page_budget_sha256": sha256_file(root / PAGE_BUDGET_PATH),
+        "page_count": page_budget["page_count"],
+        "page_budget_status": page_budget["status"],
         "compiler": compiler,
         "executions": executions,
         "not_for_final_submission": True,
@@ -451,6 +458,15 @@ def verify_longform_draft_receipt(run_dir: Path) -> dict[str, Any]:
         ):
             if receipt.get(key) != sha256_file(root / relative):
                 errors.append(f"长篇首稿未绑定当前 {relative}")
+        from shumozizi.paper.page_budget import verify_page_budget
+
+        page_budget = verify_page_budget(root, pdf_path=root / receipt["artifact_path"])
+        if not page_budget["valid"]:
+            errors.extend(page_budget["errors"])
+        if receipt.get("page_budget_sha256") != sha256_file(
+            root / page_budget["report_path"]
+        ):
+            errors.append("长篇首稿页数审计回执已变化")
     except (ContractError, KeyError, OSError, ValueError) as exc:
         errors.append(str(exc))
     return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}
@@ -674,12 +690,18 @@ def compile_paper(
     *,
     timeout_seconds: int = 300,
     revision_impact: str = "auto",
+    reference_docx: Path | None = None,
+    strict_editorial: bool = False,
+    enforce_page_budget: bool = False,
 ) -> dict[str, Any]:
     """按模板清单编译论文，优先执行已选择的 LaTeX 引擎。
 
     Args:
         run_dir: 当前 v3 运行目录。
         timeout_seconds: 单次编译命令允许的最长秒数。
+        reference_docx: 可选的 CUMCM Word 样式参考模板。
+        strict_editorial: 是否要求当前长篇首稿已有独立冷读记录。
+        enforce_page_budget: 是否启用低于 18 页的硬阻断。
 
     Returns:
         已写入 ``paper/compile-receipt.json`` 的冻结编译收据。
@@ -691,6 +713,12 @@ def compile_paper(
         raise ContractError("论文编译 timeout_seconds 必须在 1 至 3600 之间")
     if revision_impact not in {"auto", "render", "argument", "science"}:
         raise ContractError("revision_impact 必须为 auto、render、argument 或 science")
+    root = run_dir.resolve()
+    strict_mode = bool(
+        strict_editorial
+        or enforce_page_budget
+        or (root / LONGFORM_DRAFT_RECEIPT_PATH).is_file()
+    )
     # ── 编译前最小编译前提硬门：论证大纲、结果绑定、图表、MATLAB 源码 ──
     from shumozizi.paper.editorial import require_editorial_readiness
     from shumozizi.paper.readiness import require_paper_readiness
@@ -699,14 +727,13 @@ def compile_paper(
     # 先确认科学红队放行，再确认最小编译前提（论证地图、结果绑定、图表等）。
     require_paper_generation_allowed(run_dir)
     require_paper_readiness(run_dir)
-    require_editorial_readiness(run_dir)
+    require_editorial_readiness(run_dir, require_record=strict_mode)
     state = read_simple_state(run_dir)
     previous_render_revision = int(state.get("paper_render_revision", 0))
     previous_argument_revision = int(
         state.get("argument_revision", previous_render_revision)
     )
     manifest = require_materialized_template(run_dir)
-    root = run_dir.resolve()
     paper_dir = root / "paper"
     entrypoint = paper_dir / manifest["question_layout"]["entrypoint_path"]
     if not entrypoint.is_file():
@@ -745,6 +772,12 @@ def compile_paper(
     if _paper_source_sha256(paper_dir) != source_sha256:
         raise ContractError("论文源文件在编译期间发生变化，拒绝冻结不稳定产物")
 
+    page_budget: dict[str, Any] | None = None
+    if strict_mode:
+        from shumozizi.paper.page_budget import audit_page_budget
+
+        page_budget = audit_page_budget(root, final_pdf, enforce_minimum=True)
+
     # PDF 已冻结，尝试生成同步交付的 Word 版本。
     # pandoc 缺失时不阻断 PDF 交付——记录跳过原因供后续补生成，而非让整个
     # 编译失败。竞赛要求同时提交 .docx 的场合，补生成后需重新运行本函数或
@@ -752,26 +785,38 @@ def compile_paper(
     docx_skipped_reason: str | None = None
     final_docx: Path | None = None
     docx_qa: dict[str, Any] | None = None
-    reference_docx: Path | None = None
     from shumozizi.paper.cumcm_adapter import (
         require_cumcm_structure_map,
         resolve_cumcm_reference_docx,
     )
 
     structure_map = require_cumcm_structure_map(root)
-    if structure_map is not None:
-        reference_docx = resolve_cumcm_reference_docx(root, structure_map)
+    selected_reference_docx = reference_docx.resolve() if reference_docx is not None else None
+    if selected_reference_docx is None and structure_map is not None:
+        selected_reference_docx = resolve_cumcm_reference_docx(root, structure_map)
+    if selected_reference_docx is not None and (
+        not selected_reference_docx.is_file()
+        or selected_reference_docx.suffix.casefold() != ".docx"
+        or selected_reference_docx.stat().st_size == 0
+    ):
+        raise ContractError(f"Word 参考模板无效: {selected_reference_docx}")
     try:
         compile_kwargs: dict[str, Any] = {
             "engine": manifest["engine"],
             "timeout_seconds": timeout_seconds,
         }
-        if reference_docx is not None:
-            compile_kwargs["reference_docx"] = reference_docx
+        if selected_reference_docx is not None:
+            compile_kwargs["reference_docx"] = selected_reference_docx
         final_docx = compile_docx(paper_dir, **compile_kwargs)
         docx_qa = audit_docx(root, final_docx, timeout_seconds=timeout_seconds)
         if not docx_qa["success"]:
             raise ContractError("DOCX 内容 QA 失败: " + "; ".join(docx_qa["errors"]))
+        if strict_mode and docx_qa.get("render_page_count") is not None:
+            if docx_qa["render_page_count"] < 18:
+                raise ContractError(
+                    "Word 渲染页数门阻断：当前 "
+                    f"{docx_qa['render_page_count']} 页，低于 18 页。"
+                )
     except ContractError as exc:
         # 仅在 pandoc 缺失时降级，其他 ContractError（转换失败、产物为空）仍阻断。
         if "未检测到 pandoc" in str(exc):
@@ -796,6 +841,7 @@ def compile_paper(
         "final_pdf_path": "paper/final.pdf",
         "final_pdf_sha256": sha256_file(final_pdf),
         "executions": executions,
+        "strict_mode": strict_mode,
         "generated_at": utc_now(),
     }
     from shumozizi.paper.policy import formal_result_digest, policy_fingerprint
@@ -804,6 +850,16 @@ def compile_paper(
     repo_root = resolve_repo_root(Path(__file__))
     receipt["paper_policy_fingerprint"] = policy_fingerprint(repo_root, "paper")
     receipt["visual_policy_fingerprint"] = policy_fingerprint(repo_root, "visual")
+    if selected_reference_docx is not None:
+        receipt["reference_docx_path"] = str(selected_reference_docx)
+        receipt["reference_docx_sha256"] = sha256_file(selected_reference_docx)
+    if page_budget is not None:
+        from shumozizi.paper.page_budget import PAGE_BUDGET_PATH
+
+        receipt["page_budget_path"] = PAGE_BUDGET_PATH.as_posix()
+        receipt["page_budget_sha256"] = sha256_file(root / PAGE_BUDGET_PATH)
+        receipt["page_count"] = page_budget["page_count"]
+        receipt["page_budget_status"] = page_budget["status"]
     if state.get("schema_version") == "3.2":
         receipt["paper_render_revision"] = previous_render_revision + 1
         receipt["render_revision"] = previous_render_revision + 1
@@ -893,6 +949,27 @@ def verify_paper_compile_receipt(run_dir: Path) -> dict[str, Any]:
                 errors.append("最终 PDF 在编译后已变化")
         except ContractError as exc:
             errors.append(str(exc))
+        if "page_budget_path" in receipt:
+            from shumozizi.paper.page_budget import verify_page_budget
+
+            page_budget = verify_page_budget(root, pdf_path=final_pdf)
+            if not page_budget["valid"]:
+                errors.extend(page_budget["errors"])
+            report_path = root / receipt["page_budget_path"]
+            if (
+                not report_path.is_file()
+                or receipt.get("page_budget_sha256") != sha256_file(report_path)
+            ):
+                errors.append("编译回执未绑定当前页数审计")
+            elif receipt.get("page_count") != page_budget["report"].get("page_count"):
+                errors.append("编译回执 page_count 与页数审计不一致")
+        if "reference_docx_path" in receipt:
+            reference = Path(receipt["reference_docx_path"])
+            if (
+                not reference.is_file()
+                or receipt.get("reference_docx_sha256") != sha256_file(reference)
+            ):
+                errors.append("编译回执绑定的 Word 参考模板已缺失或变化")
         # DOCX 字段是可选的（pandoc 缺失时跳过）；有则复验，跳过则忽略。
         if "final_docx_path" in receipt:
             final_docx = root / receipt["final_docx_path"]

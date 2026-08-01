@@ -24,11 +24,19 @@ def main() -> int:
         choices=("auto", "render", "argument", "science"),
         default="auto",
     )
+    parser.add_argument(
+        "--reference-docx",
+        type=Path,
+        help="CUMCM Word 样式参考模板，例如 E:/AI/Shumocg/国赛word论文模版.docx",
+    )
     args = parser.parse_args()
     payload = compile_paper(
         args.run_dir,
         timeout_seconds=args.timeout_seconds,
         revision_impact=args.revision_impact,
+        reference_docx=args.reference_docx,
+        strict_editorial=True,
+        enforce_page_budget=True,
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
