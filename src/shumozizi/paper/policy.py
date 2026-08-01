@@ -37,6 +37,8 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "src/shumozizi/paper/docx_qa.py",
             root / "src/shumozizi/simple/authoring.py",
             root / "src/shumozizi/paper/handoff.py",
+            root / "src/shumozizi/paper/external_author.py",
+            root / "src/shumozizi/paper/import_audit.py",
             root / "templates/paper/writer-brief.md",
             root / "schemas/paper_material_pool.schema.json",
             root / "schemas/research_storyboard.schema.json",
@@ -46,6 +48,8 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "schemas/writer_handoff_manifest.schema.json",
             root / "schemas/answer_and_claims.schema.json",
             root / "schemas/writer_handoff_ready_checkpoint.schema.json",
+            root / "schemas/import_audit.schema.json",
+            root / "schemas/confirmed_scientific_fact_failure.schema.json",
             root / "src/shumozizi/paper/layout_optimizer.py",
             root / "schemas/paper_layout_optimization.schema.json",
         )

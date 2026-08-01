@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/confirmed_scientific_fact_failure.schema.json",
+  "title": "Confirmed scientific fact failures in external draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "failures", "generated_at"],
+  "properties": {
+    "schema_name": {"const": "confirmed_scientific_fact_failure"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id", "claim", "formal_value", "draft_value",
+          "method", "confirmation_evidence", "confirmed_at"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "claim": {"type": "string", "minLength": 1},
+          "formal_value": {"type": ["string", "null"]},
+          "draft_value": {"type": ["string", "null"]},
+          "method": {"enum": ["machine_binding", "independent_recomputation"]},
+          "confirmation_evidence": {"type": "string", "minLength": 1},
+          "confirmed_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

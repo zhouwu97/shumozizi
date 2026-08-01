@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/import_audit.schema.json",
+  "title": "External draft import audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "handoff_revision",
+    "draft_path", "compiled", "findings", "objective_failures",
+    "fact_candidates", "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "import_audit"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "handoff_revision": {"type": "integer", "minimum": 0},
+    "draft_path": {"type": "string", "minLength": 1},
+    "compiled": {"type": "boolean"},
+    "compile_errors": {"type": "array", "items": {"type": "string"}},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id", "class", "location", "observation",
+          "verdict", "can_continue_without_it", "evidence"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "class": {
+            "enum": [
+              "wrong_number", "unsupported_claim", "unknown_figure",
+              "unknown_citation", "missing_formal_answer",
+              "formula_environment", "cross_reference", "compile_failure"
+            ]
+          },
+          "location": {"type": "string", "minLength": 1},
+          "observation": {"type": "string", "minLength": 1},
+          "verdict": {
+            "enum": ["objective_failure", "scientific_fact_candidate", "advisory"]
+          },
+          "can_continue_without_it": {"type": "boolean"},
+          "evidence": {"type": "string"},
+          "formal_value": {"type": ["string", "null"]},
+          "draft_value": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "objective_failures": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "fact_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding_id", "formal_value", "draft_value"],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "formal_value": {"type": ["string", "null"]},
+          "draft_value": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

@@ -1,0 +1,570 @@
+"""对外部 Author 稿件执行导入审计。
+
+审计分两层：
+
+- 第一层（机械结构）：能否编译、章节/公式环境是否平衡、交叉引用是否有效、
+  图与引用键是否存在。
+- 第二层（Scientific Binding）：把草稿中的数字、强科学主张、图引用、引用键
+  与冻结的 ``answer-and-claims.json``、FIGURE_CATALOG、CITATION_PACKET 对照，
+  产出 ``wrong_number``、``unsupported_claim``、``unknown_figure``、
+  ``unknown_citation`` 等客观问题。
+
+``wrong_number`` 先标记为 ``scientific_fact_candidate``，再由
+``classify_fact_candidates`` 用 machine binding（正文数字 vs 正式结果）确认或
+驳回；只有确认的 ``confirmed_scientific_fact_failure`` 属于不可申诉类别。
+"""
+
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.schema import require_valid
+from shumozizi.paper.external_author import DRAFT_PATH, EXTERNAL_DIR, read_external_draft
+from shumozizi.paper.handoff import (
+    ANSWER_AND_CLAIMS_JSON,
+    HANDOFF_DIR,
+    HANDOFF_MANIFEST_PATH,
+    verify_handoff_freshness,
+)
+from shumozizi.simple.authoring import mark_authoring_status
+from shumozizi.simple.state import utc_now
+
+AUDIT_PATH = Path("review/import-audit.json")
+CONFIRMED_FAILURE_PATH = Path("review/confirmed-scientific-fact-failures.json")
+
+ANSWER_CONTEXT = re.compile(
+    r"答案|直接回答|最少|至少|最多|至多|需要.{0,10}人|结果为|最优|最小值|最大值|总计|共|"
+    r"\banswer\b|\bresult\b|\bpeople\b|\bpersons\b",
+    re.IGNORECASE,
+)
+STRONG_TRIGGERS = (
+    "全局最优",
+    "最优解",
+    "唯一",
+    "显著",
+    "鲁棒",
+    "稳健",
+    "稳定",
+    "证明",
+    "必然",
+    "泛化",
+    "保证",
+)
+ENVIRONMENT_PATTERN = re.compile(r"\\begin\{([^}]+)\}")
+INCLUDEGRAPHICS_PATTERN = re.compile(r"\\includegraphics(?:\s*\[[^\]]*\])?\{([^}]+)\}")
+LABEL_PATTERN = re.compile(r"\\label\{([^}]+)\}")
+REF_PATTERN = re.compile(r"\\ref\{([^}]+)\}")
+CITE_PATTERN = re.compile(r"\\cite\{([^}]+)\}")
+
+
+def _question_for_sentence(text: str, sentence_start: int, question_ids: list[str]) -> str | None:
+    """根据句号位置之前的最近问题标题，尽力归属某问。"""
+    prefix = text[:sentence_start]
+    best: tuple[int, str] | None = None
+    for question_id in question_ids:
+        pattern = re.compile(rf"\b{re.escape(question_id)}\b|第\s*[{question_id[-1]}]\s*问")
+        for match in pattern.finditer(prefix):
+            if best is None or match.end() > best[0]:
+                best = (match.end(), question_id)
+    return best[1] if best else None
+
+
+def _answer_sentences(text: str) -> list[str]:
+    """切分句子并保留含答案语境的句子。"""
+    sentences = re.split(r"(?<=[。！？；!?;])\s*", text)
+    return [
+        sentence.strip()
+        for sentence in sentences
+        if ANSWER_CONTEXT.search(sentence) and sentence.strip()
+    ]
+
+
+def compile_external_draft(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any]:
+    """在隔离目录编译外部草稿，产出 ``draft.pdf`` 与编译回执。
+
+    草稿原文件 ``draft.tex`` 不会被修改；编译在 ``paper/external-author/build/``
+    内进行，成功后把 PDF 复制为 ``paper/external-author/draft.pdf``。
+
+    Args:
+        run_dir: 当前运行目录。
+        timeout_seconds: 单次编译器调用的超时上限。
+
+    Returns:
+        ``{"compiled": bool, "engine": str|None, "errors": [str]}``。
+    """
+    root = run_dir.resolve()
+    draft = root / DRAFT_PATH
+    if not draft.is_file():
+        raise ContractError("缺少外部草稿 draft.tex")
+    from shumozizi.paper.compiler import _compiler_steps, _extract_latex_errors
+
+    build_dir = root / EXTERNAL_DIR / "build"
+    build_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(draft, build_dir / "main.tex")
+    try:
+        engine, steps = _compiler_steps("latex")
+    except ContractError as exc:
+        return {"compiled": False, "engine": None, "errors": [str(exc)]}
+    errors: list[str] = []
+    compiled = False
+    for command in steps:
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=build_dir,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            errors.append(f"{engine} 编译超时（>{timeout_seconds}s）")
+            break
+        if completed.returncode != 0:
+            detail = _extract_latex_errors(build_dir)
+            errors.append(detail or f"{engine} 退出码 {completed.returncode}")
+            break
+    pdf = build_dir / "main.pdf"
+    if pdf.is_file():
+        shutil.copyfile(pdf, root / EXTERNAL_DIR / "draft.pdf")
+        compiled = True
+    return {"compiled": compiled, "engine": engine, "errors": errors}
+
+
+def _expected_answer_numbers(question: dict[str, Any]) -> list[str]:
+    """从"必须回答"文本提取期望数字。"""
+    return re.findall(r"\d+(?:\.\d+)?", str(question.get("must_answer", "")))
+
+
+def extract_numbers(draft_text: str, answer_and_claims: dict[str, Any]) -> list[dict[str, Any]]:
+    """把草稿数字与正式答案绑定，产出缺失/写错两类 finding。"""
+    compact = re.sub(r"\s+", "", draft_text)
+    answer_sentences = _answer_sentences(draft_text)
+    findings: list[dict[str, Any]] = []
+    for question in answer_and_claims.get("questions", []):
+        question_id = str(question.get("question_id", ""))
+        expected = _expected_answer_numbers(question)
+        if not expected:
+            continue
+        for number in expected:
+            if number in compact:
+                continue
+            # 期望数字缺失：在答案语境中寻找同数量级的候选数字。
+            candidates = []
+            for sentence in answer_sentences:
+                found = re.findall(r"\d+(?:\.\d+)?", sentence)
+                candidates.extend(
+                    item
+                    for item in found
+                    if item != number and len(str(int(float(item)))) == len(str(int(float(number))))
+                )
+            candidates = list(dict.fromkeys(candidates))
+            if candidates:
+                findings.append(
+                    {
+                        "finding_id": f"AUD-{question_id}-NUM-01",
+                        "class": "wrong_number",
+                        "location": f"{question_id} 直接答案",
+                        "observation": (
+                            f"{question_id} 应包含正式答案数字 {number}，草稿中未出现；"
+                            f"疑似写成 {', '.join(candidates[:3])}"
+                        ),
+                        "verdict": "scientific_fact_candidate",
+                        "can_continue_without_it": False,
+                        "evidence": f"formal={number}; draft_candidates={candidates[:5]}",
+                        "formal_value": number,
+                        "draft_value": candidates[0] if candidates else None,
+                    }
+                )
+            else:
+                findings.append(
+                    {
+                        "finding_id": f"AUD-{question_id}-NUM-02",
+                        "class": "missing_formal_answer",
+                        "location": f"{question_id} 直接答案",
+                        "observation": f"{question_id} 缺少正式答案数字 {number}，草稿未覆盖该问答案",
+                        "verdict": "advisory",
+                        "can_continue_without_it": True,
+                        "evidence": f"formal={number}",
+                    }
+                )
+    return findings
+
+
+def extract_strong_claims(draft_text: str) -> list[dict[str, Any]]:
+    """按 trigger 关键词提取强主张语句，只作为 claim extraction trigger。"""
+    occurrences: list[dict[str, Any]] = []
+    for match in re.finditer(r"[^。！？；!?;]+", draft_text):
+        sentence = match.group(0).strip()
+        triggers = [trigger for trigger in STRONG_TRIGGERS if trigger in sentence]
+        if triggers:
+            occurrences.append(
+                {
+                    "sentence": sentence,
+                    "triggers": triggers,
+                    "position": match.start(),
+                    "end": match.end(),
+                }
+            )
+    return occurrences
+
+
+def resolve_claim(
+    occurrence: dict[str, Any],
+    answer_and_claims: dict[str, Any],
+    *,
+    question_id: str | None = None,
+) -> dict[str, Any]:
+    """把强主张对照主张边界，返回 SUPPORTED / UNSUPPORTED / UNVERIFIED。"""
+    triggers = occurrence.get("triggers", [])
+    for question in answer_and_claims.get("questions", []):
+        if question_id and question.get("question_id") != question_id:
+            continue
+        forbidden = " ".join(str(item) for item in question.get("forbidden_upgrades", []))
+        safe = " ".join(str(item) for item in question.get("safe_claims", []))
+        for trigger in triggers:
+            if trigger in forbidden:
+                return {
+                    "question_id": question.get("question_id"),
+                    "verdict": "unsupported_claim",
+                    "trigger": trigger,
+                }
+        for trigger in triggers:
+            if trigger in safe:
+                return {
+                    "question_id": question.get("question_id"),
+                    "verdict": "supported",
+                    "trigger": trigger,
+                }
+    return {"verdict": "unverified", "trigger": triggers[0] if triggers else ""}
+
+
+def check_figures(draft_text: str, run_dir: Path) -> list[dict[str, Any]]:
+    """草稿中的图引用必须属于 FIGURE_PLAN 允许集合。"""
+    root = run_dir.resolve()
+    allowed: set[str] = set()
+    plan_path = root / "figures/FIGURE_PLAN.json"
+    if plan_path.is_file():
+        try:
+            for figure in load_json(plan_path).get("figures", []):
+                if isinstance(figure, dict):
+                    if figure.get("figure_id"):
+                        allowed.add(str(figure["figure_id"]))
+                    if figure.get("latex_label"):
+                        allowed.add(str(figure["latex_label"]))
+        except ContractError:
+            allowed = set()
+    used: set[str] = set()
+    for match in INCLUDEGRAPHICS_PATTERN.finditer(draft_text):
+        used.add(match.group(1).strip())
+    for match in REF_PATTERN.finditer(draft_text):
+        used.add(match.group(1).strip())
+    findings: list[dict[str, Any]] = []
+    if not allowed:
+        return findings
+    for label in sorted(used):
+        if not label:
+            continue
+        base = Path(label).name
+        if base not in allowed and label not in allowed:
+            findings.append(
+                {
+                    "finding_id": f"AUD-FIG-{len(findings) + 1:02d}",
+                    "class": "unknown_figure",
+                    "location": f"图引用 {label}",
+                    "observation": f"草稿引用了不在图目录中的图: {label}",
+                    "verdict": "objective_failure",
+                    "can_continue_without_it": False,
+                    "evidence": f"allowed={sorted(allowed)[:10]}",
+                }
+            )
+    return findings
+
+
+def check_citations(draft_text: str, run_dir: Path) -> list[dict[str, Any]]:
+    """草稿中的引用键必须属于已登记参考文献。"""
+    root = run_dir.resolve()
+    allowed: set[str] = set()
+    references_path = root / "paper/references.tex"
+    if references_path.is_file():
+        allowed = set(
+            re.findall(r"\\bibitem\{([^}]+)\}", references_path.read_text(encoding="utf-8"))
+        )
+    cited: set[str] = set()
+    for match in CITE_PATTERN.finditer(draft_text):
+        cited.update(item.strip() for item in match.group(1).split(",") if item.strip())
+    findings: list[dict[str, Any]] = []
+    if not allowed:
+        return findings
+    for key in sorted(cited):
+        if key not in allowed:
+            findings.append(
+                {
+                    "finding_id": f"AUD-CIT-{len(findings) + 1:02d}",
+                    "class": "unknown_citation",
+                    "location": f"引用 {key}",
+                    "observation": f"草稿引用了未登记的文献键: {key}",
+                    "verdict": "objective_failure",
+                    "can_continue_without_it": False,
+                    "evidence": f"allowed={sorted(allowed)[:10]}",
+                }
+            )
+    return findings
+
+
+def check_formulas(draft_text: str) -> list[dict[str, Any]]:
+    """检查 begin/end 环境是否配对。"""
+    findings: list[dict[str, Any]] = []
+    environments = dict.fromkeys(ENVIRONMENT_PATTERN.findall(draft_text))
+    for environment in environments:
+        begins = len(re.findall(rf"\\begin\{{{re.escape(environment)}\}}", draft_text))
+        ends = len(re.findall(rf"\\end\{{{re.escape(environment)}\}}", draft_text))
+        if begins != ends:
+            findings.append(
+                {
+                    "finding_id": f"AUD-FMT-{len(findings) + 1:02d}",
+                    "class": "formula_environment",
+                    "location": f"\\begin{{{environment}}}",
+                    "observation": f"{environment} 环境 begin={begins} 与 end={ends} 不配对",
+                    "verdict": "objective_failure",
+                    "can_continue_without_it": False,
+                    "evidence": f"begin={begins}; end={ends}",
+                }
+            )
+    return findings
+
+
+def check_cross_references(draft_text: str) -> list[dict[str, Any]]:
+    """草稿中的 \\ref 目标必须存在对应 \\label。"""
+    labels = set(LABEL_PATTERN.findall(draft_text))
+    references = set(REF_PATTERN.findall(draft_text))
+    findings: list[dict[str, Any]] = []
+    for label in sorted(references):
+        if label not in labels:
+            findings.append(
+                {
+                    "finding_id": f"AUD-XREF-{len(findings) + 1:02d}",
+                    "class": "cross_reference",
+                    "location": f"\\ref{{{label}}}",
+                    "observation": f"草稿引用了未定义的交叉引用: {label}",
+                    "verdict": "advisory",
+                    "can_continue_without_it": True,
+                    "evidence": f"missing_label={label}",
+                }
+            )
+    return findings
+
+
+def audit_external_draft(run_dir: Path, *, compile_draft: bool = True) -> dict[str, Any]:
+    """对外部草稿执行完整导入审计并写入 ``review/import-audit.json``。
+
+    Args:
+        run_dir: 当前运行目录。
+        compile_draft: 是否实际调用 LaTeX 编译；测试可关闭以隔离绑定逻辑。
+
+    Returns:
+        已写入的导入审计文档。
+
+    Raises:
+        ContractError: 缺少草稿、缺少 handoff manifest 或 answer-and-claims。
+    """
+    root = run_dir.resolve()
+    manifest_path = root / HANDOFF_MANIFEST_PATH
+    if not manifest_path.is_file():
+        raise ContractError("缺少 Writer Handoff manifest，无法审计外部草稿")
+    answers_path = root / HANDOFF_DIR / ANSWER_AND_CLAIMS_JSON
+    if not answers_path.is_file():
+        raise ContractError("缺少 answer-and-claims.json，无法做数字/主张绑定")
+    payload = read_external_draft(root)
+    manifest = load_json(manifest_path)
+    answer_and_claims = load_json(answers_path)
+    draft_text = payload["draft_text"]
+    all_question_ids = [
+        str(item.get("question_id", "")) for item in answer_and_claims.get("questions", [])
+    ]
+
+    findings: list[dict[str, Any]] = []
+    compile_result: dict[str, Any] = {"compiled": True, "engine": None, "errors": []}
+    if compile_draft:
+        compile_result = compile_external_draft(root)
+        if not compile_result["compiled"]:
+            findings.append(
+                {
+                    "finding_id": "AUD-COMPILE-01",
+                    "class": "compile_failure",
+                    "location": "draft.tex",
+                    "observation": "外部草稿无法编译",
+                    "verdict": "objective_failure",
+                    "can_continue_without_it": False,
+                    "evidence": "; ".join(compile_result.get("errors", []) or [])[:400],
+                }
+            )
+    numbers = extract_numbers(draft_text, answer_and_claims)
+    fact_candidates = [
+        {
+            "finding_id": str(item["finding_id"]),
+            "formal_value": item.get("formal_value"),
+            "draft_value": item.get("draft_value"),
+        }
+        for item in numbers
+        if item["class"] == "wrong_number"
+    ]
+    findings.extend(numbers)
+    for occurrence in extract_strong_claims(draft_text):
+        # 用句子结束位置归属问题：小节标题常与主张句在同一切分块内。
+        question_id = _question_for_sentence(
+            draft_text, int(occurrence.get("end", occurrence.get("position", 0))), all_question_ids
+        )
+        resolved = resolve_claim(occurrence, answer_and_claims, question_id=question_id)
+        if resolved["verdict"] == "unsupported_claim":
+            findings.append(
+                {
+                    "finding_id": f"AUD-CLM-{len([f for f in findings if f['class'] == 'unsupported_claim']) + 1:02d}",
+                    "class": "unsupported_claim",
+                    "location": f"{question_id or '全文'} 强主张",
+                    "observation": (
+                        f"草稿出现越界强主张『{occurrence['triggers'][0]}』: "
+                        f"{occurrence['sentence'][:80]}"
+                    ),
+                    "verdict": "objective_failure",
+                    "can_continue_without_it": False,
+                    "evidence": f"trigger={resolved['trigger']}; forbidden_upgrades 覆盖该表达",
+                }
+            )
+    findings.extend(check_figures(draft_text, root))
+    findings.extend(check_citations(draft_text, root))
+    findings.extend(check_formulas(draft_text))
+    findings.extend(check_cross_references(draft_text))
+
+    objective_failures = [
+        str(item["finding_id"]) for item in findings if item["verdict"] == "objective_failure"
+    ]
+    document = {
+        "schema_name": "import_audit",
+        "schema_version": "1.0",
+        "run_id": root.name,
+        "handoff_revision": int(manifest.get("handoff_revision", 0)),
+        "draft_path": DRAFT_PATH.as_posix(),
+        "compiled": compile_result["compiled"],
+        "compile_errors": compile_result.get("errors", []),
+        "findings": findings,
+        "objective_failures": objective_failures,
+        "fact_candidates": fact_candidates,
+        "generated_at": utc_now(),
+    }
+    require_valid(document, "import_audit")
+    atomic_json(root / AUDIT_PATH, document)
+    return document
+
+
+def classify_fact_candidates(run_dir: Path, audit: dict[str, Any]) -> dict[str, Any]:
+    """用 machine binding 确认或驳回数字类 fact candidate。
+
+    正文数字 == 正式结果时驳回（finding 不升级）；不一致时确认为
+    ``confirmed_scientific_fact_failure``，该类别后续不可被 Adjudicator 降级。
+
+    Args:
+        run_dir: 当前运行目录。
+        audit: ``audit_external_draft`` 的返回结果。
+
+    Returns:
+        已写入的确认事实失败台账。
+    """
+    root = run_dir.resolve()
+    failures: list[dict[str, Any]] = []
+    for candidate in audit.get("fact_candidates", []):
+        formal = candidate.get("formal_value")
+        draft = candidate.get("draft_value")
+        if formal is None or draft is None:
+            continue
+        if draft == formal:
+            continue
+        failures.append(
+            {
+                "finding_id": str(candidate["finding_id"]),
+                "claim": f"正式答案数字应为 {formal}，草稿疑似写为 {draft}",
+                "formal_value": str(formal),
+                "draft_value": str(draft),
+                "method": "machine_binding",
+                "confirmation_evidence": f"正文 {draft} != 正式结果 {formal}",
+                "confirmed_at": utc_now(),
+            }
+        )
+    document = {
+        "schema_name": "confirmed_scientific_fact_failure",
+        "schema_version": "1.0",
+        "run_id": root.name,
+        "failures": failures,
+        "generated_at": utc_now(),
+    }
+    require_valid(document, "confirmed_scientific_fact_failure")
+    atomic_json(root / CONFIRMED_FAILURE_PATH, document)
+    return document
+
+
+def require_import_audit_passed(run_dir: Path) -> None:
+    """要求外部草稿审计无客观失败且无确认事实错误。"""
+    root = run_dir.resolve()
+    audit_path = root / AUDIT_PATH
+    if not audit_path.is_file():
+        raise ContractError("尚未执行外部草稿导入审计")
+    audit = load_json(audit_path)
+    if audit.get("objective_failures"):
+        raise ContractError("外部草稿存在客观失败: " + "; ".join(audit["objective_failures"]))
+    confirmed_path = root / CONFIRMED_FAILURE_PATH
+    if confirmed_path.is_file():
+        confirmed = load_json(confirmed_path)
+        if confirmed.get("failures"):
+            ids = ", ".join(str(item["finding_id"]) for item in confirmed["failures"])
+            raise ContractError("外部草稿存在已确认的科学事实错误: " + ids)
+
+
+def import_external_draft(
+    run_dir: Path,
+    *,
+    draft_source: Path | None = None,
+    compile_draft: bool = True,
+) -> dict[str, Any]:
+    """导入外部草稿：隔离落盘、审计、确认事实候选，并推进 authoring 状态。
+
+    Args:
+        run_dir: 当前运行目录。
+        draft_source: 外部草稿文件路径；为 ``None`` 时使用已存在的 draft.tex。
+        compile_draft: 是否真实编译。
+
+    Returns:
+        导入回执（audit + 状态变化）。
+
+    Raises:
+        ContractError: 草稿缺失、审计存在客观失败或已确认事实错误。
+    """
+    root = run_dir.resolve()
+    if draft_source is not None:
+        draft_path = root / DRAFT_PATH
+        draft_path.parent.mkdir(parents=True, exist_ok=True)
+        text = draft_source.read_text(encoding="utf-8")
+        if not text.strip():
+            raise ContractError("外部草稿为空")
+        draft_path.write_text(text, encoding="utf-8")
+    audit = audit_external_draft(root, compile_draft=compile_draft)
+    confirmed = classify_fact_candidates(root, audit)
+    freshness = verify_handoff_freshness(root)
+    if audit.get("objective_failures") or confirmed.get("failures"):
+        status = "blocked"
+    elif not freshness["fresh"]:
+        mark_authoring_status(root, "needs_rebase")
+        status = "needs_rebase"
+    else:
+        mark_authoring_status(root, "draft_imported")
+        status = "draft_imported"
+    return {
+        "status": status,
+        "audit": audit,
+        "confirmed_fact_failures": confirmed.get("failures", []),
+        "handoff_fresh": freshness["fresh"],
+        "stale_reasons": freshness["reasons"],
+    }
