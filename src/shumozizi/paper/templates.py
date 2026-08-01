@@ -17,6 +17,8 @@ MANIFEST_PATH = Path("paper/template_manifest.json")
 _COMPETITION_ALIASES = {
     "全国大学生数学建模竞赛": "cumcm",
     "全国大学生数学建模": "cumcm",
+    "辽宁省大学生数学建模竞赛": "cumcm",
+    "辽宁大学生数学建模竞赛": "cumcm",
     "cumcm": "cumcm",
     "national": "cumcm",
     "国赛": "cumcm",

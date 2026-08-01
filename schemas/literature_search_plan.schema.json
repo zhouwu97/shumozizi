@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/literature_search_plan.schema.json",
+  "title": "Literature Search Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "topics", "search_scope", "institutional_access", "generated_at"],
+  "properties": {
+    "schema_name": {"const": "literature_search_plan"},
+    "schema_version": {"const": "2.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "topics": {
+      "type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}
+    },
+    "search_scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["languages", "chinese_search_required", "requirement_reasons", "executed_languages", "queries"],
+      "properties": {
+        "languages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["zh", "en"]}},
+        "chinese_search_required": {"type": "boolean"},
+        "requirement_reasons": {"type": "array", "items": {"type": "string"}},
+        "executed_languages": {"type": "array", "uniqueItems": true, "items": {"enum": ["zh", "en"]}},
+        "queries": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["query_id", "purpose", "target_categories", "zh", "en", "providers"],
+            "properties": {
+              "query_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+              "purpose": {"type": "string", "minLength": 1},
+              "target_categories": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["background", "core_method", "validation", "uncertainty", "extension"]}},
+              "zh": {"type": "array", "items": {"type": "string"}},
+              "en": {"type": "array", "items": {"type": "string"}},
+              "providers": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        }
+      }
+    },
+    "institutional_access": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "institution", "provider", "access_mode", "authentication_mode", "observed_route", "provider_priority", "authentication", "session_policy"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "institution": {"type": "string", "minLength": 1},
+        "provider": {"enum": ["cnki", "wanfang", "vip", "library-discovery", "other"]},
+        "access_mode": {"enum": ["none", "manual-browser"]},
+        "authentication_mode": {"enum": ["carsi-saml", "manual-sso", "unknown"]},
+        "observed_route": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "format": "uri"}},
+        "provider_priority": {"type": "array", "items": {"type": "string"}},
+        "authentication": {
+          "type": "object", "additionalProperties": false,
+          "required": ["handled_by_user", "persist_credentials", "persist_cookies_in_repo"],
+          "properties": {
+            "handled_by_user": {"const": true},
+            "persist_credentials": {"const": false},
+            "persist_cookies_in_repo": {"const": false}
+          }
+        },
+        "session_policy": {
+          "type": "object", "additionalProperties": false,
+          "required": ["reuse_authenticated_session", "automate_login", "reauth_requires_user"],
+          "properties": {
+            "reuse_authenticated_session": {"const": true},
+            "automate_login": {"const": false},
+            "reauth_requires_user": {"const": true}
+          }
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

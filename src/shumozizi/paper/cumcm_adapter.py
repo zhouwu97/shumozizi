@@ -125,9 +125,10 @@ ISSUE_FIELDS = (
 def cumcm_adapter_required(run_dir: Path) -> bool:
     """仅对 Competition-First v3.2 的 CUMCM 运行启用适配器。"""
     state = read_simple_state(run_dir)
+    competition = str(state.get("competition", "")).strip().casefold()
     return bool(
         is_competition_first_v32_state(state)
-        and str(state.get("competition", "")).strip().casefold() == "cumcm"
+        and (competition == "cumcm" or "大学生数学建模竞赛" in competition)
     )
 
 

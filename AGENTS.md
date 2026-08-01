@@ -23,7 +23,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 - `mathmodel-paper`
 - `mathmodel-red-team`
 
-`mathmodel-matlab`、`mathmodel-geometry-oracle`、`mathmodel-geometry-visual`、`mathmodel-optimizer-benchmark` 和 `mathmodel-learn-paper` 是按需工具。`mathmodel-capability-router` 仅为旧运行或按需工具探测保留，不能成为新运行阶段。`mathmodel-final-check` 只执行机械 QA。
+`mathmodel-matlab`、`mathmodel-geometry-oracle`、`mathmodel-geometry-visual`、`mathmodel-optimizer-benchmark`、`mathmodel-learn-paper` 和 `mathmodel-literature` 是按需工具。`mathmodel-literature` 只记录双语检索、候选来源核验和引用台账，不执行自动登录、凭据存储、绕过验证码或批量抓取。`mathmodel-capability-router` 仅为旧运行或按需工具探测保留，不能成为新运行阶段。`mathmodel-final-check` 只执行机械 QA。
 
 用户提供完整数学建模题面或附件，或要求解答整题、多问建模、真实实验并形成论文/竞赛交付时，必须优先使用 `mathmodel-workflow` 总控；用户无需精确说出 Skill 名称。只有局部分析、调试、单个实验、单图或论文局部修改时才不自动启动完整工作流。
 
