@@ -184,6 +184,11 @@ def read_simple_state(run_dir: Path) -> dict[str, Any]:
         payload.setdefault(
             "layout_audited_render_revision", payload["layout_audited_revision"]
         )
+        # v3.4 论文写作交接是 paper 阶段内 checkpoint，不新增顶层 stage。
+        # 旧运行没有这三个字段时默认 internal 写作，避免外部交接语义污染历史 run。
+        payload.setdefault("authoring_mode", "internal")
+        payload.setdefault("authoring_status", "preparing_handoff")
+        payload.setdefault("handoff_revision", 0)
     mapped = _map_legacy_state(payload)
     require_simple_state(mapped)
     return mapped

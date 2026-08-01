@@ -355,6 +355,9 @@ def compile_longform_draft(
     """
     if timeout_seconds < 1 or timeout_seconds > 3600:
         raise ContractError("论文编译 timeout_seconds 必须在 1 至 3600 之间")
+    from shumozizi.simple.authoring import require_internal_authoring
+
+    require_internal_authoring(run_dir)
     from shumozizi.paper.materials import require_material_pool
     from shumozizi.paper.readiness import require_scientific_readiness
     from shumozizi.paper.storyboard import require_research_storyboard
@@ -711,6 +714,9 @@ def compile_paper(
     """
     if timeout_seconds < 1 or timeout_seconds > 3600:
         raise ContractError("论文编译 timeout_seconds 必须在 1 至 3600 之间")
+    from shumozizi.simple.authoring import require_internal_authoring
+
+    require_internal_authoring(run_dir)
     if revision_impact not in {"auto", "render", "argument", "science"}:
         raise ContractError("revision_impact 必须为 auto、render、argument 或 science")
     root = run_dir.resolve()

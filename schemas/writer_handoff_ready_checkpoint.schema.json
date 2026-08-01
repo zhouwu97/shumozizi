@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/writer_handoff_ready_checkpoint.schema.json",
+  "title": "Writer handoff ready checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "kind", "handoff_revision",
+    "authoring_status", "manifest", "digests", "recorded_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "writer_handoff_ready_checkpoint"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "kind": {"const": "writer_handoff_ready"},
+    "handoff_revision": {"type": "integer", "minimum": 1},
+    "authoring_status": {"const": "waiting_external_author"},
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paper_policy_fingerprint", "formal_result_digest", "material_pool_digest",
+        "storyboard_digest", "claim_boundary_digest", "figure_catalog_digest",
+        "citation_packet_digest"
+      ],
+      "properties": {
+        "paper_policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "formal_result_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "material_pool_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "storyboard_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "claim_boundary_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "figure_catalog_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "citation_packet_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "recorded_at": {"type": "string", "format": "date-time"}
+  }
+}

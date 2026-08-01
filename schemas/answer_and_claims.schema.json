@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/answer_and_claims.schema.json",
+  "title": "Per-question answers and claim boundaries for external author",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "questions", "generated_at"],
+  "properties": {
+    "schema_name": {"const": "answer_and_claims"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question_id", "must_answer", "safe_claims", "forbidden_upgrades",
+          "key_boundaries", "source_result_ids", "claim_ids"
+        ],
+        "properties": {
+          "question_id": {"type": "string", "minLength": 1},
+          "must_answer": {"type": "string", "minLength": 1},
+          "safe_claims": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "forbidden_upgrades": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "key_boundaries": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "source_result_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "claim_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}
