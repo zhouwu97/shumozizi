@@ -221,3 +221,59 @@ def test_nested_question_headings_report_generic_template_repetition(
     assert finding["generic_roles"]["模型建立与求解"] == 3
     assert finding["generic_roles"]["模型求解结果"] == 3
     assert finding["generic_roles"]["结果分析与结论"] == 3
+
+
+def test_two_question_manuscript_reports_generic_template_repetition(
+    tmp_path: Path,
+) -> None:
+    """两问论文完整复用同一通用标题时也应形成文风告警。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "two-question-template",
+        required_questions=["Q1", "Q2"],
+        workflow_version="3.2",
+    )
+    source = run_dir / "paper/sections/solutions.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section{问题一}\n"
+        "\\subsection{模型建立与求解}\n第一问形成可行解。\n"
+        "\\subsection{结果分析与结论}\n第一问由容量边界决定。\n"
+        "\\section{问题二}\n"
+        "\\subsection{模型建立与求解}\n第二问形成可行解。\n"
+        "\\subsection{结果分析与结论}\n第二问由时间边界决定。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+    warnings = {item["code"]: item for item in report["warnings"]}
+
+    finding = warnings["generic_question_heading_repetition"]
+    assert finding["question_ids"] == ["1", "2"]
+    assert finding["generic_roles"] == {"模型建立与求解": 2, "结果分析与结论": 2}
+
+
+def test_single_question_generic_headings_do_not_report_repetition(
+    tmp_path: Path,
+) -> None:
+    """单问中的正常功能标题不是跨问模板复用。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "single-question-headings",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    source = run_dir / "paper/sections/solution.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section{问题一}\n"
+        "\\subsection{模型建立与求解}\n由约束传播可得可行域。\n"
+        "\\subsection{结果分析与结论}\n原因在于容量约束活跃。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+
+    assert "generic_question_heading_repetition" not in {
+        item["code"] for item in report["warnings"]
+    }

@@ -29,6 +29,11 @@ from shumozizi.simple.capabilities import TOOLING_PATH
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.review_tasks import validate_review_task_receipt
 from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
+from shumozizi.simple.visual_requirements import (
+    derive_visual_requirements,
+    validate_declared_visual_data,
+    validate_visual_document,
+)
 
 MODELING_UNITS_PATH = Path("analysis/MODELING_UNITS.json")
 STOP_REASON_WHITELIST = frozenset(
@@ -1191,10 +1196,15 @@ def validate_visual_output_sources(run_dir: Path) -> list[str]:
         if not isinstance(unit, dict):
             continue
         question_id = unit.get("question_id")
+        requirement = derive_visual_requirements(unit)
         for raw in unit.get("visual_outputs", []):
             if not isinstance(raw, dict) or not isinstance(raw.get("argument_unit_id"), str):
                 continue
-            contracts[raw["argument_unit_id"]] = {**raw, "question_id": question_id}
+            contracts[raw["argument_unit_id"]] = {
+                **raw,
+                "question_id": question_id,
+                "visual_requirement": requirement,
+            }
 
     data_backed = {
         "algorithm",
@@ -1236,12 +1246,15 @@ def validate_visual_output_sources(run_dir: Path) -> list[str]:
             if not isinstance(document, dict):
                 errors.append(f"必需图 {figure_id} 的 {output_path} 顶层必须是 JSON 对象")
                 continue
-            missing = sorted(set(contract.get("required_data", [])) - set(document))
-            if missing:
-                errors.append(
-                    f"必需图 {figure_id} 的 {output_path} 缺少绘图字段: "
-                    + ", ".join(missing)
-                )
+            document_errors = validate_visual_document(
+                document,
+                contract.get("required_data", []),
+                contract["visual_requirement"],
+            )
+            errors.extend(
+                f"必需图 {figure_id} 的 {output_path} {error}"
+                for error in document_errors
+            )
     return errors
 
 
@@ -1249,18 +1262,32 @@ def _require_experiment_visual_output_contracts(payload: dict[str, Any]) -> None
     """要求数据丰富型单元在实验前冻结至少一项结构化绘图输出。"""
     if payload.get("schema_version") != "1.4":
         return
-    missing = [
-        str(unit.get("question_id", unit.get("unit_id", "<unknown>")))
+    structured_units = [
+        unit
         for unit in payload.get("units", [])
         if isinstance(unit, dict)
         and unit.get("unit_kind") in _STRUCTURED_VISUAL_OUTPUT_UNIT_KINDS
-        and not unit.get("visual_outputs")
+    ]
+    missing = [
+        str(unit.get("question_id", unit.get("unit_id", "<unknown>")))
+        for unit in structured_units
+        if not unit.get("visual_outputs")
     ]
     if missing:
         raise ContractError(
             "进入实验前，数据丰富型建模单元必须声明 visual_outputs，"
             "以冻结论证问题、所需结构字段和 results/raw 输出路径；缺失问题: "
             + "、".join(missing)
+        )
+    semantic_errors = [
+        error
+        for unit in structured_units
+        for error in validate_declared_visual_data(unit)
+    ]
+    if semantic_errors:
+        raise ContractError(
+            "visual_outputs.required_data 未覆盖题型最低视觉证据结构: "
+            + "；".join(semantic_errors)
         )
 
 

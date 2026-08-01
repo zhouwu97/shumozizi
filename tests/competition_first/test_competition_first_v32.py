@@ -473,6 +473,34 @@ def test_data_rich_unit_requires_visual_output_contract_before_experiment(
         require_v32_modeling_plan(run_dir)
 
 
+def test_data_rich_visual_output_requires_minimum_semantic_groups(
+    tmp_path: Path,
+) -> None:
+    """非空 visual_outputs 仍不能只登记一个最终标量字段。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "visual-output-semantic-groups",
+        workflow_version="3.2",
+        required_questions=["Q1"],
+    )
+    plan = _v14_non_search_plan(run_dir, "data_modeling")
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["visual_outputs"] = [
+        {
+            "visual_question": "预测误差如何随样本结构和分组边界变化？",
+            "argument_unit_id": "Q1-diagnostic",
+            "required_data": ["best_value"],
+            "output_path": "results/raw/q1_diagnostic.json",
+        }
+    ]
+    _record_fixture_knowledge_retrieval(run_dir)
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="最低视觉证据结构"):
+        require_v32_modeling_plan(run_dir)
+
+
 def test_figure_plan_24_requires_declared_structured_visual_data(tmp_path: Path) -> None:
     """数据型论证图不能等到论文阶段再从最终标量猜造结构。"""
     run_dir = initialize_simple_run(
@@ -554,9 +582,9 @@ def test_visual_output_source_checks_required_fields(tmp_path: Path) -> None:
         },
     )
 
-    assert validate_visual_output_sources(run_dir) == [
-        "必需图 q1-aggregation 的 results/raw/q1_aggregation.json 缺少绘图字段: aggregate"
-    ]
+    errors = validate_visual_output_sources(run_dir)
+    assert any("绘图字段 entities 没有非空结构数据" in error for error in errors)
+    assert any("缺少绘图字段: aggregate" in error for error in errors)
 
 
 def _attach_v14_optimization_actual(

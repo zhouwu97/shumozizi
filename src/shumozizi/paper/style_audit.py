@@ -11,7 +11,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import load_json, relative_inside
+from shumozizi.core.io import ContractError, load_json, relative_inside
 
 _SOURCE_SUFFIXES = frozenset({".tex", ".typ", ".md"})
 _EXCLUDED_PARTS = frozenset(
@@ -245,6 +245,21 @@ def _generic_question_heading_usage(
             if role is not None:
                 usage.setdefault(role, set()).add(active_question[1])
     return usage
+
+
+def _generic_heading_repetition_threshold(root: Path) -> int:
+    """按必答问题数设置保守阈值，两问论文也能识别完整模板复用。"""
+    state_path = root / "state" / "run.json"
+    if not state_path.is_file():
+        return 3
+    try:
+        state = load_json(state_path)
+    except (ContractError, OSError, ValueError):
+        return 3
+    required_questions = state.get("required_questions", [])
+    if isinstance(required_questions, list) and 1 <= len(required_questions) <= 2:
+        return 2
+    return 3
 
 
 def _abstract_text(sources: list[tuple[Path, str]], combined: str) -> str:
@@ -655,17 +670,19 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             )
 
     generic_usage = _generic_question_heading_usage(sources)
+    generic_repetition_threshold = _generic_heading_repetition_threshold(root)
     repeated_generic_roles = {
         role: len(questions)
         for role, questions in generic_usage.items()
-        if len(questions) >= 3
+        if len(questions) >= generic_repetition_threshold
     }
     if repeated_generic_roles:
         warnings.append(
             {
                 "code": "generic_question_heading_repetition",
                 "message": (
-                    "至少三个问题复用了通用流程标题，应改为包含当前数学对象、"
+                    f"至少{generic_repetition_threshold}个问题复用了通用流程标题，"
+                    "应改为包含当前数学对象、"
                     "约束或机制的题目特定标题。"
                 ),
                 "count": sum(repeated_generic_roles.values()),
