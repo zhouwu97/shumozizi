@@ -187,6 +187,18 @@ def decide_author_request(
                 "scientific_value": raw.get("scientific_value"),
             }
         )
+    decision_ids = {str(item["gap_id"]) for item in resolved}
+    if len(decision_ids) != len(resolved):
+        raise ContractError("decisions 中存在重复 gap_id")
+    missing = sorted(set(by_gap) - decision_ids)
+    unknown = sorted(decision_ids - set(by_gap))
+    if missing or unknown:
+        detail = []
+        if missing:
+            detail.append("缺少: " + ", ".join(missing))
+        if unknown:
+            detail.append("未知: " + ", ".join(unknown))
+        raise ContractError("裁决必须覆盖全部作者请求; " + "; ".join(detail))
     document = {
         "schema_name": "author_request_decisions",
         "schema_version": "1.0",
@@ -196,4 +208,21 @@ def decide_author_request(
     }
     require_valid(document, "author_request_decisions")
     atomic_json(root / AUTHOR_REQUEST_DECISIONS_PATH, document)
+    _advance_authoring_for_requests(root, resolved)
     return document
+
+
+def _advance_authoring_for_requests(root: Path, decisions: list[dict[str, Any]]) -> None:
+    """根据请求裁决推进 authoring_status。
+
+    需要上游新资产（visual/experiment/analysis）时把草稿标为 ``rework_requested``，
+    让 Author 知道还有补图/补实验需要消化；纯替代/豁免/驳回不改变状态。
+    """
+    from shumozizi.simple.authoring import mark_authoring_status, read_authoring
+
+    current = read_authoring(root)["authoring_status"]
+    needs_upstream = any(
+        item.get("route") in {"visual", "experiment", "analysis"} for item in decisions
+    )
+    if needs_upstream and current == "draft_imported":
+        mark_authoring_status(root, "rework_requested")

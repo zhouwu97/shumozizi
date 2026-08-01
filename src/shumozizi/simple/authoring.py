@@ -36,7 +36,13 @@ ALLOWED_AUTHORING_TRANSITIONS = {
     "handoff_ready": {"waiting_external_author", "preparing_handoff"},
     "waiting_external_author": {"draft_imported", "preparing_handoff", "needs_rebase"},
     "draft_imported": {"rework_requested", "author_pass_accepted", "needs_rebase"},
-    "rework_requested": {"handoff_ready", "preparing_handoff"},
+    # 返修后可重新导入修订稿，或重建交接包继续等待外部 Author。
+    "rework_requested": {
+        "draft_imported",
+        "waiting_external_author",
+        "preparing_handoff",
+        "needs_rebase",
+    },
     "author_pass_accepted": {"handoff_ready", "preparing_handoff"},
     "needs_rebase": {"handoff_ready", "preparing_handoff"},
 }

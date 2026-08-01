@@ -100,7 +100,13 @@ def test_partial_draft_with_requests_is_accepted_and_preserved(tmp_path: Path) -
                 "decision": "substitute",
                 "route": "author",
                 "reason": "新图价值一般，公式+表格足够",
-            }
+            },
+            {
+                "gap_id": "GAP-Q3-02",
+                "decision": "waive",
+                "route": "author",
+                "reason": "当前规模证据已足够支撑结论",
+            },
         ],
     )
     assert ledger["decisions"][0]["decision"] == "substitute"
@@ -121,10 +127,34 @@ def test_waivable_visual_request_does_not_block(tmp_path: Path) -> None:
                 "decision": "waive",
                 "route": "author",
                 "reason": "问题真实但收益不值得成本",
-            }
+            },
+            {
+                "gap_id": "GAP-Q3-02",
+                "decision": "waive",
+                "route": "author",
+                "reason": "更大规模复算超出赛程预算",
+            },
         ],
     )
     assert ledger["decisions"][0]["decision"] == "waive"
+
+
+def test_partial_request_coverage_is_rejected(tmp_path: Path) -> None:
+    """P1-1：只裁决一部分请求不允许声称 resolved。"""
+    run_dir = _run(tmp_path, "partial-coverage")
+    _write_requests(run_dir)
+    with pytest.raises(ContractError, match="覆盖全部作者请求"):
+        decide_author_request(
+            run_dir,
+            [
+                {
+                    "gap_id": "GAP-Q3-01",
+                    "decision": "waive",
+                    "route": "author",
+                    "reason": "只处理一个",
+                }
+            ],
+        )
 
 
 def test_evidence_request_cannot_auto_route_to_experiment(tmp_path: Path) -> None:
@@ -158,10 +188,43 @@ def test_experiment_route_requires_explicit_scientific_value(tmp_path: Path) -> 
                 "route": "experiment",
                 "reason": "检验下界在更大规模下是否仍紧",
                 "scientific_value": "closes_evidence_gap",
-            }
+            },
+            {
+                "gap_id": "GAP-Q3-01",
+                "decision": "substitute",
+                "route": "author",
+                "reason": "约束余量表已足够",
+            },
         ],
     )
     assert ledger["decisions"][0]["route"] == "experiment"
+
+
+def test_fulfill_upstream_request_advances_rework_requested(tmp_path: Path) -> None:
+    """P1-2：fulfill visual/experiment → 草稿标为 rework_requested。"""
+    run_dir = _run(tmp_path, "rework-status")
+    from shumozizi.simple.authoring import mark_authoring_status
+
+    mark_authoring_status(run_dir, "draft_imported")  # 外部稿已导入
+    _write_requests(run_dir)
+    decide_author_request(
+        run_dir,
+        [
+            {
+                "gap_id": "GAP-Q3-01",
+                "decision": "fulfill",
+                "route": "visual",
+                "reason": "约束余量图确实必要",
+            },
+            {
+                "gap_id": "GAP-Q3-02",
+                "decision": "waive",
+                "route": "author",
+                "reason": "当前规模证据已足够",
+            },
+        ],
+    )
+    assert read_authoring(run_dir)["authoring_status"] == "rework_requested"
 
 
 def test_reject_must_record_reason(tmp_path: Path) -> None:

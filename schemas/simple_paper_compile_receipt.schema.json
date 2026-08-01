@@ -15,8 +15,12 @@
     "fallback_used": {"type": "boolean"},
     "fallback_reason": {"type": ["string", "null"]},
     "compiler": {"enum": ["latexmk", "xelatex", "pdflatex", "tectonic", "typst"]},
-    "entrypoint_path": {"pattern": "^paper/main\\.(tex|typ)$"},
+    "entrypoint_path": {"pattern": "^(paper/main\\.(tex|typ)|paper/imported-author/main\\.tex)$"},
     "entrypoint_sha256": {"$ref": "#/$defs/sha"},
+    "external_author_compile": {"type": "boolean"},
+    "external_draft_sha256": {"$ref": "#/$defs/sha"},
+    "import_audit_sha256": {"$ref": "#/$defs/sha"},
+    "handoff_revision": {"type": "integer", "minimum": 0},
     "paper_source_sha256": {"$ref": "#/$defs/sha"},
     "formal_result_digest": {"type": ["string", "null"]},
     "paper_policy_fingerprint": {"$ref": "#/$defs/sha"},
@@ -49,7 +53,13 @@
   "allOf": [
     {
       "if": {"properties": {"engine": {"const": "latex"}}},
-      "then": {"properties": {"entrypoint_path": {"const": "paper/main.tex"}}}
+      "then": {
+        "properties": {
+          "entrypoint_path": {
+            "enum": ["paper/main.tex", "paper/imported-author/main.tex"]
+          }
+        }
+      }
     },
     {
       "if": {"properties": {"engine": {"const": "typst"}}},

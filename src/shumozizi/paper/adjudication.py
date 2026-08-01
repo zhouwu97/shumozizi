@@ -80,6 +80,31 @@ def _find_reviewer_finding(findings: list[dict[str, Any]], finding_id: str) -> d
     raise ContractError(f"Reviewer findings 中不存在: {finding_id}")
 
 
+def _verify_reviewer_freshness(root: Path, reviewer: dict[str, Any]) -> None:
+    """复验 Reviewer 当时所读 PDF、论文政策与外部草稿是否仍是当前版本。
+
+    PDF 或草稿变化后，旧 Reviewer findings 不能继续裁决；政策变化同样使
+    findings stale。这防止"Reviewer 看 v1、Adjudicator 对 v2 使用 v1 意见"。
+    """
+    errors: list[str] = []
+    pdf_rel = reviewer.get("source_pdf")
+    pdf = root / pdf_rel if pdf_rel else None
+    if pdf is None or not pdf.is_file() or sha256_file(pdf) != reviewer.get("source_pdf_sha256"):
+        errors.append("Reviewer 所读 PDF 已变化或缺失，findings 已 stale")
+    from shumozizi.core.repo_root import resolve_repo_root
+    from shumozizi.paper.policy import policy_fingerprint
+
+    expected_policy = policy_fingerprint(resolve_repo_root(Path(__file__)), "paper")
+    if reviewer.get("paper_policy_fingerprint") != expected_policy:
+        errors.append("论文政策指纹已变化，Reviewer findings 已 stale")
+    draft_sha = reviewer.get("external_draft_sha256")
+    draft = root / "paper/external-author/draft.tex"
+    if draft_sha and draft.is_file() and sha256_file(draft) != draft_sha:
+        errors.append("外部草稿已变化，Reviewer findings 已 stale")
+    if errors:
+        raise ContractError("; ".join(errors))
+
+
 def _validate_decision_bounds(
     reviewer_finding: dict[str, Any],
     raw: dict[str, Any],
@@ -100,8 +125,13 @@ def _validate_decision_bounds(
         if decision == "accept":
             return "import audit 客观失败不可主观判为可接受"
     if finding_class == "scientific_fact_candidate" and raw.get("confirmed") is True:
+        if finding_id not in confirmed_fact_ids:
+            return (
+                "scientific fact candidate 的确认必须来自 machine binding 或独立复算"
+                "（confirmed-scientific-fact-failures.json），不能由 Adjudicator 主观确认"
+            )
         if severity not in {"P0", "P1"}:
-            return "scientific fact candidate 若成立只能为 P0/P1，交由机器确认"
+            return "已确认的科学事实错误只能为 P0/P1"
     if finding_class not in ADJUDICABLE_CLASSES and finding_class != "scientific_fact_candidate":
         return f"finding_class={finding_class} 不可由 Adjudicator 自由裁决"
     return ""
@@ -126,6 +156,7 @@ def record_adjudication(
     """
     root = run_dir.resolve()
     reviewer = load_reviewer_findings(root)
+    _verify_reviewer_freshness(root, reviewer)
     findings = reviewer.get("findings", [])
     if not findings:
         raise ContractError("没有待裁决的 Reviewer finding")
@@ -184,7 +215,31 @@ def record_adjudication(
     require_valid(document, "paper_editorial_adjudication")
     atomic_json(root / ADJUDICATION_PATH, document)
     _sync_confirmed_p0_p1_to_paper_review(root, reviewer, decisions)
+    _advance_authoring_for_adjudication(root, decisions)
     return document
+
+
+def _advance_authoring_for_adjudication(root: Path, decisions: list[dict[str, Any]]) -> None:
+    """根据裁决结果推进 authoring_status。
+
+    存在 confirmed P0/P1 或需要返修的 finding 时标记 ``rework_requested``；
+    全部通过则标记 ``author_pass_accepted``，允许进入正式最终编译。
+    """
+    from shumozizi.simple.authoring import mark_authoring_status, read_authoring
+
+    if read_authoring(root)["authoring_status"] != "draft_imported":
+        return
+    has_confirmed_p0_p1 = any(
+        item.get("confirmed") is True and item.get("confirmed_severity") in {"P0", "P1"}
+        for item in decisions
+    )
+    needs_rework = any(
+        item.get("confirmed") is True and item.get("decision") == "rework" for item in decisions
+    )
+    if has_confirmed_p0_p1 or needs_rework:
+        mark_authoring_status(root, "rework_requested")
+    else:
+        mark_authoring_status(root, "author_pass_accepted")
 
 
 def _repair_type_for_route(route: str) -> str:

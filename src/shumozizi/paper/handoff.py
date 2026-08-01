@@ -255,8 +255,9 @@ def _write_blueprint_projection(root: Path, handoff_dir: Path) -> Path:
     text = source.read_text(encoding="utf-8")
     path = handoff_dir / "PAPER_BLUEPRINT.md"
     path.write_text(
-        "<!-- 由 shumozizi 投影 paper/PAPER_BLUEPRINT.md 生成，结构与论证顺序不可自行打乱。 -->\n\n"
-        + text,
+        "<!-- 由 shumozizi 投影 paper/PAPER_BLUEPRINT.md 生成。这是推荐的论证主线，"
+        "允许为提升可读性调整局部章节、段落和图表顺序，但不得改变答案、模型语义、"
+        "证据边界与跨问逻辑依赖。 -->\n\n" + text,
         encoding="utf-8",
     )
     return path

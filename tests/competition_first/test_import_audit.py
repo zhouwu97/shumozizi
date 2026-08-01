@@ -16,6 +16,7 @@ from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.paper.handoff import _package_digests
 from shumozizi.paper.import_audit import (
     classify_fact_candidates,
+    extract_numbers,
     import_external_draft,
     require_import_audit_passed,
 )
@@ -286,6 +287,45 @@ def test_freshness_stale_leads_to_needs_rebase(tmp_path: Path) -> None:
     receipt = import_external_draft(run_dir, draft_source=draft, compile_draft=False)
     assert receipt["status"] == "needs_rebase"
     assert (run_dir / "paper/external-author/draft.tex").is_file()
+
+
+def test_number_in_other_question_does_not_mask_error() -> None:
+    """Q1 出现 581 不能掩盖 Q3 的 582 错误——数字按本问段落逐问绑定。"""
+    document = {
+        "questions": [
+            {"question_id": "Q1", "must_answer": "12 人"},
+            {"question_id": "Q3", "must_answer": "581 人"},
+        ]
+    }
+    # Q1 同时包含自己的答案 12 与"样本数 581"；Q3 写错为 582。
+    draft = (
+        "\\section{Q1}\nQ1 需要 12 人，数据集共有 581 个样本。\n"
+        "\\section{Q3}\nQ3 最少需要 582 人。\n"
+    )
+    findings = extract_numbers(draft, document)
+    wrong = [item for item in findings if item["class"] == "wrong_number"]
+    assert len(wrong) == 1
+    assert wrong[0]["location"].startswith("Q3")
+    assert wrong[0]["formal_value"] == "581"
+    assert wrong[0]["draft_value"] == "582"
+
+
+def test_wrong_number_detects_magnitude_error() -> None:
+    """formal 12 + draft 120：12 不能被子串 120 掩盖，必须判定写错。"""
+    document = {"questions": [{"question_id": "Q1", "must_answer": "12 人"}]}
+    draft = "\\section{Q1}\nQ1 需要 120 人。\n"
+    findings = extract_numbers(draft, document)
+    wrong = [item for item in findings if item["class"] == "wrong_number"]
+    assert len(wrong) == 1
+    assert wrong[0]["formal_value"] == "12"
+    assert wrong[0]["draft_value"] == "120"
+
+
+def test_numeric_normalization_matches_equivalent_forms() -> None:
+    """formal 581.0 + draft 581：数值等价，不产生 finding。"""
+    document = {"questions": [{"question_id": "Q3", "must_answer": "581.0 人"}]}
+    draft = "\\section{Q3}\nQ3 最少需要 581 人。\n"
+    assert extract_numbers(draft, document) == []
 
 
 def test_classify_fact_candidates_rejects_matching_numbers(tmp_path: Path) -> None:

@@ -6,14 +6,18 @@
   "additionalProperties": false,
   "required": [
     "schema_name", "schema_version", "run_id", "source_pdf",
-    "reviewer_context_id", "findings", "generated_at"
+    "source_pdf_sha256", "reviewer_context_id", "paper_policy_fingerprint",
+    "external_draft_sha256", "findings", "generated_at"
   ],
   "properties": {
     "schema_name": {"const": "paper_reviewer_findings"},
     "schema_version": {"const": "1.0"},
     "run_id": {"type": "string", "minLength": 1},
     "source_pdf": {"type": "string", "minLength": 1},
+    "source_pdf_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "reviewer_context_id": {"type": "string", "minLength": 1},
+    "paper_policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "external_draft_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
     "findings": {
       "type": "array",
       "items": {

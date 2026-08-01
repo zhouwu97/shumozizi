@@ -38,13 +38,13 @@ def audit_page_budget(
     Args:
         run_dir: 当前运行目录。
         pdf_path: 待审计的 PDF，必须位于运行目录内。
-        enforce_minimum: 是否把少于 18 页提升为编译阻断。
+        enforce_minimum: 已弃用；页数只作为竞赛编辑信号，不再硬阻断。
 
     Returns:
         含页数、目标区间、产物摘要和审计结论的回执。
 
     Raises:
-        ContractError: PDF 无效、越过运行目录，或启用硬门时页数不足。
+        ContractError: PDF 无效或越过运行目录。
     """
     root = run_dir.resolve()
     artifact = pdf_path.resolve()
@@ -77,11 +77,9 @@ def audit_page_budget(
     }
     require_valid(report, "paper_page_budget")
     atomic_json(root / PAGE_BUDGET_PATH, report)
-    if enforce_minimum and page_count < UNDERDEVELOPED_THRESHOLD:
-        raise ContractError(
-            f"论文页数门阻断：当前 {page_count} 页，低于 {UNDERDEVELOPED_THRESHOLD} 页；"
-            "请展开问题分析、关键推导、机制解释和验证边界后再编译候选稿。"
-        )
+    # 页数只回答"这篇论文是否值得进一步检查"，不回答"是否合格"。
+    # 少于 18 页由 content coverage + Fresh Reviewer + Adjudicator 判断，
+    # 而不是在这里硬阻断。enforce_minimum 参数保留兼容但不再触发阻断。
     return report
 
 

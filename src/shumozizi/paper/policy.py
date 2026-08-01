@@ -55,6 +55,7 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "src/shumozizi/paper/adjudication.py",
             root / "schemas/paper_reviewer_findings.schema.json",
             root / "schemas/paper_editorial_adjudication.schema.json",
+            root / "schemas/imported_author_receipt.schema.json",
             root / "src/shumozizi/paper/layout_optimizer.py",
             root / "schemas/paper_layout_optimization.schema.json",
         )
@@ -221,10 +222,22 @@ def evaluate_staleness(
         "evaluated_at": utc_now(),
         "current": {
             "formal_results": "current",
-            "material_pool": "stale" if result_changed or paper_changed else ("current" if pool else "missing"),
-            "research_storyboard": "stale" if result_changed or paper_changed or storyboard_changed else ("current" if storyboard else "missing"),
-            "visual_opportunities": "stale" if result_changed or visual_changed else ("current" if opportunities else "missing"),
-            "paper": "stale" if result_changed or paper_changed or storyboard_changed or visual_changed or paper_compile_changed else ("current" if compile_receipt else "missing"),
+            "material_pool": "stale"
+            if result_changed or paper_changed
+            else ("current" if pool else "missing"),
+            "research_storyboard": "stale"
+            if result_changed or paper_changed or storyboard_changed
+            else ("current" if storyboard else "missing"),
+            "visual_opportunities": "stale"
+            if result_changed or visual_changed
+            else ("current" if opportunities else "missing"),
+            "paper": "stale"
+            if result_changed
+            or paper_changed
+            or storyboard_changed
+            or visual_changed
+            or paper_compile_changed
+            else ("current" if compile_receipt else "missing"),
         },
         "changed_domains": {
             "formal_results": result_changed,
@@ -238,7 +251,11 @@ def evaluate_staleness(
                 "material_pool": result_changed or paper_changed,
                 "research_storyboard": result_changed or paper_changed or storyboard_changed,
                 "visual_opportunities": result_changed or visual_changed,
-                "paper_compile": result_changed or paper_changed or storyboard_changed or visual_changed or paper_compile_changed,
+                "paper_compile": result_changed
+                or paper_changed
+                or storyboard_changed
+                or visual_changed
+                or paper_compile_changed,
             }.items()
             if state
         ],

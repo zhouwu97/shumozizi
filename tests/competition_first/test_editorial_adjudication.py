@@ -11,14 +11,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pypdf import PdfWriter
 
-from shumozizi.core.io import ContractError, atomic_json
+from shumozizi.core.io import ContractError, atomic_json, sha256_file
+from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.paper.adjudication import (
     load_confirmed_fact_failures,
     record_adjudication,
     require_paper_editorial_adjudication,
 )
 from shumozizi.paper.import_audit import classify_fact_candidates
+from shumozizi.paper.policy import policy_fingerprint
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.state import utc_now
 
@@ -33,19 +36,40 @@ def _run(tmp_path: Path, name: str = "adjudication") -> Path:
     )
 
 
+def _write_pdf(path: Path) -> None:
+    """写入一页最小合法 PDF，用于绑定 Reviewer 所读 PDF 的 SHA。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    with path.open("wb") as stream:
+        writer.write(stream)
+
+
+def _current_policy_fingerprint() -> str:
+    """计算当前论文政策指纹，供 Reviewer 回执绑定。"""
+    return policy_fingerprint(resolve_repo_root(Path(__file__)), "paper")
+
+
 def _write_reviewer(
     run_dir: Path,
     findings: list[dict[str, object]],
     *,
     source_pdf: str = "paper/external-author/draft.pdf",
 ) -> None:
-    """写入 Fresh Reviewer finding 文档。"""
+    """写入绑定当前 PDF、政策与草稿 SHA 的 Fresh Reviewer finding 文档。"""
+    pdf_path = run_dir / source_pdf
+    if not pdf_path.is_file():
+        _write_pdf(pdf_path)
+    draft = run_dir / "paper/external-author/draft.tex"
     document = {
         "schema_name": "paper_reviewer_findings",
         "schema_version": "1.0",
         "run_id": run_dir.name,
         "source_pdf": source_pdf,
+        "source_pdf_sha256": sha256_file(pdf_path),
         "reviewer_context_id": "fresh-thread-01",
+        "paper_policy_fingerprint": _current_policy_fingerprint(),
+        "external_draft_sha256": sha256_file(draft) if draft.is_file() else None,
         "findings": findings,
         "generated_at": utc_now(),
     }
@@ -296,6 +320,75 @@ def test_adjudication_requires_coverage_of_all_findings(tmp_path: Path) -> None:
             run_dir,
             [_decision("REV-Q3-01", confirmed_severity="P2", decision="accept")],
         )
+
+
+def test_adjudication_rejects_stale_pdf(tmp_path: Path) -> None:
+    """P0-4：Reviewer 所读 PDF 变化后，旧 findings 不可继续裁决。"""
+    run_dir = _run(tmp_path, "stale-pdf")
+    _write_audit(run_dir)
+    _write_reviewer(
+        run_dir,
+        [_finding("REV-Q3-05", finding_class="visual", severity="P2")],
+    )
+    pdf_path = run_dir / "paper/external-author/draft.pdf"
+    with pdf_path.open("ab") as stream:
+        stream.write(b" ")  # 改变内容 → SHA 失配
+    with pytest.raises(ContractError, match="stale"):
+        record_adjudication(
+            run_dir,
+            [
+                _decision(
+                    "REV-Q3-05",
+                    confirmed_severity="P2",
+                    decision="accept",
+                    reason="图问题不大。",
+                )
+            ],
+        )
+
+
+def test_fact_candidate_cannot_be_subjectively_confirmed(tmp_path: Path) -> None:
+    """P0-5：scientific_fact_candidate 未经机器/独立复算确认，不可 confirmed=true。"""
+    run_dir = _run(tmp_path, "subjective-fact")
+    _write_audit(run_dir)  # 无 confirmed fact failures
+    _write_reviewer(
+        run_dir,
+        [
+            _finding(
+                "REV-Q3-02",
+                finding_class="scientific_fact_candidate",
+                severity="P1",
+            )
+        ],
+    )
+    with pytest.raises(ContractError, match="不能由 Adjudicator 主观确认"):
+        record_adjudication(
+            run_dir,
+            [
+                _decision(
+                    "REV-Q3-02",
+                    confirmed=True,
+                    confirmed_severity="P1",
+                    decision="rework",
+                    reason="Reviewer 判断数字错了。",
+                )
+            ],
+        )
+    # 只能 confirmed=false 并路由到 analysis 等待机器确认。
+    document = record_adjudication(
+        run_dir,
+        [
+            _decision(
+                "REV-Q3-02",
+                confirmed=False,
+                confirmed_severity="P2",
+                route="analysis",
+                decision="rework",
+                reason="交给机器绑定确认。",
+            )
+        ],
+    )
+    assert document["decisions"][0]["confirmed"] is False
 
 
 def _load_audit(run_dir: Path) -> dict:

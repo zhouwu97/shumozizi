@@ -291,14 +291,13 @@ def test_strict_cold_reader_requires_current_source_or_explicit_waiver(tmp_path:
     assert editorial_readiness(run_dir, require_record=True)["ready"] is True
 
 
-def test_page_budget_writes_report_before_blocking_short_pdf(tmp_path: Path) -> None:
-    """少于 18 页必须留下页数证据并阻断严格候选编译。"""
+def test_page_budget_records_signal_without_blocking_short_pdf(tmp_path: Path) -> None:
+    """少于 18 页只记录编辑信号，不再硬阻断；是否合格交给内容与审阅。"""
     run_dir = _run(tmp_path, "page-budget")
     pdf = run_dir / "paper/short.pdf"
     _write_pdf(pdf, 10)
-    with pytest.raises(ContractError, match="页数门阻断"):
-        audit_page_budget(run_dir, pdf, enforce_minimum=True)
-    report = load_json(run_dir / "qa/paper-page-budget.json")
+    # enforce_minimum 参数保留兼容，但页数不再触发 ContractError。
+    report = audit_page_budget(run_dir, pdf, enforce_minimum=True)
     assert report["page_count"] == 10
     assert report["status"] == "under_18_review_required"
     assert verify_page_budget(run_dir, pdf_path=pdf)["valid"] is True

@@ -22,7 +22,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.external_author import DRAFT_PATH, EXTERNAL_DIR, read_external_draft
 from shumozizi.paper.handoff import (
@@ -36,6 +36,9 @@ from shumozizi.simple.state import utc_now
 
 AUDIT_PATH = Path("review/import-audit.json")
 CONFIRMED_FAILURE_PATH = Path("review/confirmed-scientific-fact-failures.json")
+IMPORTED_AUTHOR_DIR = Path("paper/imported-author")
+IMPORTED_AUTHOR_ENTRYPOINT = IMPORTED_AUTHOR_DIR / "main.tex"
+IMPORTED_AUTHOR_RECEIPT = IMPORTED_AUTHOR_DIR / "receipt.json"
 
 ANSWER_CONTEXT = re.compile(
     r"答案|直接回答|最少|至少|最多|至多|需要.{0,10}人|结果为|最优|最小值|最大值|总计|共|"
@@ -135,33 +138,87 @@ def compile_external_draft(run_dir: Path, *, timeout_seconds: int = 300) -> dict
     return {"compiled": compiled, "engine": engine, "errors": errors}
 
 
-def _expected_answer_numbers(question: dict[str, Any]) -> list[str]:
-    """从"必须回答"文本提取期望数字。"""
-    return re.findall(r"\d+(?:\.\d+)?", str(question.get("must_answer", "")))
+def _normalize_number(value: str) -> float | None:
+    """把数字字符串规范化为数值；解析失败返回 None。"""
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _same_number(left: float, right: float) -> bool:
+    """数值意义上的相等：581、581.0、581.000 视为相同，12 与 120 不同。"""
+    return left == right
+
+
+def _expected_answer_numbers(question: dict[str, Any]) -> list[float]:
+    """从"必须回答"文本提取期望数字（数值化）。"""
+    return [
+        number
+        for token in re.findall(r"\d+(?:\.\d+)?", str(question.get("must_answer", "")))
+        if (number := _normalize_number(token)) is not None
+    ]
+
+
+def _numbers_without_question_ids(text: str, question_id: str) -> list[float]:
+    """提取文本中的数字，但先剔除题号（Q1 的 1 不应成为候选答案）。"""
+    cleaned = text.replace(question_id, "")
+    return [
+        value
+        for token in re.findall(r"\d+(?:\.\d+)?", cleaned)
+        if (value := _normalize_number(token)) is not None
+    ]
+
+
+def _question_sections(text: str, question_ids: list[str]) -> dict[str, str]:
+    """按题号标题把草稿切成逐问正文段。
+
+    每问取最后一个标题出现位置到下一个不同标题之间的文本；未找到标题的问题
+    得到空段。只用于数字绑定，不判断论证质量。
+    """
+    positions: list[tuple[int, str]] = []
+    for question_id in question_ids:
+        number = question_id[-1] if question_id and question_id[-1].isdigit() else ""
+        pattern = re.compile(rf"\b{re.escape(question_id)}\b|第\s*{number}\s*问|问题\s*{number}")
+        for match in pattern.finditer(text):
+            positions.append((match.start(), question_id))
+    positions.sort()
+    sections: dict[str, str] = {question_id: "" for question_id in question_ids}
+    for index, (start, question_id) in enumerate(positions):
+        end = positions[index + 1][0] if index + 1 < len(positions) else len(text)
+        # 同一问出现多次时取最后一次（通常为正文主体），目录项不抢占。
+        sections[question_id] = text[start:end]
+    return sections
 
 
 def extract_numbers(draft_text: str, answer_and_claims: dict[str, Any]) -> list[dict[str, Any]]:
-    """把草稿数字与正式答案绑定，产出缺失/写错两类 finding。"""
-    compact = re.sub(r"\s+", "", draft_text)
-    answer_sentences = _answer_sentences(draft_text)
+    """逐问把草稿数字与正式答案绑定，产出缺失/写错两类 finding。
+
+    核验只在本问的正文段内进行，避免"某问数字出现在全文别处"掩盖真正的错误；
+    数字按数值规范化比较（581/581.0 相同，12/120 不同）。
+    """
+    question_ids = [
+        str(item.get("question_id", "")) for item in answer_and_claims.get("questions", [])
+    ]
+    sections = _question_sections(draft_text, question_ids)
     findings: list[dict[str, Any]] = []
     for question in answer_and_claims.get("questions", []):
         question_id = str(question.get("question_id", ""))
+        section = sections.get(question_id, "")
         expected = _expected_answer_numbers(question)
         if not expected:
             continue
         for number in expected:
-            if number in compact:
+            section_numbers = _numbers_without_question_ids(section, question_id)
+            if any(_same_number(value, number) for value in section_numbers):
                 continue
-            # 期望数字缺失：在答案语境中寻找同数量级的候选数字。
-            candidates = []
-            for sentence in answer_sentences:
-                found = re.findall(r"\d+(?:\.\d+)?", sentence)
-                candidates.extend(
-                    item
-                    for item in found
-                    if item != number and len(str(int(float(item)))) == len(str(int(float(number))))
-                )
+            # 期望数字在本问缺失：在答案语境中寻找候选数字（可能是写错的答案）。
+            candidates: list[str] = []
+            for sentence in _answer_sentences(section):
+                for token in re.findall(r"\d+(?:\.\d+)?", sentence.replace(question_id, "")):
+                    value = _normalize_number(token)
+                    if value is not None and not _same_number(value, number):
+                        candidates.append(token)
             candidates = list(dict.fromkeys(candidates))
             if candidates:
                 findings.append(
@@ -170,13 +227,13 @@ def extract_numbers(draft_text: str, answer_and_claims: dict[str, Any]) -> list[
                         "class": "wrong_number",
                         "location": f"{question_id} 直接答案",
                         "observation": (
-                            f"{question_id} 应包含正式答案数字 {number}，草稿中未出现；"
-                            f"疑似写成 {', '.join(candidates[:3])}"
+                            f"{question_id} 本问应包含正式答案数字 {number:g}，"
+                            f"草稿未出现；疑似写成 {', '.join(candidates[:3])}"
                         ),
                         "verdict": "scientific_fact_candidate",
                         "can_continue_without_it": False,
-                        "evidence": f"formal={number}; draft_candidates={candidates[:5]}",
-                        "formal_value": number,
+                        "evidence": f"formal={number:g}; draft_candidates={candidates[:5]}",
+                        "formal_value": f"{number:g}",
                         "draft_value": candidates[0] if candidates else None,
                     }
                 )
@@ -186,10 +243,10 @@ def extract_numbers(draft_text: str, answer_and_claims: dict[str, Any]) -> list[
                         "finding_id": f"AUD-{question_id}-NUM-02",
                         "class": "missing_formal_answer",
                         "location": f"{question_id} 直接答案",
-                        "observation": f"{question_id} 缺少正式答案数字 {number}，草稿未覆盖该问答案",
+                        "observation": f"{question_id} 缺少正式答案数字 {number:g}，草稿未覆盖该问答案",
                         "verdict": "advisory",
                         "can_continue_without_it": True,
-                        "evidence": f"formal={number}",
+                        "evidence": f"formal={number:g}",
                     }
                 )
     return findings
@@ -521,6 +578,53 @@ def require_import_audit_passed(run_dir: Path) -> None:
         if confirmed.get("failures"):
             ids = ", ".join(str(item["finding_id"]) for item in confirmed["failures"])
             raise ContractError("外部草稿存在已确认的科学事实错误: " + ids)
+
+
+def materialize_external_draft(run_dir: Path) -> dict[str, Any]:
+    """把已审计的外部稿物化为正式编译入口。
+
+    复制 ``paper/external-author/draft.tex`` 到 ``paper/imported-author/main.tex``
+    （外部稿原文件保留），并记录 source draft SHA、import audit SHA 与
+    handoff_revision。后续 ``compile_paper`` 在 external 模式下从这个入口编译，
+    而不是继续编译内部模板的 ``paper/main.tex``。
+
+    Args:
+        run_dir: 当前运行目录。
+
+    Returns:
+        已写入的 ``paper/imported-author/receipt.json``。
+
+    Raises:
+        ContractError: 导入审计未通过或缺少草稿/manifest。
+    """
+    root = run_dir.resolve()
+    require_import_audit_passed(root)
+    draft = root / DRAFT_PATH
+    if not draft.is_file():
+        raise ContractError("缺少外部草稿 draft.tex")
+    manifest_path = root / HANDOFF_MANIFEST_PATH
+    if not manifest_path.is_file():
+        raise ContractError("缺少 Writer Handoff manifest")
+    audit_path = root / AUDIT_PATH
+    entry = root / IMPORTED_AUTHOR_ENTRYPOINT
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(draft, entry)
+    document = {
+        "schema_name": "imported_author_receipt",
+        "schema_version": "1.0",
+        "run_id": root.name,
+        "entrypoint_path": IMPORTED_AUTHOR_ENTRYPOINT.as_posix(),
+        "entrypoint_sha256": sha256_file(entry),
+        "source_draft_path": DRAFT_PATH.as_posix(),
+        "external_draft_sha256": sha256_file(draft),
+        "import_audit_path": AUDIT_PATH.as_posix(),
+        "import_audit_sha256": sha256_file(audit_path),
+        "handoff_revision": int(load_json(manifest_path).get("handoff_revision", 0)),
+        "generated_at": utc_now(),
+    }
+    require_valid(document, "imported_author_receipt")
+    atomic_json(root / IMPORTED_AUTHOR_RECEIPT, document)
+    return document
 
 
 def import_external_draft(
