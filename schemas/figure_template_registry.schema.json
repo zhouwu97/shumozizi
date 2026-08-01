@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/figure_template_registry.schema.json",
+  "title": "v3.4 figure and competition template registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "templates"],
+  "properties": {
+    "schema_name": {"const": "figure_template_registry"},
+    "schema_version": {"const": "1.0"},
+    "templates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["template_id", "family", "information_structure", "claim_roles", "status"],
+        "properties": {
+          "template_id": {"type": "string", "minLength": 1},
+          "family": {"enum": ["scientific", "schematic", "competition"]},
+          "information_structure": {"type": "string", "minLength": 1},
+          "claim_roles": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "status": {"enum": ["design_only", "renderer_available"]},
+          "renderer": {"type": ["string", "null"]},
+          "notes": {"type": "string"}
+        }
+      }
+    }
+  }
+}

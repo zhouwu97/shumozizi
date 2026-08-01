@@ -86,9 +86,7 @@ def build_figure_design_contract(
         "decision_annotation": decision_annotation,
         "generated_at": utc_now(),
     }
-    # Schema只允许作者可读字段；generated_at 作为扩展审计字段另行保留前需先移除校验。
-    payload_for_schema = {key: value for key, value in payload.items() if key != "generated_at"}
-    require_valid(payload_for_schema, FIGURE_DESIGN_CONTRACT_SCHEMA)
+    require_valid(payload, FIGURE_DESIGN_CONTRACT_SCHEMA)
     target = root / FIGURE_DESIGN_ROOT / opportunity_id / candidate_version / "design-contract.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     atomic_json(target, payload)
@@ -100,8 +98,7 @@ def read_figure_design_contract(run_dir: Path, opportunity_id: str, candidate_ve
     root = run_dir.resolve()
     path = root / FIGURE_DESIGN_ROOT / opportunity_id / candidate_version / "design-contract.json"
     payload = load_json(path)
-    payload_for_schema = {key: value for key, value in payload.items() if key != "generated_at"}
-    require_valid(payload_for_schema, FIGURE_DESIGN_CONTRACT_SCHEMA)
+    require_valid(payload, FIGURE_DESIGN_CONTRACT_SCHEMA)
     if payload.get("run_id") != read_simple_state(root)["run_id"]:
         raise ContractError("设计合同 run_id 与运行不一致")
     return payload

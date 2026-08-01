@@ -11,6 +11,8 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 
 正式结果先进入 `paper/PAPER_MATERIAL_POOL.md` 与 `paper/generated/material_pool.json`，再进入 `paper/RESEARCH_STORYBOARD.md` 与 `paper/generated/research_storyboard.json`。素材池只给作者提供直接答案、推导、结构观察、机制、对照、边界、示例和视觉机会；日志、回执、哈希、工具探测和调试路径留在控制层。故事板逐问回答评委先需要什么、现象是什么、为什么需要该数学对象、模型如何递进、哪条证据决定答案、机制是什么、边界在哪里以及如何交接到下一问。
 
+素材与故事板稳定后，可运行 `python scripts/paper/optimize_layout.py <run_dir>` 生成 `paper/generated/layout-optimization.json`。它只优化答案—数学对象—推导—机制—边界的阅读节拍、图机会位置和跨问交接；推荐顺序、页数和图数都是 advisory，不替代作者、冷读器或盲评对论文质量的判断。
+
 默认首稿使用 `python scripts/paper/compile_longform_draft.py <run_dir>`，产物为 `paper/longform-draft.pdf`，并明确“不是最终提交稿”。它要求科学证据层和素材/故事板当前，但不要求最终竞赛叙事门禁；`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。只有完成长篇冷读、叙事/视觉返修和竞赛版机械 QA 后，才使用严格 `compile_paper.py`。
 
 独立 PDF 冷读可以记录 `EXPAND`、`COMPRESS`、`REORDER`、`ADD_DERIVATION`、`ADD_MECHANISM`、`ADD_COMPARISON`、`ADD_BOUNDARY`、`ADD_FIGURE`、`ADD_COMPANION_FIGURE`、`SPLIT_FIGURE`、`DROP_FIGURE`、`MOVE_TO_APPENDIX` 和 `MERGE_PARAGRAPHS`。这些动作写入 `review/PAPER_COLD_READER_EDITORIAL.json`；未关闭动作会阻断 `compile_paper.py`，但冷读器不能直接修改正式结果或科学事实。
@@ -199,6 +201,8 @@ python scripts/paper/audit_report_style.py <run_dir>
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
 视觉机会池中的候选先写入 `figures/work/<opportunity>/<version>/design-contract.json`，设计合同保留 `visual_question`、`atomic_claim`、候选原型、面板 takeaway、机制/边界标注和政策指纹。它是设计系统输入，不是 PNG/PDF 质量证明；candidate 仍须独立视觉批评、图形 QA 和正文消费闭环。
+
+v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM semantic/classic 外壳。`design_only` 只提供当前题的结构启发，只有明确标记 `renderer_available` 的模板才可进入渲染计划；注册表不携带其他题目的数据、公式或结论。
 
 每个必答问题必须在首稿前于 `FIGURE_PLAN.json` 2.4 中分别声明 `evidence_need` 和 `presentation_need`，每张图绑定 `argument_unit_ids` 与 `obligation_types`。结构性 waived 必须有独立 `waiver_review`；required 图在 `figures/work/` 迭代，经机械 QA 与内容化人工复核后晋级 current，旧 current 自动归档；`stability` 图只能在附录消费。
 

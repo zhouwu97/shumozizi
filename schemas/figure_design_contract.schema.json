@@ -58,7 +58,7 @@
     },
     "mechanism_annotation": {"type": "string"},
     "boundary_annotation": {"type": "string"},
-    "decision_annotation": {"type": "string"}
-    ,"generated_at": {"type": "string", "format": "date-time"}
+    "decision_annotation": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"}
   }
 }

@@ -1,0 +1,28 @@
+{
+  "schema_name": "v34_narrative_patterns",
+  "schema_version": "1.0",
+  "status": "advisory",
+  "patterns": [
+    {
+      "pattern_id": "answer-preview-then-proof",
+      "role": "section_flow",
+      "sequence": ["answer_preview", "phenomenon", "mathematical_object", "derivation", "mechanism", "boundary"],
+      "use_when": "评委需要快速定位答案，但答案的可信度依赖后续推导与机制。",
+      "do_not_copy": "不复制其他论文的参数、公式、结果或章节文字。"
+    },
+    {
+      "pattern_id": "evidence-by-function",
+      "role": "evidence_selection",
+      "functions": ["lower_bound", "construction", "active_constraint", "perturbation"],
+      "use_when": "同一结论需要分别回答不可能性、可达性、机制和稳健性。",
+      "do_not_copy": "不同功能必须绑定当前题的真实结果，不能为凑证据新增空实验。"
+    },
+    {
+      "pattern_id": "visual-opportunity-editorial",
+      "role": "visual_workflow",
+      "sequence": ["visual_question", "candidate", "fresh_critic", "promote_or_split"],
+      "use_when": "图表应回答多个独立读者问题，不适合预设固定图数。",
+      "do_not_copy": "模板只提供结构启发，不提供当前题数据或结论。"
+    }
+  ]
+}

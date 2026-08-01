@@ -55,6 +55,8 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         ("evidence_function_contract", "1.0"),
         ("figure_design_contract", "1.0"),
         ("paper_editorial_actions", "1.0"),
+        ("figure_template_registry", "1.0"),
+        ("paper_layout_optimization", "1.0"),
     }
     if version != "2.0" and (name, version) not in supported_non_v2:
         return [f"Schema 校验器拒绝版本 {version}"]

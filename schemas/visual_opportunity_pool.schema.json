@@ -20,6 +20,29 @@
     "policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "generated_at": {"type": "string", "format": "date-time"},
     "status": {"enum": ["draft", "current", "stale"]},
+    "knowledge_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "advisory_only",
+        "recommendation_count",
+        "rejection_count",
+        "usable_pattern_ids",
+        "report_path",
+        "report_sha256"
+      ],
+      "properties": {
+        "status": {"enum": ["ready", "unavailable"]},
+        "advisory_only": {"const": true},
+        "recommendation_count": {"type": "integer", "minimum": 0},
+        "rejection_count": {"type": "integer", "minimum": 0},
+        "usable_pattern_ids": {"type": "array", "items": {"type": "string"}},
+        "report_path": {"type": "string", "minLength": 1},
+        "report_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
     "opportunities": {
       "type": "array",
       "items": {

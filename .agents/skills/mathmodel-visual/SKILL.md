@@ -15,6 +15,10 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 Figure Design System 只约束表达决策：原型、renderer、面板 takeaway、机制标注、边界标注和最终决策标注。设计合同写到 `figures/work/<opportunity>/<version>/design-contract.json`，候选版本和正文位置随后写回图索引；它不把 obligation 数量当成视觉充分性证明。
 
+模板注册表还提供 `active_constraint_map`、`constraint_margin_timeline`、`uncertainty_threshold_ribbon`、`model_evolution_schematic` 和 `argument_evidence_map` 等候选结构，以及 `cumcm_semantic_v34`/`cumcm_classic_v34` 两种呈现外壳。科研/示意模板默认是 `design_only`，必须由当前视觉机会、真实结构输出和独立批评决定是否实现，不能因为注册了模板就自动生成图。
+
+每次构建视觉机会池都会顺便调用 `build_visual_pattern_suggestions`，把知识库模式标为可用或因缺数据/义务不匹配而拒绝，并绑定报告摘要；该检查只提供 advisory 线索，只有作者显式采用、当前题数据满足且图表审查通过后，模式才可进入 `FIGURE_PLAN`。
+
 一个问题可以没有 hero 图、拥有多个互补图，或把视觉机会拆为模型理解图、决定性证据图和机制图。视觉数量不足只生成 `VISUAL_SCARCITY_REVIEW`，不能直接证明视觉充分或不充分；科学图与呈现图的来源、版本和失效关系必须保留。
 
 先读 [visual-pattern-cards.md](references/visual-pattern-cards.md)，从题目的数学对象选择视觉原型，不从图库名称反推图。二维或三维都不是质量标签：空间、场或三变量结构才使用 3D；精确比较阈值、区间和剖面时优先 2D。核心标准是一张图能否联合呈现数学对象、机制、约束边界、最终决策，以及不确定性或对照。

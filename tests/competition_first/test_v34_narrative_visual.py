@@ -12,6 +12,10 @@ from shumozizi.paper.editorial import (
     record_paper_cold_reader_actions,
 )
 from shumozizi.paper.evidence import review_evidence_functions
+from shumozizi.paper.layout_optimizer import (
+    build_layout_optimization,
+    layout_optimization_freshness,
+)
 from shumozizi.paper.materials import (
     build_material_pool,
     validate_material_pool_freshness,
@@ -26,6 +30,10 @@ from shumozizi.paper.storyboard import (
 from shumozizi.simple.figure_design import (
     build_figure_design_contract,
     read_figure_design_contract,
+)
+from shumozizi.simple.figure_templates_v34 import (
+    select_v34_template,
+    v34_template_registry_payload,
 )
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.visual_opportunities import (
@@ -92,6 +100,30 @@ def test_material_pool_and_storyboard_keep_writing_inputs_separate(tmp_path: Pat
     assert "第一问直接答案" in markdown
     assert "production_results_digest" not in markdown
     assert "result_id" not in markdown
+
+
+def test_material_pool_keeps_formal_metrics_as_intermediate_evidence(tmp_path: Path) -> None:
+    """正式指标进入素材池，但不会被自动升级为直接答案或机制。"""
+    run_dir = _run(tmp_path, "metrics")
+    index = load_json(run_dir / "results/index.json")
+    index["results"].append(
+        {
+            "result_id": "formal-q1",
+            "question_id": "Q1",
+            "status": "current",
+            "execution_valid": True,
+            "execution_mode": "production",
+            "metrics": {"objective": 12.5, "feasible": True},
+        }
+    )
+    atomic_json(run_dir / "results/index.json", index)
+    pool = build_material_pool(run_dir)
+    item = next(item for item in pool["items"] if item["material_id"] == "intermediate-formal-q1")
+    assert item["category"] == "Intermediate Result"
+    assert item["inclusion"] == "candidate"
+    assert not any(
+        item["category"] in {"Direct Answer", "Mechanism"} for item in pool["items"]
+    )
 
 
 def test_policy_and_result_changes_invalidate_only_downstream_assets(tmp_path: Path) -> None:
@@ -232,6 +264,53 @@ def test_visual_opportunity_critic_supports_four_editorial_actions(tmp_path: Pat
     assert (run_dir / "figures/reviews/q2-bottleneck/v1.md").is_file()
 
 
+def test_visual_opportunity_pool_checks_knowledge_without_auto_adoption(tmp_path: Path) -> None:
+    """绘图阶段报告知识模式是否可用，但不替当前题自动选择模式。"""
+    run_dir = _run(tmp_path, "knowledge-visual")
+    atomic_json(
+        run_dir / "knowledge/analysis-retrieval.json",
+        {
+            "matched_cards": [
+                {
+                    "visual_patterns": [
+                        {
+                            "pattern_id": "learned-mechanism-map",
+                            "argument_roles": ["mechanism"],
+                            "visual_archetype": "multi_panel_evidence_chain",
+                            "required_data_fields": [],
+                        }
+                    ]
+                }
+            ],
+            "accepted_patterns": [],
+        },
+    )
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {
+            "schema_name": "modeling_units",
+            "schema_version": "1.4",
+            "units": [
+                {
+                    "unit_id": "u1",
+                    "question_id": "Q1",
+                    "core_question": True,
+                    "visual_outputs": [
+                        {"argument_unit_id": "a1", "output_path": "results/raw/q1.json"}
+                    ],
+                }
+            ],
+        },
+    )
+    pool = build_visual_opportunity_pool(run_dir, opportunities=[])
+    check = pool["knowledge_check"]
+    assert check["status"] == "ready"
+    assert check["advisory_only"] is True
+    assert check["recommendation_count"] == 1
+    assert check["usable_pattern_ids"] == ["learned-mechanism-map"]
+    assert pool["opportunities"] == []
+
+
 def test_evidence_is_deduplicated_by_function_not_by_conclusion() -> None:
     """不同信任功能可以并存，同功能重复才建议压缩。"""
     report = review_evidence_functions(
@@ -259,6 +338,14 @@ def test_evidence_is_deduplicated_by_function_not_by_conclusion() -> None:
     assert report["legal"] is True
     assert len(report["distinct_function_groups"][0]["functions"]) == 2
     assert report["duplicate_groups"][0]["function"] == "lower_bound"
+
+
+def test_v34_template_registry_separates_design_assets_from_renderers() -> None:
+    """科研图、示意图和比赛外壳都可被检索，但 design_only 不伪装成 renderer。"""
+    registry = v34_template_registry_payload()
+    assert len(registry["templates"]) >= 7
+    assert select_v34_template("model_evolution_schematic")["status"] == "design_only"
+    assert select_v34_template("cumcm_semantic_v34")["status"] == "renderer_available"
 
 
 def test_storyboard_progression_and_figure_design_contract_are_linked(tmp_path: Path) -> None:
@@ -325,6 +412,58 @@ def test_storyboard_progression_and_figure_design_contract_are_linked(tmp_path: 
     )
     assert contract["candidate"]["version"] == "v1"
     assert read_figure_design_contract(run_dir, "q1-structure", "v1")["run_id"] == run_dir.name
+
+
+def test_layout_optimizer_preserves_narrative_order_without_hard_page_gate(tmp_path: Path) -> None:
+    """高级版面优化只安排论证节拍，并绑定当前故事板与机会池。"""
+    run_dir = _run(tmp_path, "layout")
+    build_material_pool(
+        run_dir,
+        materials=[
+            {
+                "material_id": "q1-mechanism",
+                "category": "Mechanism",
+                "title": "Q1 机制",
+                "content": "容量约束活跃后边际收益递减。",
+                "question_id": "Q1",
+                "inclusion": "body",
+            }
+        ],
+    )
+    build_research_storyboard(
+        run_dir,
+        cards=[
+            {
+                "question_id": "Q1",
+                "reader_needs": "先看到答案。",
+                "why_math_object": "用可行域表达共享约束。",
+                "key_derivation": "由边界条件得到判据。",
+                "mechanism": "容量约束活跃后边际收益递减。",
+                "boundary": "只适用于当前容量区间。",
+                "handoff_to_next": "将活跃约束交给 Q2。",
+            }
+        ],
+    )
+    build_visual_opportunity_pool(
+        run_dir,
+        opportunities=[
+            {
+                "opportunity_id": "q1-active",
+                "question_id": "Q1",
+                "visual_question": "哪个约束活跃？",
+                "atomic_claim": "容量约束形成瓶颈。",
+                "candidate_archetypes": ["feasible_region_active_constraints"],
+            }
+        ],
+    )
+    payload = build_layout_optimization(run_dir)
+    roles = [item["role"] for item in payload["blocks"]]
+    assert roles.index("answer_preview") < roles.index("math_object")
+    assert roles.index("math_object") < roles.index("derivation")
+    assert roles.index("derivation") < roles.index("mechanism")
+    assert roles.index("mechanism") < roles.index("boundary")
+    assert roles[-1] == "visual_opportunity"
+    assert layout_optimization_freshness(run_dir)["current"] is True
 
 
 def test_cold_reader_can_add_companion_figure_without_editing_science(tmp_path: Path) -> None:

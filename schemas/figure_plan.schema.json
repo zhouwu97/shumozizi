@@ -71,7 +71,10 @@
             "grouped-corr-split-violin", "grouped-circular-heatmap", "urban-park-cooling-combo",
             "nature-chord-diagram", "feasible-region-active-constraints",
             "interval-event-timeline", "uncertainty-fan-threshold",
-            "multi-panel-evidence-chain", "custom"
+            "multi-panel-evidence-chain", "active_constraint_map",
+            "constraint_margin_timeline", "uncertainty_threshold_ribbon",
+            "model_evolution_schematic", "argument_evidence_map",
+            "cumcm_semantic_v34", "cumcm_classic_v34", "custom"
           ]},
           "selection_reason": {"type": "string", "minLength": 1},
           "question_id": {"type": "string", "minLength": 1},

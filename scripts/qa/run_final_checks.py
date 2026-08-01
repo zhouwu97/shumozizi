@@ -31,7 +31,6 @@ from shumozizi.knowledge.external_discussion import (
 )
 from shumozizi.paper.compiler import verify_paper_compile_receipt
 from shumozizi.paper.contributions import verify_contribution_ledger
-from shumozizi.paper.readiness import check_paper_readiness
 from shumozizi.paper.references import verify_paper_references
 from shumozizi.paper.style_audit import audit_report_like_manuscript
 from shumozizi.paper.sufficiency import run_paper_structure_signal_check
@@ -272,13 +271,26 @@ def run_final_checks(
     checks.append(_check("pdf", pdf_report, "PDF、空白页、裁切、文字重叠和重复编号"))
     try:
         if competition_first:
-            readiness = check_paper_readiness(root)
+            # v3.4 将论文科学性和叙事质量交给冷读、科学挑战与盲审；终检只确认
+            # 编译收据与 PDF 这两个可机械复核的交付物，避免把“有几个小节”冒充
+            # 论文质量或模型正确性。
+            artifact_integrity_passed = bool(
+                compile_payload.get("success") is True
+                and pdf_report.get("success") is True
+            )
             content_report = {
-                "status": "signals_present" if readiness["ready"] else "missing_required_signals",
-                "mechanical_gate_passed": readiness["ready"],
-                "missing_required_signals": readiness["errors"],
+                "status": (
+                    "artifact_integrity"
+                    if artifact_integrity_passed
+                    else "artifact_integrity_failed"
+                ),
+                "mechanical_gate_passed": artifact_integrity_passed,
+                "artifact_integrity_passed": artifact_integrity_passed,
+                "paper_quality_not_decided": True,
+                "paper_quality_decision": "delegated_to_cold_reader_and_independent_blind_review",
+                "missing_required_signals": [],
                 "evidence_blockers": [],
-                "warnings": readiness.get("warnings", []),
+                "warnings": [],
             }
         else:
             content_report = run_paper_structure_signal_check(root)
@@ -299,7 +311,7 @@ def run_final_checks(
         _check(
             "paper-structure-signals",
             content_payload,
-            "逐问结构、直接答案与最低非空壳内容信号；不评价数学或论证质量",
+            "编译收据与 PDF 的 artifact integrity；论文质量交给冷读、科学挑战和盲审",
         )
     )
     try:

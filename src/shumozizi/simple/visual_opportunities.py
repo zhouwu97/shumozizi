@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.materials import read_material_pool
@@ -36,6 +36,43 @@ def _repo_root_for_run(run_dir: Path) -> Path:
     """返回包含政策文件的代码仓库根，测试运行目录不影响指纹。"""
     del run_dir
     return resolve_repo_root(Path(__file__))
+
+
+def _knowledge_check(run_dir: Path) -> dict[str, Any]:
+    """在绘图机会阶段检查知识库，保持 advisory 且不自动采用模式。"""
+    report_path = run_dir / "figures/generated/learned-pattern-suggestions.json"
+    try:
+        # 延迟导入避免知识使用模块反向加载视觉机会池造成循环依赖。
+        from shumozizi.knowledge.usage import build_visual_pattern_suggestions
+
+        report = build_visual_pattern_suggestions(run_dir)
+        return {
+            "status": str(report.get("status", "unavailable")),
+            "advisory_only": True,
+            "recommendation_count": len(report.get("recommendations", [])),
+            "rejection_count": len(report.get("rejections", [])),
+            "usable_pattern_ids": sorted(
+                {
+                    str(item.get("learned_pattern_id"))
+                    for item in report.get("recommendations", [])
+                    if isinstance(item, dict) and item.get("learned_pattern_id")
+                }
+            ),
+            "report_path": report_path.relative_to(run_dir).as_posix(),
+            "report_sha256": sha256_file(report_path) if report_path.is_file() else None,
+            "reason": report.get("reason"),
+        }
+    except (ContractError, OSError, TypeError, ValueError) as exc:
+        return {
+            "status": "unavailable",
+            "advisory_only": True,
+            "recommendation_count": 0,
+            "rejection_count": 0,
+            "usable_pattern_ids": [],
+            "report_path": report_path.relative_to(run_dir).as_posix(),
+            "report_sha256": None,
+            "reason": str(exc),
+        }
 
 
 def _opportunity(
@@ -138,6 +175,7 @@ def build_visual_opportunity_pool(
         "policy_fingerprint": policy_fingerprint(_repo_root_for_run(root), "visual"),
         "generated_at": utc_now(),
         "status": "current" if opportunities is not None and normalized else "draft",
+        "knowledge_check": _knowledge_check(root),
         "opportunities": normalized,
     }
     require_valid(payload, "visual_opportunity_pool")
@@ -289,8 +327,21 @@ def visual_opportunity_pool_freshness(run_dir: Path) -> dict[str, Any]:
     root = run_dir.resolve()
     payload = read_visual_opportunity_pool(root)
     current = policy_fingerprint(_repo_root_for_run(root), "visual")
+    knowledge_check = payload.get("knowledge_check")
+    knowledge_report = root / "figures/generated/learned-pattern-suggestions.json"
+    knowledge_stale = (
+        isinstance(knowledge_check, dict)
+        and knowledge_check.get("report_sha256") is not None
+        and (
+            not knowledge_report.is_file()
+            or sha256_file(knowledge_report) != knowledge_check.get("report_sha256")
+        )
+    )
     return {
-        "current": payload.get("policy_fingerprint") == current,
-        "stale_fields": [] if payload.get("policy_fingerprint") == current else ["policy_fingerprint"],
+        "current": payload.get("policy_fingerprint") == current and not knowledge_stale,
+        "stale_fields": [
+            *([] if payload.get("policy_fingerprint") == current else ["policy_fingerprint"]),
+            *(["knowledge_check"] if knowledge_stale else []),
+        ],
         "run_id": payload["run_id"],
     }

@@ -32,6 +32,9 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "src/shumozizi/paper/editorial.py",
             root / "schemas/paper_material_pool.schema.json",
             root / "schemas/research_storyboard.schema.json",
+            root / "schemas/figure_template_registry.schema.json",
+            root / "src/shumozizi/paper/layout_optimizer.py",
+            root / "schemas/paper_layout_optimization.schema.json",
         )
     if kind == "visual":
         return common + (
@@ -39,8 +42,10 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "src/shumozizi/simple/figures.py",
             root / "src/shumozizi/simple/figure_design.py",
             root / "src/shumozizi/simple/visual_opportunities.py",
+            root / "src/shumozizi/knowledge/usage.py",
             root / "schemas/figure_plan.schema.json",
             root / "schemas/visual_opportunity_pool.schema.json",
+            root / "schemas/figure_template_registry.schema.json",
         )
     raise ContractError(f"未知政策域: {kind}")
 

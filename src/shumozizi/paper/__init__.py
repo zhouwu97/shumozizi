@@ -29,6 +29,11 @@ from .gate import (
     gate_paper_claims,
     require_paper_claim_allowed,
 )
+from .layout_optimizer import (
+    build_layout_optimization,
+    layout_optimization_freshness,
+    read_layout_optimization,
+)
 from .receipts import verify_figure_receipts, verify_paper_build_receipt, verify_production_receipts
 from .references import (
     register_paper_references,
@@ -56,6 +61,9 @@ __all__ = [
     "review_evidence_functions",
     "write_evidence_function_contract",
     "read_evidence_function_contract",
+    "build_layout_optimization",
+    "read_layout_optimization",
+    "layout_optimization_freshness",
     "record_paper_cold_reader_actions",
     "close_editorial_action",
     "editorial_readiness",

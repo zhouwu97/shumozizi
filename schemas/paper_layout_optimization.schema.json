@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_layout_optimization.schema.json",
+  "title": "Advisory paper layout optimization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "status",
+    "policy_fingerprint",
+    "storyboard_digest",
+    "visual_opportunity_digest",
+    "question_order",
+    "blocks",
+    "hints",
+    "warnings",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_layout_optimization"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"const": "advisory"},
+    "policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "storyboard_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "visual_opportunity_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "question_order": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "block_id",
+          "sequence",
+          "question_id",
+          "role",
+          "media",
+          "density_hint",
+          "rationale",
+          "material_ids",
+          "visual_opportunity_ids"
+        ],
+        "properties": {
+          "block_id": {"type": "string", "minLength": 1},
+          "sequence": {"type": "integer", "minimum": 1},
+          "question_id": {"type": "string", "minLength": 1},
+          "role": {
+            "enum": [
+              "answer_preview",
+              "phenomenon",
+              "math_object",
+              "derivation",
+              "mechanism",
+              "boundary",
+              "visual_opportunity",
+              "handoff"
+            ]
+          },
+          "media": {"enum": ["prose", "equation", "figure", "prose_and_figure"]},
+          "density_hint": {"enum": ["expand", "normal", "light"]},
+          "rationale": {"type": "string", "minLength": 1},
+          "material_ids": {"type": "array", "items": {"type": "string"}},
+          "visual_opportunity_ids": {"type": "array", "items": {"type": "string"}},
+          "candidate_archetypes": {"type": "array", "items": {"type": "string"}},
+          "recommended_location": {"enum": ["body", "appendix", "candidate"]}
+        }
+      }
+    },
+    "hints": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "warnings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

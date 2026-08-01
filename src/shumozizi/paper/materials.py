@@ -119,6 +119,22 @@ def _result_materials(result: dict[str, Any]) -> list[dict[str, Any]]:
     question_id = result.get("question_id")
     question = str(question_id) if isinstance(question_id, str) else None
     materials: list[dict[str, Any]] = []
+    metrics = _text(result.get("metrics"))
+    if metrics:
+        # 指标是正式结果中的真实中间证据，但它没有自动携带题意解释，
+        # 因此只进入 Intermediate Result，不冒充 Direct Answer 或 Mechanism。
+        materials.append(
+            _base_item(
+                material_id=f"intermediate-{rid}",
+                category="Intermediate Result",
+                title=f"{question or '共享'}正式结果指标",
+                content=metrics,
+                question_id=question,
+                result_ids=[rid],
+                inclusion="candidate",
+                evidence_grade="formal_result",
+            )
+        )
     conclusion = _text(result.get("conclusion") or result.get("answer"))
     if conclusion:
         materials.append(
