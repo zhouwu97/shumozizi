@@ -87,6 +87,29 @@ def _answer_sentences(text: str) -> list[str]:
     ]
 
 
+def _copy_external_assets(root: Path, dest: Path) -> None:
+    """把外部稿目录的全部素材复制到目标目录，保留相对路径语义。
+
+    真实草稿常含 ``\\input``、``\\includegraphics``、子文件等相对路径依赖；
+    只复制 ``draft.tex`` 会在换目录后断裂。这里连同 companion 一起复制，
+    ``draft.tex`` 落盘为目标目录的 ``main.tex``，不复制编译产物。
+    """
+    source = root / EXTERNAL_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    for path in source.rglob("*"):
+        if not path.is_file() or path.name in {"draft.pdf"}:
+            continue
+        if "build" in path.parts:
+            continue
+        relative = path.relative_to(source)
+        if relative.as_posix() == DRAFT_PATH.name:
+            target = dest / "main.tex"
+        else:
+            target = dest / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+
+
 def compile_external_draft(run_dir: Path, *, timeout_seconds: int = 300) -> dict[str, Any]:
     """在隔离目录编译外部草稿，产出 ``draft.pdf`` 与编译回执。
 
@@ -107,8 +130,7 @@ def compile_external_draft(run_dir: Path, *, timeout_seconds: int = 300) -> dict
     from shumozizi.paper.compiler import _compiler_steps, _extract_latex_errors
 
     build_dir = root / EXTERNAL_DIR / "build"
-    build_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(draft, build_dir / "main.tex")
+    _copy_external_assets(root, build_dir)
     try:
         engine, steps = _compiler_steps("latex")
     except ContractError as exc:
@@ -607,8 +629,7 @@ def materialize_external_draft(run_dir: Path) -> dict[str, Any]:
         raise ContractError("缺少 Writer Handoff manifest")
     audit_path = root / AUDIT_PATH
     entry = root / IMPORTED_AUTHOR_ENTRYPOINT
-    entry.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(draft, entry)
+    _copy_external_assets(root, entry.parent)
     document = {
         "schema_name": "imported_author_receipt",
         "schema_version": "1.0",

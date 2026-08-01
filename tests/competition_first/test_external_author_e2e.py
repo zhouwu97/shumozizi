@@ -17,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from pypdf import PdfReader
 from test_competition_first_v32 import (
     _actual,
@@ -27,7 +28,7 @@ from test_competition_first_v32 import (
     _register_result,
 )
 
-from shumozizi.core.io import atomic_json, load_json, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.paper.adjudication import record_adjudication
 from shumozizi.paper.compiler import compile_paper
@@ -478,3 +479,165 @@ def test_external_author_e2e_closed_loop(tmp_path: Path) -> None:
     text = _pdf_text(run_dir / "paper/final.pdf")
     assert "EXTERNAL SENTINEL" in text
     assert "INTERNAL SENTINEL" not in text
+
+
+def _prepare_handoff(run_dir: Path) -> None:
+    """运行 prepare_writer_handoff CLI，进入 waiting_external_author。"""
+    script = REPO_ROOT / "scripts/paper/prepare_writer_handoff.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), str(run_dir)],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert read_authoring(run_dir)["authoring_status"] == "waiting_external_author"
+
+
+def _import_and_materialize(run_dir: Path, draft_path: Path) -> None:
+    """导入外部稿（真实编译）并物化为正式编译入口。"""
+    _write_author_requests(run_dir)
+    ledger = decide_author_request(
+        run_dir,
+        [
+            {
+                "gap_id": "GAP-E2E-01",
+                "decision": "waive",
+                "route": "author",
+                "reason": "单位按正式结果原始写法即可。",
+            }
+        ],
+    )
+    assert ledger["decisions"][0]["decision"] == "waive"
+    receipt = import_external_draft(run_dir, draft_source=draft_path, compile_draft=True)
+    assert receipt["status"] == "draft_imported", receipt
+    materialize_external_draft(run_dir)
+
+
+def _advance_to_materialized(
+    run_dir: Path,
+    tmp_path: Path,
+    *,
+    draft_path: Path | None = None,
+) -> Path:
+    """把运行推进到：waiting → draft 导入 → draft_imported → materialize。"""
+    _prepare_handoff(run_dir)
+    if draft_path is None:
+        draft_path = _write_external_draft(run_dir, tmp_path)
+    _import_and_materialize(run_dir, draft_path)
+    return run_dir
+
+
+def _accept_draft(run_dir: Path) -> None:
+    """Fresh Reviewer（绑定 PDF SHA）+ 裁决 → author_pass_accepted。"""
+    _write_reviewer_findings(run_dir)
+    adjudication = record_adjudication(
+        run_dir,
+        [
+            {
+                "finding_id": "REV-E2E-01",
+                "confirmed": True,
+                "confirmed_severity": "P3",
+                "route": "author",
+                "decision": "accept",
+                "reason": "论证整体成立，无需返修。",
+            }
+        ],
+    )
+    assert adjudication["decisions"][0]["decision"] == "accept"
+    assert read_authoring(run_dir)["authoring_status"] == "author_pass_accepted"
+
+
+def _minimal_png() -> bytes:
+    """用标准库生成一像素合法 PNG，供外部稿 includegraphics 使用。"""
+    import struct
+    import zlib
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        payload = tag + data
+        return (
+            struct.pack(">I", len(data))
+            + payload
+            + struct.pack(">I", zlib.crc32(payload) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)  # 1x1 RGBA
+    idat = zlib.compress(b"\x00\x00\x00\x00\x00")
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+
+
+def test_external_draft_with_real_dependencies_compiles(tmp_path: Path) -> None:
+    """复核点 #1：外部稿含 includegraphics/cite/input/公式时，物化后仍能编译。"""
+    run_dir = _science_ready_run(tmp_path)
+    _prepare_handoff(run_dir)
+    number = _q1_answer_number(run_dir)
+    external = run_dir / "paper/external-author"
+    external.mkdir(parents=True, exist_ok=True)
+    (external / "companion.tex").write_text("Companion derivation text.\n", encoding="utf-8")
+    (external / "fig-q1.png").write_bytes(_minimal_png())
+    references = run_dir / "paper/references.tex"
+    references.write_text(
+        references.read_text(encoding="utf-8") + "\n\\bibitem{ref-a} Reference A.\n",
+        encoding="utf-8",
+    )
+    draft_text = (
+        "\\documentclass{article}\n"
+        "\\usepackage{graphicx}\n"
+        "\\begin{document}\n"
+        "\\section{Q1}\n"
+        f"Q1 answer needs {number} people.\n"
+        "\\input{companion}\n"
+        "\\includegraphics[width=2cm]{fig-q1.png}\n"
+        "\\[ z = \\min_x \\sum_i c_i x_i \\]\n"
+        "\\cite{ref-a}\n"
+        "\\begin{thebibliography}{9}\n"
+        "\\bibitem{ref-a} Reference A.\n"
+        "\\end{thebibliography}\n"
+        "EXTERNAL SENTINEL\n"
+        "\\end{document}\n"
+    )
+    draft_path = tmp_path / "real-deps-draft.tex"
+    draft_path.write_text(draft_text, encoding="utf-8")
+
+    _import_and_materialize(run_dir, draft_path)
+    # 物化应连同 companion/图一起复制，保持相对路径语义。
+    assert (run_dir / "paper/imported-author/companion.tex").is_file()
+    assert (run_dir / "paper/imported-author/fig-q1.png").is_file()
+    _accept_draft(run_dir)
+    receipt = compile_paper(run_dir, revision_impact="argument")
+    assert receipt["external_author_compile"] is True
+    assert (run_dir / "paper/final.pdf").is_file()
+    assert "EXTERNAL SENTINEL" in _pdf_text(run_dir / "paper/final.pdf")
+
+
+def test_external_compile_blocks_stale_materialized_draft(tmp_path: Path) -> None:
+    """复核点 #2：外部稿修改后，旧物化版本必须 stale 并阻断编译。"""
+    run_dir = _science_ready_run(tmp_path)
+    _advance_to_materialized(run_dir, tmp_path)
+    _accept_draft(run_dir)
+    draft = run_dir / "paper/external-author/draft.tex"
+    draft.write_text(draft.read_text(encoding="utf-8") + "\n% draft v2\n", encoding="utf-8")
+    with pytest.raises(ContractError, match="物化版本已 stale"):
+        compile_paper(run_dir, revision_impact="argument")
+    # 外部稿保留，不被删除。
+    assert draft.is_file()
+
+
+def test_external_compile_blocks_stale_handoff_after_result_change(tmp_path: Path) -> None:
+    """复核点 #4：正式结果变化后，旧外部稿不得继续进 candidate，标记 needs_rebase。"""
+    from shumozizi.paper.compiler import compile_paper
+
+    run_dir = _science_ready_run(tmp_path)
+    _advance_to_materialized(run_dir, tmp_path)
+    _accept_draft(run_dir)
+    # 上游材料变化 → material_pool_digest 变化 → handoff stale。
+    # （正式结果/更强路线变化会在更早的科学门禁拦截，这里只测 handoff 材料层。）
+    pool = run_dir / "paper/generated/material_pool.json"
+    pool.write_text(
+        pool.read_text(encoding="utf-8").replace('"status": "current"', '"status": "stale"', 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(ContractError, match="已 stale"):
+        compile_paper(run_dir, revision_impact="argument")
+    # 草稿保留，状态标记 needs_rebase。
+    assert (run_dir / "paper/external-author/draft.tex").is_file()
+    assert read_authoring(run_dir)["authoring_status"] == "needs_rebase"

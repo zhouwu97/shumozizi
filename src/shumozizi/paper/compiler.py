@@ -713,6 +713,36 @@ def _external_compile_source(root: Path, state: dict[str, Any]) -> dict[str, Any
     return {"compile_dir": root / "paper/imported-author", "entrypoint": entry}
 
 
+def _require_external_source_fresh(root: Path) -> None:
+    """编译外部稿前，确认物化版本仍匹配当前外部稿与当前交接材料。
+
+    外部稿被修改或上游正式结果/素材变化后，旧物化版本必须 stale 并阻断编译；
+    草稿永远保留，只标记 needs_rebase 并提示重新 materialize/导入。
+    """
+    from shumozizi.paper.handoff import verify_handoff_freshness
+    from shumozizi.paper.import_audit import IMPORTED_AUTHOR_RECEIPT
+    from shumozizi.simple.authoring import mark_authoring_status, read_authoring
+
+    freshness = verify_handoff_freshness(root)
+    if not freshness["fresh"]:
+        status = read_authoring(root)["authoring_status"]
+        if status in {"draft_imported", "author_pass_accepted"}:
+            mark_authoring_status(root, "needs_rebase")
+        raise ContractError(
+            "Writer Handoff 已 stale（" + "; ".join(freshness["reasons"][:3]) + "）；"
+            "外部稿保留，请重建交接包并重新导入"
+        )
+    draft = root / "paper/external-author/draft.tex"
+    receipt_path = root / IMPORTED_AUTHOR_RECEIPT
+    if not receipt_path.is_file():
+        raise ContractError(
+            "缺少物化回执 paper/imported-author/receipt.json，请重新 materialize_external_draft"
+        )
+    receipt = load_json(receipt_path)
+    if not draft.is_file() or sha256_file(draft) != receipt.get("external_draft_sha256"):
+        raise ContractError("外部稿已变化，物化版本已 stale；请重新 materialize_external_draft")
+
+
 def compile_paper(
     run_dir: Path,
     *,
@@ -760,6 +790,7 @@ def compile_paper(
 
         require_paper_editorial_adjudication(root)
         require_import_audit_passed(root)
+        _require_external_source_fresh(root)
     else:
         from shumozizi.paper.editorial import require_editorial_readiness
         from shumozizi.paper.readiness import require_paper_readiness

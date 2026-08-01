@@ -43,7 +43,7 @@ ALLOWED_AUTHORING_TRANSITIONS = {
         "preparing_handoff",
         "needs_rebase",
     },
-    "author_pass_accepted": {"handoff_ready", "preparing_handoff"},
+    "author_pass_accepted": {"handoff_ready", "preparing_handoff", "needs_rebase"},
     "needs_rebase": {"handoff_ready", "preparing_handoff"},
 }
 

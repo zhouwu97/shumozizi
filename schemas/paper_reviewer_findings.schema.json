@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_reviewer_findings.schema.json",
   "title": "Fresh reviewer findings on a frozen external-author draft",
+  "description": "Fresh Reviewer 审阅外部 Author 的原始草稿 PDF（paper/external-author/draft.pdf），职责是论证/写作/图表叙事与科学主张，不是最终排版产物审查；正式 final.pdf 的整体表现由独立 Final Blind Review 负责。回执必须绑定 source_pdf_sha256 / paper_policy_fingerprint / external_draft_sha256，PDF 或草稿变化即 stale。",
   "type": "object",
   "additionalProperties": false,
   "required": [
