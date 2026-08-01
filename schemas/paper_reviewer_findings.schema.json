@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_reviewer_findings.schema.json",
+  "title": "Fresh reviewer findings on a frozen external-author draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "source_pdf",
+    "reviewer_context_id", "findings", "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_reviewer_findings"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "source_pdf": {"type": "string", "minLength": 1},
+    "reviewer_context_id": {"type": "string", "minLength": 1},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id", "finding_class", "severity_recommendation", "location",
+          "observation", "why_it_matters", "suggested_route", "minimum_fix",
+          "acceptance_test"
+        ],
+        "properties": {
+          "finding_id": {"type": "string", "minLength": 1},
+          "finding_class": {
+            "enum": [
+              "scientific_fact_candidate", "scientific_support", "argument",
+              "visual", "writing", "layout", "citation"
+            ]
+          },
+          "severity_recommendation": {"enum": ["P0", "P1", "P2", "P3"]},
+          "location": {"type": "string", "minLength": 1},
+          "observation": {"type": "string", "minLength": 1},
+          "why_it_matters": {"type": "string", "minLength": 1},
+          "suggested_route": {
+            "enum": ["author", "visual", "experiment", "analysis", "render"]
+          },
+          "minimum_fix": {"type": "string", "minLength": 1},
+          "acceptance_test": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

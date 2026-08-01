@@ -52,6 +52,9 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "schemas/confirmed_scientific_fact_failure.schema.json",
             root / "schemas/author_request.schema.json",
             root / "schemas/author_request_decisions.schema.json",
+            root / "src/shumozizi/paper/adjudication.py",
+            root / "schemas/paper_reviewer_findings.schema.json",
+            root / "schemas/paper_editorial_adjudication.schema.json",
             root / "src/shumozizi/paper/layout_optimizer.py",
             root / "schemas/paper_layout_optimization.schema.json",
         )
