@@ -1,8 +1,10 @@
 """论文主张使用权限与证据门禁。"""
 
 from .compiler import (
+    compile_longform_draft,
     compile_paper,
     compile_reviewable_draft,
+    verify_longform_draft_receipt,
     verify_paper_compile_receipt,
     verify_reviewable_draft_receipt,
 )
@@ -10,6 +12,11 @@ from .contributions import (
     build_contribution_ledger,
     require_math_innovation_allowed,
     verify_contribution_ledger,
+)
+from .evidence import (
+    read_evidence_function_contract,
+    review_evidence_functions,
+    write_evidence_function_contract,
 )
 from .gate import (
     gate_contribution_claims,
@@ -39,6 +46,9 @@ __all__ = [
     "build_contribution_ledger",
     "require_math_innovation_allowed",
     "verify_contribution_ledger",
+    "review_evidence_functions",
+    "write_evidence_function_contract",
+    "read_evidence_function_contract",
     "assess_paper_structure_signals",
     "build_content_blueprint",
     "run_paper_structure_signal_check",
@@ -47,7 +57,9 @@ __all__ = [
     "verify_paper_build_receipt",
     "verify_production_receipts",
     "compile_paper",
+    "compile_longform_draft",
     "compile_reviewable_draft",
     "verify_paper_compile_receipt",
+    "verify_longform_draft_receipt",
     "verify_reviewable_draft_receipt",
 ]

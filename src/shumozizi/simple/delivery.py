@@ -535,6 +535,34 @@ def _valid_pdf(path: Path) -> bool:
     return path.is_file() and path.stat().st_size > 8 and path.read_bytes()[:4] == b"%PDF"
 
 
+def _draft_mode(run_dir: Path) -> str:
+    """读取首稿模式；旧运行默认 reviewable 以保持迁移兼容。"""
+    path = run_dir / "paper/draft-mode.json"
+    if not path.is_file():
+        return "reviewable_draft"
+    try:
+        value = load_json(path).get("default_mode")
+    except (ContractError, OSError, ValueError):
+        return "reviewable_draft"
+    return (
+        value
+        if value in {"longform_scientific_draft", "reviewable_draft"}
+        else "reviewable_draft"
+    )
+
+
+def _longform_current(run_dir: Path) -> bool:
+    """判断长篇科学首稿回执和 PDF 是否仍有效。"""
+    if not (run_dir / "paper/longform-draft-receipt.json").is_file():
+        return False
+    try:
+        from shumozizi.paper.compiler import verify_longform_draft_receipt
+
+        return verify_longform_draft_receipt(run_dir)["valid"]
+    except (ContractError, OSError, KeyError, ValueError, TypeError):
+        return False
+
+
 def _milestone_current(run_dir: Path, name: str) -> bool:
     """复验 PDF 里程碑文件与冻结哈希仍一致。"""
     document = load_json(run_dir / PDF_MILESTONES_PATH)
@@ -733,6 +761,20 @@ def next_required_action(
         warnings.append("协议或执行器开销偏高，建议把时间转回建模、实验和论文主线。")
     summary = {**summary, "workflow_source_tracking": source_lock, "warnings": warnings}
     forbidden = _SCIENTIFIC_CHANGE_ACTIONS if _milestone_current(run_dir, "final") else []
+    if (
+        _draft_mode(run_dir) == "longform_scientific_draft"
+        and elapsed >= plan["experiment_soft_limit"]
+        and not _longform_current(run_dir)
+    ):
+        return _action(
+            state,
+            next_action="generate_longform_scientific_draft",
+            priority="P1_MAINLINE",
+            elapsed=elapsed,
+            remaining=remaining,
+            forbidden_actions=forbidden,
+            work_summary=summary,
+        )
     if elapsed >= plan["first_reviewable_pdf_deadline"] and not _milestone_current(
         run_dir, "first_reviewable"
     ):
@@ -775,7 +817,9 @@ def next_required_action(
     elif state["phase"] == "experiment":
         next_action = "qualify_answers_and_start_paper" if elapsed >= plan["experiment_soft_limit"] else "complete_answer_qualification"
     elif state["phase"] == "paper":
-        if not _milestone_current(run_dir, "first_reviewable"):
+        if _draft_mode(run_dir) == "longform_scientific_draft" and not _longform_current(run_dir):
+            next_action = "write_and_compile_longform_scientific_draft"
+        elif not _milestone_current(run_dir, "first_reviewable"):
             next_action = "write_compile_and_freeze_first_reviewable_pdf"
         elif not _milestone_current(run_dir, "candidate"):
             next_action = "revise_and_freeze_candidate_pdf"

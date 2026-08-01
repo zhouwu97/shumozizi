@@ -19,13 +19,22 @@ from shumozizi.simple.state import read_simple_state, utc_now
 
 COMPILE_RECEIPT_PATH = Path("paper/compile-receipt.json")
 REVIEWABLE_DRAFT_RECEIPT_PATH = Path("paper/reviewable-draft-receipt.json")
+LONGFORM_DRAFT_RECEIPT_PATH = Path("paper/longform-draft-receipt.json")
 _REVIEWABLE_DRAFT_STATUS_PATHS = {
     "latex": Path("paper/generated/reviewable-draft-status.tex"),
     "typst": Path("paper/generated/reviewable-draft-status.typ"),
 }
+_LONGFORM_DRAFT_STATUS_PATHS = {
+    "latex": Path("paper/generated/longform-draft-status.tex"),
+    "typst": Path("paper/generated/longform-draft-status.typ"),
+}
 _REVIEWABLE_DRAFT_ENTRYPOINTS = {
     "latex": Path("paper/reviewable-draft.tex"),
     "typst": Path("paper/reviewable-draft.typ"),
+}
+_LONGFORM_DRAFT_ENTRYPOINTS = {
+    "latex": Path("paper/longform-draft.tex"),
+    "typst": Path("paper/longform-draft.typ"),
 }
 _GENERATED_PAPER_FILES = {
     "compile-receipt.json",
@@ -36,6 +45,10 @@ _GENERATED_PAPER_FILES = {
     "reviewable-draft.tex",
     "reviewable-draft.typ",
     "reviewable-draft.pdf",
+    "longform-draft-receipt.json",
+    "longform-draft.tex",
+    "longform-draft.typ",
+    "longform-draft.pdf",
     "main.pdf",
     "main.aux",
     "main.bbl",
@@ -293,7 +306,9 @@ def _render_reviewable_disclosure(
     return "\n".join(lines) + "\n"
 
 
-def _draft_steps(engine: str, entrypoint_name: str) -> tuple[str, list[list[str]]]:
+def _draft_steps(
+    engine: str, entrypoint_name: str, *, output_name: str = "reviewable-draft.pdf"
+) -> tuple[str, list[list[str]]]:
     """把正式编译器命令改写为独立草稿入口，保持测试和工具探测兼容。"""
     compiler, steps = _compiler_steps(engine)
     rewritten: list[list[str]] = []
@@ -302,13 +317,143 @@ def _draft_steps(engine: str, entrypoint_name: str) -> tuple[str, list[list[str]
             [
                 entrypoint_name
                 if item in {"main.tex", "main.typ"}
-                else "reviewable-draft.pdf"
+                else output_name
                 if item == "final.pdf"
                 else item
                 for item in command
             ]
         )
     return compiler, rewritten
+
+
+def _render_longform_status(*, engine: str) -> str:
+    """生成长篇科学首稿的轻量状态页，不把运行控制信息写入正文。"""
+    if engine == "latex":
+        return (
+            r"\clearpage\section*{长篇科学首稿状态说明}" + "\n"
+            r"\textbf{本稿用于完整论证与独立冷读，不是最终提交稿。}" + "\n"
+            r"本稿保留研究材料池和故事板中的完整推导、结构观察、机制与边界，" + "\n"
+            r"后续由编辑审阅其篇幅、叙事和视觉取舍。" + "\n"
+        )
+    return (
+        "#pagebreak()\n= 长篇科学首稿状态说明\n"
+        "*本稿用于完整论证与独立冷读，不是最终提交稿。*\n"
+        "本稿保留研究材料池和故事板中的完整推导、结构观察、机制与边界，"
+        "后续由编辑审阅其篇幅、叙事和视觉取舍。\n"
+    )
+
+
+def compile_longform_draft(
+    run_dir: Path,
+    *,
+    timeout_seconds: int = 300,
+) -> dict[str, Any]:
+    """编译默认的长篇科学首稿。
+
+    长篇首稿要求科学输入和素材/故事板可复验，但不要求竞争稿的最终盲审、版式
+    或篇幅门禁；它是完整展开论证的中间产物，不能被 ``compile_paper`` 当作最终稿。
+    """
+    if timeout_seconds < 1 or timeout_seconds > 3600:
+        raise ContractError("论文编译 timeout_seconds 必须在 1 至 3600 之间")
+    from shumozizi.paper.materials import require_material_pool
+    from shumozizi.paper.readiness import require_scientific_readiness
+    from shumozizi.paper.storyboard import require_research_storyboard
+
+    require_scientific_readiness(run_dir)
+    require_material_pool(run_dir)
+    require_research_storyboard(run_dir)
+    manifest = require_materialized_template(run_dir)
+    engine = manifest["engine"]
+    root = run_dir.resolve()
+    paper_dir = root / "paper"
+    formal_entrypoint = paper_dir / manifest["question_layout"]["entrypoint_path"]
+    if not formal_entrypoint.is_file():
+        raise ContractError("论文模板入口缺失，不能编译长篇科学首稿")
+    status_relative = _LONGFORM_DRAFT_STATUS_PATHS[engine]
+    status_path = root / status_relative
+    _atomic_text(status_path, _render_longform_status(engine=engine))
+    entry_relative = _LONGFORM_DRAFT_ENTRYPOINTS[engine]
+    draft_entrypoint = root / entry_relative
+    source = formal_entrypoint.read_text(encoding="utf-8")
+    if engine == "latex":
+        marker = r"\end{document}"
+        if marker not in source:
+            raise ContractError("LaTeX 模板缺少 \\end{document}，无法插入长篇首稿状态页")
+        draft_source = source.replace(
+            marker,
+            r"\input{generated/longform-draft-status.tex}" + "\n" + marker,
+            1,
+        )
+    else:
+        draft_source = source + '\n#include("generated/longform-draft-status.typ")\n'
+    _atomic_text(draft_entrypoint, draft_source)
+    source_sha256 = _paper_source_sha256(paper_dir)
+    compiler, steps = _draft_steps(
+        engine, draft_entrypoint.name, output_name="longform-draft.pdf"
+    )
+    executions = _run_compiler_steps(paper_dir, steps, timeout_seconds=timeout_seconds)
+    artifact = paper_dir / "longform-draft.pdf"
+    _require_pdf(artifact)
+    receipt = {
+        "schema_version": "1.0",
+        "run_id": read_simple_state(root)["run_id"],
+        "draft_mode": "longform_scientific_draft",
+        "artifact_path": "paper/longform-draft.pdf",
+        "artifact_sha256": sha256_file(artifact),
+        "entrypoint_path": entry_relative.as_posix(),
+        "entrypoint_sha256": sha256_file(draft_entrypoint),
+        "status_path": status_relative.as_posix(),
+        "status_sha256": sha256_file(status_path),
+        "template_manifest_sha256": sha256_file(root / MANIFEST_PATH),
+        "paper_source_sha256": source_sha256,
+        "material_pool_sha256": sha256_file(root / "paper/generated/material_pool.json"),
+        "storyboard_sha256": sha256_file(root / "paper/generated/research_storyboard.json"),
+        "compiler": compiler,
+        "executions": executions,
+        "not_for_final_submission": True,
+        "generated_at": utc_now(),
+    }
+    from shumozizi.paper.policy import formal_result_digest, policy_fingerprint
+
+    receipt["formal_result_digest"] = formal_result_digest(root)
+    from shumozizi.core.repo_root import resolve_repo_root
+
+    repo_root = resolve_repo_root(Path(__file__))
+    receipt["paper_policy_fingerprint"] = policy_fingerprint(repo_root, "paper")
+    receipt["visual_policy_fingerprint"] = policy_fingerprint(repo_root, "visual")
+    atomic_json(root / LONGFORM_DRAFT_RECEIPT_PATH, receipt)
+    return receipt
+
+
+def verify_longform_draft_receipt(run_dir: Path) -> dict[str, Any]:
+    """复验长篇首稿仍绑定当前模板、状态页和 PDF。"""
+    root = run_dir.resolve()
+    receipt_path = root / LONGFORM_DRAFT_RECEIPT_PATH
+    errors: list[str] = []
+    try:
+        receipt = load_json(receipt_path)
+        if receipt.get("draft_mode") != "longform_scientific_draft":
+            errors.append("长篇首稿回执 draft_mode 无效")
+        for path_key, hash_key, label in (
+            ("artifact_path", "artifact_sha256", "长篇首稿 PDF"),
+            ("entrypoint_path", "entrypoint_sha256", "长篇首稿入口"),
+            ("status_path", "status_sha256", "长篇首稿状态页"),
+        ):
+            path = root / receipt[path_key]
+            if not path.is_file() or receipt.get(hash_key) != sha256_file(path):
+                errors.append(f"{label}缺失或已变化")
+        _require_pdf(root / receipt["artifact_path"])
+        if receipt.get("template_manifest_sha256") != sha256_file(root / MANIFEST_PATH):
+            errors.append("长篇首稿未绑定当前模板清单")
+        for relative, key in (
+            ("paper/generated/material_pool.json", "material_pool_sha256"),
+            ("paper/generated/research_storyboard.json", "storyboard_sha256"),
+        ):
+            if receipt.get(key) != sha256_file(root / relative):
+                errors.append(f"长篇首稿未绑定当前 {relative}")
+    except (ContractError, KeyError, OSError, ValueError) as exc:
+        errors.append(str(exc))
+    return {"valid": not errors, "errors": errors, "receipt_path": str(receipt_path)}
 
 
 def compile_reviewable_draft(
@@ -651,6 +796,12 @@ def compile_paper(
         "executions": executions,
         "generated_at": utc_now(),
     }
+    from shumozizi.paper.policy import formal_result_digest, policy_fingerprint
+
+    receipt["formal_result_digest"] = formal_result_digest(root)
+    repo_root = resolve_repo_root(Path(__file__))
+    receipt["paper_policy_fingerprint"] = policy_fingerprint(repo_root, "paper")
+    receipt["visual_policy_fingerprint"] = policy_fingerprint(repo_root, "visual")
     if state.get("schema_version") == "3.2":
         receipt["paper_render_revision"] = previous_render_revision + 1
         receipt["render_revision"] = previous_render_revision + 1
@@ -718,6 +869,21 @@ def verify_paper_compile_receipt(run_dir: Path) -> dict[str, Any]:
             errors.append("论文入口在编译后已变化")
         if receipt["paper_source_sha256"] != _paper_source_sha256(root / "paper"):
             errors.append("论文源文件在编译后已变化")
+        from shumozizi.paper.policy import formal_result_digest, policy_fingerprint
+
+        expected_result_digest = formal_result_digest(root)
+        if receipt.get("formal_result_digest") not in {None, expected_result_digest}:
+            errors.append("编译回执未绑定当前正式生产结果")
+        if receipt.get("paper_policy_fingerprint") not in {
+            None,
+            policy_fingerprint(resolve_repo_root(Path(__file__)), "paper"),
+        }:
+            errors.append("编译回执未绑定当前论文政策")
+        if receipt.get("visual_policy_fingerprint") not in {
+            None,
+            policy_fingerprint(resolve_repo_root(Path(__file__)), "visual"),
+        }:
+            errors.append("编译回执未绑定当前视觉政策")
         final_pdf = root / receipt["final_pdf_path"]
         try:
             _require_pdf(final_pdf)

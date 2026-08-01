@@ -1,4 +1,4 @@
-"""初始化 Competition-First v3.2 运行的命令行入口。"""
+"""初始化 Competition-First v3.4 运行的命令行入口。"""
 
 from __future__ import annotations
 
@@ -38,6 +38,12 @@ def main() -> int:
         default="3.2",
         help="新运行默认 v3.2；v3.1 仅用于兼容既有轻量运行。",
     )
+    parser.add_argument(
+        "--paper-draft-mode",
+        choices=("longform_scientific_draft", "reviewable_draft"),
+        default="longform_scientific_draft",
+        help="默认先展开长篇科学首稿；reviewable_draft 仅作披露式 fallback。",
+    )
     parser.add_argument("--repo-root")
     args = parser.parse_args()
     root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
@@ -53,6 +59,7 @@ def main() -> int:
         token_soft_cap=args.token_soft_cap,
         workflow_version=args.workflow_version,
         require_web_review=args.require_web_review,
+        paper_draft_mode=args.paper_draft_mode,
     )
     print(
         json.dumps(

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_material_pool.schema.json",
+  "title": "Paper research material pool",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "policy_fingerprint",
+    "generated_at",
+    "status",
+    "source_bindings",
+    "items"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_material_pool"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["current", "draft", "stale"]},
+    "source_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production_results_digest", "figure_index_digest", "modeling_units_digest"],
+      "properties": {
+        "production_results_digest": {"type": ["string", "null"]},
+        "figure_index_digest": {"type": ["string", "null"]},
+        "modeling_units_digest": {"type": ["string", "null"]}
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "material_id",
+          "category",
+          "title",
+          "content",
+          "question_id",
+          "source_result_ids",
+          "source_figure_ids",
+          "inclusion"
+        ],
+        "properties": {
+          "material_id": {"type": "string", "minLength": 1},
+          "category": {
+            "enum": [
+              "Direct Answer",
+              "Mathematical Derivation",
+              "Structural Observation",
+              "Mechanism",
+              "Intermediate Result",
+              "Baseline/Contrast",
+              "Boundary/Robustness",
+              "Illustrative Case",
+              "Visual Opportunity",
+              "Negative Finding"
+            ]
+          },
+          "title": {"type": "string", "minLength": 1},
+          "content": {"type": "string", "minLength": 1},
+          "question_id": {"type": ["string", "null"]},
+          "source_result_ids": {"type": "array", "items": {"type": "string"}},
+          "source_figure_ids": {"type": "array", "items": {"type": "string"}},
+          "source_paths": {"type": "array", "items": {"type": "string"}},
+          "evidence_grade": {"type": ["string", "null"]},
+          "inclusion": {"enum": ["body", "appendix", "candidate"]},
+          "media_candidates": {"type": "array", "items": {"type": "string"}},
+          "status": {"enum": ["current", "stale", "rejected"]}
+        }
+      }
+    }
+  }
+}

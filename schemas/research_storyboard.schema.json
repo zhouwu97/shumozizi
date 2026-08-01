@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/research_storyboard.schema.json",
+  "title": "Research storyboard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "policy_fingerprint",
+    "material_pool_digest",
+    "generated_at",
+    "status",
+    "question_cards"
+  ],
+  "properties": {
+    "schema_name": {"const": "research_storyboard"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "material_pool_digest": {"type": ["string", "null"]},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["draft", "current", "stale"]},
+    "question_cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["question_id", "reader_needs"],
+        "properties": {
+          "question_id": {"type": "string", "minLength": 1},
+          "reader_needs": {"type": "string", "minLength": 1},
+          "phenomenon": {"type": "string"},
+          "why_math_object": {"type": "string"},
+          "model_evolution": {"type": "string"},
+          "key_derivation": {"type": "string"},
+          "structural_finding": {"type": "string"},
+          "decision_determinant": {"type": "string"},
+          "mechanism": {"type": "string"},
+          "contrast": {"type": "string"},
+          "boundary": {"type": "string"},
+          "best_media": {"type": "array", "items": {"type": "string"}},
+          "handoff_to_next": {"type": "string"},
+          "material_ids": {"type": "array", "items": {"type": "string"}},
+          "visual_opportunity_ids": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "cross_question_links": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+  }
+}

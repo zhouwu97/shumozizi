@@ -22,7 +22,9 @@ SIMPLE_DIRECTORIES = (
     "figures/work",
     "figures/archive",
     "figures/promotions",
+    "figures/reviews",
     "paper/sections",
+    "paper/generated",
     "paper/submission",
     "review/red_team_artifacts",
     "review/tasks",
@@ -136,6 +138,10 @@ def _paper_blueprint_template(question_ids: list[str]) -> str:
         "- **适用边界**：待填写。\n\n"
         "## 跨问题论证链与连续成文\n\n"
         "待填写：各问继承的对象、新增困难、章节作用以及连续论证顺序。\n\n"
+        "## v3.4 长篇首稿交接\n\n"
+        "先读取 PAPER_MATERIAL_POOL.md 和 RESEARCH_STORYBOARD.md，再写长篇科学首稿。"
+        "每问按“答案预览—现象与困难—数学对象—模型形成—关键推导—求解—结构观察—"
+        "结果—机制—边界—下一问交接”展开；答案预览不能替代后续论证。\n\n"
         "## 正文与附录边界\n\n"
         "- **正文保留**：待填写。\n"
         "- **附录或控制层**：待填写。\n\n"
@@ -145,8 +151,8 @@ def _paper_blueprint_template(question_ids: list[str]) -> str:
         + "\n\n## 贡献（最多三项）\n\n"
         "待填写：只写由当前模型、实验或洞察支持的贡献。\n\n"
         "## 图表与篇幅\n\n"
-        "按论证义务规划模型理解、决定性证据、机制、边界和决策表达；"
-        "纯解析豁免必须说明替代表达。\n"
+        "按视觉机会池规划模型理解、决定性证据、机制、边界和决策表达；"
+        "不预设一问一图或 hero 图，纯解析豁免必须说明替代表达。\n"
     )
 
 
@@ -210,6 +216,7 @@ def initialize_simple_run(
     token_soft_cap: int | None = None,
     workflow_version: str = "3.1",
     require_web_review: bool = False,
+    paper_draft_mode: str | None = None,
 ) -> Path:
     """创建可独立恢复的 v3 运行目录。
 
@@ -224,6 +231,8 @@ def initialize_simple_run(
         token_soft_cap: 可选的 token 软上限。
         workflow_version: ``3.1`` 保持兼容；``3.2`` 启用建模单元和 LaTeX 主链。
         require_web_review: 是否把网页版 GPT 人工新对话审核设为必需交付步骤。
+        paper_draft_mode: 可选首稿模式；直接调用旧 Python API 未指定时保持
+            reviewable fallback 兼容，新 CLI 默认显式传入长篇科学首稿。
 
     Returns:
         新建运行目录。
@@ -235,6 +244,8 @@ def initialize_simple_run(
     root = repo_root.resolve()
     if workflow_version not in {"3.1", "3.2"}:
         raise ContractError("workflow_version 必须为 3.1 或 3.2")
+    if paper_draft_mode not in {None, "longform_scientific_draft", "reviewable_draft"}:
+        raise ContractError("paper_draft_mode 必须为 longform_scientific_draft 或 reviewable_draft")
     identifier = safe_simple_run_id(run_id)
     runs_root = (root / "runs").resolve()
     run_dir = (runs_root / identifier).resolve()
@@ -332,5 +343,26 @@ def initialize_simple_run(
             _paper_citation_plan_template(),
             encoding="utf-8",
             newline="\n",
+        )
+        # v3.4 的作者输入先落成空素材池和问题故事板；空池不会伪造结果，
+        # 但能让后续编排明确知道哪些科学内容仍未交接给论文层。
+        from shumozizi.paper.materials import build_material_pool
+        from shumozizi.paper.policy import refresh_policy_state
+        from shumozizi.paper.storyboard import build_research_storyboard
+
+        build_material_pool(run_dir)
+        build_research_storyboard(run_dir)
+        from shumozizi.simple.visual_opportunities import build_visual_opportunity_pool
+
+        build_visual_opportunity_pool(run_dir)
+        refresh_policy_state(run_dir)
+        atomic_json(
+            run_dir / "paper" / "draft-mode.json",
+            {
+                "schema_version": "1.0",
+                "run_id": identifier,
+                # 直接调用旧 API 不改变 v3.2 迁移测试；新 CLI 会明确传入长篇模式。
+                "default_mode": paper_draft_mode or "reviewable_draft",
+            },
         )
     return run_dir

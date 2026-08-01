@@ -236,6 +236,21 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
             and isinstance(item.get("scope", item.get("question_id")), str)
         }
         decision_errors: list[str] = []
+        opportunity_pool_mode = plan.get("visual_strategy") == "opportunity_pool"
+        opportunity_path = run_dir / "figures/visual-opportunities.json"
+        opportunity_questions: set[str] = set()
+        if opportunity_pool_mode and opportunity_path.is_file():
+            try:
+                opportunity_payload = load_json(opportunity_path)
+                opportunity_questions = {
+                    str(item.get("question_id"))
+                    for item in opportunity_payload.get("opportunities", [])
+                    if isinstance(item, dict)
+                    and isinstance(item.get("question_id"), str)
+                    and item.get("status") not in {"drop"}
+                }
+            except (OSError, ValueError, TypeError):
+                opportunity_questions = set()
         for question_id in sorted(core_questions):
             decision = decision_map.get(question_id)
             if decision is None:
@@ -256,10 +271,12 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                     and item.get("required") is True
                     and item.get("role") != "stability"
                 ]
-                if not main_figures:
+                if not main_figures and not (
+                    opportunity_pool_mode and question_id in opportunity_questions
+                ):
                     decision_errors.append(
                         f"核心问题 {question_id} 的视觉决策为 required，"
-                        "但没有至少一张 required=true 的正文主图"
+                        "但没有至少一张 required=true 的正文图或已登记视觉机会"
                     )
         if decision_errors:
             return decision_errors
@@ -334,6 +351,8 @@ def presentation_figure_warnings(run_dir: Path) -> list[str]:
         plan = load_json(plan_path)
         if plan.get("schema_version") not in {"2.3", "2.4"}:
             return []
+        if plan.get("visual_strategy") == "opportunity_pool":
+            return []
         decisions = plan.get("visual_decisions", [])
         figures = plan.get("figures", [])
         warnings: list[str] = []
@@ -407,6 +426,7 @@ def validate_presentation_decisions(run_dir: Path) -> list[str]:
                 "whole_paper 缺少首稿前展示图 required/waived 决策"
             )
         figures = plan.get("figures", [])
+        opportunity_pool_mode = plan.get("visual_strategy") == "opportunity_pool"
         for scope, decision in decisions.items():
             if (
                 plan_version == "2.4"
@@ -421,6 +441,15 @@ def validate_presentation_decisions(run_dir: Path) -> list[str]:
             if decision.get("presentation_need") != "required":
                 continue
             role = "data_portrait" if scope == "whole_paper" else "question_hero"
+            if opportunity_pool_mode:
+                has_related_figure = any(
+                    item.get("question_id") == scope
+                    and item.get("role") != "stability"
+                    for item in figures
+                )
+                if not has_related_figure and scope != "whole_paper":
+                    errors.append(f"展示图决策 {scope}=required，但机会池尚未选择任何正文图")
+                continue
             if not any(
                 item.get("presentation_role") == role
                 and (scope == "whole_paper" or item.get("question_id") == scope)
@@ -840,6 +869,16 @@ def _substantive_markdown(path: Path, *, label: str, minimum_chars: int) -> tupl
     placeholders = len(re.findall(r"待填写|待补充|TODO|TBD", text, flags=re.IGNORECASE))
     if placeholders and placeholders * 20 >= len(meaningful):
         return text, [f"{label} 仍以占位内容为主"]
+    question_cards = re.findall(
+        r"^##\s+(?:Q[1-9]\d*|问题[一二三四五六七八九十]+).*?(?=^##\s+|\Z)",
+        text,
+        flags=re.MULTILINE | re.DOTALL | re.IGNORECASE,
+    )
+    if question_cards and all(
+        re.search(r"待填写|待补充|TODO|TBD", card, flags=re.IGNORECASE)
+        for card in question_cards
+    ):
+        return text, [f"{label} 的逐问完整性卡仍以占位内容为主"]
     return text, []
 
 
@@ -1331,18 +1370,158 @@ def _validate_readiness(run_dir: Path) -> list[str]:
 
 
 def check_paper_readiness(run_dir: Path) -> dict[str, Any]:
-    """返回就绪检查结果，不抛出异常。"""
+    """返回兼容旧协议的编译就绪结果，并补充论文层级状态。
+
+    ``ready`` 仍表示旧的严格候选稿硬门；新增的 ``scientific_ready``、
+    ``narrative_ready`` 和 ``competition_paper_ready`` 用于 v3.4 的长篇首稿与
+    编辑裁剪流程，避免把“有科学答案”误报成“已完成竞赛论文”。
+    """
     run_dir = run_dir.resolve()
     errors = _validate_readiness(run_dir)
     warnings: list[str] = []
     if is_competition_first_state(read_simple_state(run_dir)):
         _, warnings = _validate_competition_readiness(run_dir)
+    layers = classify_paper_readiness(run_dir)
     return {
         "ready": not errors,
         "errors": errors,
         "warnings": warnings,
+        "scientific_ready": layers["scientific_ready"],
+        "narrative_ready": layers["narrative_ready"],
+        "competition_paper_ready": layers["competition_paper_ready"],
+        "layer_errors": layers["scientific_errors"],
+        "narrative_findings": layers["narrative_findings"],
         "run_dir": str(run_dir),
     }
+
+
+def _manuscript_text_for_layers(run_dir: Path) -> str:
+    """读取论文正文源文件的可见文本，避开控制文档和生成目录。"""
+    paper_dir = run_dir / "paper"
+    if not paper_dir.is_dir():
+        return ""
+    excluded = {"generated", "submission", "source_appendix", "archive", "work"}
+    chunks: list[str] = []
+    for path in sorted(paper_dir.rglob("*")):
+        if (
+            not path.is_file()
+            or path.suffix.casefold() not in {".tex", ".typ", ".md"}
+            or any(part.casefold() in excluded for part in path.parts)
+            or path.name.startswith("PAPER_")
+            or path.name in {
+                "ARGUMENT_PLAN.md",
+                "STORYBOARD.md",
+                "RESEARCH_STORYBOARD.md",
+                "CITATION_PLAN.md",
+            }
+        ):
+            continue
+        try:
+            chunks.append(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError):
+            continue
+    return "\n".join(chunks)
+
+
+def classify_paper_readiness(run_dir: Path) -> dict[str, Any]:
+    """区分科学证据层、论叙层与竞赛候选稿层的就绪状态。
+
+    科学层只要求可定位的直接答案、公式/判据和至少一种结果或图示证据；
+    机制、结构观察、推导展开和边界属于叙事层，缺失时只能阻断竞赛稿，不
+    会把已有科学答案抹掉。这正是“答案预览可先出现但不能提前收尾”的实现。
+    """
+    root = run_dir.resolve()
+    text = _manuscript_text_for_layers(root)
+    style = audit_report_like_manuscript(root)
+    compact = re.sub(r"\s+", "", text)
+    has_answer = bool(re.search(r"直接答案|答案|结论|最优|可行解|判定为", text, re.IGNORECASE))
+    has_formula = bool(re.search(r"\\begin\{(?:equation|align)|\\\[|\$\$|公式|判据", text, re.IGNORECASE))
+    has_evidence = bool(
+        re.search(r"\\begin\{figure|\\includegraphics|!\[[^]]*\]\(|结果|实验|验证|表明", text, re.IGNORECASE)
+    )
+    scientific_errors: list[str] = []
+    if not compact:
+        scientific_errors.append("尚无可读取的论文正文")
+    if not has_answer:
+        scientific_errors.append("正文尚无可定位的直接答案或结论")
+    if not has_formula:
+        scientific_errors.append("正文尚无公式、判据或数学对象表达")
+    if not has_evidence:
+        scientific_errors.append("正文尚无结果、验证或图示证据")
+
+    narrative_findings: list[dict[str, Any]] = []
+    warning_codes = {
+        "PAPER_SECTION_UNDERDEVELOPED",
+        "REPORT_STYLE_PATTERN",
+        "FIGURE_WITHOUT_INTERPRETATION",
+        "FORMULA_WITHOUT_EXPLANATION",
+        "NARRATIVE_SCARCITY_REVIEW",
+        "VISUAL_SCARCITY_REVIEW",
+    }
+    for finding in style.get("warnings", []):
+        if finding.get("code") in warning_codes:
+            narrative_findings.append(finding)
+    # 没有正文层可验证的机制、结构和边界时，科学答案仍然可以先进入长篇首稿，
+    # 但候选稿必须显式提醒编辑补全，而不是依靠篇幅数字自动放行。
+    required_roles = (
+        ("结构观察", r"观察|结构|规律|拐点|集中|分层"),
+        ("机制解释", r"机制|原因|活跃约束|瓶颈|边际收益|权衡"),
+        ("边界说明", r"边界|限制|适用|敏感性|不能外推"),
+    )
+    for label, pattern in required_roles:
+        if not re.search(pattern, text, re.IGNORECASE):
+            narrative_findings.append(
+                {
+                    "code": "PAPER_SECTION_UNDERDEVELOPED",
+                    "message": f"正文尚未展开{label}，答案预览不能替代该论证角色。",
+                    "missing_role": label,
+                }
+            )
+    narrative_ready = not narrative_findings
+    strict_ready = check_paper_readiness_strict(root)
+    return {
+        "scientific_ready": not scientific_errors,
+        "scientific_errors": scientific_errors,
+        "narrative_ready": narrative_ready,
+        "narrative_findings": narrative_findings,
+        "competition_paper_ready": not scientific_errors and narrative_ready and strict_ready,
+        "metrics": {
+            "has_answer": has_answer,
+            "has_formula": has_formula,
+            "has_evidence": has_evidence,
+            "characters": len(compact),
+        },
+    }
+
+
+def check_paper_readiness_strict(run_dir: Path) -> bool:
+    """执行旧的严格论文硬门而不递归调用分层检查。"""
+    try:
+        return not _validate_readiness(run_dir)
+    except (ContractError, OSError, KeyError, TypeError, ValueError):
+        return False
+
+
+def require_scientific_readiness(run_dir: Path) -> None:
+    """要求论文已有最小科学答案层，但不要求竞赛叙事完整。"""
+    status = classify_paper_readiness(run_dir)
+    if not status["scientific_ready"]:
+        raise ContractError(
+            "长篇科学首稿缺少最小科学证据层:\n- "
+            + "\n- ".join(status["scientific_errors"])
+        )
+
+
+def require_competition_paper_readiness(run_dir: Path) -> None:
+    """要求候选竞赛稿同时通过科学、叙事与旧协议硬门。"""
+    status = check_paper_readiness(run_dir)
+    if not status["competition_paper_ready"]:
+        reasons = [*status["layer_errors"]]
+        reasons.extend(
+            str(item.get("message", item)) for item in status["narrative_findings"]
+        )
+        reasons.extend(status["errors"])
+        raise ContractError("竞赛论文尚未完成:\n- " + "\n- ".join(dict.fromkeys(reasons)))
 
 
 def require_paper_readiness(run_dir: Path) -> None:

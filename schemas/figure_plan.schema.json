@@ -8,6 +8,7 @@
     "schema_name": {"const": "figure_plan"},
     "schema_version": {"enum": ["2.0", "2.1", "2.2", "2.3", "2.4"]},
     "run_id": {"type": "string", "minLength": 1},
+    "visual_strategy": {"enum": ["fixed_contract", "opportunity_pool"]},
     "visual_decisions": {
       "type": "array",
       "uniqueItems": true,

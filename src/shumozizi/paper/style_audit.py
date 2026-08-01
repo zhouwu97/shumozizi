@@ -80,6 +80,16 @@ _CONCLUSION_IMPACT_PATTERN = re.compile(
     r"因此|从而|意味着|对(?:主)?结论|决策|策略|建议|应当|可判定|支持",
     re.IGNORECASE,
 )
+_FORMULA_EXPLANATION_PATTERN = re.compile(
+    r"其中|表示|定义|记作|令|可得|由此|因此|约束|含义|意味着|说明|即",
+    re.IGNORECASE,
+)
+_FORMULA_BLOCK_PATTERN = re.compile(
+    r"\\begin\{(?:equation|equation\*|align|align\*)\}.*?"
+    r"\\end\{(?:equation|equation\*|align|align\*)\}|"
+    r"\\\[.*?\\\]|\$\$.*?\$\$",
+    re.IGNORECASE | re.DOTALL,
+)
 _GENERIC_HEADING_ROLES = (
     ("问题分析", re.compile(r"^(?:问题)?分析$")),
     ("模型建立与求解", re.compile(r"模型(?:的)?建立与求解")),
@@ -111,7 +121,12 @@ def _manuscript_sources(run_dir: Path) -> list[Path]:
             or "appendix" in path.stem.casefold()
             or "附录" in path.stem
             or path.name.startswith("PAPER_")
-            or path.name in {"ARGUMENT_PLAN.md", "STORYBOARD.md"}
+            or path.name in {
+                "ARGUMENT_PLAN.md",
+                "STORYBOARD.md",
+                "RESEARCH_STORYBOARD.md",
+                "CITATION_PLAN.md",
+            }
         ):
             continue
         sources.append(path)
@@ -443,7 +458,85 @@ def _figure_argument_findings(
                     "count": 1,
                 }
             )
+            warnings.append(
+                {
+                    "code": "FIGURE_WITHOUT_INTERPRETATION",
+                    "message": f"图 {figure_id} 已进入正文，但缺少可复述的观察—机制—决策解释。",
+                    "count": 1,
+                    "figure_id": figure_id,
+                    "missing_links": best_missing,
+                }
+            )
     return errors, warnings
+
+
+def _formula_explanation_findings(combined: str) -> list[dict[str, Any]]:
+    """识别公式后没有任何语义解释的段落。"""
+    findings: list[dict[str, Any]] = []
+    for index, match in enumerate(_FORMULA_BLOCK_PATTERN.finditer(combined), 1):
+        context = combined[match.end() : min(len(combined), match.end() + 500)]
+        next_heading = re.search(r"\\(?:section|subsection)\*?\{|\n#{1,4}\s", context)
+        if next_heading is not None:
+            context = context[: next_heading.start()]
+        if not _FORMULA_EXPLANATION_PATTERN.search(context):
+            findings.append(
+                {
+                    "code": "FORMULA_WITHOUT_EXPLANATION",
+                    "message": f"第 {index} 个公式后未说明变量含义、判据作用或推导后果。",
+                    "count": 1,
+                    "formula_index": index,
+                }
+            )
+    return findings
+
+
+def _pdf_page_count(run_dir: Path) -> int | None:
+    """读取已存在 PDF 页数；没有 PDF 时返回空值，不伪造版式判断。"""
+    candidates = (
+        run_dir / "paper/final.pdf",
+        run_dir / "paper/longform-draft.pdf",
+        run_dir / "paper/draft-1.pdf",
+    )
+    pdf_path = next((path for path in candidates if path.is_file()), None)
+    if pdf_path is None:
+        return None
+    try:
+        from pypdf import PdfReader
+
+        return len(PdfReader(str(pdf_path)).pages)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _scarcity_findings(
+    run_dir: Path, *, core_questions: set[str], combined: str, figure_count: int
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """对复杂论文的篇幅和正文图数给出非阻断复核提醒。"""
+    warnings: list[dict[str, Any]] = []
+    pages = _pdf_page_count(run_dir)
+    compact_characters = len(re.sub(r"\s+", "", combined))
+    if len(core_questions) >= 3 and (
+        (pages is not None and pages < 15) or (pages is None and compact_characters < 7000)
+    ):
+        warnings.append(
+            {
+                "code": "NARRATIVE_SCARCITY_REVIEW",
+                "message": "多核心问题论文的正文可能过短；请人工确认推导、机制和边界没有被压缩掉。",
+                "count": 1,
+                "core_questions": sorted(core_questions),
+                "page_count": pages,
+            }
+        )
+    if len(core_questions) >= 3 and figure_count <= 3:
+        warnings.append(
+            {
+                "code": "VISUAL_SCARCITY_REVIEW",
+                "message": "正文图数不超过 3 张；请人工确认数学结构、机制与边界不应有互补视觉证据。",
+                "count": 1,
+                "body_figure_count": figure_count,
+            }
+        )
+    return warnings, {"page_count": pages, "body_figure_count": figure_count}
 
 
 def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
@@ -543,6 +636,14 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                 "count": report_phrase_count,
             }
         )
+        warnings.append(
+            {
+                "code": "REPORT_STYLE_PATTERN",
+                "message": "正文多次重复“采用方法—结果见表—得到结论”的报告式模板，需改写为研究判断链。",
+                "count": report_phrase_count,
+                "signals": sorted(repeated_templates),
+            }
+        )
 
     abstract = _abstract_text(sources, combined)
     abstract_questions = _question_ids(abstract)
@@ -591,6 +692,14 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                         f"（{' → '.join(sequence)}），应按共享对象与新增困难重组。"
                     ),
                     "count": frequency,
+                }
+            )
+            warnings.append(
+                {
+                    "code": "REPORT_STYLE_PATTERN",
+                    "message": "多个问题复用同一流程标题，可能掩盖问题继承和新增困难。",
+                    "count": frequency,
+                    "signals": ["repeated_question_subheadings"],
                 }
             )
 
@@ -668,6 +777,31 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
                     "count": 1,
                 }
             )
+        answer_signal = re.search(r"直接答案|答案预览|结论|最优|可行解", body, re.IGNORECASE)
+        missing_roles = [
+            label
+            for label, present in (
+                ("关键推导", has_derivation),
+                ("结构观察", bool(_OBSERVATION_PATTERN.search(body))),
+                ("机制解释", has_mechanism),
+                ("边界说明", bool(re.search(r"边界|限制|适用|不能外推", body, re.IGNORECASE))),
+            )
+            if not present
+        ]
+        if answer_signal is not None and len(missing_roles) >= 2:
+            warnings.append(
+                {
+                    "code": "PAPER_SECTION_UNDERDEVELOPED",
+                    "message": (
+                        f"核心问题 {question_id} 已出现答案或结论，但仍缺少 "
+                        + "、".join(missing_roles)
+                        + "；答案预览不能替代展开论证。"
+                    ),
+                    "count": 1,
+                    "question_id": question_id,
+                    "missing_roles": missing_roles,
+                }
+            )
 
     generic_usage = _generic_question_heading_usage(sources)
     generic_repetition_threshold = _generic_heading_repetition_threshold(root)
@@ -700,6 +834,29 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
     figure_errors, figure_warnings = _figure_argument_findings(root, combined)
     errors.extend(figure_errors)
     warnings.extend(figure_warnings)
+    warnings.extend(_formula_explanation_findings(combined))
+    body_figure_count = 0
+    figure_plan_path = root / "figures/FIGURE_PLAN.json"
+    if figure_plan_path.is_file():
+        try:
+            figure_plan = load_json(figure_plan_path)
+            body_figure_count = sum(
+                1
+                for item in figure_plan.get("figures", [])
+                if isinstance(item, dict)
+                and item.get("placement", "body") == "body"
+                and item.get("presentation_role") != "appendix"
+                and item.get("role") != "stability"
+            )
+        except (ContractError, OSError, ValueError, TypeError):
+            body_figure_count = 0
+    scarcity_warnings, scarcity_metrics = _scarcity_findings(
+        root,
+        core_questions=core_questions,
+        combined=combined,
+        figure_count=body_figure_count,
+    )
+    warnings.extend(scarcity_warnings)
     return {
         "advisory_only": not errors,
         "source_files": [
@@ -717,6 +874,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             ),
             "blocking_internal_workflow_terms": blocking_internal_total,
             "report_phrases": report_phrase_count,
+            **scarcity_metrics,
         },
         "limitations": (
             "E001--E005 只覆盖可由正文结构直接复核的高置信信号，不判断数学正确性；"

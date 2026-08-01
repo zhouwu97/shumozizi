@@ -55,6 +55,11 @@
            "role": {"enum": ["model_understanding", "decisive_evidence", "insight", "stability"]},
           "placement": {"enum": ["body", "appendix"]},
           "promotion_receipt": {"$ref": "#/$defs/file"},
+          "visual_opportunity_id": {"type": "string", "minLength": 1},
+          "selected_version": {"type": "string", "minLength": 1},
+          "paper_location": {"type": "string", "minLength": 1},
+          "critic_verdict": {"enum": ["PROMOTE", "REVISE", "SPLIT", "DROP"]},
+          "visual_policy_fingerprint": {"$ref": "#/$defs/sha"},
           "paper_allowed": {"type": "boolean"},
           "demo": {"const": false},
           "created_at": {"type": "string", "format": "date-time"}

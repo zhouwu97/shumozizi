@@ -600,6 +600,10 @@ def _register_competition_figure(
     role: str | None = None,
     placement: str | None = None,
     promotion_receipt: str | None = None,
+    visual_opportunity_id: str | None = None,
+    selected_version: str | None = None,
+    paper_location: str | None = None,
+    critic_verdict: str | None = None,
 ) -> dict[str, Any]:
     """登记由问题和 takeaway 驱动的 v3.1 图表。"""
     if figure_stage not in {"current", "evidence", "publication"}:
@@ -614,6 +618,26 @@ def _register_competition_figure(
         raise ContractError("figure role 必须是 " + ", ".join(sorted(FIGURE_ROLES)))
     if placement is not None and placement not in FIGURE_PLACEMENTS:
         raise ContractError("figure placement 必须为 body 或 appendix")
+    if critic_verdict is not None and critic_verdict not in {"PROMOTE", "REVISE", "SPLIT", "DROP"}:
+        raise ContractError("critic_verdict 必须为 PROMOTE、REVISE、SPLIT 或 DROP")
+    if visual_opportunity_id is not None:
+        opportunity_path = run_dir / "figures/visual-opportunities.json"
+        if not opportunity_path.is_file():
+            raise ContractError("图绑定 visual_opportunity_id 时必须存在视觉机会池")
+        opportunity_payload = load_json(opportunity_path)
+        opportunity = next(
+            (
+                item
+                for item in opportunity_payload.get("opportunities", [])
+                if isinstance(item, dict)
+                and item.get("opportunity_id") == visual_opportunity_id
+            ),
+            None,
+        )
+        if opportunity is None:
+            raise ContractError(f"图绑定了不存在的视觉机会: {visual_opportunity_id}")
+        if critic_verdict != "PROMOTE" or opportunity.get("status") != "promote":
+            raise ContractError("进入 figures/current 的机会必须有 PROMOTE 批评结论")
     if role in _APPENDIX_ONLY_ROLES:
         if placement == "body":
             raise ContractError(
@@ -660,6 +684,18 @@ def _register_competition_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    if visual_opportunity_id is not None:
+        from shumozizi.paper.policy import policy_fingerprint
+
+        entry["visual_opportunity_id"] = visual_opportunity_id
+        entry["critic_verdict"] = critic_verdict
+        entry["visual_policy_fingerprint"] = policy_fingerprint(
+            resolve_repo_root(Path(__file__)), "visual"
+        )
+        if selected_version is not None:
+            entry["selected_version"] = selected_version
+        if paper_location is not None:
+            entry["paper_location"] = paper_location
     if role is not None:
         entry["role"] = role
     if placement is not None:
@@ -700,6 +736,10 @@ def register_insight_figure(
     role: str | None = None,
     placement: str | None = None,
     promotion_receipt: str | None = None,
+    visual_opportunity_id: str | None = None,
+    selected_version: str | None = None,
+    paper_location: str | None = None,
+    critic_verdict: str | None = None,
 ) -> dict[str, Any]:
     """登记仅包含来源、问题和 takeaway 的 v3.1 图表。
 
@@ -718,6 +758,10 @@ def register_insight_figure(
             stability）；stability 会被强制归入附录。
         placement: 计划版面位置（body 或 appendix）。
         promotion_receipt: 候选图通过版式 QA 与人工看图后的晋级回执。
+        visual_opportunity_id: v3.4 视觉机会池中的机会 ID。
+        selected_version: 进入 current 的候选版本。
+        paper_location: 正文或附录中的实际消费位置。
+        critic_verdict: 新鲜视觉批评结论，进入 current 时必须为 PROMOTE。
 
     Returns:
         当前图表索引条目。
@@ -741,6 +785,10 @@ def register_insight_figure(
         role=role,
         placement=placement,
         promotion_receipt=promotion_receipt,
+        visual_opportunity_id=visual_opportunity_id,
+        selected_version=selected_version,
+        paper_location=paper_location,
+        critic_verdict=critic_verdict,
     )
 
 
@@ -759,6 +807,10 @@ def register_presentation_figure(
     role: str,
     promotion_receipt: str,
     template_id: str = "custom",
+    visual_opportunity_id: str | None = None,
+    selected_version: str | None = None,
+    paper_location: str | None = None,
+    critic_verdict: str | None = None,
 ) -> dict[str, Any]:
     """登记不创造实验结果的竞赛呈现图。
 
@@ -780,6 +832,10 @@ def register_presentation_figure(
         role: 既有科学叙事角色。
         promotion_receipt: 候选图机械 QA 与人工看图回执。
         template_id: 绘图实现类型。
+        visual_opportunity_id: v3.4 视觉机会池中的机会 ID。
+        selected_version: 进入 current 的候选版本。
+        paper_location: 正文或附录中的实际消费位置。
+        critic_verdict: 新鲜视觉批评结论，进入 current 时必须为 PROMOTE。
 
     Returns:
         已写入 ``figures/index.json`` 的当前图条目。
@@ -852,6 +908,33 @@ def register_presentation_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    if visual_opportunity_id is not None:
+        from shumozizi.paper.policy import policy_fingerprint
+
+        if critic_verdict != "PROMOTE":
+            raise ContractError("进入 figures/current 的机会必须有 PROMOTE 批评结论")
+        opportunity_path = run_dir / "figures/visual-opportunities.json"
+        opportunity_payload = load_json(opportunity_path) if opportunity_path.is_file() else {}
+        opportunity = next(
+            (
+                item
+                for item in opportunity_payload.get("opportunities", [])
+                if isinstance(item, dict)
+                and item.get("opportunity_id") == visual_opportunity_id
+            ),
+            None,
+        )
+        if opportunity is None or opportunity.get("status") != "promote":
+            raise ContractError("进入 figures/current 的机会必须已在机会池中 PROMOTE")
+        entry["visual_opportunity_id"] = visual_opportunity_id
+        entry["critic_verdict"] = critic_verdict
+        entry["visual_policy_fingerprint"] = policy_fingerprint(
+            resolve_repo_root(Path(__file__)), "visual"
+        )
+        if selected_version is not None:
+            entry["selected_version"] = selected_version
+        if paper_location is not None:
+            entry["paper_location"] = paper_location
     index = read_figure_index(run_dir)
     index["schema_version"] = "1.3"
     for existing in index["figures"]:
@@ -876,6 +959,31 @@ def _verify_competition_figures(run_dir: Path) -> dict[str, Any]:
         checked.append(figure_id)
         if figure.get("demo") or not figure.get("paper_allowed"):
             errors.append({"figure_id": figure_id, "message": "演示图或未允许图不能进入论文"})
+        opportunity_id = figure.get("visual_opportunity_id")
+        if opportunity_id is not None:
+            from shumozizi.paper.policy import policy_fingerprint
+
+            if figure.get("critic_verdict") != "PROMOTE":
+                errors.append({"figure_id": figure_id, "message": "视觉机会没有 PROMOTE 批评结论"})
+            expected_policy = policy_fingerprint(resolve_repo_root(Path(__file__)), "visual")
+            if figure.get("visual_policy_fingerprint") != expected_policy:
+                errors.append({"figure_id": figure_id, "message": "图表未绑定当前视觉政策"})
+            opportunity_path = run_dir / "figures/visual-opportunities.json"
+            try:
+                opportunity_payload = load_json(opportunity_path)
+                opportunity = next(
+                    (
+                        item
+                        for item in opportunity_payload.get("opportunities", [])
+                        if isinstance(item, dict)
+                        and item.get("opportunity_id") == opportunity_id
+                    ),
+                    None,
+                )
+                if opportunity is None or opportunity.get("status") != "promote":
+                    errors.append({"figure_id": figure_id, "message": "视觉机会已失效或未 PROMOTE"})
+            except (ContractError, OSError, ValueError, TypeError):
+                errors.append({"figure_id": figure_id, "message": "视觉机会池缺失或无法读取"})
         if figure.get("provenance_type") == "frozen_inputs":
             source_records = [
                 *figure.get("source_files", []),

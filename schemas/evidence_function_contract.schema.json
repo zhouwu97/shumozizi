@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/evidence_function_contract.schema.json",
+  "title": "Evidence function contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "entries"],
+  "properties": {
+    "schema_name": {"const": "evidence_function_contract"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "claim_id", "function", "description"],
+        "properties": {
+          "evidence_id": {"type": "string", "minLength": 1},
+          "claim_id": {"type": "string", "minLength": 1},
+          "function": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "source_result_ids": {"type": "array", "items": {"type": "string"}},
+          "source_figure_ids": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

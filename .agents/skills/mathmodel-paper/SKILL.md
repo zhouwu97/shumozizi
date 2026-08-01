@@ -1,11 +1,17 @@
 ---
 name: mathmodel-paper
-description: 从 Competition-First v3.3 的当前真实结果组织、编译和修订数学建模论文。
+description: 从 Competition-First v3.4 的当前真实结果组织、编译和修订数学建模论文。
 ---
 
 # 论证驱动论文
 
-论文不是结果汇总报告，也不是把复杂四问压到约 13 页的摘要。正文应由共享模型和少量关键数学判断贯穿，同时保留清楚的逐问章节、直接答案和问题间继承关系；不能只按 Q1/Q2/Q3/Q4 罗列方法名、参数和结果表。
+论文不是结果汇总报告，也不是把复杂四问压到约 13 页的摘要。正文应由共享模型和少量关键数学判断贯穿，同时保留清楚的逐问章节、直接答案和问题间继承关系；不能只按 Q1/Q2/Q3/Q4 罗列方法名、参数和结果表。v3.4 先形成完整的长篇科学首稿，再由独立冷读和编辑判断删减；篇幅和图数是复核信号，不是科学充分性的替代物。
+
+## v3.4 首稿默认链
+
+正式结果先进入 `paper/PAPER_MATERIAL_POOL.md` 与 `paper/generated/material_pool.json`，再进入 `paper/RESEARCH_STORYBOARD.md` 与 `paper/generated/research_storyboard.json`。素材池只给作者提供直接答案、推导、结构观察、机制、对照、边界、示例和视觉机会；日志、回执、哈希、工具探测和调试路径留在控制层。故事板逐问回答评委先需要什么、现象是什么、为什么需要该数学对象、模型如何递进、哪条证据决定答案、机制是什么、边界在哪里以及如何交接到下一问。
+
+默认首稿使用 `python scripts/paper/compile_longform_draft.py <run_dir>`，产物为 `paper/longform-draft.pdf`，并明确“不是最终提交稿”。它要求科学证据层和素材/故事板当前，但不要求最终竞赛叙事门禁；`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。只有完成长篇冷读、叙事/视觉返修和竞赛版机械 QA 后，才使用严格 `compile_paper.py`。
 
 ## 第零步：确认可以写论文
 
@@ -39,7 +45,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 第一遍先按“判断或现象 → 必要数学关系 → 推导或计算证据 → 机制解释 → 对后续问题或决策的意义”写成连续论证。第二遍再按共享数学对象和新增困难切分章节，并把已写内容映射回逐问字段，确认题面要求、继承、推导、结果、机制、验证、边界和直接答案没有遗漏。
 
-每个主要结论在正文只保留一项最有区分力的验证；只有第二项验证会改变答案、路线排序或机制解释时才并列展开。稳定性流水账、普通复算、完整环境和搜索记录进入附录。该写作动作不删除或放宽蓝图审核、FIGURE_PLAN 2.4、首稿冷读、返修闭环和最终人工干预。
+证据按功能去重，而不是按结论机械限为一项：下界、构造、活跃约束、扰动、独立复算、基线对照和边界检验可以并存，只要它们改变不同的信任判断。`paper/generated/evidence_functions.json` 对同一主张的同功能重复只给出压缩或移入附录建议；不同功能的证据不能因为“验证已存在”被自动删除。稳定性流水账、普通复算、完整环境和搜索记录进入附录。该写作动作不删除或放宽蓝图审核、FIGURE_PLAN 2.4、首稿冷读、返修闭环和最终人工干预。
 
 ---
 
@@ -51,7 +57,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 候选稿检查会自动生成 `paper/generated/citation_coverage.json`，逐项核对正文 citation key、BibTeX/`bibitem` 定义、引用计划和结构化建模合同。未定义 key、计划已声明但正文未引用，以及新五列表格中已识别外部核心方法/验证方法却没有对应已兑现类别，属于高置信度合同错误；未使用条目、引用只集中在引言、来源过少或单一来源跨多个类别属于 warning。普通编号 `[1]` 不视为引用，来源权威性与相关性仍由作者和冷读人工核验，不能用 DOI 或数量自动代替。
 
-作者只维护 `paper/PAPER_BLUEPRINT.md`、`paper/answer-map.json`、`figures/FIGURE_PLAN.json` 和 `paper/PAPER_REVIEW.md` 四个主要控制文件。旧 `ARGUMENT_PLAN.md`、`STORYBOARD.md` 与 `KNOWLEDGE_APPLICATION.md` 仅作兼容或后台建议。
+作者主要维护 `paper/PAPER_BLUEPRINT.md`、`paper/answer-map.json`、`figures/FIGURE_PLAN.json` 和 `paper/PAPER_REVIEW.md`；v3.4 另维护 `PAPER_MATERIAL_POOL.md`、`RESEARCH_STORYBOARD.md` 和视觉机会池。旧 `ARGUMENT_PLAN.md`、`STORYBOARD.md` 与 `KNOWLEDGE_APPLICATION.md` 仅作兼容或后台建议。
 
 每个必答问题先填写逐问完整性卡：题面要求、与前问的继承、数学对象、关键推导、算法、主结果、机制解释、验证边界和直接答案。核心问题（`core_question=true`）在此基础上再填写完整论证单元；普通问题可以更短，但不能退化为只有 answer map 位置和一张结果表。
 
@@ -75,7 +81,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 第三步：按问题角色写正文
 
-每个问题章节（尤其问题一、二、三）第一段先给“本问结论”：用一段自然语言和必要数字直接回答题面，并紧接一句证据范围；随后再写模型、推导、算法和机制。不要把直接答案藏在章节末尾。CUMCM 中文正文默认宋体小四（12pt），数学公式中的拉丁字母使用 Times New Roman 系斜体；编译后在 PDF 中抽查字体、字号、公式、图注和分页。
+每个问题章节（尤其问题一、二、三）第一段先给“答案预览”：用一段自然语言和必要数字直接回答题面，并紧接一句证据范围；随后必须展开现象、数学对象、模型、推导、算法、结构、机制和边界。答案预览不是结论的替代物，也不能用一张答案表关闭章节。CUMCM 中文正文默认宋体小四（12pt），数学公式中的拉丁字母使用 Times New Roman 系斜体；编译后在 PDF 中抽查字体、字号、公式、图注和分页。
 
 ### 普通问题
 
