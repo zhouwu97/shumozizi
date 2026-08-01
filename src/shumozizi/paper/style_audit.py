@@ -539,6 +539,37 @@ def _scarcity_findings(
     return warnings, {"page_count": pages, "body_figure_count": figure_count}
 
 
+def _visual_rhythm_findings(
+    *,
+    core_questions: set[str],
+    question_sections: dict[str, tuple[str, list[str]]],
+    combined: str,
+    body_figure_count: int,
+) -> list[dict[str, Any]]:
+    """检查图是否过度集中在单问或集中堆叠，提示页面节奏人工复核。"""
+    if len(core_questions) < 3 or body_figure_count < 4:
+        return []
+    references_by_question = {
+        question: len(re.findall(r"\\(?:auto|page|c)?ref\{fig:[^}]+\}|@fig:[A-Za-z0-9._:-]+", body))
+        for question, (body, _) in question_sections.items()
+    }
+    total_references = sum(references_by_question.values())
+    if total_references == 0:
+        return []
+    dominant = max(references_by_question.values())
+    if dominant / total_references < 0.75:
+        return []
+    return [
+        {
+            "code": "VISUAL_RHYTHM_REVIEW",
+            "message": "正文图表主要集中在一个问题；请检查跨问递进和图后留白是否形成可读节奏。",
+            "count": 1,
+            "references_by_question": references_by_question,
+            "body_figure_count": body_figure_count,
+        }
+    ]
+
+
 def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
     """检测高置信度写作错误和需要人工复核的文风信号。
 
@@ -857,6 +888,13 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
         figure_count=body_figure_count,
     )
     warnings.extend(scarcity_warnings)
+    rhythm_warnings = _visual_rhythm_findings(
+        core_questions=core_questions,
+        question_sections=question_sections,
+        combined=combined,
+        body_figure_count=body_figure_count,
+    )
+    warnings.extend(rhythm_warnings)
     return {
         "advisory_only": not errors,
         "source_files": [
@@ -875,9 +913,27 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             "blocking_internal_workflow_terms": blocking_internal_total,
             "report_phrases": report_phrase_count,
             **scarcity_metrics,
+            "visual_rhythm_review": bool(rhythm_warnings),
         },
         "limitations": (
             "E001--E005 只覆盖可由正文结构直接复核的高置信信号，不判断数学正确性；"
             "warnings 涉及的主观文风与实际阅读体验仍必须在独立 PDF 盲评中复核。"
         ),
+    }
+
+
+def audit_page_visual_rhythm(run_dir: Path) -> dict[str, Any]:
+    """返回页面视觉节奏的非阻断检查结果。"""
+    report = audit_report_like_manuscript(run_dir)
+    findings = [
+        item
+        for item in report.get("warnings", [])
+        if item.get("code") in {"VISUAL_RHYTHM_REVIEW", "VISUAL_SCARCITY_REVIEW"}
+    ]
+    return {
+        "advisory_only": True,
+        "success": True,
+        "findings": findings,
+        "metrics": report.get("metrics", {}),
+        "limitations": "未读取版面设计者意图；最终判断仍需人工阅读 PDF。",
     }

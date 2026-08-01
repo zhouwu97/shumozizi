@@ -238,6 +238,39 @@ def record_visual_critic(
     return record
 
 
+def add_companion_figure_opportunity(
+    run_dir: Path,
+    *,
+    opportunity_id: str,
+    question_id: str | None,
+    visual_question: str,
+    atomic_claim: str,
+    candidate_archetypes: Iterable[str],
+    reviewer_context_id: str,
+    finding_id: str,
+) -> dict[str, Any]:
+    """把论文冷读提出的 ADD_COMPANION_FIGURE 写入 living opportunity pool。"""
+    if not reviewer_context_id.strip() or not finding_id.strip():
+        raise ContractError("伴随图机会必须绑定 reviewer_context_id 和 finding_id")
+    root = run_dir.resolve()
+    payload = read_visual_opportunity_pool(root)
+    if any(item.get("opportunity_id") == opportunity_id for item in payload["opportunities"]):
+        raise ContractError(f"视觉机会已存在: {opportunity_id}")
+    item = _opportunity(
+        opportunity_id=opportunity_id,
+        question_id=question_id,
+        visual_question=visual_question,
+        atomic_claim=atomic_claim,
+        candidate_archetypes=candidate_archetypes,
+    )
+    item["origin"] = "paper_cold_reader"
+    item["finding_id"] = finding_id
+    item["reviewer_context_id"] = reviewer_context_id
+    payload["opportunities"].append(item)
+    write_visual_opportunity_pool(root, payload)
+    return item
+
+
 def validate_visual_critic_record(run_dir: Path, opportunity_id: str, version: str) -> dict[str, Any]:
     """复验指定视觉批评记录仍存在且绑定当前机会池。"""
     root = run_dir.resolve()

@@ -38,7 +38,7 @@ python scripts/codex/init_simple_run.py <problem_path> --run-id <run-id> --workf
 7. 进入论文后先把正式结果交接到 `PAPER_MATERIAL_POOL.md`，再填写 `RESEARCH_STORYBOARD.md` 和视觉机会池。写作交接只提供题面事实、模型与关键推导、逐问直接答案、少量决定性结果、机制、竞争解释、边界和当前视觉候选；日志、manifest、哈希、回执、工具探测、阶段状态、完整搜索轨迹和普通 QA 默认留在控制层。默认先编译 `longform_scientific_draft`，由独立冷读和编辑再裁剪到竞赛稿；`reviewable_draft` 是有披露的时间 fallback。先在蓝图全局层完成“结论—数学原因—决定性证据—竞争解释—适用边界”蒸馏并写成连续论证，再映射到逐问机器字段和国赛章节；不得用控制台账直接生成正文。证据按功能去重，同功能重复才建议压缩，不同功能验证可以并存。知识应用是 advisory；零匹配时使用通用结构模式，可检索实际采用的方法文献，禁止同题答案和现成结论。CUMCM 使用 `CUMCM_STRUCTURE_MAP` 1.2：多问共享对象并有资源/约束/聚合递进时默认 semantic，保留明确“模型假设与符号”入口；否则 classic 兜底。候选稿前运行 `python scripts/paper/audit_report_style.py <run_dir>`，把重复问答模板、内部工作流词、报账式摘要、列表堆叠、章节未展开、公式/图无解释和篇幅/图数稀疏作为 warning 交给作者与独立盲评复核，不新增状态门。
    每个问题章节开头先放直接结论，问题一、二、三不得让评委翻到章节末尾寻找答案；CUMCM 中文正文使用宋体小四（12pt），公式变量使用 Times New Roman 系斜体，最终 PDF 盲评必须检查这两项。
 
-返修分别维护 `argument_revision` 与 `render_revision`：`science` 重做科学挑战、论证和渲染，`argument` 使盲评失效，`render` 只使版式和机械 QA 失效。编译默认 `auto`，也可用 `--revision-impact` 显式声明。
+长篇首稿冷读后，使用 `review/PAPER_COLD_READER_EDITORIAL.json` 把扩写、压缩、重排、补推导/机制/对照/边界、加图/拆图/删图和移附录动作逐项关闭；`ADD_COMPANION_FIGURE` 会进入 living visual opportunity pool。动作关闭后用 `python scripts/paper/compile_competition_draft.py <run_dir>` 生成竞赛候选稿。返修分别维护 `argument_revision` 与 `render_revision`：`science` 重做科学挑战、论证和渲染，`argument` 使盲评失效，`render` 只使版式和机械 QA 失效。编译默认 `auto`，也可用 `--revision-impact` 显式声明。
 8. PDF 盲评必须使用独立上下文，只接收冻结 PDF 和固定提示词。最终盲评内置一条人工干预：按数学建模国赛标准，对照优秀论文表现审查图表缺口、报告/论文形态、笔法文风、排版、论证链和十几页篇幅原因，并给出带优先级、修复层级和验收标准的修改清单；不得联网或读取题面、源码、运行记录。该干预记录在盲评回执中，不新增阶段，也不创建作者填写的平行表单。导入记录绑定当前 `argument_revision`；纯渲染重编不要求重做盲评。`CUMCM_LAYOUT_AUDIT` 仍绑定当前 `render_revision` 并直接消费盲评事实。
 
 旧 v3.0 运行可查看和更新，运行时会在首次显式更新时记录阶段迁移。不要把 legacy 审核合同重新接入新运行。

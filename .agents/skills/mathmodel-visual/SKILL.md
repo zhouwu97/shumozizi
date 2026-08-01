@@ -13,6 +13,8 @@ description: 用真实结果生成由问题和 takeaway 驱动的数学建模图
 
 视觉机会池的最小字段是 `visual_question`、`atomic_claim`、`source_result_ids`、候选原型和当前状态。先从素材池和研究故事板产生机会，再为候选版本生成图，最后让不读取作者解释的独立视觉评阅者给出 `PROMOTE`、`REVISE`、`SPLIT` 或 `DROP`。评阅记录必须绑定新的 `reviewer_context_id`，同时写清图上观察、机制、边界和下一动作；`PROMOTE` 也不替代正文图后解释。
 
+Figure Design System 只约束表达决策：原型、renderer、面板 takeaway、机制标注、边界标注和最终决策标注。设计合同写到 `figures/work/<opportunity>/<version>/design-contract.json`，候选版本和正文位置随后写回图索引；它不把 obligation 数量当成视觉充分性证明。
+
 一个问题可以没有 hero 图、拥有多个互补图，或把视觉机会拆为模型理解图、决定性证据图和机制图。视觉数量不足只生成 `VISUAL_SCARCITY_REVIEW`，不能直接证明视觉充分或不充分；科学图与呈现图的来源、版本和失效关系必须保留。
 
 先读 [visual-pattern-cards.md](references/visual-pattern-cards.md)，从题目的数学对象选择视觉原型，不从图库名称反推图。二维或三维都不是质量标签：空间、场或三变量结构才使用 3D；精确比较阈值、区间和剖面时优先 2D。核心标准是一张图能否联合呈现数学对象、机制、约束边界、最终决策，以及不确定性或对照。

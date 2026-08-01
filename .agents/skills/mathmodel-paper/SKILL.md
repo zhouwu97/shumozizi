@@ -13,6 +13,8 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 
 默认首稿使用 `python scripts/paper/compile_longform_draft.py <run_dir>`，产物为 `paper/longform-draft.pdf`，并明确“不是最终提交稿”。它要求科学证据层和素材/故事板当前，但不要求最终竞赛叙事门禁；`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。只有完成长篇冷读、叙事/视觉返修和竞赛版机械 QA 后，才使用严格 `compile_paper.py`。
 
+独立 PDF 冷读可以记录 `EXPAND`、`COMPRESS`、`REORDER`、`ADD_DERIVATION`、`ADD_MECHANISM`、`ADD_COMPARISON`、`ADD_BOUNDARY`、`ADD_FIGURE`、`ADD_COMPANION_FIGURE`、`SPLIT_FIGURE`、`DROP_FIGURE`、`MOVE_TO_APPENDIX` 和 `MERGE_PARAGRAPHS`。这些动作写入 `review/PAPER_COLD_READER_EDITORIAL.json`；未关闭动作会阻断 `compile_paper.py`，但冷读器不能直接修改正式结果或科学事实。
+
 ## 第零步：确认可以写论文
 
 逐问读取 `MODELING_UNITS.json` 1.4 的三层结果。`objective_answer` 是题面原目标下的正式答案，`recommended_plan` 是附加风险偏好或稳健条件下的建议，`evidence_grade` 说明证书、搜索与稳定性边界；后两者不得替换前者。`answer_map.primary_result_id` 必须等于 `objective_answer.result_id`。任一必答问题没有有效 objective answer 时，不得编译正式候选版，但可以形成带披露的可审阅草稿。
@@ -195,6 +197,8 @@ python scripts/paper/audit_report_style.py <run_dir>
 `role=stability` 的图（舍入、采样层级、数值稳定性审计）一律进附录。
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
+
+视觉机会池中的候选先写入 `figures/work/<opportunity>/<version>/design-contract.json`，设计合同保留 `visual_question`、`atomic_claim`、候选原型、面板 takeaway、机制/边界标注和政策指纹。它是设计系统输入，不是 PNG/PDF 质量证明；candidate 仍须独立视觉批评、图形 QA 和正文消费闭环。
 
 每个必答问题必须在首稿前于 `FIGURE_PLAN.json` 2.4 中分别声明 `evidence_need` 和 `presentation_need`，每张图绑定 `argument_unit_ids` 与 `obligation_types`。结构性 waived 必须有独立 `waiver_review`；required 图在 `figures/work/` 迭代，经机械 QA 与内容化人工复核后晋级 current，旧 current 自动归档；`stability` 图只能在附录消费。
 

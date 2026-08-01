@@ -202,3 +202,29 @@ def require_research_storyboard(run_dir: Path, *, fresh: bool = True) -> dict[st
         if not freshness["current"]:
             raise ContractError("研究故事板已失效: " + "、".join(freshness["stale_fields"]))
     return payload
+
+
+def storyboard_progression_report(run_dir: Path) -> dict[str, Any]:
+    """检查各问是否把模型对象、机制或答案交接给下一问。"""
+    payload = read_research_storyboard(run_dir)
+    cards = payload.get("question_cards", [])
+    missing: list[dict[str, Any]] = []
+    for index, card in enumerate(cards):
+        if not isinstance(card, dict):
+            continue
+        question_id = str(card.get("question_id", ""))
+        required_fields = ("reader_needs", "why_math_object", "model_evolution", "key_derivation")
+        for field in required_fields:
+            value = card.get(field)
+            if not isinstance(value, str) or not value.strip() or value.strip().startswith("待填写"):
+                missing.append({"question_id": question_id, "field": field})
+        if index < len(cards) - 1:
+            handoff = card.get("handoff_to_next")
+            if not isinstance(handoff, str) or not handoff.strip() or handoff.strip().startswith("待填写"):
+                missing.append({"question_id": question_id, "field": "handoff_to_next"})
+    return {
+        "valid": not missing,
+        "missing": missing,
+        "question_count": len(cards),
+        "run_id": payload["run_id"],
+    }

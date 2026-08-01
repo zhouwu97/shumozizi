@@ -6,6 +6,11 @@ from pathlib import Path
 
 from shumozizi.core.io import atomic_json, load_json
 from shumozizi.core.repo_root import resolve_repo_root
+from shumozizi.paper.editorial import (
+    close_editorial_action,
+    editorial_readiness,
+    record_paper_cold_reader_actions,
+)
 from shumozizi.paper.evidence import review_evidence_functions
 from shumozizi.paper.materials import (
     build_material_pool,
@@ -15,7 +20,12 @@ from shumozizi.paper.policy import current_policy_fingerprints, evaluate_stalene
 from shumozizi.paper.readiness import classify_paper_readiness
 from shumozizi.paper.storyboard import (
     build_research_storyboard,
+    storyboard_progression_report,
     validate_storyboard_freshness,
+)
+from shumozizi.simple.figure_design import (
+    build_figure_design_contract,
+    read_figure_design_contract,
 )
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.visual_opportunities import (
@@ -249,3 +259,104 @@ def test_evidence_is_deduplicated_by_function_not_by_conclusion() -> None:
     assert report["legal"] is True
     assert len(report["distinct_function_groups"][0]["functions"]) == 2
     assert report["duplicate_groups"][0]["function"] == "lower_bound"
+
+
+def test_storyboard_progression_and_figure_design_contract_are_linked(tmp_path: Path) -> None:
+    """故事板交接和图设计合同都绑定当前机会，而不是只记录图数量。"""
+    run_dir = _run(tmp_path, "progression")
+    build_material_pool(
+        run_dir,
+        materials=[
+            {
+                "material_id": "q1-structure",
+                "category": "Visual Opportunity",
+                "title": "Q1 结构机会",
+                "content": "显示容量边界和最优点的关系。",
+                "question_id": "Q1",
+                "inclusion": "candidate",
+            }
+        ],
+    )
+    build_research_storyboard(
+        run_dir,
+        cards=[
+            {
+                "question_id": "Q1",
+                "reader_needs": "先找到边界下的答案。",
+                "why_math_object": "需要可行域表示共享容量。",
+                "model_evolution": "从单约束扩展到共享约束。",
+                "key_derivation": "由边界条件得到下界。",
+                "handoff_to_next": "把活跃约束交给 Q2 的资源配置。",
+            },
+            {
+                "question_id": "Q2",
+                "reader_needs": "先看到资源配置答案。",
+                "why_math_object": "需要状态转移表示资源。",
+                "model_evolution": "继承 Q1 的容量边界。",
+                "key_derivation": "由状态递推得到配置。",
+            },
+            {"question_id": "Q3"},
+        ],
+    )
+    progression = storyboard_progression_report(run_dir)
+    assert progression["valid"] is False
+    assert any(item["question_id"] == "Q2" for item in progression["missing"])
+
+    build_visual_opportunity_pool(
+        run_dir,
+        opportunities=[
+            {
+                "opportunity_id": "q1-structure",
+                "question_id": "Q1",
+                "visual_question": "边界在哪里？",
+                "atomic_claim": "容量约束收紧时可行域变窄。",
+                "candidate_archetypes": ["feasible_region_active_constraints"],
+            }
+        ],
+    )
+    contract = build_figure_design_contract(
+        run_dir,
+        "q1-structure",
+        candidate_version="v1",
+        selected_archetype="feasible_region_active_constraints",
+        renderer="scripts/figures/render_q1.py",
+        panels=[{"panel_id": "a", "takeaway": "可行域与活跃边界"}],
+        mechanism_annotation="边界收紧对应容量约束活跃。",
+    )
+    assert contract["candidate"]["version"] == "v1"
+    assert read_figure_design_contract(run_dir, "q1-structure", "v1")["run_id"] == run_dir.name
+
+
+def test_cold_reader_can_add_companion_figure_without_editing_science(tmp_path: Path) -> None:
+    """冷读器的伴随图动作进入 living pool，并由作者关闭而非直接改正文。"""
+    run_dir = _run(tmp_path, "editorial")
+    build_visual_opportunity_pool(run_dir, opportunities=[])
+    actions = record_paper_cold_reader_actions(
+        run_dir,
+        reviewer_context_id="fresh-paper-reader",
+        actions=[
+            {
+                "action_id": "finding-17",
+                "action": "ADD_COMPANION_FIGURE",
+                "target_id": "q2-main",
+                "reason": "主图没有显示哪一天决定下界。",
+                "expected_benefit": "让读者看到活跃日期与下界机制。",
+                "companion_figure": {
+                    "opportunity_id": "q2-active-day",
+                    "question_id": "Q2",
+                    "visual_question": "哪一天真正决定下界？",
+                    "atomic_claim": "第 12 日的覆盖余量最小。",
+                    "candidate_archetypes": ["interval_event_timeline"],
+                },
+            }
+        ],
+    )
+    assert actions["actions"][0]["status"] == "open"
+    assert editorial_readiness(run_dir)["ready"] is False
+    close_editorial_action(
+        run_dir,
+        "finding-17",
+        closure_evidence="已生成候选图并在正文图后补充观察—机制—边界段落。",
+    )
+    assert editorial_readiness(run_dir)["ready"] is True
+    assert read_visual_opportunity_pool(run_dir)["opportunities"][0]["origin"] == "paper_cold_reader"

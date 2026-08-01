@@ -29,6 +29,7 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / ".agents/skills/mathmodel-paper/SKILL.md",
             root / "src/shumozizi/paper/style_audit.py",
             root / "src/shumozizi/paper/templates.py",
+            root / "src/shumozizi/paper/editorial.py",
             root / "schemas/paper_material_pool.schema.json",
             root / "schemas/research_storyboard.schema.json",
         )
@@ -36,6 +37,8 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
         return common + (
             root / ".agents/skills/mathmodel-visual/SKILL.md",
             root / "src/shumozizi/simple/figures.py",
+            root / "src/shumozizi/simple/figure_design.py",
+            root / "src/shumozizi/simple/visual_opportunities.py",
             root / "schemas/figure_plan.schema.json",
             root / "schemas/visual_opportunity_pool.schema.json",
         )

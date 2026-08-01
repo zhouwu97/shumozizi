@@ -692,12 +692,14 @@ def compile_paper(
     if revision_impact not in {"auto", "render", "argument", "science"}:
         raise ContractError("revision_impact 必须为 auto、render、argument 或 science")
     # ── 编译前最小编译前提硬门：论证大纲、结果绑定、图表、MATLAB 源码 ──
+    from shumozizi.paper.editorial import require_editorial_readiness
     from shumozizi.paper.readiness import require_paper_readiness
     from shumozizi.simple.review import require_paper_generation_allowed
 
     # 先确认科学红队放行，再确认最小编译前提（论证地图、结果绑定、图表等）。
     require_paper_generation_allowed(run_dir)
     require_paper_readiness(run_dir)
+    require_editorial_readiness(run_dir)
     state = read_simple_state(run_dir)
     previous_render_revision = int(state.get("paper_render_revision", 0))
     previous_argument_revision = int(

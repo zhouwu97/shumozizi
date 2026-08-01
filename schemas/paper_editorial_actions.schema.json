@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_editorial_actions.schema.json",
+  "title": "Paper cold-reader editorial actions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "reviewer_context_id",
+    "source_pdf",
+    "source_pdf_sha256",
+    "paper_policy_fingerprint",
+    "actions",
+    "recorded_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_editorial_actions"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "reviewer_context_id": {"type": "string", "minLength": 1},
+    "source_pdf": {"type": "string", "minLength": 1},
+    "source_pdf_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "paper_policy_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["action_id", "action", "target_id", "reason", "expected_benefit", "status"],
+        "properties": {
+          "action_id": {"type": "string", "minLength": 1},
+          "action": {"type": "string", "minLength": 1},
+          "target_id": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "expected_benefit": {"type": "string", "minLength": 1},
+          "status": {"enum": ["open", "closed"]}
+        }
+      }
+    }
+  }
+}

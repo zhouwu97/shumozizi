@@ -13,6 +13,12 @@ from .contributions import (
     require_math_innovation_allowed,
     verify_contribution_ledger,
 )
+from .editorial import (
+    close_editorial_action,
+    editorial_readiness,
+    record_paper_cold_reader_actions,
+    require_editorial_readiness,
+)
 from .evidence import (
     read_evidence_function_contract,
     review_evidence_functions,
@@ -29,6 +35,7 @@ from .references import (
     verify_paper_references,
     writing_reference_cards,
 )
+from .storyboard import storyboard_progression_report
 from .sufficiency import (
     assess_paper_structure_signals,
     build_content_blueprint,
@@ -49,6 +56,11 @@ __all__ = [
     "review_evidence_functions",
     "write_evidence_function_contract",
     "read_evidence_function_contract",
+    "record_paper_cold_reader_actions",
+    "close_editorial_action",
+    "editorial_readiness",
+    "require_editorial_readiness",
+    "storyboard_progression_report",
     "assess_paper_structure_signals",
     "build_content_blueprint",
     "run_paper_structure_signal_check",
