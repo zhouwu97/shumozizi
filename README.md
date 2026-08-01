@@ -16,6 +16,47 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 旧 v3.0/v3.1 运行可继续打开。读取 v3.0 时会把旧阶段映射为 v3.1 内存状态；第一次显式更新才写入 `state/migrations.json`，原始阶段保存在 `legacy_phase`，历史审核产物仍可查看。
 
+## External Author Handoff（v3.4 论文侧）
+
+论文写作交接拆成四个独立角色：
+
+```text
+shumozizi              = Researcher + Scientific Editor
+外部写作模型            = Author
+Fresh Reviewer         = Reviewer
+Editorial Adjudicator  = Editor
+```
+
+主系统负责逐问正式答案、模型与推导、机制与边界、图表与文献、素材池与故事板，
+到 `WRITER_HANDOFF_READY` 后自动暂停写正文，把 `paper/writer-handoff/` 交接包
+交给外部写作模型。外部 Author 的稿件由系统机械审计接回（错误数字、越界强主张、
+未知图、未知引用都会阻断），再交给独立 PDF 盲评与编辑裁决。
+
+```text
+Scientific Research → Paper Preparation → WRITER_HANDOFF_READY
+→ External Author → Import Audit → Fresh Reviewer
+→ Editorial Adjudication → Revision → Final QA
+```
+
+- `waiting_external_author` 是正常暂停，不是 blocked；external 模式下主 Agent
+  不自动撰写正式正文。
+- Reviewer 只给 `severity_recommendation`；只有 Editorial Adjudicator 确认的
+  `confirmed_severity` P0/P1 才进入硬阻断，机器确认的科学事实错误不可降级。
+- 作者请求（`AUTHOR_REQUESTS.json`）只允许 `fulfill/substitute/waive/reject`，
+  且不会自动变成实验任务。
+
+```powershell
+python scripts/paper/prepare_writer_handoff.py <run_dir>        # 生成交接包并暂停
+python scripts/paper/import_external_draft.py <run_dir> --draft <path>
+python scripts/paper/resolve_author_requests.py <run_dir> --input decisions.json
+python scripts/paper/adjudicate_review.py <run_dir> --input adjudication.json
+```
+
+`authoring_mode` 默认 `internal`，行为与旧版完全一致；显式切换到
+`external_handoff` 后才启用外部写作流程。外部草稿永远保留在
+`paper/external-author/draft.tex`，不因上游结果变化被删除，只标记
+`needs_rebase`。
+
 ## 工作原则
 
 - 先提高答案上限，再验证安全底线。

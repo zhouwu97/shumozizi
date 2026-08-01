@@ -87,6 +87,34 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 - 不把约 13 页当作复杂论文的默认目标。先服从赛事页数上限；没有紧上限时，多问且推导/验证复杂的论文可用约 25–33 页正文作为初始规划区间，再按真实内容调整。该区间只帮助防止过度压缩，不是硬门或获奖证明。正文优先完整讲清一个主模型、一个自然 baseline 和一条真正不同的 challenger；中央推导、必要伪代码和参考文献留在正文，完整代码与稳定性审计进附件。
 - 正式编译分别维护 `argument_revision` 与 `render_revision`。正文论证变化才使独立盲评失效；字号、箭头、留白、分页等纯渲染变化只重做当前 render 的版式与机械 QA。科学事实变化仍重做科学挑战、论证和渲染。首稿或 candidate 都不是不可逆冻结；首稿后新增路线、实验、图或审核须记录 review finding、预计成本、预期收益和停止条件。只有用户显式 `final lock` 后才停止新增科学内容。工作流源码哈希只作信息提示，不拥有阶段否决权。
 
+## External Author Handoff
+
+`mathmodel-paper` 的职责从"帮我把整篇论文写出来"扩展为"准备好写作所需的科学材料、
+把写作任务安全地交给 Author、再把稿件接回并做科学编辑"。顶层六阶段主链不变；
+外部交接只是 `paper` 阶段内的 `authoring_status` checkpoint。
+
+- `authoring_mode`：`internal`（默认，行为不变）或 `external_handoff`。
+- `authoring_status`：`preparing_handoff → handoff_ready → waiting_external_author
+  → draft_imported / rework_requested / author_pass_accepted / needs_rebase`。
+  `waiting_external_author` 是正常暂停，**不是 blocked**；external 模式下
+  `compile_paper` / `compile_longform_draft` 在未导入外部稿前被守卫拒绝。
+- 交接包：`paper/writer-handoff/` 下 6 个人读文件 + `answer-and-claims.json` +
+  `manifest.json`。`WRITER_HANDOFF_READY` 必须满足科学 / 素材 / 故事板 / 图表 /
+  主张边界 / 文献六层就绪（`shumozizi.paper.handoff.writer_handoff_readiness`）。
+- 导入：`paper/external-author/draft.tex` 永不覆盖 `main.tex`。
+  `import_audit.py` 做隔离编译与数字 / 强主张 / 图 / 引用绑定；`wrong_number`
+  先为 `scientific_fact_candidate`，经 machine binding 确认后才成为
+  `confirmed_scientific_fact_failure`（不可申诉）。未知图、未知引用、越界强主张
+  直接客观失败并阻断。
+- 作者请求：`AUTHOR_REQUESTS.json` 只允许
+  `fulfill / substitute / waive / reject`，**请求不会自动变成实验任务**；
+  `route=experiment` 必须声明科学价值。
+- 审阅：Fresh Reviewer 只给 `severity_recommendation`；Editorial Adjudicator
+  确认 `confirmed_severity` 并路由返修。机器确认的科学事实错误与 import audit
+  客观失败不可被 Adjudicator 主观降级。
+- CLI：`prepare_writer_handoff` / `import_external_draft` /
+  `resolve_author_requests` / `adjudicate_review`。
+
 ## 工程约束
 
 - Python 模块、类和公共函数使用 Google 风格 docstring；注释使用中文并解释 WHY。
