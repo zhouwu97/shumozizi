@@ -22,6 +22,12 @@
         "properties": {
           "question_id": {"type": "string", "minLength": 1},
           "must_answer": {"type": "string", "minLength": 1},
+          "essential_numbers": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "number"},
+            "description": "正文必须出现且必须正确的核心答案数字；其他正式数字仅在正文实际使用时核验。"
+          },
           "safe_claims": {"type": "array", "items": {"type": "string", "minLength": 1}},
           "forbidden_upgrades": {"type": "array", "items": {"type": "string", "minLength": 1}},
           "key_boundaries": {"type": "array", "items": {"type": "string", "minLength": 1}},

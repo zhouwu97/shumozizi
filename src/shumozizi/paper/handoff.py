@@ -292,6 +292,77 @@ def _current_result_answers(root: Path) -> dict[str, str]:
     return answers
 
 
+def _answer_from_result(root: Path, result_id: str) -> str:
+    """从指定正式结果读取首个标量指标，避免把路线字典当成答案文本。"""
+    try:
+        index = load_json(root / "results/index.json")
+    except ContractError:
+        return ""
+    for item in index.get("results", []):
+        if (
+            isinstance(item, dict)
+            and item.get("result_id") == result_id
+            and item.get("status") == "current"
+            and item.get("execution_mode") == "production"
+            and item.get("execution_valid") is True
+        ):
+            for metric, value in (item.get("metrics") or {}).items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return f"{metric} = {value}"
+    return ""
+
+
+def _current_result_essential_numbers(root: Path) -> dict[str, list[int | float]]:
+    """从中央指标账本或正式 current 结果提取正文必现数字。
+
+    中央指标账本已经表达了“哪些数是核心答案”；没有账本的兼容运行只取每问
+    首个标量指标，避免把数组、逐日序列和求解日志整体变成正文出现义务。
+    """
+    try:
+        index = load_json(root / "results/index.json")
+    except ContractError:
+        return {}
+    current = {
+        str(item.get("result_id")): item
+        for item in index.get("results", [])
+        if isinstance(item, dict)
+        and item.get("status") == "current"
+        and item.get("execution_mode") == "production"
+        and item.get("execution_valid") is True
+    }
+    numbers: dict[str, list[int | float]] = {}
+    ledger_path = root / "paper/generated/metric_ledger.json"
+    if ledger_path.is_file():
+        try:
+            ledger = load_json(ledger_path)
+        except ContractError:
+            ledger = {}
+        for metric in ledger.get("metrics", []):
+            if not isinstance(metric, dict) or metric.get("central") is not True:
+                continue
+            result = current.get(str(metric.get("source_result_id", "")))
+            if result is None:
+                continue
+            value = (result.get("metrics") or {}).get(metric.get("source_metric"))
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                continue
+            question_id = str(result.get("question_id", ""))
+            numbers.setdefault(question_id, []).append(value)
+    if numbers:
+        return {
+            question_id: list(dict.fromkeys(values))
+            for question_id, values in numbers.items()
+        }
+
+    for result in current.values():
+        question_id = str(result.get("question_id", ""))
+        for value in (result.get("metrics") or {}).values():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                numbers[question_id] = [value]
+                break
+    return numbers
+
+
 def _build_answer_and_claims(root: Path) -> dict[str, Any]:
     """从正式结果与主张门禁生成逐问答案与边界文档。"""
     state = read_simple_state(root)
@@ -301,6 +372,7 @@ def _build_answer_and_claims(root: Path) -> dict[str, Any]:
         # 结果登记可能不完整；此时退回结果索引兜底，不让交接构建失败。
         outcomes = {}
     result_answers = _current_result_answers(root)
+    essential_numbers = _current_result_essential_numbers(root)
     gate: dict[str, Any] = {}
     gate_path = root / "paper/claim_gate.json"
     if gate_path.is_file():
@@ -318,10 +390,15 @@ def _build_answer_and_claims(root: Path) -> dict[str, Any]:
         must_answer = ""
         if isinstance(objective, dict):
             must_answer = str(objective.get("answer") or objective.get("value") or "").strip()
-        if len(must_answer) < MINIMUM_MUST_ANSWER_CHARACTERS:
-            must_answer = str(outcome.get("recommended_plan") or objective or "").strip()
+            result_id = objective.get("result_id")
+            if len(must_answer) < MINIMUM_MUST_ANSWER_CHARACTERS and isinstance(
+                result_id, str
+            ):
+                must_answer = _answer_from_result(root, result_id)
         if len(must_answer) < MINIMUM_MUST_ANSWER_CHARACTERS:
             must_answer = result_answers.get(question_id, "")
+        if len(must_answer) < MINIMUM_MUST_ANSWER_CHARACTERS:
+            must_answer = str(outcome.get("recommended_plan") or objective or "").strip()
         safe_claims: list[str] = []
         forbidden_upgrades: list[str] = []
         key_boundaries: list[str] = []
@@ -348,6 +425,7 @@ def _build_answer_and_claims(root: Path) -> dict[str, Any]:
             {
                 "question_id": question_id,
                 "must_answer": must_answer,
+                "essential_numbers": essential_numbers.get(question_id, []),
                 "safe_claims": safe_claims,
                 "forbidden_upgrades": forbidden_upgrades,
                 "key_boundaries": key_boundaries,

@@ -251,6 +251,9 @@ def test_handoff_files_are_writer_facing_not_control_layer(
     assert "不要为了“每问有 validation”反复报告" in writer_brief
     answer_json = load_json(run_dir / "paper/writer-handoff/answer-and-claims.json")
     assert any(q["question_id"] == "Q3" and q["must_answer"] for q in answer_json["questions"])
+    assert next(
+        q["essential_numbers"] for q in answer_json["questions"] if q["question_id"] == "Q3"
+    ) == [581.0]
 
 
 def test_freshness_detects_writer_file_change(
