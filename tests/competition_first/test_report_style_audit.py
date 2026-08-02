@@ -162,7 +162,7 @@ def test_report_style_hard_errors_use_conservative_context(tmp_path: Path) -> No
 
 
 def test_figure_argument_chain_closes_e005(tmp_path: Path) -> None:
-    """图引用后的观察、机制与结论影响按序出现时不应报告 E005。"""
+    """图引用后有正常论文解释时不应要求固定三联句。"""
     run_dir = _run(tmp_path, "figure-argument-chain")
     atomic_json(
         run_dir / "figures/FIGURE_PLAN.json",
@@ -184,6 +184,38 @@ def test_figure_argument_chain_closes_e005(tmp_path: Path) -> None:
         "\\section{Q2}\n"
         "如图\\ref{fig:q2-hero}所示，曲线在容量阈值处呈现明显拐点。"
         "原因在于容量约束开始活跃，因此继续追加同类资源不再改变主结论。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+
+    assert "E005" not in {item["code"] for item in report["errors"]}
+
+
+def test_figure_argument_accepts_natural_explanation_without_ordered_keywords(
+    tmp_path: Path,
+) -> None:
+    """峰值、下降和清零等自然表述可以消费图，而无需机制模板词。"""
+    run_dir = _run(tmp_path, "figure-natural-explanation")
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "figures": [
+                {
+                    "figure_id": "q1-hero",
+                    "presentation_role": "question_hero",
+                    "role": "insight",
+                    "placement": "body",
+                    "latex_label": "fig:q1-hero",
+                }
+            ]
+        },
+    )
+    source = run_dir / "paper/sections/main.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section{Q1}\n"
+        "如图\\ref{fig:q1-hero}所示，第12日形成明显峰值，库存随后下降并最终清零。\n",
         encoding="utf-8",
     )
 
