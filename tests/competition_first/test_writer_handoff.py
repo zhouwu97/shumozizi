@@ -243,6 +243,12 @@ def test_handoff_files_are_writer_facing_not_control_layer(
     assert "result_id" not in material_md
     assert "sha256" not in material_md
     assert "Direct Answer" in material_md
+    writer_brief = (run_dir / "paper/writer-handoff/WRITER_BRIEF.md").read_text(
+        encoding="utf-8"
+    )
+    assert "逻辑证明必须就近保留" in writer_brief
+    assert "实现验证全文集中一次" in writer_brief
+    assert "不要为了“每问有 validation”反复报告" in writer_brief
     answer_json = load_json(run_dir / "paper/writer-handoff/answer-and-claims.json")
     assert any(q["question_id"] == "Q3" and q["must_answer"] for q in answer_json["questions"])
 

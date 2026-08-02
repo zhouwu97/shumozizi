@@ -282,6 +282,8 @@ def test_first_draft_cold_read_accepts_only_paper_pdf(tmp_path: Path) -> None:
     assert "figure_checks" in prompt
     assert "continue_revision 或 ready_for_candidate" in prompt
     assert "最多 5 项" in prompt
+    assert "实现验证可以由前文或全文统一章节明确覆盖" in prompt
+    assert "核心逻辑证明必须留在对应问题附近" in prompt
     with pytest.raises(ContractError, match="paper/ 下的 PDF"):
         first_draft_cold_read_prompt(run_dir, pdf_path="analysis/MODELING_UNITS.json")
 
