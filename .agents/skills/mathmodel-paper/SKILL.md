@@ -9,7 +9,7 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 
 ## v3.4 首稿默认链
 
-先运行 `python scripts/paper/prepare_longform_author.py <run_dir>`，把 current 正式答案、推导素材、机制、代表性案例、当前图、主张边界和文献投影成 `paper/author-pass/RESEARCH_PACKAGE.md`；再生成只说明写作目标、事实边界、自由范围和返工权的 `AUTHOR_BRIEF.md`。Author 默认只读取这两份文件，后台素材池、故事板、蓝图、图计划、回执和哈希继续保留兼容与审计价值，但不得成为创作前置清单。
+先运行 `python scripts/paper/prepare_longform_author.py <run_dir>`，把题面必答合同、current 正式自然语言答案、共享数学对象与必要假设、关键推导、机制、当前图、主张边界和文献压缩投影成 `paper/author-pass/RESEARCH_PACKAGE.md`。该入口只检查正式 objective answer、current production 绑定和 scientific P0/P1 已关闭，不检查素材池、故事板、蓝图或 Figure Plan 完整度。随后完成 Narrative Competition；选中的中心主线、阅读顺序、记忆点、风险和修订建议写回现有 `AUTHOR_BRIEF.md` 并刷新 manifest。Author 默认只读取最终这两份文件，后台素材池、故事板、蓝图、图计划、回执和哈希继续保留兼容与审计价值，但不得成为创作前置清单。
 
 从同一 Research Package 生成 2--3 个 Narrative Candidates，例如问题递进型、数学结构型或机制型；使用 fresh reviewer 选择最能让评委记住论文的一种，并说明风险与修订建议。不要让 `layout_optimizer.py` 的固定 block 顺序支配正文；旧布局输出只作 advisory 兼容。
 
@@ -172,7 +172,7 @@ python scripts/paper/audit_report_style.py <run_dir>
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
-视觉想法先用 `write_visual_ideas.py` 写入轻量列表，并在 `figures/sandbox/<idea-id>/` 生成多个草图。草图不要求结果绑定、最终 caption、LaTeX label、manifest、panel mapping 或 design contract。fresh reviewer 选出最快说明机制且最不重复表格的候选后，用 `visual_sandbox.py graduate` 送入 `figures/work/`；此时才进入来源绑定、图形 QA 和正文消费闭环。
+视觉想法先用 `write_visual_ideas.py` 写入轻量列表，并在 `figures/sandbox/<idea-id>/` 生成多个草图。草图不要求结果绑定、最终 caption、LaTeX label、manifest、panel mapping 或 design contract。fresh reviewer 选出最快说明机制且最不重复表格的候选后，`visual_sandbox.py graduate` 只记录 design reference、其哈希和目标 work 目录；必须再用 current 数据与正式 renderer 重新生成 work 候选，此时才进入来源绑定、图形 QA 和正文消费闭环。
 
 v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM semantic/classic 外壳。`design_only` 只提供当前题的结构启发，只有明确标记 `renderer_available` 的模板才可进入渲染计划；注册表不携带其他题目的数据、公式或结论。
 

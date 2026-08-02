@@ -40,6 +40,8 @@ def build_blinded_pair(left: Path, right: Path, output_dir: Path, seed: int) -> 
     manifest = {
         "schema_version": "1.0",
         "papers": ["paper-A.pdf", "paper-B.pdf"],
+        "required_independent_reviewers": 3,
+        "blinding_rule": "Reviewer 不得接收来源映射、版本标签、工作流说明或前序评价。",
         "criteria": {
             "problem_structure": 15,
             "model_quality": 25,
@@ -47,6 +49,20 @@ def build_blinded_pair(left: Path, right: Path, output_dir: Path, seed: int) -> 
             "insight_and_explanation": 15,
             "figure_persuasion": 10,
             "paper_logic_and_expression": 20,
+        },
+        "pairwise_questions": [
+            "哪篇更像数学建模论文，而不是工作报告？",
+            "哪篇主线更容易用一句话复述？",
+            "哪篇中央推导更充分？",
+            "哪篇图表对结论的解释力更强？",
+            "哪篇前五页更快建立数据直觉与核心矛盾？",
+            "哪篇的 AI 模板化句式和重复结构更少？",
+        ],
+        "reviewer_output": {
+            "winner": "A、B 或 tie",
+            "fatal_scientific_error": "若存在，定位页码并停止竞争力排名",
+            "criterion_reasons": "每个问题给出页码与一句证据",
+            "highest_value_revision": "只保留一项最值得修改的内容",
         },
         "fatal_error_rule": "致命科学错误不进入竞争力排名",
     }

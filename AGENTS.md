@@ -71,10 +71,10 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 
 ## 图表与论文
 
-- Author 默认只接收三个概念：`paper/author-pass/RESEARCH_PACKAGE.md`、`paper/author-pass/AUTHOR_BRIEF.md` 和冷读后的高价值编辑反馈；`PAPER_BLUEPRINT.md`、`paper/answer-map.json`、素材池、故事板、`FIGURE_PLAN`、claim gate 与 generated JSON 只作后台兼容、事实投影和最终审计，不得成为创作前置清单。知识检索零匹配时自动给出通用结构模式；可检索实际使用的方法文献，但禁止同题答案、题解和现成结论，约 6–12 篇参考文献只作紧凑性建议。
+- Author 默认只接收三个概念：`paper/author-pass/RESEARCH_PACKAGE.md`、`paper/author-pass/AUTHOR_BRIEF.md` 和冷读后的高价值编辑反馈；`PAPER_BLUEPRINT.md`、`paper/answer-map.json`、素材池、故事板、`FIGURE_PLAN`、claim gate 与 generated JSON 只作后台兼容、事实投影和最终审计，不得成为创作前置清单。Research Package 必须压缩投影题面必答合同、正式自然语言答案、共享数学对象/必要假设、关键推导、当前图、主张边界和可用文献；Author Pass 只以正式 objective answer、current production 绑定和已关闭 scientific P0/P1 为科学硬门。知识检索零匹配时自动给出通用结构模式；可检索实际使用的方法文献，但禁止同题答案、题解和现成结论，约 6–12 篇参考文献只作紧凑性建议。
 - 候选稿前运行 `scripts/paper/audit_report_style.py`。只有 E001 正文泄漏内部术语属于确定性硬错误；E002--E005（重复报账模板、无统一主线的逐问摘要、核心问过度列表化、图后论证薄弱）与句长、标题、列表密度、篇幅和图数均为 editorial signal，由独立 PDF 阅读裁决，不能直接阻断或诱导 Author 按检查项补句。
 - Competition-First v3.2 的 CUMCM 正式候选稿使用 `CUMCM_STRUCTURE_MAP` 1.2；1.1 只保留旧运行兼容。`classic` 保留固定栏目兜底；`semantic` 定义为“经典国赛外壳 + 语义内核”。共享对象与问题递进只决定外壳建议，Author 仍可合并相邻问题、集中共享推导并自由安排章节深度；结构适配不得修改模型、数字、结论或证据等级。`presentation_contract` 与 `CUMCM_LAYOUT_AUDIT` 都只消费当前 PDF 和盲评事实，保持 advisory。页数唯一政策为：少于 18 页强编辑复核、18--23 页压缩复核、24--30 页正常规划、超过 30 页压缩复核；四档全部不自动阻断。
-- 新视觉先进入 `figures/visual-ideas.json` 和 `figures/sandbox/<idea-id>/`，不要求结果绑定、caption、label、manifest、waiver、`argument_unit_ids`、`obligation_types` 或 `panel_mapping`。关键 insight 用 2--4 个候选做视觉竞争，胜出后才进入 `figures/work/`、正式来源绑定、QA 和 current 晋级。`FIGURE_PLAN` 2.4 只作旧运行兼容与晋级后的后台审计。
+- 新视觉先进入 `figures/visual-ideas.json` 和 `figures/sandbox/<idea-id>/`，不要求结果绑定、caption、label、manifest、waiver、`argument_unit_ids`、`obligation_types` 或 `panel_mapping`。关键 insight 用 2--4 个候选做视觉竞争；胜出草图只冻结为 design reference，必须再由 current 数据与正式 renderer 在 `figures/work/` 重生成，之后才进入来源绑定、QA 和 current 晋级。`FIGURE_PLAN` 2.4 只作旧运行兼容与晋级后的后台审计。
 - `PAPER_BLUEPRINT.md` 和自动生成的 `argument_coverage.json` 用于成稿后的查漏，不得预生成固定每问小节或阻断 Author 开始长篇写作。直接答案绑定、科学事实和正式结果资格仍是硬门；论证、机制、视觉与叙事缺口交给 longform cold read。
 - 写作前蓝图审阅为可选 advisory；第一版 PDF 后必须做独立 cold read。每次最多保留五项最高价值 finding，普通动作默认 advisory，只有明确 `blocking=true` 的 P0/P1 未关闭时阻断候选稿。
 - 图表在 `figures/work/<figure_id>/<version>/` 迭代，通过文件可读性、PNG/PDF 几何一致性和人工看图后晋级 `figures/current/`；被替换的 current 自动留入 `figures/archive/`。流程图另查文字越界、重叠、最小字号、箭头穿字和连接点居中。

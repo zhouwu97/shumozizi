@@ -8,6 +8,7 @@ import pytest
 from pypdf import PdfWriter
 
 from evaluation.debureaucracy_replay import replay_authoring
+from evaluation.pairwise_paper_review import build_blinded_pair
 from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.core.schema import require_valid
 from shumozizi.knowledge.inspiration import build_inspiration_context
@@ -25,6 +26,7 @@ from shumozizi.paper.templates import (
     select_paper_template,
 )
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.review_focus import record_scientific_challenge_evidence
 from shumozizi.simple.visual_sandbox import (
     graduate_visual_candidate,
     record_visual_competition,
@@ -48,10 +50,29 @@ def _author_ready_run(tmp_path: Path, name: str = "author-pass") -> Path:
         {
             "result_id": "r-q1",
             "question_id": "Q1",
+            "kind": "test",
+            "source_script": None,
+            "command": "test",
+            "input_files": [],
+            "input_hashes": {},
+            "output_files": [],
+            "output_hashes": {},
+            "metric_sources": {},
+            "method_facts": {},
             "status": "current",
             "execution_mode": "production",
             "execution_valid": True,
-            "paper_allowed": True,
+            "exit_code": 0,
+            "stdout_path": "results/test.stdout.log",
+            "stderr_path": "results/test.stderr.log",
+            "started_at": "2026-01-01T00:00:00Z",
+            "finished_at": "2026-01-01T00:00:01Z",
+            "duration_seconds": 1.0,
+            "error": None,
+            "created_at": "2026-01-01T00:00:01Z",
+            "objective_semantics_sha256": "0" * 64,
+            "dependency_scope": "question",
+            "affected_question_ids": ["Q1"],
             "metrics": {"objective": 12.0, "feasible": True},
         }
     )
@@ -64,6 +85,7 @@ def _author_ready_run(tmp_path: Path, name: str = "author-pass") -> Path:
                     "primary_result_id": "r-q1",
                     "result_ids": ["r-q1"],
                     "direct_answer_location": "问题一结尾",
+                    "objective_answer": {"result_id": "r-q1", "answer": "Q1 的正式目标值为 12。"},
                 }
             }
         },
@@ -75,6 +97,12 @@ def _author_ready_run(tmp_path: Path, name: str = "author-pass") -> Path:
         selection_reason="减负 Author Pass 回归测试使用无回退 LaTeX 模板。",
     )
     materialize_selected_template(run_dir)
+    record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=["r-q1"],
+        attack_description="独立复核 Q1 正式结果与可行性边界。",
+        findings=[],
+    )
     return run_dir
 
 
@@ -149,6 +177,39 @@ def test_longform_receipt_binds_independent_author_source(
     assert receipt["author_brief_sha256"] == manifest["author_brief"]["sha256"]
 
 
+def test_author_pass_and_compile_block_open_scientific_p1(tmp_path: Path) -> None:
+    """未关闭 scientific P0/P1 时，准备和编译两处都必须阻断。"""
+    run_dir = _author_ready_run(tmp_path, "open-science")
+    prepare_longform_author(run_dir)
+    challenge_path = run_dir / "review/scientific-challenge-evidence.json"
+    challenge = load_json(challenge_path)
+    challenge["findings"] = [
+        {
+            "finding_id": "SCI-OPEN-P1",
+            "question_id": "Q1",
+            "severity": "P1",
+            "finding": "正式答案的边界仍需科学修复。",
+            "action_type": "WRITING_FIX",
+            "rollback_target": "paper",
+            "invalidates": ["Q1 正式结论表述"],
+            "required_action": "关闭该科学边界后重新准备 Author Pass。",
+            "status": "open",
+            "closure_evidence_result_ids": [],
+        }
+    ]
+    atomic_json(challenge_path, challenge)
+
+    with pytest.raises(ContractError, match="SCI-OPEN-P1"):
+        prepare_longform_author(run_dir)
+
+    (run_dir / "paper/longform-source.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n正文\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ContractError, match="SCI-OPEN-P1"):
+        compile_longform_draft(run_dir)
+
+
 def test_visual_sandbox_competes_without_figure_contract(tmp_path: Path) -> None:
     """视觉想法可直接草绘、竞争并进入 work，不要求完整 Figure Contract。"""
     run_dir = initialize_simple_run(tmp_path, "visual", required_questions=["Q1"])
@@ -183,7 +244,9 @@ def test_visual_sandbox_competes_without_figure_contract(tmp_path: Path) -> None
 
     assert ideas["ideas"][0].keys() == {"id", "question", "sources", "idea", "status"}
     assert len(review["candidates"]) == 2
-    assert (run_dir / promoted["work_path"]).read_bytes() == b"candidate-b"
+    assert promoted["formal_render_required"] is True
+    assert promoted["selected_design_reference"].endswith("b.png")
+    assert not (run_dir / "figures/work/q1-bottleneck/v1").exists()
     assert not (run_dir / "figures/FIGURE_PLAN.json").exists()
 
 
@@ -220,6 +283,10 @@ def test_narrative_competition_is_advisory_and_research_package_bound(tmp_path: 
         revision_advice="保留逐问直接答案索引。",
     )
     assert selected["selected_candidate_id"] == "mechanism"
+    brief = (run_dir / "paper/author-pass/AUTHOR_BRIEF.md").read_text(encoding="utf-8")
+    assert "本轮选中的叙事方向" in brief
+    assert "机制型" not in brief  # brief consumes the selected thread, not a fixed title
+    assert "从瓶颈现象追到活跃约束" in brief
     assert narrative_competition_freshness(run_dir) == {
         "current": True,
         "status": "reviewed",
@@ -294,3 +361,22 @@ def test_historical_replay_keeps_facts_and_competes_on_expression() -> None:
     assert report["author_facing_count"] == 2
     assert report["narrative_candidate_count"] >= 2
     assert report["distinct_narrative_flows"] is True
+    assert report["author_context_not_increased"] is True
+    assert report["research_package_has_question_contracts"] is True
+    assert report["research_package_has_formal_answer_text"] is True
+    assert report["research_package_has_citations"] is True
+    assert report["selected_narrative_in_author_brief"] is True
+
+
+def test_pairwise_package_requires_three_blind_reviewers(tmp_path: Path) -> None:
+    """A/B 包固定三名独立 reviewer 和本轮减负质量问题。"""
+    baseline = tmp_path / "baseline.pdf"
+    candidate = tmp_path / "candidate.pdf"
+    _blank_pdf(baseline, 1)
+    _blank_pdf(candidate, 1)
+    manifest = build_blinded_pair(baseline, candidate, tmp_path / "blind", seed=34)
+
+    assert manifest["required_independent_reviewers"] == 3
+    assert len(manifest["pairwise_questions"]) == 6
+    assert any("工作报告" in item for item in manifest["pairwise_questions"])
+    assert any("模板化" in item for item in manifest["pairwise_questions"])

@@ -6,12 +6,16 @@
   "science_digests_before": {
     "results/index.json": "981450d38753be791caa64e53157f21552db63833e1aa1a1540e80b00298c9cf",
     "paper/answer-map.json": "48fa9d25f0566a15c9a797421a366f84f55b7facb2c0d2e82c16b83819347d69",
-    "paper/claim_gate.json": "e808b62846eaca7ce943fe6318512bf6934526665fbc21c2b0cc65c4cb70eb16"
+    "paper/claim_gate.json": "e808b62846eaca7ce943fe6318512bf6934526665fbc21c2b0cc65c4cb70eb16",
+    "analysis/MODELING_UNITS.json": "d4171df1ea4acdd32ab7c5316e228b0d1c4e597737f7f3e9936fe9b145486790",
+    "review/scientific-challenge-evidence.json": "2f46e62639e84bca934812b86f6a6b1a1316dd9357ba8f25246d74c0db4dee5c"
   },
   "science_digests_after": {
     "results/index.json": "981450d38753be791caa64e53157f21552db63833e1aa1a1540e80b00298c9cf",
     "paper/answer-map.json": "48fa9d25f0566a15c9a797421a366f84f55b7facb2c0d2e82c16b83819347d69",
-    "paper/claim_gate.json": "e808b62846eaca7ce943fe6318512bf6934526665fbc21c2b0cc65c4cb70eb16"
+    "paper/claim_gate.json": "e808b62846eaca7ce943fe6318512bf6934526665fbc21c2b0cc65c4cb70eb16",
+    "analysis/MODELING_UNITS.json": "d4171df1ea4acdd32ab7c5316e228b0d1c4e597737f7f3e9936fe9b145486790",
+    "review/scientific-challenge-evidence.json": "2f46e62639e84bca934812b86f6a6b1a1316dd9357ba8f25246d74c0db4dee5c"
   },
   "science_facts_stable": true,
   "previous_writer_facing_count": 7,
@@ -24,5 +28,22 @@
   "control_file_reduction_at_least_half": true,
   "narrative_candidate_count": 2,
   "distinct_narrative_flows": true,
-  "selected_narrative": "active-bound"
+  "selected_narrative": "active-bound",
+  "old_author_characters": 29467,
+  "new_author_characters": 9279,
+  "old_estimated_tokens": 7367,
+  "new_estimated_tokens": 2320,
+  "duplicate_content_ratio_before": 0.112833,
+  "duplicate_content_ratio_after": 0.014422,
+  "control_vocabulary_count_before": 9,
+  "control_vocabulary_count_after": 8,
+  "author_context_not_increased": true,
+  "research_package_has_question_contracts": true,
+  "research_package_has_formal_answer_text": true,
+  "research_package_has_citations": true,
+  "selected_narrative_in_author_brief": true,
+  "historical_candidate_pdf_available": true,
+  "historical_candidate_pdf_pages": 24,
+  "historical_pdfs_distinct": true,
+  "pairwise_review_status": "ready_for_blinding_not_yet_reviewed"
 }

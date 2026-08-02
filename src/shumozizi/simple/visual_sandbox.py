@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -131,7 +130,11 @@ def record_visual_competition(
 def graduate_visual_candidate(
     run_dir: Path, idea_id: str, *, candidate_version: str = "v1"
 ) -> dict[str, Any]:
-    """把胜出草图复制到正式 work 目录，后续仍须经过现有 QA 与 current 晋级。"""
+    """冻结胜出设计参考，并要求从 current 数据重新生成正式图。
+
+    Sandbox 文件只证明视觉方向被选中，不具备 renderer、源码和结果绑定，
+    因此不能复制进 ``figures/work`` 冒充正式候选。
+    """
     root = run_dir.resolve()
     review = load_json(root / VISUAL_COMPETITION_ROOT / f"{idea_id}.json")
     require_valid(review, "visual_competition")
@@ -141,20 +144,17 @@ def graduate_visual_candidate(
     ):
         raise ContractError("胜出草图已变化，必须重新视觉竞争")
     target_dir = root / "figures/work" / idea_id / candidate_version
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / source.name
-    temporary = target.with_suffix(target.suffix + ".tmp")
-    shutil.copy2(source, temporary)
-    temporary.replace(target)
     ideas = read_visual_ideas(root)
     item = next(raw for raw in ideas["ideas"] if raw["id"] == idea_id)
-    item["status"] = "promoted"
+    item["status"] = "selected"
     ideas["updated_at"] = utc_now()
     atomic_json(root / VISUAL_IDEAS_PATH, ideas)
     return {
         "idea_id": idea_id,
         "candidate_version": candidate_version,
-        "work_path": relative_inside(root, target).as_posix(),
-        "sha256": sha256_file(target),
-        "next_action": "run_existing_figure_qa_and_promote_to_current",
+        "selected_design_reference": relative_inside(root, source).as_posix(),
+        "selected_design_sha256": sha256_file(source),
+        "formal_render_required": True,
+        "target_work_dir": relative_inside(root, target_dir).as_posix(),
+        "next_action": "regenerate_from_current_sources",
     }

@@ -1,4 +1,4 @@
-"""记录 Visual Sandbox 竞争并把胜出草图送入正式 work 目录。"""
+"""记录 Visual Sandbox 竞争，并把胜出草图冻结为正式重绘参考。"""
 
 from __future__ import annotations
 

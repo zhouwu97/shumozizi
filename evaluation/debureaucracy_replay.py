@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -27,11 +28,14 @@ SCIENCE_FILES = (
     Path("results/index.json"),
     Path("paper/answer-map.json"),
     Path("paper/claim_gate.json"),
+    Path("analysis/MODELING_UNITS.json"),
+    Path("review/scientific-challenge-evidence.json"),
 )
 REPLAY_FILES = (
     Path("state/run.json"),
     *SCIENCE_FILES,
     Path("paper/generated/material_pool.json"),
+    Path("paper/generated/citation_coverage.json"),
     Path("figures/index.json"),
 )
 LEGACY_WRITER_FILES = (
@@ -44,6 +48,20 @@ LEGACY_WRITER_FILES = (
     "answer-and-claims.json",
 )
 
+CONTROL_VOCABULARY = (
+    "schema",
+    "manifest",
+    "sha256",
+    "result_id",
+    "workflow",
+    "checkpoint",
+    "审核清单",
+    "回执",
+    "哈希",
+    "工作流阶段",
+    "工具探测",
+)
+
 
 def _copy_replay_inputs(source: Path, target: Path) -> None:
     """只复制 Author Pass 所需事实，避免复制完整 169 MB 历史运行。"""
@@ -54,6 +72,20 @@ def _copy_replay_inputs(source: Path, target: Path) -> None:
         destination = target / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(current, destination)
+    challenge_path = source / "review/scientific-challenge-evidence.json"
+    if not challenge_path.is_file():
+        return
+    challenge = json.loads(challenge_path.read_text(encoding="utf-8"))
+    for record in challenge.get("results", []):
+        if not isinstance(record, dict):
+            continue
+        for relative in (record.get("output_hashes") or {}):
+            current = source / relative
+            if not current.is_file():
+                continue
+            destination = target / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(current, destination)
 
 
 def _digests(run_dir: Path) -> dict[str, str]:
@@ -63,6 +95,51 @@ def _digests(run_dir: Path) -> dict[str, str]:
         for relative in SCIENCE_FILES
         if (run_dir / relative).is_file()
     }
+
+
+def _context_metrics(paths: list[Path]) -> dict[str, Any]:
+    """计算 Writer 上下文规模、精确重复行与控制词负担。"""
+    texts = [path.read_text(encoding="utf-8") for path in paths if path.is_file()]
+    characters = sum(len(text) for text in texts)
+    normalized_lines: list[str] = []
+    for content in texts:
+        for line in content.splitlines():
+            normalized = re.sub(r"\s+", " ", line).strip().casefold()
+            if len(normalized) >= 12:
+                normalized_lines.append(normalized)
+    seen: set[str] = set()
+    duplicate_characters = 0
+    for line in normalized_lines:
+        if line in seen:
+            duplicate_characters += len(line)
+        else:
+            seen.add(line)
+    joined = "\n".join(texts).casefold()
+    control_count = sum(joined.count(term.casefold()) for term in CONTROL_VOCABULARY)
+    return {
+        "characters": characters,
+        "estimated_tokens": (characters + 3) // 4,
+        "duplicate_content_ratio": (
+            round(duplicate_characters / sum(map(len, normalized_lines)), 6)
+            if normalized_lines
+            else 0.0
+        ),
+        "control_vocabulary_count": control_count,
+    }
+
+
+def _legacy_writer_paths(source: Path) -> list[Path]:
+    """兼容读取根目录或 internal 中的旧 Writer 投影。"""
+    handoff = source / "paper/writer-handoff"
+    paths: list[Path] = []
+    for filename in LEGACY_WRITER_FILES:
+        root_path = handoff / filename
+        internal_path = handoff / "internal" / filename
+        if root_path.is_file():
+            paths.append(root_path)
+        elif internal_path.is_file():
+            paths.append(internal_path)
+    return paths
 
 
 def replay_authoring(source_run: Path) -> dict[str, Any]:
@@ -82,7 +159,9 @@ def replay_authoring(source_run: Path) -> dict[str, Any]:
     before = _digests(source)
     baseline_pdf = source / "paper/cold-reader-draft-2.pdf"
     # 历史目录可能已被新版本重建 handoff；基线应绑定旧协议本身，而不是可变产物。
-    previous_writer_count = len(LEGACY_WRITER_FILES)
+    previous_writer_paths = _legacy_writer_paths(source)
+    previous_writer_count = len(previous_writer_paths) or len(LEGACY_WRITER_FILES)
+    old_context = _context_metrics(previous_writer_paths)
 
     with tempfile.TemporaryDirectory(prefix="shumozizi-debureaucracy-") as temporary:
         replay = Path(temporary) / source.name
@@ -121,7 +200,16 @@ def replay_authoring(source_run: Path) -> dict[str, Any]:
             manifest["research_package"]["path"],
             manifest["author_brief"]["path"],
         ]
+        new_context = _context_metrics([replay / relative for relative in author_files])
+        research_text = (replay / author_files[0]).read_text(encoding="utf-8")
+        brief_text = (replay / author_files[1]).read_text(encoding="utf-8")
         flows = [tuple(item["section_flow"]) for item in candidates["candidates"]]
+
+    candidate_pdf = source / "paper/external-author/build/main.pdf"
+    candidate_available = candidate_pdf.is_file()
+    pdfs_distinct = bool(
+        candidate_available and sha256_file(candidate_pdf) != sha256_file(baseline_pdf)
+    )
 
     return {
         "schema_name": "debureaucracy_historical_replay",
@@ -141,6 +229,41 @@ def replay_authoring(source_run: Path) -> dict[str, Any]:
         "narrative_candidate_count": len(candidates["candidates"]),
         "distinct_narrative_flows": len(flows) == len(set(flows)),
         "selected_narrative": selected["selected_candidate_id"],
+        "old_author_characters": old_context["characters"],
+        "new_author_characters": new_context["characters"],
+        "old_estimated_tokens": old_context["estimated_tokens"],
+        "new_estimated_tokens": new_context["estimated_tokens"],
+        "duplicate_content_ratio_before": old_context["duplicate_content_ratio"],
+        "duplicate_content_ratio_after": new_context["duplicate_content_ratio"],
+        "control_vocabulary_count_before": old_context["control_vocabulary_count"],
+        "control_vocabulary_count_after": new_context["control_vocabulary_count"],
+        "author_context_not_increased": (
+            old_context["characters"] > 0
+            and new_context["characters"] <= old_context["characters"]
+        ),
+        "research_package_has_question_contracts": "## 题面与必答合同" in research_text,
+        "research_package_has_formal_answer_text": (
+            "## 逐问正式答案" in research_text
+            and "未提供可直接引用的自然语言答案" not in research_text
+        ),
+        "research_package_has_citations": (
+            "## 可用文献" in research_text and "- [" in research_text
+        ),
+        "selected_narrative_in_author_brief": (
+            "## 本轮选中的叙事方向" in brief_text
+            and selected["selected_candidate_id"] in {
+                item["candidate_id"] for item in candidates["candidates"]
+            }
+            and selected["selection_reason"] in brief_text
+        ),
+        "historical_candidate_pdf_available": candidate_available,
+        "historical_candidate_pdf_pages": (
+            len(PdfReader(str(candidate_pdf)).pages) if candidate_available else None
+        ),
+        "historical_pdfs_distinct": pdfs_distinct,
+        "pairwise_review_status": (
+            "ready_for_blinding_not_yet_reviewed" if pdfs_distinct else "candidate_pdf_missing"
+        ),
     }
 
 

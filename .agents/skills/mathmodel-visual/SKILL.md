@@ -39,7 +39,7 @@ python scripts/figures/visual_sandbox.py review <run_dir> <idea-id> `
 
 ## Stage C：晋级与审计
 
-运行 `python scripts/figures/visual_sandbox.py graduate <run_dir> <idea-id>`，把胜出草图复制到 `figures/work/<idea-id>/<version>/`。从这里开始才执行现有正式流程：
+运行 `python scripts/figures/visual_sandbox.py graduate <run_dir> <idea-id>`，冻结胜出草图为 design reference，并取得 `target_work_dir`。草图不能直接复制成正式候选；必须从 current 数据与正式 renderer 在目标目录重新生成。从这里开始才执行现有正式流程：
 
 - 绑定 current production 来源、渲染脚本和 PNG/PDF 输出。
 - 实际打开 PNG/PDF，检查文字、比例、图例、面板、黑白可读性和正文栏宽。
