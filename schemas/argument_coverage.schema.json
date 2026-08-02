@@ -41,7 +41,7 @@
           "core_question": {"type": "boolean"},
           "obligations": {
             "type": "object",
-            "minProperties": 13,
+            "minProperties": 7,
             "additionalProperties": {
               "type": "object",
               "additionalProperties": false,
