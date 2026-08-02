@@ -1,7 +1,7 @@
 interface:
-  display_name: "Competition-First v3.2 建模工作流"
-  short_description: "完成整道数学建模赛题的分析、实验、图表、论文与验证"
-  default_prompt: "Use $mathmodel-workflow to start or continue the complete Competition-First v3.2 modeling run."
+  display_name: "Competition-First v3.4 建模工作流"
+  short_description: "Complete modeling workflow from analysis through verified paper"
+  default_prompt: "Use $mathmodel-workflow to start or continue a complete Competition-First v3.4 modeling run."
 
 policy:
   allow_implicit_invocation: true

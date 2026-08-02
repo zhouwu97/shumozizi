@@ -491,7 +491,9 @@ def test_cold_reader_can_add_companion_figure_without_editing_science(tmp_path: 
         ],
     )
     assert actions["actions"][0]["status"] == "open"
-    assert editorial_readiness(run_dir)["ready"] is False
+    readiness = editorial_readiness(run_dir)
+    assert readiness["ready"] is True
+    assert readiness["advisory_actions"] == ["finding-17"]
     close_editorial_action(
         run_dir,
         "finding-17",
@@ -499,3 +501,26 @@ def test_cold_reader_can_add_companion_figure_without_editing_science(tmp_path: 
     )
     assert editorial_readiness(run_dir)["ready"] is True
     assert read_visual_opportunity_pool(run_dir)["opportunities"][0]["origin"] == "paper_cold_reader"
+
+
+def test_only_explicit_blocking_editorial_action_blocks_candidate(tmp_path: Path) -> None:
+    """只有 Reviewer 明确标为阻断的高影响动作才拦截候选稿。"""
+    run_dir = _run(tmp_path, "blocking-editorial")
+    actions = record_paper_cold_reader_actions(
+        run_dir,
+        reviewer_context_id="fresh-blocking-reader",
+        actions=[
+            {
+                "action_id": "finding-p1",
+                "action": "ADD_DERIVATION",
+                "target_id": "q3-core",
+                "reason": "核心结论缺少可复核的中央推导。",
+                "expected_benefit": "补齐决定正式答案可信度的论证。",
+                "blocking": True,
+            }
+        ],
+    )
+    assert actions["actions"][0]["status"] == "open"
+    readiness = editorial_readiness(run_dir)
+    assert readiness["ready"] is False
+    assert readiness["open_actions"] == ["finding-p1"]

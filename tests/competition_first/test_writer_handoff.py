@@ -239,16 +239,23 @@ def test_handoff_files_are_writer_facing_not_control_layer(
     run_dir = _ready_run(tmp_path, "faces", monkeypatch)
     set_authoring_mode(run_dir, "external_handoff", reason="测试")
     build_writer_handoff(run_dir)
-    material_md = (run_dir / "paper/writer-handoff/MATERIAL_POOL.md").read_text(encoding="utf-8")
-    assert "result_id" not in material_md
-    assert "sha256" not in material_md
-    assert "Direct Answer" in material_md
-    writer_brief = (run_dir / "paper/writer-handoff/WRITER_BRIEF.md").read_text(
+    research_package = (run_dir / "paper/writer-handoff/RESEARCH_PACKAGE.md").read_text(
         encoding="utf-8"
     )
-    assert "逻辑证明必须就近保留" in writer_brief
-    assert "实现验证全文集中一次" in writer_brief
-    assert "不要为了“每问有 validation”反复报告" in writer_brief
+    assert "result_id" not in research_package
+    assert "sha256" not in research_package
+    assert "正式答案" in research_package
+    author_brief = (run_dir / "paper/writer-handoff/AUTHOR_BRIEF.md").read_text(
+        encoding="utf-8"
+    )
+    assert "完整科学论文" in author_brief
+    assert "可以合并问题、重排章节" in author_brief
+    assert "应提出返工请求" in author_brief
+    manifest = load_json(run_dir / "paper/writer-handoff/manifest.json")
+    assert sorted(manifest["writer_files"]) == [
+        "paper/writer-handoff/AUTHOR_BRIEF.md",
+        "paper/writer-handoff/RESEARCH_PACKAGE.md",
+    ]
     answer_json = load_json(run_dir / "paper/writer-handoff/answer-and-claims.json")
     assert any(q["question_id"] == "Q3" and q["must_answer"] for q in answer_json["questions"])
     assert next(
@@ -264,9 +271,9 @@ def test_freshness_detects_writer_file_change(
     set_authoring_mode(run_dir, "external_handoff", reason="测试")
     build_writer_handoff(run_dir)
     assert verify_handoff_freshness(run_dir)["fresh"] is True
-    pool_md = run_dir / "paper/writer-handoff/MATERIAL_POOL.md"
-    pool_md.write_text(
-        pool_md.read_text(encoding="utf-8") + "\n外部 Author 附加内容\n", encoding="utf-8"
+    package_md = run_dir / "paper/writer-handoff/RESEARCH_PACKAGE.md"
+    package_md.write_text(
+        package_md.read_text(encoding="utf-8") + "\n外部 Author 附加内容\n", encoding="utf-8"
     )
     result = verify_handoff_freshness(run_dir)
     assert result["fresh"] is False

@@ -863,15 +863,15 @@ def test_required_figure_must_be_consumed_by_latex(monkeypatch: pytest.MonkeyPat
     assert validate_required_figure_consumption(run_dir) == []
 
 
-def test_core_question_requires_explicit_visual_decision(tmp_path: Path) -> None:
-    """核心问题不能通过省略 2.1 计划或把所有图设为可选而静默零图。"""
+def test_core_question_can_enter_visual_sandbox_without_formal_decision(tmp_path: Path) -> None:
+    """核心问题可先进入 Visual Sandbox，不因缺少旧正式图计划而阻断。"""
     run_dir = _run(tmp_path)
     modeling = load_json(run_dir / "analysis/MODELING_UNITS.json")
     modeling["units"] = [{"unit_id": "U1", "question_id": "Q1", "core_question": True}]
     atomic_json(run_dir / "analysis/MODELING_UNITS.json", modeling)
 
     errors = validate_required_figure_consumption(run_dir)
-    assert any("核心问题 Q1" in error and "视觉决策" in error for error in errors)
+    assert errors == []
 
     atomic_json(
         run_dir / "figures/FIGURE_PLAN.json",

@@ -1,5 +1,6 @@
 """论文主张使用权限与证据门禁。"""
 
+from .author_pass import prepare_longform_author, require_author_pass, verify_author_pass
 from .compiler import (
     compile_longform_draft,
     compile_paper,
@@ -34,6 +35,11 @@ from .layout_optimizer import (
     layout_optimization_freshness,
     read_layout_optimization,
 )
+from .narrative_competition import (
+    narrative_competition_freshness,
+    select_narrative_candidate,
+    write_narrative_candidates,
+)
 from .page_budget import audit_page_budget, verify_page_budget
 from .receipts import verify_figure_receipts, verify_paper_build_receipt, verify_production_receipts
 from .references import (
@@ -65,6 +71,9 @@ __all__ = [
     "build_layout_optimization",
     "read_layout_optimization",
     "layout_optimization_freshness",
+    "write_narrative_candidates",
+    "select_narrative_candidate",
+    "narrative_competition_freshness",
     "audit_page_budget",
     "verify_page_budget",
     "record_paper_cold_reader_actions",
@@ -85,4 +94,7 @@ __all__ = [
     "verify_paper_compile_receipt",
     "verify_longform_draft_receipt",
     "verify_reviewable_draft_receipt",
+    "prepare_longform_author",
+    "verify_author_pass",
+    "require_author_pass",
 ]

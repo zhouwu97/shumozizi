@@ -408,7 +408,7 @@ def _figure_argument_findings(
         ]
         figure_id = str(figure.get("figure_id", label))
         if not references:
-            errors.append(
+            warnings.append(
                 {
                     "code": "E005",
                     "message": f"正文图 {figure_id} 未被正文引用，无法进入论文论证。",
@@ -443,7 +443,7 @@ def _figure_argument_findings(
                 best_missing = []
                 break
         if best_missing:
-            errors.append(
+            warnings.append(
                 {
                     "code": "E005",
                     "message": f"正文图 {figure_id} 的引用附近缺少实质性解释。",
@@ -652,7 +652,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
         name: count for name, count in report_phrase_counts.items() if count >= 3
     }
     if repeated_templates:
-        errors.append(
+        warnings.append(
             {
                 "code": "E002",
                 "message": "同一任务报账模板在正文中至少重复三次，需要按数学关系重写。",
@@ -685,7 +685,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             for pattern in _ABSTRACT_UNIFIED_PATTERNS
         )
         if unified_signals < 2:
-            errors.append(
+            warnings.append(
                 {
                     "code": "E003",
                     "message": (
@@ -780,7 +780,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             and (section_list_items >= 3 or section_tables >= 1)
             and prose_paragraphs <= 2
         ):
-            errors.append(
+            warnings.append(
                 {
                     "code": "E004",
                     "message": (
@@ -917,8 +917,8 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             "visual_rhythm_review": bool(rhythm_warnings),
         },
         "limitations": (
-            "E001--E005 只覆盖可由正文结构直接复核的高置信信号，不判断数学正确性；"
-            "warnings 涉及的主观文风与实际阅读体验仍必须在独立 PDF 盲评中复核。"
+            "只有 E001 控制层术语泄漏属于提交完整性错误；E002--E005 与其他"
+            "写作信号均由独立 PDF 冷读判断，不能凭启发式规则阻断创作或编译。"
         ),
     }
 

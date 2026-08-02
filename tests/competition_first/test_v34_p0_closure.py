@@ -299,5 +299,5 @@ def test_page_budget_does_not_infer_missing_content_from_short_pdf(tmp_path: Pat
     # enforce_minimum 参数保留兼容，但页数不再触发 ContractError。
     report = audit_page_budget(run_dir, pdf, enforce_minimum=True)
     assert report["page_count"] == 10
-    assert report["status"] == "normal_range"
+    assert report["status"] == "under_18_editorial_signal"
     assert verify_page_budget(run_dir, pdf_path=pdf)["valid"] is True

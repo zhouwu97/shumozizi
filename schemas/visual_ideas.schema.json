@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/visual_ideas.schema.json",
+  "title": "Low-cost visual sandbox ideas",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "ideas", "updated_at"],
+  "properties": {
+    "schema_name": {"const": "visual_ideas"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "ideas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "sources", "idea", "status"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "question": {"type": "string", "minLength": 1},
+          "sources": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "idea": {"type": "string", "minLength": 1},
+          "status": {"enum": ["sketch", "competing", "selected", "dropped", "promoted"]},
+          "selected_candidate": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

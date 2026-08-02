@@ -256,13 +256,10 @@ def test_supported_templates_materialize_all_question_layouts(
     questions_file = run_dir / "paper" / manifest["question_layout"]["section_path"]
     content = questions_file.read_text(encoding="utf-8")
     assert content.count(_question_heading(language, engine)) == question_count
-    answer_heading = "本问结论" if language == "zh" else "Answer First"
-    assert content.count(answer_heading) == question_count
-    for question_index in range(1, question_count + 1):
-        heading = f"问题 Q{question_index}" if language == "zh" else f"Problem Q{question_index}"
-        start = content.index(heading)
-        next_heading = "模型选择与关键关系" if language == "zh" else "Model and Key Relations"
-        assert content.index(answer_heading, start) < content.index(next_heading, start)
+    assert "\\subsection{" not in content
+    assert "\n== " not in content
+    assert content.count("作者可自由组织本问") == question_count
+    assert content.count("不要机械全部使用") == question_count
     entrypoint = run_dir / "paper" / manifest["question_layout"]["entrypoint_path"]
     assert entrypoint.read_text(encoding="utf-8").count(
         '#include("sections/questions.typ")'

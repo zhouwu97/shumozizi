@@ -12,15 +12,19 @@ from shumozizi.core.schema import require_valid
 from shumozizi.simple.state import read_simple_state, utc_now
 
 PAGE_BUDGET_PATH = Path("qa/paper-page-budget.json")
-TARGET_PAGE_RANGE = (1, 30)
-UNDERDEVELOPED_THRESHOLD = 1
+TARGET_PAGE_RANGE = (24, 30)
+UNDERDEVELOPED_THRESHOLD = 18
 
 
 def _assessment(page_count: int) -> tuple[str, str]:
     """把页数映射为竞赛编辑动作，而不是把页数当作质量证明。"""
+    if page_count < UNDERDEVELOPED_THRESHOLD:
+        return "under_18_editorial_signal", "正文低于 18 页，触发强编辑复核，但不据此阻断或扩写。"
+    if page_count < TARGET_PAGE_RANGE[0]:
+        return "under_24_editorial_review", "正文为 18--23 页，由冷读判断是否存在过度压缩。"
     if page_count <= TARGET_PAGE_RANGE[1]:
-        return "normal_range", "页数不超过 30 页；内容充分性由论证覆盖和独立审阅判断。"
-    return "over_30_review_required", "页数超过 30 页，需要按赛事正文/附录口径处理。"
+        return "normal_planning_range", "正文位于 24--30 页规划区间；页数本身不证明质量。"
+    return "over_30_compression_review", "正文超过 30 页，触发压缩复核但不自动阻断。"
 
 
 def audit_page_budget(
@@ -59,14 +63,15 @@ def audit_page_budget(
     status, explanation = _assessment(page_count)
     report = {
         "schema_name": "paper_page_budget",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": read_simple_state(root)["run_id"],
         "artifact_path": artifact.relative_to(root).as_posix(),
         "artifact_sha256": sha256_file(artifact),
         "page_count": page_count,
         "target_page_range": list(TARGET_PAGE_RANGE),
         "inspect_below_pages": UNDERDEVELOPED_THRESHOLD,
-        "enforce_minimum": enforce_minimum,
+        # 兼容参数不能重新激活旧硬门；回执始终记录当前唯一政策。
+        "enforce_minimum": False,
         "status": status,
         "explanation": explanation,
         "generated_at": utc_now(),

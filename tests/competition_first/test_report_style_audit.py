@@ -53,7 +53,8 @@ def test_report_style_audit_detects_template_repetition_and_internal_terms(
     warning_codes = {item["code"] for item in report["warnings"]}
 
     assert report["advisory_only"] is False
-    assert {"E001", "E002", "E003"} <= error_codes
+    assert error_codes == {"E001"}
+    assert {"E002", "E003"} <= warning_codes
     assert "internal_workflow_vocabulary" in warning_codes
     assert "report_phrase_repetition" in warning_codes
     assert "repetitive_question_template" in warning_codes
@@ -130,7 +131,8 @@ def test_report_style_audit_covers_depth_density_and_hero_binding(
     error_codes = {item["code"] for item in report["errors"]}
     warning_codes = {item["code"] for item in report["warnings"]}
 
-    assert {"E004", "E005"} <= error_codes
+    assert not error_codes
+    assert {"E004", "E005"} <= warning_codes
     assert "excessive_list_density" in warning_codes
     assert "fragmented_heading_structure" in warning_codes
     assert "core_question_without_derivation" in warning_codes

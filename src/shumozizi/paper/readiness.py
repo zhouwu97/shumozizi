@@ -211,10 +211,9 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
             core_questions = set()
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
-        return [
-            f"核心问题 {question_id} 缺少显式视觉决策：必须选择 required 或 waived"
-            for question_id in sorted(core_questions)
-        ]
+        # 新 Author Pass 允许先在 Visual Sandbox 探索；只有真正进入正文的 current 图
+        # 才需要来源、QA、引用和解释闭环。
+        return []
     try:
         plan = load_json(plan_path)
         plan_version = plan.get("schema_version")
@@ -391,7 +390,7 @@ def validate_presentation_decisions(run_dir: Path) -> list[str]:
     """
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
-        return ["首版草稿前缺少 FIGURE_PLAN 2.3/2.4，尚未决定展示图是否需要"]
+        return []
     try:
         plan = load_json(plan_path)
         plan_version = plan.get("schema_version")
@@ -1003,7 +1002,7 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
 
             usage = build_knowledge_usage_report(run_dir, stage="paper")
             usage_errors = knowledge_usage_errors(usage)
-            errors.extend("知识使用合同：" + item for item in usage_errors)
+            warnings.extend("知识使用建议：" + item for item in usage_errors)
             warnings.extend("知识使用建议：" + item for item in knowledge_usage_warnings(usage))
             if not usage_errors:
                 build_paper_knowledge_context(run_dir)
@@ -1020,10 +1019,7 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
                         f"呈现合同 {item['check_id']} 为 {item['status']}"
                         f"（{item['location']}）：{item['issue']}"
                     )
-                    if item["classification"] == "blocking":
-                        errors.append(message)
-                    else:
-                        warnings.append(message)
+                    warnings.append(message)
         except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
             errors.append(str(exc))
     answers = _competition_answer_map(run_dir)
@@ -1105,7 +1101,7 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     try:
         style_audit = audit_report_like_manuscript(run_dir)
         errors.extend(
-            f"论文文风硬门[{item['code']}]：{item['message']}"
+            f"论文提交完整性[{item['code']}]：{item['message']}"
             for item in style_audit.get("errors", [])
         )
         warnings.extend(
@@ -1116,20 +1112,20 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         # 文风检测是启发式辅助，读取失败不能夺取正式答案与论文编译的控制权。
         warnings.append(f"报告式写作检测不可用：{exc}")
     errors.extend(_code_appendix_errors(run_dir))
-    errors.extend(_core_insight_usage_errors(run_dir, answers))
+    warnings.extend(_core_insight_usage_errors(run_dir, answers))
     if is_competition_first_v32_state(read_simple_state(run_dir)):
         errors.extend(validate_required_figure_consumption(run_dir))
         plan_path = run_dir / _FIGURE_PLAN_PATH
         if plan_path.is_file():
             try:
                 if load_json(plan_path).get("schema_version") == "2.4":
-                    errors.extend(_argument_coverage_errors(run_dir))
-                    errors.extend(validate_presentation_decisions(run_dir))
-                    errors.extend(validate_figure_argument_obligations(run_dir))
+                    warnings.extend(_argument_coverage_errors(run_dir))
+                    warnings.extend(validate_presentation_decisions(run_dir))
+                    warnings.extend(validate_figure_argument_obligations(run_dir))
                     from shumozizi.paper.checkpoints import paper_checkpoint_errors
 
-                    errors.extend(paper_checkpoint_errors(run_dir, candidate=True))
-                    errors.extend(_paper_review_closure_errors(run_dir))
+                    warnings.extend(paper_checkpoint_errors(run_dir, candidate=True))
+                    warnings.extend(_paper_review_closure_errors(run_dir))
                     from shumozizi.simple.modeling_units import (
                         validate_visual_output_sources,
                     )
@@ -1493,7 +1489,7 @@ def classify_paper_readiness(run_dir: Path) -> dict[str, Any]:
         "scientific_errors": scientific_errors,
         "narrative_ready": narrative_ready,
         "narrative_findings": narrative_findings,
-        "competition_paper_ready": not scientific_errors and narrative_ready and strict_ready,
+        "competition_paper_ready": not scientific_errors and strict_ready,
         "metrics": {
             "has_answer": has_answer,
             "has_formula": has_formula,

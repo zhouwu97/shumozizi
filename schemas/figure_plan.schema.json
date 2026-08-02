@@ -36,7 +36,13 @@
               "reader_question": {"type": "string", "minLength": 12},
               "verdict": {"const": "waived"},
               "reason": {"type": "string", "minLength": 16},
-              "replacement_medium": {"type": "string", "minLength": 3}
+              "replacement_medium": {"type": "string", "minLength": 3},
+              "waived_obligation_types": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              }
             }
           }
         },
@@ -47,7 +53,12 @@
               "anyOf": [
                 {"required": ["status"], "properties": {"status": {"const": "waived"}}},
                 {"required": ["evidence_need"], "properties": {"evidence_need": {"const": "waived"}}},
-                {"required": ["presentation_need"], "properties": {"presentation_need": {"const": "waived"}}}
+                {"required": ["presentation_need"], "properties": {"presentation_need": {"const": "waived"}}},
+                {
+                  "properties": {
+                    "waiver_review": {"required": ["waived_obligation_types"]}
+                  }
+                }
               ]
             }
           }

@@ -2,19 +2,20 @@
 
 本模块负责四个职责：
 
-- ``writer_handoff_readiness``：判断论文研究材料是否满足交接条件（科学、
-  素材、故事板、图表、主张边界、文献六层）。
-- ``build_writer_handoff``：把已冻结的研究材料投影成 ``paper/writer-handoff/``
-  下 6 个人读文件 + 1 个机器可绑定的 answer-and-claims JSON + manifest。
+- ``writer_handoff_readiness``：科学事实与提交边界是硬门，素材、故事板和图表
+  缺口只作为 Author 可回流的编辑信号。
+- ``build_writer_handoff``：把已冻结研究材料投影成两个人读文件，后台继续保留
+  answer-and-claims JSON 与 provenance manifest。
 - ``mark_waiting_external_author``：进入正常暂停状态，并记录 checkpoint。
 - ``verify_handoff_freshness``：确认外部稿件仍是针对当前材料版本写作的。
 
-Writer 只读 6 个 Markdown 文件；``answer-and-claims.json`` 与 ``manifest.json``
+Writer 只读 ``RESEARCH_PACKAGE.md`` 与 ``AUTHOR_BRIEF.md``；机器 JSON 与 manifest
 是 Import Audit 做数字 / 主张绑定的机器事实来源，不要求 Author 阅读。
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -48,18 +49,22 @@ HANDOFF_READY_CHECKPOINT_PATH = Path("review/writer-handoff-ready.json")
 
 # Author 默认阅读的人读文件；answer-and-claims.json 是机器绑定源。
 WRITER_MARKDOWN_FILES = (
-    "WRITER_BRIEF.md",
-    "PAPER_BLUEPRINT.md",
-    "ANSWER_AND_CLAIMS.md",
-    "MATERIAL_POOL.md",
-    "FIGURE_CATALOG.md",
-    "CITATION_PACKET.md",
+    "RESEARCH_PACKAGE.md",
+    "AUTHOR_BRIEF.md",
 )
 ANSWER_AND_CLAIMS_JSON = "answer-and-claims.json"
 PACKAGE_FILES = (*WRITER_MARKDOWN_FILES, ANSWER_AND_CLAIMS_JSON)
 
 MINIMUM_BLUEPRINT_CHARACTERS = 400
 MINIMUM_MUST_ANSWER_CHARACTERS = 8
+
+
+def _atomic_text(path: Path, value: str) -> None:
+    """原子写入交接文本，避免外部 Author 读取到半成品。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(value, encoding="utf-8", newline="\n")
+    temporary.replace(path)
 
 
 def _repo_root() -> Path:
@@ -88,6 +93,7 @@ def writer_handoff_readiness(run_dir: Path) -> dict[str, Any]:
     root = run_dir.resolve()
     layers: dict[str, Any] = {}
     reasons: list[str] = []
+    signals: list[str] = []
 
     # Scientific：正式答案 + 关键科学挑战已关闭。
     try:
@@ -105,56 +111,56 @@ def writer_handoff_readiness(run_dir: Path) -> dict[str, Any]:
         pool_report = material_pool_quality_report(root)
         if not pool_report.get("substantive"):
             messages = pool_report.get("errors") or ["素材池缺少实质内容"]
-            reasons.append("material: " + "; ".join(str(item) for item in messages[:3]))
-            layers["material"] = "blocked"
+            signals.append("material: " + "; ".join(str(item) for item in messages[:3]))
+            layers["material"] = "advisory"
         else:
             layers["material"] = "ok"
         freshness = validate_material_pool_freshness(root)
         if not freshness.get("current"):
             stale = freshness.get("stale_fields") or []
-            reasons.append("material: 素材池未绑定当前结果: " + ", ".join(map(str, stale)))
-            layers["material"] = "blocked"
+            signals.append("material: 素材池未绑定当前结果: " + ", ".join(map(str, stale)))
+            layers["material"] = "advisory"
     except ContractError as exc:
-        reasons.append(f"material: {exc}")
-        layers["material"] = "blocked"
+        signals.append(f"material: {exc}")
+        layers["material"] = "advisory"
 
     # Storyboard / narrative：故事板充分且绑定当前素材。
     try:
         sb_report = storyboard_quality_report(root)
         if not sb_report.get("substantive"):
             messages = sb_report.get("errors") or ["故事板缺少实质内容"]
-            reasons.append("storyboard: " + "; ".join(str(item) for item in messages[:3]))
-            layers["storyboard"] = "blocked"
+            signals.append("storyboard: " + "; ".join(str(item) for item in messages[:3]))
+            layers["storyboard"] = "advisory"
         else:
             layers["storyboard"] = "ok"
         sb_fresh = validate_storyboard_freshness(root)
         if not sb_fresh.get("current"):
-            reasons.append("storyboard: 故事板未绑定当前素材")
-            layers["storyboard"] = "blocked"
+            signals.append("storyboard: 故事板未绑定当前素材")
+            layers["storyboard"] = "advisory"
     except ContractError as exc:
-        reasons.append(f"storyboard: {exc}")
-        layers["storyboard"] = "blocked"
+        signals.append(f"storyboard: {exc}")
+        layers["storyboard"] = "advisory"
 
     # Visual：每问 required 图已在 current 或经复核的 waiver。
     try:
         figure_errors = validate_required_figure_consumption(root)
         if figure_errors:
-            reasons.append("visual: " + "; ".join(str(item) for item in figure_errors[:5]))
-            layers["visual"] = "blocked"
+            signals.append("visual: " + "; ".join(str(item) for item in figure_errors[:5]))
+            layers["visual"] = "advisory"
         else:
             layers["visual"] = "ok"
     except ContractError as exc:
-        reasons.append(f"visual: {exc}")
-        layers["visual"] = "blocked"
+        signals.append(f"visual: {exc}")
+        layers["visual"] = "advisory"
 
     # Blueprint：PAPER_BLUEPRINT.md 必须存在且非空壳。
     blueprint = root / "paper/PAPER_BLUEPRINT.md"
     if not blueprint.is_file():
-        reasons.append("blueprint: 缺少 paper/PAPER_BLUEPRINT.md")
-        layers["blueprint"] = "blocked"
+        signals.append("blueprint: 缺少 paper/PAPER_BLUEPRINT.md")
+        layers["blueprint"] = "advisory"
     elif len(blueprint.read_text(encoding="utf-8").strip()) < MINIMUM_BLUEPRINT_CHARACTERS:
-        reasons.append("blueprint: PAPER_BLUEPRINT.md 过短，不能作为跨问叙事蓝图")
-        layers["blueprint"] = "blocked"
+        signals.append("blueprint: PAPER_BLUEPRINT.md 过短，建议由 Author 自主重建叙事")
+        layers["blueprint"] = "advisory"
     else:
         layers["blueprint"] = "ok"
 
@@ -199,6 +205,7 @@ def writer_handoff_readiness(run_dir: Path) -> dict[str, Any]:
         "ready": not reasons,
         "layers": layers,
         "reasons": reasons,
+        "editorial_signals": signals,
         "run_id": read_simple_state(root)["run_id"],
     }
 
@@ -243,7 +250,7 @@ def _write_writer_brief(root: Path, handoff_dir: Path) -> Path:
         .replace("{{HANDOFF_REVISION}}", str(authoring["handoff_revision"]))
     )
     path = handoff_dir / "WRITER_BRIEF.md"
-    path.write_text(text, encoding="utf-8")
+    _atomic_text(path, text)
     return path
 
 
@@ -254,11 +261,11 @@ def _write_blueprint_projection(root: Path, handoff_dir: Path) -> Path:
         raise ContractError("缺少 paper/PAPER_BLUEPRINT.md")
     text = source.read_text(encoding="utf-8")
     path = handoff_dir / "PAPER_BLUEPRINT.md"
-    path.write_text(
+    _atomic_text(
+        path,
         "<!-- 由 shumozizi 投影 paper/PAPER_BLUEPRINT.md 生成。这是推荐的论证主线，"
         "允许为提升可读性调整局部章节、段落和图表顺序，但不得改变答案、模型语义、"
         "证据边界与跨问逻辑依赖。 -->\n\n" + text,
-        encoding="utf-8",
     )
     return path
 
@@ -492,7 +499,7 @@ def _write_answer_and_claims(root: Path, handoff_dir: Path) -> tuple[Path, Path]
     json_path = handoff_dir / ANSWER_AND_CLAIMS_JSON
     atomic_json(json_path, document)
     md_path = handoff_dir / "ANSWER_AND_CLAIMS.md"
-    md_path.write_text(_render_answer_and_claims_markdown(document), encoding="utf-8")
+    _atomic_text(md_path, _render_answer_and_claims_markdown(document))
     return md_path, json_path
 
 
@@ -526,7 +533,7 @@ def _write_material_pool_projection(root: Path, handoff_dir: Path) -> Path:
                 lines.append(item.get("content", ""))
                 lines.append("")
     path = handoff_dir / "MATERIAL_POOL.md"
-    path.write_text("\n".join(lines), encoding="utf-8")
+    _atomic_text(path, "\n".join(lines))
     return path
 
 
@@ -573,7 +580,7 @@ def _write_figure_catalog(root: Path, handoff_dir: Path) -> Path:
         lines.append("- 不能证明: 该图本身不能替代正式答案与 claim boundary。")
         lines.append("")
     path = handoff_dir / "FIGURE_CATALOG.md"
-    path.write_text("\n".join(lines), encoding="utf-8")
+    _atomic_text(path, "\n".join(lines))
     return path
 
 
@@ -604,7 +611,7 @@ def _write_citation_packet(root: Path, handoff_dir: Path) -> Path:
     lines.append("")
     lines.append("不能用于：证明当前题的结果优于其他方案，除非有当前生产结果支持。")
     path = handoff_dir / "CITATION_PACKET.md"
-    path.write_text("\n".join(lines), encoding="utf-8")
+    _atomic_text(path, "\n".join(lines))
     return path
 
 
@@ -629,15 +636,41 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
     record_handoff_revision(root, current_revision + 1)
     handoff_dir = root / HANDOFF_DIR
     handoff_dir.mkdir(parents=True, exist_ok=True)
-    brief = _write_writer_brief(root, handoff_dir)
-    blueprint = _write_blueprint_projection(root, handoff_dir)
-    answers_md, answers_json = _write_answer_and_claims(root, handoff_dir)
-    material = _write_material_pool_projection(root, handoff_dir)
+    _answers_md, answers_json = _write_answer_and_claims(root, handoff_dir)
+    answer_document = load_json(answers_json)
+    answer_overrides: dict[str, Any] = {}
+    for question in answer_document["questions"]:
+        result_ids = question.get("source_result_ids", [])
+        if len(result_ids) == 1:
+            answer_overrides[question["question_id"]] = {
+                "primary_result_id": result_ids[0],
+                "result_ids": result_ids,
+            }
+    from shumozizi.paper.author_pass import (
+        AUTHOR_BRIEF_PATH,
+        RESEARCH_PACKAGE_PATH,
+        prepare_longform_author,
+    )
+
+    prepare_longform_author(
+        root,
+        require_template=False,
+        allow_unmapped_singletons=True,
+        answer_overrides=answer_overrides,
+    )
+    research = handoff_dir / "RESEARCH_PACKAGE.md"
+    _atomic_text(research, (root / RESEARCH_PACKAGE_PATH).read_text(encoding="utf-8"))
+    author_brief = handoff_dir / "AUTHOR_BRIEF.md"
+    _atomic_text(author_brief, (root / AUTHOR_BRIEF_PATH).read_text(encoding="utf-8"))
+    # 旧投影继续作为后台审计材料，不列入 Author 默认阅读文件。
+    _write_writer_brief(root, handoff_dir)
+    _write_blueprint_projection(root, handoff_dir)
+    _write_material_pool_projection(root, handoff_dir)
     catalog = _write_figure_catalog(root, handoff_dir)
     packet = _write_citation_packet(root, handoff_dir)
     digests = _package_digests(root, answers_json, catalog, packet)
     writer_files: dict[str, str] = {}
-    for path in (brief, blueprint, answers_md, answers_json, material, catalog, packet):
+    for path in (research, author_brief):
         relative = path.relative_to(root).as_posix()
         writer_files[relative] = sha256_file(path)
     authoring = read_authoring(root)

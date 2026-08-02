@@ -357,8 +357,8 @@ def test_core_insights_are_exposed_for_paper_consumption(tmp_path: Path) -> None
     assert available["Q1"][0]["insight_id"] == "Q1-mechanism"
 
 
-def test_paper_blocks_when_core_insight_is_produced_but_never_used(tmp_path: Path) -> None:
-    """规律挖出来却不进论文时阻断，避免它退化成旁路产物。"""
+def test_paper_warns_when_core_insight_is_produced_but_never_used(tmp_path: Path) -> None:
+    """规律挖出却未消费时提示编辑复核，不以控制字段阻断写作。"""
     run_dir = _run(tmp_path, "insight-unused")
     _register(run_dir)
     _units_with_insight(run_dir)
@@ -392,8 +392,10 @@ def test_paper_blocks_when_core_insight_is_produced_but_never_used(tmp_path: Pat
 
     status = check_paper_readiness(run_dir)
 
-    assert not status["ready"]
-    assert any("未引用任何 insight_id" in error for error in status["errors"]), status["errors"]
+    assert status["ready"]
+    assert any(
+        "未引用任何 insight_id" in warning for warning in status["warnings"]
+    ), status["warnings"]
 
 
 def test_paper_passes_when_the_answer_map_cites_the_insight(tmp_path: Path) -> None:
@@ -455,7 +457,9 @@ def test_answer_map_cannot_cite_an_unknown_insight(tmp_path: Path) -> None:
     status = check_paper_readiness(run_dir)
 
     assert not status["ready"]
-    assert any("不存在的 insight_id" in error for error in status["errors"]), status["errors"]
+    assert any(
+        "不存在的 insight_id" in warning for warning in status["warnings"]
+    ), status["warnings"]
 
 
 def test_unrecorded_stronger_alternative_is_not_allowed(tmp_path: Path) -> None:

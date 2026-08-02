@@ -36,7 +36,6 @@ def main() -> int:
         revision_impact=args.revision_impact,
         reference_docx=args.reference_docx,
         strict_editorial=True,
-        enforce_page_budget=True,
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0

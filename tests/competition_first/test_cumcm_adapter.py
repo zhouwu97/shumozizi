@@ -740,7 +740,8 @@ def test_presentation_contract_distinguishes_advisory_and_required(tmp_path: Pat
     required["presentation_contract"]["mode"] = "required"
     write_cumcm_structure_map(run_dir, required)
     status = check_paper_readiness(run_dir)
-    assert any("opening_reading_route" in item for item in status["errors"])
+    assert not any("opening_reading_route" in item for item in status["errors"])
+    assert any("opening_reading_route" in item for item in status["warnings"])
 
 
 def test_layout_audit_13_blocks_missing_answer_but_keeps_style_advisory(
