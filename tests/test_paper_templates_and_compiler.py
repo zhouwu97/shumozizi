@@ -701,14 +701,6 @@ def test_real_latex_cumcm_template_compiles_and_verifies_receipt(
         selection_reason="阻断 CI 使用真实 XeLaTeX 编译 CUMCM 最小论文。",
     )
     materialize_selected_template(run_dir)
-    entrypoint = run_dir / "paper/main.tex"
-    source = entrypoint.read_text(encoding="utf-8")
-    # CI 使用 TeX Live 自带的 Fandol 字体，保留完整 CUMCM 模板结构和动态正文入口。
-    entrypoint.write_text(
-        source.replace("fontset=mac", "fontset=fandol"),
-        encoding="utf-8",
-        newline="\n",
-    )
 
     receipt = compile_paper(run_dir)
 

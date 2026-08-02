@@ -38,7 +38,8 @@
 % 逐字体探测：优先级从低到高依次覆盖，最后被赋值的（存在的最高优先级）胜出。
 % Fandol 作为跨平台宋体风格兜底；Windows 通过字体文件存在性切换到 SimSun。
 % 不使用 \IfFontExistsTF 探测缺失的 CJK 字体，因为 MiKTeX 会误触发 maketfm。
-\def\zhSong{FandolSong}\def\zhHei{FandolHei}\def\zhKai{FandolKai}\def\zhFang{FandolFang}
+\def\zhSong{FandolSong-Regular}\def\zhHei{FandolHei-Regular}
+\def\zhKai{FandolKai-Regular}\def\zhFang{FandolFang-Regular}
 \IfFileExists{C:/Windows/Fonts/simsun.ttc}{\def\zhSong{SimSun}}{}
 \IfFileExists{C:/Windows/Fonts/simhei.ttf}{\def\zhHei{SimHei}}{}
 \IfFileExists{C:/Windows/Fonts/simkai.ttf}{\def\zhKai{KaiTi}}{}
