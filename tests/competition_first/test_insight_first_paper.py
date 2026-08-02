@@ -226,6 +226,47 @@ def test_explicit_competition_requirement_allows_full_source_in_pdf(tmp_path: Pa
     assert status["ready"], status
 
 
+def test_cumcm_2026_automatically_requires_full_source_pdf_appendix(
+    tmp_path: Path,
+) -> None:
+    """CUMCM 不要求重复手写赛事豁免，但拒绝仅附件交付完整源码。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "cumcm-full-source",
+        competition="cumcm",
+        required_questions=["Q1"],
+    )
+    _register(run_dir)
+    _answer_map(run_dir)
+    _blueprint(run_dir, {"mode": "attachment", "included_roles": ["solver"]})
+
+    attachment_status = check_paper_readiness(run_dir)
+    assert any("完整源码进入论文附录" in error for error in attachment_status["errors"])
+
+    _blueprint(run_dir, {"mode": "pdf", "included_roles": ["solver", "scorer"]})
+    pdf_status = check_paper_readiness(run_dir)
+    assert not any("source_code_appendix" in error for error in pdf_status["errors"])
+
+
+def test_provincial_competition_does_not_inherit_cumcm_source_rule(
+    tmp_path: Path,
+) -> None:
+    """省赛名称虽含数学建模竞赛，也不自动套用 CUMCM 2026 源码要求。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "provincial-source",
+        competition="2026辽宁省大学生数学建模竞赛",
+        required_questions=["Q1"],
+    )
+    _register(run_dir)
+    _answer_map(run_dir)
+    _blueprint(run_dir, {"mode": "attachment", "included_roles": ["solver"]})
+
+    status = check_paper_readiness(run_dir)
+
+    assert not any("CUMCM 2026" in error for error in status["errors"])
+
+
 def test_v32_figure_must_declare_a_role(tmp_path: Path) -> None:
     """v3.2 不允许省略 role：省略即可绕过附录约束。"""
     run_dir = initialize_simple_run(

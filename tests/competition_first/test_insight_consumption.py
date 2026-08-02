@@ -338,9 +338,9 @@ def _write_structure_map(run_dir: Path) -> None:
             },
             "sections": sections,
             "page_planning": {
-                "recommended_body_pages": [24, 30],
-                "inspect_below_pages": 18,
-                "hard_gate": False,
+                "recommended_body_pages": [1, 30],
+                "inspect_below_pages": 1,
+                "hard_gate": True,
             },
         },
     )

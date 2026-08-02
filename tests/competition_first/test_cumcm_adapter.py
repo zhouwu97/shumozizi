@@ -131,9 +131,9 @@ def _map_payload(run_dir: Path, template: Path) -> dict[str, object]:
         },
         "sections": sections,
         "page_planning": {
-            "recommended_body_pages": [24, 30],
-            "inspect_below_pages": 18,
-            "hard_gate": False,
+            "recommended_body_pages": [1, 30],
+            "inspect_below_pages": 1,
+            "hard_gate": True,
         },
     }
 
@@ -552,10 +552,10 @@ def test_interchangeable_questions_block_verify(tmp_path: Path) -> None:
         require_cumcm_paper_review_audit(run_dir)
 
 
-def test_page_range_is_soft_but_layout_issue_blocks_completion(
+def test_page_limit_has_no_minimum_but_layout_issue_blocks_completion(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """页数只形成条件结论，真实版面问题仍会要求返工。"""
+    """30 页内不因篇幅较短返工，真实版面问题仍会阻断。"""
     run_dir = _run(tmp_path)
     _write_map_11(run_dir)
     _write_pdf(run_dir)
@@ -570,23 +570,53 @@ def test_page_range_is_soft_but_layout_issue_blocks_completion(
         run_dir,
         {
             "body_pages": 20,
-            "page_review_note": "正文处于18至23页区间，已人工确认没有删除关键推导。",
+            "page_review_note": "正文为 20 页，内容充分性另由论证覆盖和独立审阅确认。",
             "docx_note": "测试夹具不生成 Word，仅验证 PDF 版面审计。",
         },
     )
-    assert load_json(audit)["layout"]["page_assessment"] == "compression_review_required"
+    assert load_json(audit)["layout"]["page_assessment"] == "normal_range"
     assert require_cumcm_layout_audit(run_dir)["overall_verdict"] == "conditional_pass"
 
     blocked = finalize_cumcm_layout_audit(
         run_dir,
         {
             "body_pages": 20,
-            "page_review_note": "正文处于18至23页区间，已人工确认没有删除关键推导。",
+            "page_review_note": "正文为 20 页，内容充分性另由论证覆盖和独立审阅确认。",
             "docx_note": "测试夹具不生成 Word，仅验证 PDF 版面审计。",
             "figures_too_small": ["图2文字无法在打印版中辨认。"],
         },
     )
     assert load_json(blocked)["overall_verdict"] == "rework"
+    with pytest.raises(ContractError, match="要求返工"):
+        require_cumcm_layout_audit(run_dir)
+
+
+def test_body_over_30_pages_is_hard_rework(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CUMCM 2026 正文超过 30 页时不能由人工确认降级放行。"""
+    run_dir = _run(tmp_path)
+    _write_map_11(run_dir)
+    _write_pdf(run_dir, pages=35)
+    _set_phase(run_dir, "paper_review")
+    write_cumcm_paper_review_audit(run_dir, _review_payload(run_dir))
+    _set_phase(run_dir, "verify")
+    monkeypatch.setattr(
+        "shumozizi.simple.review.mechanical_qa_status",
+        lambda _run: {"allowed": True},
+    )
+
+    audit = finalize_cumcm_layout_audit(
+        run_dir,
+        {
+            "body_pages": 31,
+            "page_review_note": "正文超过 30 页，必须删减重复内容或调整附录边界。",
+            "official_page_limit_checked": True,
+            "docx_note": "测试夹具不生成 Word，仅验证 PDF 版面审计。",
+        },
+    )
+
+    assert load_json(audit)["overall_verdict"] == "rework"
     with pytest.raises(ContractError, match="要求返工"):
         require_cumcm_layout_audit(run_dir)
 

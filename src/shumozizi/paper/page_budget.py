@@ -1,4 +1,4 @@
-"""审计竞赛论文 PDF 页数，防止完整论证被压缩成短报告。"""
+"""审计竞赛论文 PDF 页数，记录上限风险而不鼓励人为做长。"""
 
 from __future__ import annotations
 
@@ -12,19 +12,15 @@ from shumozizi.core.schema import require_valid
 from shumozizi.simple.state import read_simple_state, utc_now
 
 PAGE_BUDGET_PATH = Path("qa/paper-page-budget.json")
-TARGET_PAGE_RANGE = (24, 30)
-UNDERDEVELOPED_THRESHOLD = 18
+TARGET_PAGE_RANGE = (1, 30)
+UNDERDEVELOPED_THRESHOLD = 1
 
 
 def _assessment(page_count: int) -> tuple[str, str]:
     """把页数映射为竞赛编辑动作，而不是把页数当作质量证明。"""
-    if page_count < UNDERDEVELOPED_THRESHOLD:
-        return "under_18_review_required", "正文低于 18 页，必须补充论证或记录真实阻断原因。"
-    if page_count < TARGET_PAGE_RANGE[0]:
-        return "compression_review_required", "正文低于 24 页，需要检查是否压缩了推导、机制或验证。"
     if page_count <= TARGET_PAGE_RANGE[1]:
-        return "normal_range", "正文页数位于国赛推荐的 24–30 页区间。"
-    return "over_30_review_required", "正文超过 30 页，需要检查重复、附录边界和模板适配。"
+        return "normal_range", "页数不超过 30 页；内容充分性由论证覆盖和独立审阅判断。"
+    return "over_30_review_required", "页数超过 30 页，需要按赛事正文/附录口径处理。"
 
 
 def audit_page_budget(
@@ -78,8 +74,8 @@ def audit_page_budget(
     require_valid(report, "paper_page_budget")
     atomic_json(root / PAGE_BUDGET_PATH, report)
     # 页数只回答"这篇论文是否值得进一步检查"，不回答"是否合格"。
-    # 少于 18 页由 content coverage + Fresh Reviewer + Adjudicator 判断，
-    # 而不是在这里硬阻断。enforce_minimum 参数保留兼容但不再触发阻断。
+    # 内容是否充分由 content coverage + Fresh Reviewer + Adjudicator 判断，
+    # 不再从低页数反推应扩写。enforce_minimum 参数仅保留兼容。
     return report
 
 

@@ -25,8 +25,8 @@
     "artifact_path": {"type": "string", "minLength": 1},
     "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "page_count": {"type": "integer", "minimum": 1},
-    "target_page_range": {"const": [24, 30]},
-    "inspect_below_pages": {"const": 18},
+    "target_page_range": {"const": [1, 30]},
+    "inspect_below_pages": {"const": 1},
     "enforce_minimum": {"type": "boolean"},
     "status": {
       "enum": [

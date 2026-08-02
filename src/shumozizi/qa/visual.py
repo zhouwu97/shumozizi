@@ -22,6 +22,18 @@ except ImportError:  # pragma: no cover - 依赖由项目运行环境提供
 _FIGURE_RE = re.compile(r"(?:图|Figure)\s*([0-9]+)", re.IGNORECASE)
 _TABLE_RE = re.compile(r"(?:表|Table)\s*([0-9]+)", re.IGNORECASE)
 _ANONYMOUS_TERMS = ("学校名称", "学生姓名", "指导教师", "学号")
+_FIRST_BODY_HEADING_RE = re.compile(
+    r"(?im)^\s*(?:[一二三四五六七八九十]+[、.．]\s*)?"
+    r"(?:问题重述|问题分析|模型假设|符号说明(?:与数据处理)?|"
+    r"模型(?:的)?建立(?:与求解)?|模型求解|模型检验|参考文献|附录)\s*$"
+)
+
+
+def summary_first_page_is_exclusive(first_page_text: str) -> bool:
+    """判断首页是否只承载题名、摘要与关键词，而未进入正文一级内容。"""
+    return bool(re.search(r"摘要|abstract", first_page_text, re.IGNORECASE)) and not bool(
+        _FIRST_BODY_HEADING_RE.search(first_page_text)
+    )
 
 
 def inspect_pdf_visual(
@@ -262,6 +274,7 @@ def audit_pdf_format(
     text = metrics["text"]
     first_page_text = metrics["page_texts"][0] if metrics["page_texts"] else ""
     summary = bool(re.search(r"摘要|abstract", first_page_text, re.IGNORECASE))
+    summary_only = summary_first_page_is_exclusive(first_page_text)
     keywords = bool(re.search(r"关键词|keywords", text, re.IGNORECASE))
     references = bool(re.search(r"参考文献|references", text, re.IGNORECASE))
     linked = False
@@ -281,6 +294,12 @@ def audit_pdf_format(
     margins_pass = bool(minimum) and all(value is not None and value >= required_margin - margin_tolerance for value in minimum.values())
     add("page-margins", margins_pass, f"测量最小页边距: {minimum}; 要求: {required_margin} cm; 测量容差: {margin_tolerance} cm", hard=required_margin > 0)
     add("summary-first-page", summary, "第一页检测到摘要/Abstract", hard=bool(profile.get("summary_first_page", False)))
+    add(
+        "summary-first-page-only",
+        summary_only,
+        "第一页为摘要专用页" if summary_only else "第一页已出现正文一级内容或缺少摘要",
+        hard=bool(profile.get("summary_first_page_only", False)),
+    )
     add("fonts-embedded", fonts_embedded, f"字体资源 {len(font_resources)} 个，嵌入={fonts_embedded}", hard=format_rules["fonts_embedded_required"])
     add("anonymous", anonymous, "未发现身份字段" if anonymous else "发现身份字段", hard=bool(profile.get("anonymous_required", False)))
     add("references", references, "检测到参考文献标题" if references else "未检测到参考文献标题", hard=format_rules["references_required"])

@@ -1218,6 +1218,15 @@ def _code_appendix_errors(run_dir: Path) -> list[str]:
     appendix = blueprint.get("source_code_appendix")
     if not isinstance(appendix, dict):
         return []
+    state = read_simple_state(run_dir)
+    competition = str(state.get("competition", "")).strip().casefold()
+    if competition == "cumcm" or "全国大学生数学建模竞赛" in competition:
+        if appendix.get("mode") != "pdf":
+            return ["CUMCM 2026 要求完整源码进入论文附录，source_code_appendix.mode 必须为 pdf"]
+        if not appendix.get("included_roles"):
+            return ["CUMCM 2026 完整源码附录必须声明 included_roles"]
+        # CUMCM Profile 已提供赛事依据，不再要求每个运行重复手写豁免字段。
+        return []
     if appendix.get("mode") == "attachment":
         return []
     if appendix.get("competition_requires_full") is True:

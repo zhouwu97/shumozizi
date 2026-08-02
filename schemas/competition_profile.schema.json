@@ -25,6 +25,7 @@
       }
     },
     "page_limit": {"type": ["integer", "null"], "minimum": 1},
+    "body_page_limit": {"type": ["integer", "null"], "minimum": 1},
     "a4_required": {"type": "boolean"},
     "page_margin_cm": {"type": "number", "minimum": 0},
     "max_file_size_bytes": {"type": ["integer", "null"], "minimum": 1},
@@ -58,6 +59,8 @@
       }
     },
     "summary_first_page": {"type": "boolean"},
+    "summary_first_page_only": {"type": "boolean"},
+    "full_source_appendix_required": {"type": "boolean"},
     "mechanical_qa": {
       "type": "object",
       "additionalProperties": false,
