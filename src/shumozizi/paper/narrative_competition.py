@@ -68,6 +68,10 @@ def select_narrative_candidate(
     )
     require_valid(payload, "narrative_competition")
     atomic_json(root / NARRATIVE_COMPETITION_PATH, payload)
+    # Narrative 的唯一消费出口是现有 Author Brief，避免额外增加作者文件。
+    from shumozizi.paper.author_pass import finalize_author_brief
+
+    finalize_author_brief(root)
     return payload
 
 

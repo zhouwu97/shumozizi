@@ -1,6 +1,13 @@
 """论文主张使用权限与证据门禁。"""
 
-from .author_pass import prepare_longform_author, require_author_pass, verify_author_pass
+from .author_pass import (
+    finalize_author_brief,
+    prepare_longform_author,
+    require_author_pass,
+    require_scientific_authoring_ready,
+    scientific_authoring_readiness,
+    verify_author_pass,
+)
 from .compiler import (
     compile_longform_draft,
     compile_paper,
@@ -94,7 +101,10 @@ __all__ = [
     "verify_paper_compile_receipt",
     "verify_longform_draft_receipt",
     "verify_reviewable_draft_receipt",
+    "finalize_author_brief",
     "prepare_longform_author",
     "verify_author_pass",
     "require_author_pass",
+    "require_scientific_authoring_ready",
+    "scientific_authoring_readiness",
 ]

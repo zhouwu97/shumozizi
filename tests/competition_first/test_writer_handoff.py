@@ -30,6 +30,7 @@ from shumozizi.simple.authoring import (
     set_authoring_mode,
 )
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.review_focus import record_scientific_challenge_evidence
 from shumozizi.simple.state import read_simple_state, write_simple_state
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -57,13 +58,50 @@ def _write_results(run_dir: Path) -> None:
             {
                 "result_id": f"r-{question_id}",
                 "question_id": question_id,
+                "kind": "test",
+                "source_script": None,
+                "command": "test",
+                "input_files": [],
+                "input_hashes": {},
+                "output_files": [],
+                "output_hashes": {},
+                "metric_sources": {},
+                "method_facts": {},
                 "status": "current",
                 "execution_mode": "production",
                 "execution_valid": True,
+                "exit_code": 0,
+                "stdout_path": f"results/{question_id}.stdout.log",
+                "stderr_path": f"results/{question_id}.stderr.log",
+                "started_at": "2026-01-01T00:00:00Z",
+                "finished_at": "2026-01-01T00:00:01Z",
+                "duration_seconds": 1.0,
+                "error": None,
+                "created_at": "2026-01-01T00:00:01Z",
+                "objective_semantics_sha256": "0" * 64,
+                "dependency_scope": "question",
+                "affected_question_ids": [question_id],
                 "metrics": {"objective": objective, "feasible": True},
             }
         )
     atomic_json(run_dir / "results/index.json", index)
+    atomic_json(
+        run_dir / "paper/answer-map.json",
+        {
+            "answers": {
+                question_id: {
+                    "primary_result_id": f"r-{question_id}",
+                    "result_ids": [f"r-{question_id}"],
+                    "direct_answer_location": f"{question_id} 结论",
+                    "objective_answer": {
+                        "result_id": f"r-{question_id}",
+                        "answer": f"{question_id} 的正式目标值为 {objective}。",
+                    },
+                }
+                for question_id, objective in (("Q1", 12.0), ("Q2", 8.0), ("Q3", 581.0))
+            }
+        },
+    )
 
 
 def _material_items() -> list[dict[str, object]]:
@@ -168,7 +206,12 @@ def _build_assets(run_dir: Path) -> dict[str, object]:
         ],
     }
     atomic_json(run_dir / "paper/claim_gate.json", gate)
-    atomic_json(run_dir / "review/scientific-challenge-evidence.json", {})
+    record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=["r-Q1", "r-Q2", "r-Q3"],
+        attack_description="独立复核三问正式结果、约束和主张边界。",
+        findings=[],
+    )
     return {"pool": pool}
 
 
@@ -256,6 +299,20 @@ def test_handoff_files_are_writer_facing_not_control_layer(
         "paper/writer-handoff/AUTHOR_BRIEF.md",
         "paper/writer-handoff/RESEARCH_PACKAGE.md",
     ]
+    handoff_root = run_dir / "paper/writer-handoff"
+    for filename in (
+        "WRITER_BRIEF.md",
+        "PAPER_BLUEPRINT.md",
+        "ANSWER_AND_CLAIMS.md",
+        "MATERIAL_POOL.md",
+        "FIGURE_CATALOG.md",
+        "CITATION_PACKET.md",
+    ):
+        assert not (handoff_root / filename).exists()
+        assert (handoff_root / "internal" / filename).is_file()
+    assert (handoff_root / "RESEARCH_PACKAGE.md").read_bytes() == (
+        run_dir / "paper/author-pass/RESEARCH_PACKAGE.md"
+    ).read_bytes()
     answer_json = load_json(run_dir / "paper/writer-handoff/answer-and-claims.json")
     assert any(q["question_id"] == "Q3" and q["must_answer"] for q in answer_json["questions"])
     assert next(

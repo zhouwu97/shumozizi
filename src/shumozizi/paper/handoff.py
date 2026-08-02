@@ -44,6 +44,7 @@ from shumozizi.simple.modeling_units import question_outcome_selections
 from shumozizi.simple.state import read_simple_state, utc_now
 
 HANDOFF_DIR = Path("paper/writer-handoff")
+INTERNAL_HANDOFF_DIR = HANDOFF_DIR / "internal"
 HANDOFF_MANIFEST_PATH = HANDOFF_DIR / "manifest.json"
 HANDOFF_READY_CHECKPOINT_PATH = Path("review/writer-handoff-ready.json")
 
@@ -54,6 +55,23 @@ WRITER_MARKDOWN_FILES = (
 )
 ANSWER_AND_CLAIMS_JSON = "answer-and-claims.json"
 PACKAGE_FILES = (*WRITER_MARKDOWN_FILES, ANSWER_AND_CLAIMS_JSON)
+
+_LEGACY_ROOT_MARKDOWN_FILES = (
+    "WRITER_BRIEF.md",
+    "PAPER_BLUEPRINT.md",
+    "ANSWER_AND_CLAIMS.md",
+    "MATERIAL_POOL.md",
+    "FIGURE_CATALOG.md",
+    "CITATION_PACKET.md",
+)
+
+
+def _backend_handoff_path(root: Path, filename: str) -> Path:
+    """读取后台投影的新 internal 位置，并兼容旧根目录交接包。"""
+    internal = root / INTERNAL_HANDOFF_DIR / filename
+    if internal.is_file():
+        return internal
+    return root / HANDOFF_DIR / filename
 
 MINIMUM_BLUEPRINT_CHARACTERS = 400
 MINIMUM_MUST_ANSWER_CHARACTERS = 8
@@ -492,13 +510,15 @@ def _render_answer_and_claims_markdown(document: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _write_answer_and_claims(root: Path, handoff_dir: Path) -> tuple[Path, Path]:
+def _write_answer_and_claims(
+    root: Path, handoff_dir: Path, *, markdown_dir: Path | None = None
+) -> tuple[Path, Path]:
     """写入逐问答案与主张边界的人读与机器绑定双形态。"""
     document = _build_answer_and_claims(root)
     require_valid(document, "answer_and_claims")
     json_path = handoff_dir / ANSWER_AND_CLAIMS_JSON
     atomic_json(json_path, document)
-    md_path = handoff_dir / "ANSWER_AND_CLAIMS.md"
+    md_path = (markdown_dir or handoff_dir) / "ANSWER_AND_CLAIMS.md"
     _atomic_text(md_path, _render_answer_and_claims_markdown(document))
     return md_path, json_path
 
@@ -636,7 +656,13 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
     record_handoff_revision(root, current_revision + 1)
     handoff_dir = root / HANDOFF_DIR
     handoff_dir.mkdir(parents=True, exist_ok=True)
-    _answers_md, answers_json = _write_answer_and_claims(root, handoff_dir)
+    internal_dir = root / INTERNAL_HANDOFF_DIR
+    internal_dir.mkdir(parents=True, exist_ok=True)
+    _answers_md, answers_json = _write_answer_and_claims(
+        root,
+        handoff_dir,
+        markdown_dir=internal_dir,
+    )
     answer_document = load_json(answers_json)
     answer_overrides: dict[str, Any] = {}
     for question in answer_document["questions"]:
@@ -645,6 +671,10 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
             answer_overrides[question["question_id"]] = {
                 "primary_result_id": result_ids[0],
                 "result_ids": result_ids,
+                "objective_answer": {
+                    "result_id": result_ids[0],
+                    "answer": str(question.get("must_answer", "")).strip(),
+                },
             }
     from shumozizi.paper.author_pass import (
         AUTHOR_BRIEF_PATH,
@@ -662,12 +692,14 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
     _atomic_text(research, (root / RESEARCH_PACKAGE_PATH).read_text(encoding="utf-8"))
     author_brief = handoff_dir / "AUTHOR_BRIEF.md"
     _atomic_text(author_brief, (root / AUTHOR_BRIEF_PATH).read_text(encoding="utf-8"))
-    # 旧投影继续作为后台审计材料，不列入 Author 默认阅读文件。
-    _write_writer_brief(root, handoff_dir)
-    _write_blueprint_projection(root, handoff_dir)
-    _write_material_pool_projection(root, handoff_dir)
-    catalog = _write_figure_catalog(root, handoff_dir)
-    packet = _write_citation_packet(root, handoff_dir)
+    # 旧投影只供后台兼容与审计，物理隔离到 internal，避免整目录交接时污染 Author。
+    _write_writer_brief(root, internal_dir)
+    _write_blueprint_projection(root, internal_dir)
+    _write_material_pool_projection(root, internal_dir)
+    catalog = _write_figure_catalog(root, internal_dir)
+    packet = _write_citation_packet(root, internal_dir)
+    for filename in _LEGACY_ROOT_MARKDOWN_FILES:
+        (handoff_dir / filename).unlink(missing_ok=True)
     digests = _package_digests(root, answers_json, catalog, packet)
     writer_files: dict[str, str] = {}
     for path in (research, author_brief):
@@ -757,8 +789,8 @@ def verify_handoff_freshness(run_dir: Path) -> dict[str, Any]:
     manifest = load_json(manifest_path)
     stale_reasons: list[str] = []
     answers_path = root / HANDOFF_DIR / ANSWER_AND_CLAIMS_JSON
-    catalog_path = root / HANDOFF_DIR / "FIGURE_CATALOG.md"
-    packet_path = root / HANDOFF_DIR / "CITATION_PACKET.md"
+    catalog_path = _backend_handoff_path(root, "FIGURE_CATALOG.md")
+    packet_path = _backend_handoff_path(root, "CITATION_PACKET.md")
     current = _package_digests(root, answers_path, catalog_path, packet_path)
     for field, value in current.items():
         recorded = manifest.get(field)

@@ -374,8 +374,13 @@ def compile_longform_draft(
     from shumozizi.simple.authoring import require_internal_authoring
 
     require_internal_authoring(run_dir)
-    from shumozizi.paper.author_pass import AUTHOR_PASS_MANIFEST_PATH, require_author_pass
+    from shumozizi.paper.author_pass import (
+        AUTHOR_PASS_MANIFEST_PATH,
+        require_author_pass,
+        require_scientific_authoring_ready,
+    )
 
+    require_scientific_authoring_ready(run_dir)
     author_pass = require_author_pass(run_dir)
     manifest = require_materialized_template(run_dir)
     engine = manifest["engine"]
