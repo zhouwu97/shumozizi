@@ -36,6 +36,15 @@ from shumozizi.simple.visual_sandbox import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def _stable_latex_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+    """固定模板选择能力，避免单元测试依赖开发机的 TeX 安装。"""
+    monkeypatch.setattr(
+        "shumozizi.paper.templates._available_paper_engines",
+        lambda: (True, False),
+    )
+
+
 def _author_ready_run(tmp_path: Path, name: str = "author-pass") -> Path:
     """构造有唯一正式答案、LaTeX 模板和 current production 结果的运行。"""
     run_dir = initialize_simple_run(
