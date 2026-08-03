@@ -440,6 +440,39 @@ def validate_candidate_visual_assessment(run_dir: Path) -> list[str]:
     return _visual_opportunity_assessment_errors(run_dir)
 
 
+def validate_pending_visual_promotions(run_dir: Path) -> list[str]:
+    """阻断已选中新视觉版本却仍未替换 current 的 Candidate。
+
+    Sandbox 可以自由探索；但一旦胜出设计已明确选中，最终稿继续引用旧 current
+    会让 PDF 与评阅结论脱节。因此仅在 Candidate readiness 中把 pending 转为
+    明确、可执行的阻断信息。
+    """
+    try:
+        from shumozizi.simple.visual_sandbox import pending_visual_promotions
+
+        pending = pending_visual_promotions(run_dir)
+    except (ContractError, OSError, TypeError, ValueError) as exc:
+        return [f"PENDING_VISUAL_PROMOTION：无法读取 Sandbox pending 状态：{exc}"]
+    errors: list[str] = []
+    for item in pending:
+        figure_id = str(item.get("figure_id", "<unknown>"))
+        current_version = item.get("current_version")
+        candidate_version = str(item.get("candidate_version", "<unknown>"))
+        current_text = (
+            str(current_version)
+            if isinstance(current_version, str) and current_version.strip()
+            else "尚无已登记版本"
+        )
+        errors.append(
+            "PENDING_VISUAL_PROMOTION："
+            f"Figure: {figure_id}；Current formal version: {current_text}；"
+            f"Selected newer visual: {candidate_version}；"
+            "Status: selected but not promoted；"
+            "Required action: formal render / QA / promotion。"
+        )
+    return errors
+
+
 def presentation_figure_warnings(run_dir: Path) -> list[str]:
     """对 FIGURE_PLAN 2.3/2.4 的呈现需求给出非阻断性缺口提示。"""
     plan_path = run_dir / _FIGURE_PLAN_PATH
@@ -1216,6 +1249,7 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         # Figure Plan 是可选的创作资产，但 Competition Candidate 不能因为它缺失
         # 就跳过视觉判断；机会池提供不强制固定图数的替代评估路径。
         errors.extend(validate_candidate_visual_assessment(run_dir))
+        errors.extend(validate_pending_visual_promotions(run_dir))
         errors.extend(validate_required_figure_consumption(run_dir))
         plan_path = run_dir / _FIGURE_PLAN_PATH
         if plan_path.is_file():

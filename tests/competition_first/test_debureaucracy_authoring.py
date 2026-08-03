@@ -20,7 +20,10 @@ from shumozizi.paper.narrative_competition import (
     write_narrative_candidates,
 )
 from shumozizi.paper.page_budget import audit_page_budget
-from shumozizi.paper.readiness import validate_candidate_visual_assessment
+from shumozizi.paper.readiness import (
+    check_paper_readiness,
+    validate_candidate_visual_assessment,
+)
 from shumozizi.paper.templates import (
     materialize_selected_template,
     require_materialized_template,
@@ -158,6 +161,43 @@ def test_missing_figure_plan_does_not_bypass_candidate_gate(tmp_path: Path) -> N
     errors = validate_candidate_visual_assessment(run_dir)
 
     assert any(error.startswith("VISUAL_NOT_ASSESSED") for error in errors)
+
+
+def test_pending_visual_blocks_candidate_until_current(tmp_path: Path) -> None:
+    """已选中新图但尚未 promotion 时，Candidate 不能继续消费旧 current。"""
+    run_dir = _author_ready_run(tmp_path, "candidate-with-pending-visual")
+    write_visual_ideas(
+        run_dir,
+        [
+            {
+                "id": "q1-boundary",
+                "question": "哪个边界决定 Q1 的最终答案？",
+                "sources": ["Q1"],
+                "idea": "用边界与最优点的关系解释结果。",
+            }
+        ],
+    )
+    sandbox = run_dir / "figures/sandbox/q1-boundary"
+    sandbox.mkdir(parents=True)
+    (sandbox / "winner.png").write_bytes(b"winner")
+    record_visual_competition(
+        run_dir,
+        "q1-boundary",
+        selected_candidate="figures/sandbox/q1-boundary/winner.png",
+        reviewer_context_id="fresh-boundary-reviewer",
+        fastest_mechanism="候选图直接显示活动边界和最终决策点。",
+        full_width_value="边界与决策点需要并列显示才能承担正文解释任务。",
+        table_redundancy="数值表无法直观看到活动边界的几何关系。",
+        rationale="胜出设计能同时表达正式答案、约束机制和适用边界。",
+    )
+    graduate_visual_candidate(run_dir, "q1-boundary", candidate_version="v2")
+
+    status = check_paper_readiness(run_dir)
+
+    assert any(
+        "PENDING_VISUAL_PROMOTION" in error and "q1-boundary" in error and "v2" in error
+        for error in status["errors"]
+    ), status["errors"]
 
 
 def test_longform_rejects_formal_entrypoint_disguised_as_author_pass(tmp_path: Path) -> None:
