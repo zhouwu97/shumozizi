@@ -24,6 +24,12 @@ from shumozizi.simple.figures import (
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.results import register_result
 from shumozizi.simple.state import utc_now
+from shumozizi.simple.visual_sandbox import (
+    graduate_visual_candidate,
+    read_visual_ideas,
+    record_visual_competition,
+    write_visual_ideas,
+)
 from shumozizi.simple.visualization import run_figure_render
 
 
@@ -223,6 +229,54 @@ def _promote_plot(
         human_review=_human_review(),
         visual_manifest=manifest,
     )
+
+
+def test_promotion_closes_matching_sandbox_pending_state(tmp_path: Path) -> None:
+    """正式 promotion 成功后，选中的 Sandbox 版本不应继续阻断 Candidate。"""
+    run_dir, outputs, layout, manifest = _candidate(tmp_path, collision=False)
+    write_visual_ideas(
+        run_dir,
+        [
+            {
+                "id": "overall-workflow",
+                "question": "联合工作流如何保持当前图与候选设计一致？",
+                "sources": ["Q1"],
+                "idea": "突出当前约束、候选版本和正式图之间的替换关系。",
+            }
+        ],
+    )
+    sandbox = run_dir / "figures/sandbox/overall-workflow"
+    sandbox.mkdir(parents=True)
+    (sandbox / "winner.png").write_bytes(b"selected-design")
+    record_visual_competition(
+        run_dir,
+        "overall-workflow",
+        selected_candidate="figures/sandbox/overall-workflow/winner.png",
+        reviewer_context_id="fresh-visual-reviewer",
+        fastest_mechanism="胜出草图最快显示候选版本与正式 current 的关系。",
+        full_width_value="替换链条需要占据正文完整宽度才能让读者快速核对。",
+        table_redundancy="表格无法直观看到旧图与新图的替换顺序。",
+        rationale="该设计将选中版本、正式渲染和最终 current 放在同一阅读路径。",
+    )
+    graduate_visual_candidate(run_dir, "overall-workflow")
+    assert read_visual_ideas(run_dir)["ideas"][0]["status"] == "selected_pending_promotion"
+
+    promotion = promote_figure_candidate(
+        run_dir,
+        figure_id="overall-workflow",
+        candidate_outputs=outputs,
+        target_stem="figures/current/overall-workflow",
+        rendering_mode="diagram",
+        layout_report=layout,
+        figure_role="model_understanding",
+        human_review=_human_review(),
+        visual_manifest=manifest,
+    )
+
+    idea = read_visual_ideas(run_dir)["ideas"][0]
+    assert idea["status"] == "promoted"
+    assert "pending_promotion" not in idea
+    assert idea["promotion_receipt"]["path"] == promotion["receipt"]["path"]
 
 
 def test_plot_layout_blocks_wasted_axis_and_covered_takeaway(tmp_path: Path) -> None:

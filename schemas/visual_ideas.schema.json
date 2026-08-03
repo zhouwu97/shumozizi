@@ -21,8 +21,37 @@
           "question": {"type": "string", "minLength": 1},
           "sources": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "idea": {"type": "string", "minLength": 1},
-          "status": {"enum": ["sketch", "competing", "selected", "dropped", "promoted"]},
-          "selected_candidate": {"type": "string", "minLength": 1}
+          "status": {"enum": ["sketch", "competing", "selected", "selected_pending_promotion", "dropped", "promoted"]},
+          "selected_candidate": {"type": "string", "minLength": 1},
+          "pending_promotion": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status", "figure_id", "candidate_version", "selected_design_reference",
+              "selected_design_sha256", "current_version", "target_work_dir", "selected_at"
+            ],
+            "properties": {
+              "status": {"const": "selected_pending_promotion"},
+              "figure_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+              "candidate_version": {"type": "string", "minLength": 1},
+              "selected_design_reference": {"type": "string", "minLength": 1},
+              "selected_design_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "current_version": {"type": ["string", "null"]},
+              "target_work_dir": {"type": "string", "minLength": 1},
+              "selected_at": {"type": "string", "format": "date-time"}
+            }
+          },
+          "promotion_receipt": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256", "candidate_version", "promoted_at"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "candidate_version": {"type": "string", "minLength": 1},
+              "promoted_at": {"type": "string", "format": "date-time"}
+            }
+          }
         }
       }
     }

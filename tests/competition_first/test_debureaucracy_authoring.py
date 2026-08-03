@@ -30,6 +30,7 @@ from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.review_focus import record_scientific_challenge_evidence
 from shumozizi.simple.visual_sandbox import (
     graduate_visual_candidate,
+    read_visual_ideas,
     record_visual_competition,
     write_visual_ideas,
 )
@@ -239,8 +240,8 @@ def test_author_pass_and_compile_block_open_scientific_p1(tmp_path: Path) -> Non
         compile_longform_draft(run_dir)
 
 
-def test_visual_sandbox_competes_without_figure_contract(tmp_path: Path) -> None:
-    """视觉想法可直接草绘、竞争并进入 work，不要求完整 Figure Contract。"""
+def test_visual_sandbox_winner_marks_pending_promotion(tmp_path: Path) -> None:
+    """Sandbox 胜出设计应显式等待正式渲染和 promotion，而非伪装成 current。"""
     run_dir = initialize_simple_run(tmp_path, "visual", required_questions=["Q1"])
     ideas = write_visual_ideas(
         run_dir,
@@ -275,6 +276,11 @@ def test_visual_sandbox_competes_without_figure_contract(tmp_path: Path) -> None
     assert len(review["candidates"]) == 2
     assert promoted["formal_render_required"] is True
     assert promoted["selected_design_reference"].endswith("b.png")
+    assert promoted["status"] == "selected_pending_promotion"
+    recorded = read_visual_ideas(run_dir)["ideas"][0]
+    assert recorded["status"] == "selected_pending_promotion"
+    assert recorded["pending_promotion"]["figure_id"] == "q1-bottleneck"
+    assert recorded["pending_promotion"]["candidate_version"] == "v1"
     assert not (run_dir / "figures/work/q1-bottleneck/v1").exists()
     assert not (run_dir / "figures/FIGURE_PLAN.json").exists()
 

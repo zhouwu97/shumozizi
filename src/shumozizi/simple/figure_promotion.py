@@ -1037,6 +1037,16 @@ def promote_figure_candidate(
         "promoted_at": utc_now(),
     }
     atomic_json(receipt_path, receipt)
+    # Sandbox 的胜出草图只是设计参考；只有 current 文件真正替换成功后才关闭
+    # pending，防止论文继续静默消费旧版本。
+    from shumozizi.simple.visual_sandbox import close_pending_visual_promotion
+
+    close_pending_visual_promotion(
+        root,
+        figure_id=figure_id,
+        candidate_version=version,
+        promotion_receipt_path=relative_inside(root, receipt_path).as_posix(),
+    )
     return {
         **receipt,
         "receipt": {
