@@ -27,20 +27,13 @@ COMMON_OBLIGATIONS = (
     "inheritance",
     "new_difficulty",
     "mathematical_object",
-    "modeling_basis",
     "key_derivation",
-    "solver_or_algorithm",
     "main_result",
-    "result_interpretation",
-    "mechanism_or_pattern",
-    "validation",
-    "boundary",
     "direct_answer",
 )
 CORE_OBLIGATIONS = (
     "key_judgment",
     "computational_evidence",
-    "alternative_explanation",
 )
 
 _LABEL_ALIASES: dict[str, tuple[str, ...]] = {

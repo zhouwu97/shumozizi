@@ -1,4 +1,4 @@
 interface:
-  display_name: "Learn Excellent Paper & Figures"
-  short_description: "Create paper cards with plotting techniques"
-  default_prompt: "Use $mathmodel-learn-paper to learn one or more papers, including figure design and plotting techniques, and rebuild the index."
+  display_name: "优秀论文证据与表达学习"
+  short_description: "分离 Evidence 与 Inspiration，离线提炼论文方法和表达"
+  default_prompt: "Use $mathmodel-learn-paper to extract evidence knowledge and expression-only inspiration from local excellent papers."

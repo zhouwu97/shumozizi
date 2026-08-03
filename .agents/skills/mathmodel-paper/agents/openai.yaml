@@ -1,4 +1,4 @@
 interface:
-  display_name: "Math Modeling Paper"
-  short_description: "Write a long-form argued paper from current v3.4 evidence"
-  default_prompt: "Use $mathmodel-paper with $research-writing-skill to build the material pool, storyboard, long-form draft, visual evidence, and competition paper."
+  display_name: "Competition-First v3.4 论文 Author"
+  short_description: "Author long-form competition papers from current evidence"
+  default_prompt: "Use $mathmodel-paper to prepare an Author Pass, compete on narrative, write a long-form draft, and revise the competition paper."

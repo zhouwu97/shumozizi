@@ -71,5 +71,5 @@ Preserve styles, numbering, headers, footers, section properties, bookmarks, fie
 - retain the exact reference SHA-256 recorded above; a mismatch requires fresh distillation.
 - render every final DOCX page at publication width and inspect PNG and PDF output; a contact sheet is only a navigation aid.
 - run structural audits for sections, styles, headings, fields, tables, placeholders, and DOCX ZIP integrity.
-- record the final PDF page count separately from the template's sample page count. For CUMCM planning, target body pages are 24–30; fewer than 18 pages requires a substantive expansion review and cannot be silently accepted as a competition candidate.
+- record the final PDF page count separately from the template's sample page count. For CUMCM 2026, the body must not exceed 30 pages; no minimum page target is inferred from the template.
 - page count is a risk signal, not permission to pad. Expand only with real derivation, mechanism, contrast, boundary, typical cases, and question-specific figures from current evidence; keep source code and control logs in the appendix/attachment according to the paper contract.

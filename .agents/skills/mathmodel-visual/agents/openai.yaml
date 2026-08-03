@@ -1,4 +1,4 @@
 interface:
-  display_name: "建模可视化叙事"
-  short_description: "Build a visual opportunity pool and evidence-bearing figures."
-  default_prompt: "Use $mathmodel-visual to generate, critic-review, and promote evidence-bearing figures from current results."
+  display_name: "建模 Visual Sandbox"
+  short_description: "Explore and promote figures grounded in current run evidence"
+  default_prompt: "Use $mathmodel-visual to sketch competing visual ideas, review them, and promote the strongest current-result figure."

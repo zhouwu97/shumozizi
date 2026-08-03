@@ -218,103 +218,38 @@ def _question_section_content(
     core_question_ids: set[str] | None = None,
     argument_plan_units: dict[str, list[str]] | None = None,
 ) -> str:
-    """生成动态问题章节骨架，按 core_question 生成不同子节层级。
+    """生成不预设正文结构的动态问题章节入口。
 
-    普通问题生成三个轻量子节；核心问题生成六个论证子节。
-    若提供 argument_plan_units，将每个论证单元标题写入注释，为写作阶段提供具体目标。
+    题目编号只决定顶层章节。核心问题、蓝图论证单元和常见写作角色都只写入
+    不可见注释，避免模板先制造重复小节，再由文风审计要求作者删除。
 
     Args:
         language: 语言代码，``"zh"`` 或 ``"en"``。
         engine: 排版引擎，``"latex"`` 或 ``"typst"``。
         question_ids: 必答问题 ID 列表。
-        core_question_ids: 标为核心问题的 ID 集合；为 None 时所有问题均按普通问题处理。
-        argument_plan_units: 以 question_id 为键的论证单元标题列表，来自论文蓝图。
+        core_question_ids: 标为核心问题的 ID 集合，仅用于生成注释提示。
+        argument_plan_units: 以 question_id 为键的论证单元标题列表，仅用于注释提示。
     """
-    core_ids = core_question_ids or set()
+    _ = core_question_ids
     plan = argument_plan_units or {}
     title_prefix = "问题" if language == "zh" else "Problem"
     parts: list[str] = []
 
     for question_id in question_ids:
-        is_core = question_id in core_ids
         units = plan.get(question_id, [])
-
         if engine == "typst":
-            sec = f"= {title_prefix} {question_id}"
-            if is_core:
-                # 国赛评委先找答案：每问开头先给直接结论，再展开论证。
-                subsections = [
-                    ("本问结论" if language == "zh" else "Answer First",
-                     "// 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
-                    ("核心困难与建模判断" if language == "zh" else "Core Difficulty and Modeling Judgment",
-                     "// 为什么这道题需要特别建模？题面中什么事情需要被解释清楚？"),
-                    ("关键推导" if language == "zh" else "Key Derivation",
-                     "// 从哪些题面事实出发？哪些步骤是解析的，哪些依赖数值？"),
-                    ("求解与计算证据" if language == "zh" else "Solution and Computational Evidence",
-                     "// 算法如何实现推导？独立对照（MATLAB/替代实现）结果如何？"),
-                    ("竞争解释与区分性实验" if language == "zh" else "Competing Explanations",
-                     "// 还有哪种解释？什么实验能区分本文判断和竞争解释？"),
-                    ("结果机制与权衡" if language == "zh" else "Mechanism and Trade-offs",
-                     "// 最优解为何呈现当前结构？哪个约束活跃？资源增加后为何递减？"),
-                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
-                     "// 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
-                ]
-            else:
-                subsections = [
-                    ("本问结论" if language == "zh" else "Answer First",
-                     "// 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
-                    ("模型选择与关键关系" if language == "zh" else "Model and Key Relations",
-                     "// 为何选择此模型而非候选替代？核心公式是什么？"),
-                    ("结果解释与机制" if language == "zh" else "Result and Mechanism",
-                     "// 数值意味着什么？主要驱动是什么？禁止只写空话总结。"),
-                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
-                     "// 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
-                ]
-            lines = [sec, ""]
-            for sub_title, comment in subsections:
-                lines.append(f"== {sub_title}")
-                lines.append(comment)
-                lines.append("")
+            lines = [f"= {title_prefix} {question_id}", ""]
+            lines.append("// 作者可自由组织本问，也可与相邻问题或共享模型章节合并。")
+            lines.append("// 按实际论证需要选择直接答案、数学对象、推导、算法、机制与边界；不要机械全部使用。")
             if units:
                 lines.append("// 论证单元（来自 PAPER_BLUEPRINT.md）：")
                 for unit_title in units:
                     lines.append(f"// - {unit_title}")
                 lines.append("")
         else:  # latex
-            sec = f"\\section{{{title_prefix} {question_id}}}"
-            if is_core:
-                subsections = [
-                    ("本问结论" if language == "zh" else "Answer First",
-                     "% 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
-                    ("核心困难与建模判断" if language == "zh" else "Core Difficulty and Modeling Judgment",
-                     "% 为什么这道题需要特别建模？题面中什么事情需要被解释清楚？"),
-                    ("关键推导" if language == "zh" else "Key Derivation",
-                     "% 从哪些题面事实出发？哪些步骤是解析的，哪些依赖数值？"),
-                    ("求解与计算证据" if language == "zh" else "Solution and Computational Evidence",
-                     "% 算法如何实现推导？独立对照（MATLAB/替代实现）结果如何？"),
-                    ("竞争解释与区分性实验" if language == "zh" else "Competing Explanations",
-                     "% 还有哪种解释？什么实验能区分本文判断和竞争解释？"),
-                    ("结果机制与权衡" if language == "zh" else "Mechanism and Trade-offs",
-                     "% 最优解为何呈现当前结构？哪个约束活跃？资源增加后为何递减？"),
-                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
-                     "% 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
-                ]
-            else:
-                subsections = [
-                    ("本问结论" if language == "zh" else "Answer First",
-                     "% 开头先用一段话和必要数字直接回答题面；后文只解释依据、机制和边界。"),
-                    ("模型选择与关键关系" if language == "zh" else "Model and Key Relations",
-                     "% 为何选择此模型而非候选替代？核心公式是什么？"),
-                    ("结果解释与机制" if language == "zh" else "Result and Mechanism",
-                     "% 数值意味着什么？主要驱动是什么？禁止只写空话总结。"),
-                    ("适用边界与直接答案" if language == "zh" else "Scope and Direct Answer",
-                     "% 哪些假设改变后结论变化？清晰回答题面要求的输出。"),
-                ]
-            lines = [sec, ""]
-            for sub_title, comment in subsections:
-                lines.append(f"\\subsection{{{sub_title}}}")
-                lines.append(comment)
-                lines.append("")
+            lines = [f"\\section{{{title_prefix} {question_id}}}", ""]
+            lines.append("% 作者可自由组织本问，也可与相邻问题或共享模型章节合并。")
+            lines.append("% 按实际论证需要选择直接答案、数学对象、推导、算法、机制与边界；不要机械全部使用。")
             if units:
                 lines.append("% 论证单元（来自 PAPER_BLUEPRINT.md）：")
                 for unit_title in units:

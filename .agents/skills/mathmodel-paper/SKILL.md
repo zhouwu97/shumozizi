@@ -9,13 +9,13 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 
 ## v3.4 首稿默认链
 
-正式结果先进入 `paper/PAPER_MATERIAL_POOL.md` 与 `paper/generated/material_pool.json`，再进入 `paper/RESEARCH_STORYBOARD.md` 与 `paper/generated/research_storyboard.json`。素材池只给作者提供直接答案、推导、结构观察、机制、对照、边界、示例和视觉机会；日志、回执、哈希、工具探测和调试路径留在控制层。故事板逐问回答评委先需要什么、现象是什么、为什么需要该数学对象、模型如何递进、哪条证据决定答案、机制是什么、边界在哪里以及如何交接到下一问。
+先运行 `python scripts/paper/prepare_longform_author.py <run_dir>`，把题面必答合同、current 正式自然语言答案、共享数学对象与必要假设、关键推导、机制、当前图、主张边界和文献压缩投影成 `paper/author-pass/RESEARCH_PACKAGE.md`。该入口只检查正式 objective answer、current production 绑定和 scientific P0/P1 已关闭，不检查素材池、故事板、蓝图或 Figure Plan 完整度。随后完成 Narrative Competition；选中的中心主线、阅读顺序、记忆点、风险和修订建议写回现有 `AUTHOR_BRIEF.md` 并刷新 manifest。Author 默认只读取最终这两份文件，后台素材池、故事板、蓝图、图计划、回执和哈希继续保留兼容与审计价值，但不得成为创作前置清单。
 
-素材与故事板稳定后，可运行 `python scripts/paper/optimize_layout.py <run_dir>` 生成 `paper/generated/layout-optimization.json`。它只优化答案—数学对象—推导—机制—边界的阅读节拍、图机会位置和跨问交接；推荐顺序、页数和图数都是 advisory，不替代作者、冷读器或盲评对论文质量的判断。
+从同一 Research Package 生成 2--3 个 Narrative Candidates，例如问题递进型、数学结构型或机制型；使用 fresh reviewer 选择最能让评委记住论文的一种，并说明风险与修订建议。不要让 `layout_optimizer.py` 的固定 block 顺序支配正文；旧布局输出只作 advisory 兼容。
 
-默认首稿使用 `python scripts/paper/compile_longform_draft.py <run_dir>`，产物为 `paper/longform-draft.pdf`，并明确“不是最终提交稿”。它要求科学证据层和素材/故事板当前，但不要求最终竞赛叙事门禁；`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。只有完成长篇冷读、叙事/视觉返修和竞赛版机械 QA 后，才使用严格 `compile_paper.py`。
+让 Author 独立撰写 `paper/longform-source.tex` 或 `paper/longform-source.typ`，并把无法支撑的推导、机制、反事实、视觉或研究证据写入 `paper/AUTHOR_GAPS.md`。随后运行 `python scripts/paper/compile_longform_draft.py <run_dir>` 生成 `paper/longform-draft.pdf`；该命令只编译 Author 源文件，拒绝把正式入口原样重编冒充 Author Pass。`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。
 
-独立 PDF 冷读可以记录 `EXPAND`、`COMPRESS`、`REORDER`、`ADD_DERIVATION`、`ADD_MECHANISM`、`ADD_COMPARISON`、`ADD_BOUNDARY`、`ADD_FIGURE`、`ADD_COMPANION_FIGURE`、`SPLIT_FIGURE`、`DROP_FIGURE`、`MOVE_TO_APPENDIX` 和 `MERGE_PARAGRAPHS`。这些动作写入 `review/PAPER_COLD_READER_EDITORIAL.json`；未关闭动作会阻断 `compile_paper.py`，但冷读器不能直接修改正式结果或科学事实。
+独立 PDF 冷读只记录少量最高价值动作。普通扩写、压缩、重排、补机制或加图动作保持 advisory；只有 Reviewer 明确标记 `blocking=true` 的 P0/P1 且未关闭时阻断 `compile_paper.py`。冷读器不能直接修改正式结果；Author 也不能擅自修改科学层，但可请求 `writing_fix`、`visual_exploration`、`experiment` 或 `analysis` 返工。
 
 ## 第零步：确认可以写论文
 
@@ -31,7 +31,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 该专用入口生成 `paper/draft-1.pdf` 和独立草稿回执，允许正式答案资格或科学挑战尚未全部完成，但不允许虚构数字，且 PDF 必须明确“本稿不可作为最终提交”。没有证据支持的候选结论保持空数组，由状态页显示“暂无”。不要用正式 `compile_paper` 冒充首版草稿。
 
-该入口不是“能编译即可”的排版检查：编译前必须完成非占位的 `PAPER_BLUEPRINT.md` 逐问论证覆盖；每个必答问题须在 `FIGURE_PLAN` 2.4 中于首稿前决定展示图 required 或经过复核的 waived，并完成写作前蓝图审核和第一版 PDF 冷读。
+该入口不是“能编译即可”的排版检查，但不要求 Author 在动笔前填满蓝图字段或 `FIGURE_PLAN`。科学事实、正式答案绑定和不可伪造的证据仍是硬门；论证深度、视觉节奏与逐问覆盖在长篇 PDF 冷读和最终审计中检查。
 
 候选截止前先闭合所有正式答案资格与科学挑战，再执行严格 `compile_paper.py` 生成当前 `paper/final.pdf`，并保存 candidate 版本进入 `paper_review`。candidate 是可返修版本，不是科学内容的不可逆冻结；只有用户显式 final lock 才停止新增科学内容。
 
@@ -45,11 +45,11 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 ## 证据蒸馏与两遍写作
 
-填写逐问机器可解析论证单元之前，先使用 `PAPER_BLUEPRINT.md` 的全局写作层蒸馏每个主要结论：结论、数学原因、决定性证据、竞争解释和适用边界。逐问字段用于完整性复核，不是正文目录，也不能直接转写成固定小节。
+把 `PAPER_BLUEPRINT.md` 视为后台结构快照，不作为 Author 模板。可从中蒸馏结论、数学原因、决定性证据、竞争解释和适用边界，但不得把这些角色逐项变成固定小节。
 
-第一遍先按“判断或现象 → 必要数学关系 → 推导或计算证据 → 机制解释 → 对后续问题或决策的意义”写成连续论证。第二遍再按共享数学对象和新增困难切分章节，并把已写内容映射回逐问字段，确认题面要求、继承、推导、结果、机制、验证、边界和直接答案没有遗漏。
+先根据选中的 Narrative Candidate 写完整连续论证，自由决定从现象、数学对象、问题递进或机制切入。成稿后再映射回后台完整性字段，检查题面要求、继承、推导、结果、机制、验证、边界和直接答案是否遗漏；Reviewer rubric 不得直接转写成正文结构。
 
-证据按功能去重，而不是按结论机械限为一项：下界、构造、活跃约束、扰动、独立复算、基线对照和边界检验可以并存，只要它们改变不同的信任判断。`paper/generated/evidence_functions.json` 对同一主张的同功能重复只给出压缩或移入附录建议；不同功能的证据不能因为“验证已存在”被自动删除。稳定性流水账、普通复算、完整环境和搜索记录进入附录。该写作动作不删除或放宽蓝图审核、FIGURE_PLAN 2.4、首稿冷读、返修闭环和最终人工干预。
+证据按功能去重，而不是按结论机械限为一项：下界、构造、活跃约束、扰动、独立复算、基线对照和边界检验可以并存，只要它们改变不同的信任判断。同功能重复只给出压缩或移入附录建议；稳定性流水账、普通复算、完整环境和搜索记录进入附录。
 
 ---
 
@@ -61,7 +61,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 
 候选稿检查会自动生成 `paper/generated/citation_coverage.json`，逐项核对正文 citation key、BibTeX/`bibitem` 定义、引用计划和结构化建模合同。未定义 key、计划已声明但正文未引用，以及新五列表格中已识别外部核心方法/验证方法却没有对应已兑现类别，属于高置信度合同错误；未使用条目、引用只集中在引言、来源过少或单一来源跨多个类别属于 warning。普通编号 `[1]` 不视为引用，来源权威性与相关性仍由作者和冷读人工核验，不能用 DOI 或数量自动代替。
 
-作者主要维护 `paper/PAPER_BLUEPRINT.md`、`paper/answer-map.json`、`figures/FIGURE_PLAN.json` 和 `paper/PAPER_REVIEW.md`；v3.4 另维护 `PAPER_MATERIAL_POOL.md`、`RESEARCH_STORYBOARD.md` 和视觉机会池。旧 `ARGUMENT_PLAN.md`、`STORYBOARD.md` 与 `KNOWLEDGE_APPLICATION.md` 仅作兼容或后台建议。
+Author 面向的概念只保留 `RESEARCH_PACKAGE.md`、`AUTHOR_BRIEF.md` 和冷读后的 `EDITORIAL_REVIEW.md`/等价编辑反馈。`paper/answer-map.json`、`PAPER_BLUEPRINT.md`、素材池、故事板、`FIGURE_PLAN`、claim gate 和各种 generated JSON 留在后台，由工具维护、投影和最终审计。
 
 每个必答问题先填写逐问完整性卡：题面要求、与前问的继承、数学对象、关键推导、算法、主结果、机制解释、验证边界和直接答案。核心问题（`core_question=true`）在此基础上再填写完整论证单元；普通问题可以更短，但不能退化为只有 answer map 位置和一张结果表。
 
@@ -78,49 +78,21 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 - **主要讨论**：最终结果为什么呈现当前结构
 - **论文主图**：每张图支持哪一步论证（不是哪一问的图）
 - **篇幅分配**：核心问题允许显著更多篇幅
-- **完整性预算**：逐问预留问题分析、模型流、推导、算法、结果解释和验证边界的空间；复杂四问可用约 25–33 页正文作为初始估计，但赛事上限优先，页数不作为质量硬门
+- **完整性预算**：按真实论证任务分配篇幅；赛事上限优先，页数不作为质量证明，也不设推荐最低页数
 - **摘要**：最后写，见下方规范
 
 ---
 
-## 第三步：按问题角色写正文
+## 第三步：自由组织正文
 
-每个问题章节（尤其问题一、二、三）第一段先给“答案预览”：用一段自然语言和必要数字直接回答题面，并紧接一句证据范围；随后必须展开现象、数学对象、模型、推导、算法、结构、机制和边界。答案预览不是结论的替代物，也不能用一张答案表关闭章节。CUMCM 中文正文默认宋体小四（12pt），数学公式中的拉丁字母使用 Times New Roman 系斜体；编译后在 PDF 中抽查字体、字号、公式、图注和分页。
+确保评委能在合理时间内找到每问直接答案，同时允许 Author 自由决定答案出现于段首、节末、答案总览或共享模型后的问题链中。可以合并相邻问题、让不同问题使用不同深度，或把共享推导集中一次；不要为普通问和核心问预生成相同小节序列。
 
-### 普通问题
-
-```
-问题分析与本问输出
-→ 继承的共享模型与新增数学对象
-→ 关键数学关系和必要推导
-→ 可复现算法步骤或伪代码
-→ 求解结果与机制解释
-→ 验证和适用边界
-→ 直接答案
-```
-
-普通问题可合并小节，但上述逻辑不能被删成“采用某算法，结果见表”。
-
-### 核心问题
-
-```
-核心困难与建模判断（这里是什么真正难解的问题）
-→ 关键命题（要在论文中支持的数学判断）
-→ 推导（为什么命题成立，哪步是关键）
-→ 求解策略（算法如何实现这步推导）
-→ 结果与独立对照（计算证据，与MATLAB/替代实现对比）
-→ 竞争解释与排除（为什么不是另一种解释）
-→ 机制讨论（结果为何呈现这个结构）
-→ 适用边界（哪些结论在当前参数外可能不成立）
-→ 直接答案
-```
-
-核心问题必须把 `PAPER_BLUEPRINT.md` 里的论证单元真正写进正文。
+成稿必须在自然论证中实际覆盖必要的数学对象、关键推导、算法、结果解释、机制、验证和边界，但这些角色是审计对象，不是标题清单。若某问只能写成“采用某算法，结果见表”，在 `AUTHOR_GAPS.md` 判断缺少的是推导、机制、案例、图还是研究证据。CUMCM 中文正文默认宋体小四（12pt），公式变量使用 Times New Roman 系斜体；编译后在 PDF 中抽查字体、图注和分页。
 
 ## 展开深度与篇幅
 
 - 先服从竞赛明确的页数上限；没有紧上限时按解释任务分配篇幅，不预设约 13 页。
-- 对多问、共享模型复杂、需要分组验证或多条机制解释的论文，约 25–33 页正文可作为起始规划区间，之后按真实内容收缩或扩展。该区间不是机器门禁，也不证明竞争力。
+- 对多问、共享模型复杂、需要分组验证或多条机制解释的论文，按真实内容分配篇幅，不用预设页数区间反推扩写。
 - 优先完整讲清一个主模型、一个自然 baseline 和一条数学结构真正不同的 challenger。路线名称大表不能替代模型流、核心推导和算法步骤。
 - 中央公式、关键推导、必要伪代码和正式参考文献留在正文；完整源码、稳定性审计和次要表格进入附件。
 - 若使用分组验证、删失处理、不平衡样本、聚合指标或代理变量，正文先做足够的数据分析，说明为何这样处理以及它如何影响主 endpoint。
@@ -181,7 +153,7 @@ python scripts/paper/compile_reviewable_draft.py <run_dir> --disclosure <json>
 python scripts/paper/audit_report_style.py <run_dir>
 ```
 
-该命令输出可机读的 `errors` 与 `warnings`。E001--E005 是可由源文直接复核的高置信度错误：正式正文泄漏工作流内部术语、同一任务报账模板高频重复、摘要逐问流水账且缺统一主线、核心问题由列表/表格主导且同时缺推导与机制、正文图未形成有序的观察—机制—结论消费。候选稿必须修复这些错误；运行说明可以留在附录，但不能进入正式正文。
+该命令输出可机读的 `errors` 与 `warnings`。只有 E001 正式正文泄漏工作流内部术语是确定性硬错误。E002--E005 分别提示报账模板重复、摘要逐问流水账、核心问题过度列表化和图后论证薄弱；它们必须由冷读结合上下文裁决，不能直接阻断编译或诱导 Author 按检查项补句。
 
 标题碎片化、列表密度、重复问题模板，以及仅缺推导或仅缺机制等依赖上下文的信号继续保留为 `warnings`，由 `PAPER_REVIEW.md` 记录 `accepted`、`repaired`、`false_positive` 或 `deferred_with_reason`，并交给独立 PDF 盲评结合页码裁决。自动信号不能判断数学正确性，也不能替代独立阅读。
 
@@ -200,11 +172,11 @@ python scripts/paper/audit_report_style.py <run_dir>
 
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
-视觉机会池中的候选先写入 `figures/work/<opportunity>/<version>/design-contract.json`，设计合同保留 `visual_question`、`atomic_claim`、候选原型、面板 takeaway、机制/边界标注和政策指纹。它是设计系统输入，不是 PNG/PDF 质量证明；candidate 仍须独立视觉批评、图形 QA 和正文消费闭环。
+视觉想法先用 `write_visual_ideas.py` 写入轻量列表，并在 `figures/sandbox/<idea-id>/` 生成多个草图。草图不要求结果绑定、最终 caption、LaTeX label、manifest、panel mapping 或 design contract。fresh reviewer 选出最快说明机制且最不重复表格的候选后，`visual_sandbox.py graduate` 只记录 design reference、其哈希和目标 work 目录；必须再用 current 数据与正式 renderer 重新生成 work 候选，此时才进入来源绑定、图形 QA 和正文消费闭环。
 
 v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM semantic/classic 外壳。`design_only` 只提供当前题的结构启发，只有明确标记 `renderer_available` 的模板才可进入渲染计划；注册表不携带其他题目的数据、公式或结论。
 
-每个必答问题必须在首稿前于 `FIGURE_PLAN.json` 2.4 中分别声明 `evidence_need` 和 `presentation_need`，每张图绑定 `argument_unit_ids` 与 `obligation_types`。结构性 waived 必须有独立 `waiver_review`；required 图在 `figures/work/` 迭代，经机械 QA 与内容化人工复核后晋级 current，旧 current 自动归档；`stability` 图只能在附录消费。
+`FIGURE_PLAN.json` 2.4 只作旧运行兼容和晋级后的后台审计，不再要求 Author 为每个问题手写 required/waived、`argument_unit_ids`、`obligation_types` 或 `panel_mapping`。最终图仍须绑定当前来源、脚本、输出、claim、placement、caption 和人工接受结论；`stability` 图只能在附录消费。
 
 ---
 
@@ -212,7 +184,7 @@ v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM se
 
 - 每个必答问题在 `analysis/answer_map.json` 或 `paper/answer-map.json` 有当前 `result_id` 和直接答案位置
 - 核心问题用 `insight_ids` 引用实验阶段登记的机制、边际收益、活跃约束或权衡类规律
-- 规律挖了但没引用会阻断编译
+- 未消费的 insight 只产生编辑 warning；正式答案仍必须绑定 current production 结果
 
 ---
 
@@ -268,9 +240,8 @@ n+1 模型检验、评价与结论
 写入。适配只允许章节映射、段落移动、标题改写、去重、图表重排和交叉引用修复；
 禁止修改模型、重新选择数字或创造结论。上传的 Word 模板只作为 Pandoc
 `--reference-doc` 的样式和外层结构参考，占位文案不具科学权威；候选编译回执必须绑定模板路径和摘要。CUMCM 正文页数使用
-24–30 页软规划：少于 18 页作为论证稀缺信号检查，18–23 页检查过度压缩，超过 30 页核对
-官方上限和重复内容。页数不构成硬门：是否合格交给内容覆盖、Fresh Reviewer 与
-Editorial Adjudicator 判断，页数本身只回答"这篇论文是否值得进一步检查"。
+CUMCM 2026 正文不得超过 30 页；低页数不自动触发扩写，内容是否充分交给论证覆盖、
+Fresh Reviewer 与 Editorial Adjudicator 判断。
 
 每次正式编译递增 `render_revision`；正文论证变化时才递增 `argument_revision`。独立 PDF
 最终 PDF 盲评还必须执行固定人工干预提示：按数学建模国赛标准对照优秀论文，逐项判断图表缺口、报告/论文形态、笔法文风、排版、论证主线和十几页篇幅原因，并输出带优先级、修复层级与验收标准的修改清单。该干预只接收冻结 PDF，记录在盲评回执中，不联网、不读取题面或源码，也不新增工作流阶段。

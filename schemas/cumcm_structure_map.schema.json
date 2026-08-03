@@ -162,11 +162,11 @@
       "properties": {
         "recommended_body_pages": {
           "type": "array",
-          "prefixItems": [{"const": 24}, {"const": 30}],
+          "prefixItems": [{"const": 1}, {"const": 30}],
           "items": false
         },
-        "inspect_below_pages": {"const": 18},
-        "hard_gate": {"const": false}
+        "inspect_below_pages": {"const": 1},
+        "hard_gate": {"const": true}
       },
       "additionalProperties": false
     }

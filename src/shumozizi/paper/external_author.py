@@ -24,6 +24,7 @@ EXTERNAL_DIR = Path("paper/external-author")
 DRAFT_PATH = EXTERNAL_DIR / "draft.tex"
 AUTHOR_NOTE_PATH = EXTERNAL_DIR / "AUTHOR_NOTE.md"
 AUTHOR_REQUESTS_PATH = EXTERNAL_DIR / "AUTHOR_REQUESTS.json"
+INTERNAL_AUTHOR_REQUESTS_PATH = Path("paper/AUTHOR_REQUESTS.json")
 AUTHOR_REQUEST_DECISIONS_PATH = Path("review/author-request-decisions.json")
 
 AUTHOR_REQUEST_KINDS = ("argument_material", "visual", "evidence", "citation", "clarification")
@@ -102,8 +103,9 @@ def read_author_requests(run_dir: Path) -> list[dict[str, Any]]:
         ContractError: 请求 kind 不在五类范围内。
     """
     root = run_dir.resolve()
-    path = root / AUTHOR_REQUESTS_PATH
-    if not path.is_file():
+    candidates = (root / AUTHOR_REQUESTS_PATH, root / INTERNAL_AUTHOR_REQUESTS_PATH)
+    path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    if path is None:
         return []
     payload = load_json(path)
     if not isinstance(payload, dict) or not isinstance(payload.get("requests"), list):

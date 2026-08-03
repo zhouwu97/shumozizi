@@ -117,8 +117,8 @@ def _finding(*, finding_id: str = "FD-001", severity: str = "P1") -> dict[str, o
     }
 
 
-def test_blueprint_parser_requires_core_specific_obligations() -> None:
-    """旧蓝图无需新增全局写作区也继续兼容逐问论证合同。"""
+def test_blueprint_parser_requires_only_decisive_core_obligations() -> None:
+    """核心问保留关键判断和计算证据，竞争解释不再逐问硬阻断。"""
     complete = parse_paper_blueprint(
         _complete_blueprint(),
         run_id="run-1",
@@ -134,8 +134,53 @@ def test_blueprint_parser_requires_core_specific_obligations() -> None:
         required_questions=["Q1", "Q2"],
         core_questions=["Q2"],
     )
-    assert missing["complete"] is False
-    assert "Q2 缺少论证义务 alternative_explanation" in validate_argument_coverage(missing)
+    assert missing["complete"] is True
+    assert validate_argument_coverage(missing) == []
+
+    missing_judgment = parse_paper_blueprint(
+        _complete_blueprint().replace("### 要支持的判断", "### 未命名判断"),
+        run_id="run-1",
+        required_questions=["Q1", "Q2"],
+        core_questions=["Q2"],
+    )
+    assert missing_judgment["complete"] is False
+    assert "Q2 缺少论证义务 key_judgment" in validate_argument_coverage(
+        missing_judgment
+    )
+
+
+def test_ordinary_question_accepts_minimum_argument_contract() -> None:
+    """普通问只需回答问题、新增处理、结果和直接答案。"""
+    markdown = """# PAPER_BLUEPRINT
+
+## Q1 完整性卡
+
+- **题面要求**：给出 30 日调度方案。
+- **继承**：首问没有前问，直接使用题面数据。
+- **新增困难**：需要协调每日需求与产能。
+- **数学对象**：以日为索引的库存流。
+- **关键推导**：由守恒关系递推每日库存。
+- **主结果**：总计 10791 人日，峰值 537 人。
+- **直接答案**：采用所列 30 日调度方案。
+"""
+
+    document = parse_paper_blueprint(
+        markdown,
+        run_id="run-minimum",
+        required_questions=["Q1"],
+        core_questions=[],
+    )
+
+    assert document["complete"] is True
+    assert set(document["questions"][0]["obligations"]) == {
+        "problem_requirement",
+        "inheritance",
+        "new_difficulty",
+        "mathematical_object",
+        "key_derivation",
+        "main_result",
+        "direct_answer",
+    }
 
 
 def test_new_run_templates_add_author_layer_without_breaking_machine_contract(
@@ -237,6 +282,8 @@ def test_first_draft_cold_read_accepts_only_paper_pdf(tmp_path: Path) -> None:
     assert "figure_checks" in prompt
     assert "continue_revision 或 ready_for_candidate" in prompt
     assert "最多 5 项" in prompt
+    assert "实现验证可以由前文或全文统一章节明确覆盖" in prompt
+    assert "核心逻辑证明必须留在对应问题附近" in prompt
     with pytest.raises(ContractError, match="paper/ 下的 PDF"):
         first_draft_cold_read_prompt(run_dir, pdf_path="analysis/MODELING_UNITS.json")
 

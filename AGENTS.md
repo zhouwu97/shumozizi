@@ -71,20 +71,20 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 
 ## 图表与论文
 
-- 论文作者只维护四个主要控制文件：`paper/PAPER_BLUEPRINT.md`、`paper/answer-map.json`、`figures/FIGURE_PLAN.json` 和 `paper/PAPER_REVIEW.md`；`ARGUMENT_PLAN.md`、`STORYBOARD.md` 与 `KNOWLEDGE_APPLICATION.md` 只作旧运行兼容或后台建议，不再拥有首稿放行权。知识检索零匹配时自动给出通用结构模式；可检索实际使用的方法文献，但禁止同题答案、题解和现成结论，约 6–12 篇参考文献只作紧凑性建议。
-- 候选稿前运行 `scripts/paper/audit_report_style.py`。E001--E005（正文泄漏内部术语、重复报账模板、无统一主线的逐问摘要、核心问只剩列表/表格/结论、图后缺观察--机制--结论闭环）属于高置信度硬错误；句长、标题碎片、列表密度等中等置信度信号仍为 warning，但必须在 `PAPER_REVIEW.md` 中登记处置状态及关闭证据。自动信号不能替代独立 PDF 阅读。
-- Competition-First v3.2 的 CUMCM 正式候选稿使用 `CUMCM_STRUCTURE_MAP` 1.2；1.1 只保留旧运行兼容。`classic` 保留固定栏目兜底；`semantic` 定义为“经典国赛外壳 + 语义内核”，不是自由结构。必答问题不少于三问、至少两问共享同一数学对象且后问新增资源、共享约束或聚合层时默认选择 `semantic`；证据不足或作者明确选择时仍可用 `classic`。`semantic` 必须保留摘要、问题重述与分析、一个明确的“模型假设与符号”入口、共享模型、问题链求解、检验评价与结论、参考文献和附录；允许合并相邻语义角色、按共享对象合并多问，近端验证可与对应求解同章，数据处理仅在题型需要时单列。两种画像都填写 advisory `presentation_contract`，明确前五页阅读路线、跨问主线、答案总览、数据画像和逐问主图；不得借适配修改模型、数字、结论或证据等级。`paper/CUMCM_LAYOUT_AUDIT.json` 1.3 直接读取当前 `review/paper-blind-review.json` 的同源冷读、逐问缺失角色/页码/finding、问题继承和叙事风险，禁止作者再次传入平行的 `cold_read`、`argument_depth` 或问题递进判断；本地只追加呈现合同、论文卡兑现和页面机械探针，在 `verify` 原文件补数字、引用、Word/PDF 与版面闭环。论文卡兑现始终 advisory；盲评上下文仍只接收 PDF。综合检验只汇总跨问题内容。CUMCM 正文 24–30 页仅为软规划，少于 18 页或超过 30 页触发说明，不以页数证明质量。
-- 新运行使用 `FIGURE_PLAN` 2.4，将 `evidence_need` 与 `presentation_need` 分开，并为每张图声明 `argument_unit_ids`、`obligation_types`；承担三项以上义务时必须填写 `panel_mapping`。几何、集合、时间、多阶段、模型选择、不确定性、名义--稳健、共享模型或跨问递进出现时，waived 必须有独立 `waiver_review` 和可核对的替代表达。2.1--2.3 只作旧运行兼容。
-- `PAPER_BLUEPRINT.md` 必须逐问覆盖题面要求、继承、新困难、数学对象、建模依据、关键推导、算法、主结果、解释、机制、验证、边界和直接答案；核心问题另需关键判断、计算证据与替代解释。系统自动生成 `paper/generated/argument_coverage.json`，缺项阻断首稿或候选稿。
-- 写作前必须记录 `review/paper-blueprint-review.json`，第一版 PDF 后必须记录 `review/first-draft-cold-read.json`；两次审核最多各导入五项最高价值 finding 到 `PAPER_REVIEW.md`。它们是 paper 阶段内 checkpoint，不新增状态阶段。
+- Author 默认只接收三个概念：`paper/author-pass/RESEARCH_PACKAGE.md`、`paper/author-pass/AUTHOR_BRIEF.md` 和冷读后的高价值编辑反馈；`PAPER_BLUEPRINT.md`、`paper/answer-map.json`、素材池、故事板、`FIGURE_PLAN`、claim gate 与 generated JSON 只作后台兼容、事实投影和最终审计，不得成为创作前置清单。Research Package 必须压缩投影题面必答合同、正式自然语言答案、共享数学对象/必要假设、关键推导、当前图、主张边界和可用文献；Author Pass 只以正式 objective answer、current production 绑定和已关闭 scientific P0/P1 为科学硬门。知识检索零匹配时自动给出通用结构模式；可检索实际使用的方法文献，但禁止同题答案、题解和现成结论，约 6–12 篇参考文献只作紧凑性建议。
+- 候选稿前运行 `scripts/paper/audit_report_style.py`。只有 E001 正文泄漏内部术语属于确定性硬错误；E002--E005（重复报账模板、无统一主线的逐问摘要、核心问过度列表化、图后论证薄弱）与句长、标题、列表密度、篇幅和图数均为 editorial signal，由独立 PDF 阅读裁决，不能直接阻断或诱导 Author 按检查项补句。
+- Competition-First v3.2 的 CUMCM 正式候选稿使用 `CUMCM_STRUCTURE_MAP` 1.2；1.1 只保留旧运行兼容。`classic` 保留固定栏目兜底；`semantic` 定义为“经典国赛外壳 + 语义内核”。共享对象与问题递进只决定外壳建议，Author 仍可合并相邻问题、集中共享推导并自由安排章节深度；结构适配不得修改模型、数字、结论或证据等级。`presentation_contract` 与 `CUMCM_LAYOUT_AUDIT` 都只消费当前 PDF 和盲评事实，保持 advisory。页数唯一政策为：少于 18 页强编辑复核、18--23 页压缩复核、24--30 页正常规划、超过 30 页压缩复核；四档全部不自动阻断。
+- 新视觉先进入 `figures/visual-ideas.json` 和 `figures/sandbox/<idea-id>/`，不要求结果绑定、caption、label、manifest、waiver、`argument_unit_ids`、`obligation_types` 或 `panel_mapping`。关键 insight 用 2--4 个候选做视觉竞争；胜出草图只冻结为 design reference，必须再由 current 数据与正式 renderer 在 `figures/work/` 重生成，之后才进入来源绑定、QA 和 current 晋级。`FIGURE_PLAN` 2.4 只作旧运行兼容与晋级后的后台审计。
+- `PAPER_BLUEPRINT.md` 和自动生成的 `argument_coverage.json` 用于成稿后的查漏，不得预生成固定每问小节或阻断 Author 开始长篇写作。直接答案绑定、科学事实和正式结果资格仍是硬门；论证、机制、视觉与叙事缺口交给 longform cold read。
+- 写作前蓝图审阅为可选 advisory；第一版 PDF 后必须做独立 cold read。每次最多保留五项最高价值 finding，普通动作默认 advisory，只有明确 `blocking=true` 的 P0/P1 未关闭时阻断候选稿。
 - 图表在 `figures/work/<figure_id>/<version>/` 迭代，通过文件可读性、PNG/PDF 几何一致性和人工看图后晋级 `figures/current/`；被替换的 current 自动留入 `figures/archive/`。流程图另查文字越界、重叠、最小字号、箭头穿字和连接点居中。
-- v3.4 每张图必须声明 role：`model_understanding`、`decisive_evidence`、`insight` 或 `stability`。晋级回执必须按角色复核对象、观察、机制、边界、决策后果、表格冗余、图注、字号和面板映射；只有 `reviewed=true` 不再放行。`stability` 一律进入附录。
-- `FIGURE_PLAN` 2.3 的正文 hero 必须声明 `information_structure`、普通图取舍理由和机制标注，并按空间、时间/集合、网络、场、权衡或不确定性优先选择原型。当数据具有空间、集合、网络、场、决策面或区间结构时，普通柱形图/折线图不得作为唯一正文主图；确实最合适时必须登记 `generic_chart_override_reason`，且人工看图仍需确认声明已在 PNG/PDF 中兑现。
+- 晋级为正式图时声明 `model_understanding`、`decisive_evidence`、`insight` 或 `stability`，并人工复核对象、观察、机制、边界、表格冗余、图注和字号；草图阶段不填这些字段。`stability` 一律进入附录。
+- 空间、集合、网络、场、决策面或区间结构优先试真实结构原型；普通柱形图/折线图确实最清楚时由 fresh reviewer 说明理由，不要求 Author 填写预防性 override 表单。
 - 图必须由当前数据和当前脚本实际生成，PNG/PDF 可读，并在结果变化后失效。
-- 论文每个必答问题都要有问题分析、与前问的继承、数学对象与关键推导、算法步骤、结果机制、验证边界和直接答案；普通问题可以合并小节，但不能只剩方法名和结果表。`analysis/answer_map.json` 或 `paper/answer-map.json` 的 `primary_result_id` 必须与实验晋级/回退决定一致。核心问题另需用 `insight_ids` 引用实验阶段登记的机制或边际收益类规律。
+- 最终论文每个必答问题都要能找到直接答案和足够论证，但允许合并问题、集中共享模型、使用不同章节深度，不强制固定标题或顺序。`analysis/answer_map.json` 或 `paper/answer-map.json` 的 `primary_result_id` 必须与实验晋级/回退决定一致；未消费 insight 只形成编辑 warning。
 - PDF 内源码默认不超过一页（`source_code_appendix.pdf_page_budget`），完整代码走 `mode: attachment`；确有赛事要求时显式声明 `competition_requires_full` 与依据。运行时会自动生成 `paper/generated/argument_map.json` 与 `paper/generated/argument_coverage.json`；v3.4 只能使用无回退 LaTeX 学术模板。
-- 论文采用可往返的三种逻辑动作：在 `PAPER_BLUEPRINT.md` 定义结构与跨问主线，统一共享模型并逐问成文，在 `PAPER_REVIEW.md` 收束证据边界与返修。贡献最多三项，不能把常规方法组合包装为创新。
-- 不把约 13 页当作复杂论文的默认目标。先服从赛事页数上限；没有紧上限时，多问且推导/验证复杂的论文可用约 25–33 页正文作为初始规划区间，再按真实内容调整。该区间只帮助防止过度压缩，不是硬门或获奖证明。正文优先完整讲清一个主模型、一个自然 baseline 和一条真正不同的 challenger；中央推导、必要伪代码和参考文献留在正文，完整代码与稳定性审计进附件。
+- 论文采用可往返链：Research Package → Narrative Competition → Visual Sandbox → Longform Author → Cold Reader → Editorial Compression。贡献最多三项，不能把常规方法组合包装为创新。
+- 不把任何页数当作内容目标。先服从赛事上限，再按真实解释任务分配篇幅；页面审计只提示复核，不得反推扩写。正文优先完整讲清一个主模型、一个自然 baseline 和一条真正不同的 challenger；中央推导、必要伪代码和参考文献留在正文，完整代码与稳定性审计进附件。
 - 正式编译分别维护 `argument_revision` 与 `render_revision`。正文论证变化才使独立盲评失效；字号、箭头、留白、分页等纯渲染变化只重做当前 render 的版式与机械 QA。科学事实变化仍重做科学挑战、论证和渲染。首稿或 candidate 都不是不可逆冻结；首稿后新增路线、实验、图或审核须记录 review finding、预计成本、预期收益和停止条件。只有用户显式 `final lock` 后才停止新增科学内容。工作流源码哈希只作信息提示，不拥有阶段否决权。
 
 ## External Author Handoff
@@ -98,9 +98,10 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
   → draft_imported / rework_requested / author_pass_accepted / needs_rebase`。
   `waiting_external_author` 是正常暂停，**不是 blocked**；external 模式下
   `compile_paper` / `compile_longform_draft` 在未导入外部稿前被守卫拒绝。
-- 交接包：`paper/writer-handoff/` 下 6 个人读文件 + `answer-and-claims.json` +
-  `manifest.json`。`WRITER_HANDOFF_READY` 必须满足科学 / 素材 / 故事板 / 图表 /
-  主张边界 / 文献六层就绪（`shumozizi.paper.handoff.writer_handoff_readiness`）。
+- 交接包：`paper/writer-handoff/` 下默认只有 `RESEARCH_PACKAGE.md` 与
+  `AUTHOR_BRIEF.md` 两个人读文件；`answer-and-claims.json` 与 `manifest.json` 供机器审计。
+  科学事实、正式答案和主张边界继续阻断；素材、故事板、蓝图与视觉缺口只形成
+  `editorial_signals`，由 Author 请求返工。
 - 导入：`paper/external-author/draft.tex` 永不覆盖 `main.tex`。
   `import_audit.py` 做隔离编译与数字 / 强主张 / 图 / 引用绑定；`wrong_number`
   先为 `scientific_fact_candidate`，经 machine binding 确认后才成为

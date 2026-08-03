@@ -36,6 +36,10 @@ _LONGFORM_DRAFT_ENTRYPOINTS = {
     "latex": Path("paper/longform-draft.tex"),
     "typst": Path("paper/longform-draft.typ"),
 }
+_LONGFORM_AUTHOR_SOURCES = {
+    "latex": Path("paper/longform-source.tex"),
+    "typst": Path("paper/longform-source.typ"),
+}
 _GENERATED_PAPER_FILES = {
     "compile-receipt.json",
     "final.pdf",
@@ -370,26 +374,35 @@ def compile_longform_draft(
     from shumozizi.simple.authoring import require_internal_authoring
 
     require_internal_authoring(run_dir)
-    from shumozizi.paper.materials import require_material_pool
-    from shumozizi.paper.readiness import require_scientific_readiness
-    from shumozizi.paper.storyboard import require_research_storyboard
+    from shumozizi.paper.author_pass import (
+        AUTHOR_PASS_MANIFEST_PATH,
+        require_author_pass,
+        require_scientific_authoring_ready,
+    )
 
-    require_scientific_readiness(run_dir)
-    require_material_pool(run_dir, substantive=True)
-    require_research_storyboard(run_dir, substantive=True)
+    require_scientific_authoring_ready(run_dir)
+    author_pass = require_author_pass(run_dir)
     manifest = require_materialized_template(run_dir)
     engine = manifest["engine"]
     root = run_dir.resolve()
     paper_dir = root / "paper"
+    author_source_relative = _LONGFORM_AUTHOR_SOURCES[engine]
+    author_source = root / author_source_relative
+    if not author_source.is_file() or author_source.stat().st_size == 0:
+        raise ContractError(
+            f"Author Pass 尚未生成 {author_source_relative.as_posix()}，不能把正式入口冒充长篇首稿"
+        )
     formal_entrypoint = paper_dir / manifest["question_layout"]["entrypoint_path"]
-    if not formal_entrypoint.is_file():
-        raise ContractError("论文模板入口缺失，不能编译长篇科学首稿")
+    if formal_entrypoint.is_file() and formal_entrypoint.read_text(
+        encoding="utf-8"
+    ) == author_source.read_text(encoding="utf-8"):
+        raise ContractError("longform-source 与正式入口完全相同，尚未完成真实 Author Pass")
     status_relative = _LONGFORM_DRAFT_STATUS_PATHS[engine]
     status_path = root / status_relative
     _atomic_text(status_path, _render_longform_status(engine=engine))
     entry_relative = _LONGFORM_DRAFT_ENTRYPOINTS[engine]
     draft_entrypoint = root / entry_relative
-    source = formal_entrypoint.read_text(encoding="utf-8")
+    source = author_source.read_text(encoding="utf-8")
     if engine == "latex":
         marker = r"\end{document}"
         if marker not in source:
@@ -402,7 +415,7 @@ def compile_longform_draft(
     else:
         draft_source = source + '\n#include("generated/longform-draft-status.typ")\n'
     _atomic_text(draft_entrypoint, draft_source)
-    source_sha256 = _paper_source_sha256(paper_dir)
+    source_sha256 = sha256_file(author_source)
     compiler, steps = _draft_steps(engine, draft_entrypoint.name, output_name="longform-draft.pdf")
     executions = _run_compiler_steps(paper_dir, steps, timeout_seconds=timeout_seconds)
     artifact = paper_dir / "longform-draft.pdf"
@@ -418,12 +431,16 @@ def compile_longform_draft(
         "artifact_sha256": sha256_file(artifact),
         "entrypoint_path": entry_relative.as_posix(),
         "entrypoint_sha256": sha256_file(draft_entrypoint),
+        "author_source_path": author_source_relative.as_posix(),
+        "author_source_sha256": source_sha256,
+        "author_pass_manifest_path": AUTHOR_PASS_MANIFEST_PATH.as_posix(),
+        "author_pass_manifest_sha256": sha256_file(root / AUTHOR_PASS_MANIFEST_PATH),
         "status_path": status_relative.as_posix(),
         "status_sha256": sha256_file(status_path),
         "template_manifest_sha256": sha256_file(root / MANIFEST_PATH),
         "paper_source_sha256": source_sha256,
-        "material_pool_sha256": sha256_file(root / "paper/generated/material_pool.json"),
-        "storyboard_sha256": sha256_file(root / "paper/generated/research_storyboard.json"),
+        "research_package_sha256": author_pass["research_package"]["sha256"],
+        "author_brief_sha256": author_pass["author_brief"]["sha256"],
         "page_budget_path": PAGE_BUDGET_PATH.as_posix(),
         "page_budget_sha256": sha256_file(root / PAGE_BUDGET_PATH),
         "page_count": page_budget["page_count"],
@@ -465,12 +482,28 @@ def verify_longform_draft_receipt(run_dir: Path) -> dict[str, Any]:
         _require_pdf(root / receipt["artifact_path"])
         if receipt.get("template_manifest_sha256") != sha256_file(root / MANIFEST_PATH):
             errors.append("长篇首稿未绑定当前模板清单")
-        for relative, key in (
-            ("paper/generated/material_pool.json", "material_pool_sha256"),
-            ("paper/generated/research_storyboard.json", "storyboard_sha256"),
-        ):
-            if receipt.get(key) != sha256_file(root / relative):
-                errors.append(f"长篇首稿未绑定当前 {relative}")
+        if receipt.get("author_source_path"):
+            source = root / receipt["author_source_path"]
+            if not source.is_file() or receipt.get("author_source_sha256") != sha256_file(source):
+                errors.append("长篇首稿未绑定当前 Author 源文件")
+            from shumozizi.paper.author_pass import require_author_pass
+
+            author_pass = require_author_pass(root)
+            manifest_path = root / receipt["author_pass_manifest_path"]
+            if receipt.get("author_pass_manifest_sha256") != sha256_file(manifest_path):
+                errors.append("长篇首稿未绑定当前 Author Pass manifest")
+            if receipt.get("research_package_sha256") != author_pass["research_package"]["sha256"]:
+                errors.append("长篇首稿未绑定当前 Research Package")
+            if receipt.get("author_brief_sha256") != author_pass["author_brief"]["sha256"]:
+                errors.append("长篇首稿未绑定当前 Author Brief")
+        else:
+            # 旧回执继续按 Material Pool 与 Storyboard 复验。
+            for relative, key in (
+                ("paper/generated/material_pool.json", "material_pool_sha256"),
+                ("paper/generated/research_storyboard.json", "storyboard_sha256"),
+            ):
+                if receipt.get(key) != sha256_file(root / relative):
+                    errors.append(f"长篇首稿未绑定当前 {relative}")
         from shumozizi.paper.page_budget import verify_page_budget
 
         page_budget = verify_page_budget(root, pdf_path=root / receipt["artifact_path"])
@@ -759,7 +792,7 @@ def compile_paper(
         timeout_seconds: 单次编译命令允许的最长秒数。
         reference_docx: 可选的 CUMCM Word 样式参考模板。
         strict_editorial: 是否要求当前长篇首稿已有独立冷读记录。
-        enforce_page_budget: 是否启用低于 18 页的硬阻断。
+        enforce_page_budget: 已弃用的兼容参数；页数只生成编辑信号。
 
     Returns:
         已写入 ``paper/compile-receipt.json`` 的冻结编译收据。
@@ -775,9 +808,7 @@ def compile_paper(
     if revision_impact not in {"auto", "render", "argument", "science"}:
         raise ContractError("revision_impact 必须为 auto、render、argument 或 science")
     root = run_dir.resolve()
-    strict_mode = bool(
-        strict_editorial or enforce_page_budget or (root / LONGFORM_DRAFT_RECEIPT_PATH).is_file()
-    )
+    strict_mode = bool(strict_editorial or (root / LONGFORM_DRAFT_RECEIPT_PATH).is_file())
     # ── 编译前最小编译前提硬门：科学放行 + （内部）论证/编辑闭环 或 （外部）审计/裁决闭环 ──
     from shumozizi.simple.review import require_paper_generation_allowed
 

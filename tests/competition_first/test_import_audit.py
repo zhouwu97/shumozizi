@@ -46,6 +46,7 @@ def _answer_and_claims(
             {
                 "question_id": "Q1",
                 "must_answer": "12 人",
+                "essential_numbers": [12],
                 "safe_claims": [],
                 "forbidden_upgrades": [],
                 "key_boundaries": [],
@@ -55,6 +56,7 @@ def _answer_and_claims(
             {
                 "question_id": "Q2",
                 "must_answer": "8 人",
+                "essential_numbers": [8],
                 "safe_claims": [],
                 "forbidden_upgrades": [],
                 "key_boundaries": [],
@@ -64,6 +66,7 @@ def _answer_and_claims(
             {
                 "question_id": "Q3",
                 "must_answer": "581 人",
+                "essential_numbers": [581],
                 "safe_claims": q3_safe or [],
                 "forbidden_upgrades": q3_forbidden or [],
                 "key_boundaries": ["证据等级: 下界+可行构造"],
@@ -326,6 +329,34 @@ def test_numeric_normalization_matches_equivalent_forms() -> None:
     document = {"questions": [{"question_id": "Q3", "must_answer": "581.0 人"}]}
     draft = "\\section{Q3}\nQ3 最少需要 581 人。\n"
     assert extract_numbers(draft, document) == []
+
+
+def test_only_essential_numbers_are_required_in_question_body() -> None:
+    """长序列可留在附录，正文只强制总量和峰值两个核心答案。"""
+    document = {
+        "questions": [
+            {
+                "question_id": "Q1",
+                "must_answer": (
+                    "30 日序列为 [301, 322, 344, 366, 389]，总计 10791 人日，"
+                    "峰值 537 人。"
+                ),
+                "essential_numbers": [10791, 537],
+            }
+        ]
+    }
+    draft = (
+        "\\section{Q1}\n"
+        "30 日总计 10791 人日，峰值 537 人，完整逐日结果见附录。\n"
+    )
+
+    assert extract_numbers(draft, document) == []
+
+    wrong = extract_numbers(
+        "\\section{Q1}\n30 日总计 10790 人日，峰值 537 人。\n",
+        document,
+    )
+    assert any(item["formal_value"] == "10791" for item in wrong)
 
 
 def test_classify_fact_candidates_rejects_matching_numbers(tmp_path: Path) -> None:

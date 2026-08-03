@@ -174,7 +174,16 @@ def _same_number(left: float, right: float) -> bool:
 
 
 def _expected_answer_numbers(question: dict[str, Any]) -> list[float]:
-    """从"必须回答"文本提取期望数字（数值化）。"""
+    """读取正文必现数字；旧交接包继续兼容 ``must_answer``。"""
+    if "essential_numbers" in question:
+        values = question.get("essential_numbers")
+        if not isinstance(values, list):
+            return []
+        return [
+            number
+            for value in values
+            if (number := _normalize_number(str(value))) is not None
+        ]
     return [
         number
         for token in re.findall(r"\d+(?:\.\d+)?", str(question.get("must_answer", "")))

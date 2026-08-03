@@ -53,6 +53,7 @@ def _require_action(raw: dict[str, Any]) -> dict[str, Any]:
         "reason": raw["reason"].strip(),
         "expected_benefit": raw["expected_benefit"].strip(),
         "status": raw.get("status", "open"),
+        "blocking": bool(raw.get("blocking", False)),
     }
 
 
@@ -199,21 +200,31 @@ def editorial_readiness(
     open_actions = [
         item.get("action_id")
         for item in payload.get("actions", [])
-        if isinstance(item, dict) and item.get("status") != "closed"
+        if isinstance(item, dict)
+        and item.get("blocking") is True
+        and item.get("status") != "closed"
+    ]
+    advisory_actions = [
+        item.get("action_id")
+        for item in payload.get("actions", [])
+        if isinstance(item, dict)
+        and item.get("blocking") is not True
+        and item.get("status") != "closed"
     ]
     return {
         "ready": not open_actions and not errors,
         "open_actions": open_actions,
+        "advisory_actions": advisory_actions,
         "errors": errors,
         "source_pdf": payload.get("source_pdf"),
         "source_pdf_sha256": payload.get("source_pdf_sha256"),
         "reviewer_context_id": payload.get("reviewer_context_id"),
-        "reason": "存在未关闭编辑动作" if open_actions else ("全部关闭" if not errors else "冷读绑定无效"),
+        "reason": "存在未关闭 P0/P1 动作" if open_actions else ("可进入候选稿" if not errors else "冷读绑定无效"),
     }
 
 
 def require_editorial_readiness(run_dir: Path, *, require_record: bool = False) -> None:
-    """要求冷读提出的编辑动作均有关闭证据。"""
+    """要求独立冷读已完成，且其明确标记为阻断的动作已经关闭。"""
     status = editorial_readiness(run_dir, require_record=require_record)
     if not status["ready"]:
         details = [*map(str, status.get("open_actions", [])), *map(str, status.get("errors", []))]

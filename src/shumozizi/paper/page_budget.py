@@ -1,4 +1,4 @@
-"""审计竞赛论文 PDF 页数，防止完整论证被压缩成短报告。"""
+"""审计竞赛论文 PDF 页数，记录上限风险而不鼓励人为做长。"""
 
 from __future__ import annotations
 
@@ -19,12 +19,12 @@ UNDERDEVELOPED_THRESHOLD = 18
 def _assessment(page_count: int) -> tuple[str, str]:
     """把页数映射为竞赛编辑动作，而不是把页数当作质量证明。"""
     if page_count < UNDERDEVELOPED_THRESHOLD:
-        return "under_18_review_required", "正文低于 18 页，必须补充论证或记录真实阻断原因。"
+        return "under_18_editorial_signal", "正文低于 18 页，触发强编辑复核，但不据此阻断或扩写。"
     if page_count < TARGET_PAGE_RANGE[0]:
-        return "compression_review_required", "正文低于 24 页，需要检查是否压缩了推导、机制或验证。"
+        return "under_24_editorial_review", "正文为 18--23 页，由冷读判断是否存在过度压缩。"
     if page_count <= TARGET_PAGE_RANGE[1]:
-        return "normal_range", "正文页数位于国赛推荐的 24–30 页区间。"
-    return "over_30_review_required", "正文超过 30 页，需要检查重复、附录边界和模板适配。"
+        return "normal_planning_range", "正文位于 24--30 页规划区间；页数本身不证明质量。"
+    return "over_30_compression_review", "正文超过 30 页，触发压缩复核但不自动阻断。"
 
 
 def audit_page_budget(
@@ -63,14 +63,15 @@ def audit_page_budget(
     status, explanation = _assessment(page_count)
     report = {
         "schema_name": "paper_page_budget",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": read_simple_state(root)["run_id"],
         "artifact_path": artifact.relative_to(root).as_posix(),
         "artifact_sha256": sha256_file(artifact),
         "page_count": page_count,
         "target_page_range": list(TARGET_PAGE_RANGE),
         "inspect_below_pages": UNDERDEVELOPED_THRESHOLD,
-        "enforce_minimum": enforce_minimum,
+        # 兼容参数不能重新激活旧硬门；回执始终记录当前唯一政策。
+        "enforce_minimum": False,
         "status": status,
         "explanation": explanation,
         "generated_at": utc_now(),
@@ -78,8 +79,8 @@ def audit_page_budget(
     require_valid(report, "paper_page_budget")
     atomic_json(root / PAGE_BUDGET_PATH, report)
     # 页数只回答"这篇论文是否值得进一步检查"，不回答"是否合格"。
-    # 少于 18 页由 content coverage + Fresh Reviewer + Adjudicator 判断，
-    # 而不是在这里硬阻断。enforce_minimum 参数保留兼容但不再触发阻断。
+    # 内容是否充分由 content coverage + Fresh Reviewer + Adjudicator 判断，
+    # 不再从低页数反推应扩写。enforce_minimum 参数仅保留兼容。
     return report
 
 

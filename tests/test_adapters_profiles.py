@@ -15,6 +15,7 @@ from shumozizi.evidence.adapters import audit_paper_evidence
 from shumozizi.profiles.lock import create_run_config_lock
 from shumozizi.qa.adapters import run_mechanical_qa
 from shumozizi.qa.aggregator import run_submission_qa
+from shumozizi.qa.visual import summary_first_page_is_exclusive
 from shumozizi.workflow.initialization import initialize_run
 from shumozizi.workflow.review_policy import get_review_stage_policy
 
@@ -33,6 +34,20 @@ class ProfileTests(unittest.TestCase):
                 self.assertEqual(path.stem, profile["profile_id"])
                 if profile["rules_status"] == "official-confirmation-required":
                     self.assertTrue(profile["warnings"])
+
+    def test_cumcm_2026_profile_enforces_submission_specific_rules(self) -> None:
+        """CUMCM Profile 固定摘要专页、正文上限与完整源码附录。"""
+        profile = json.loads((REPO_ROOT / "profiles/cumcm.json").read_text(encoding="utf-8"))
+        self.assertEqual(30, profile["body_page_limit"])
+        self.assertTrue(profile["summary_first_page_only"])
+        self.assertTrue(profile["full_source_appendix_required"])
+
+    def test_summary_exclusive_page_rejects_body_heading(self) -> None:
+        """摘要中可概述各问，但首页不能提前进入问题重述等正文一级章。"""
+        self.assertTrue(summary_first_page_is_exclusive("论文题目\n摘要\n针对问题一……\n关键词"))
+        self.assertFalse(
+            summary_first_page_is_exclusive("论文题目\n摘要\n摘要内容\n关键词\n一、问题重述")
+        )
 
     def test_config_lock_uses_immutable_profile_snapshot(self) -> None:
         """仓库 Profile 后续变化不影响运行；篡改运行快照仍会失败。"""

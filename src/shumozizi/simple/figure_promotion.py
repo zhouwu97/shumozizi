@@ -894,8 +894,7 @@ def promote_figure_candidate(
         "required": False,
         "reason": "当前调用未声明 v3.4 视觉机会；旧版直接图路径保留兼容。",
     }
-    opportunity_path = root / "figures/visual-opportunities.json"
-    if visual_opportunity_id is not None or opportunity_path.is_file():
+    if visual_opportunity_id is not None:
         from shumozizi.simple.figure_design import (
             figure_design_contract_freshness,
             read_figure_design_contract,

@@ -4,8 +4,9 @@
 
 1. `tasks/smoke_manifest.json` 定义优化、预测/统计、机理/几何三题烟雾。它只确认主链、PDF、审查和 QA 可运行。
 2. `benchmark_manifest.json` 是 12--16 题 held-out 清单的占位契约。填充后必须把每题材料、类别、预算和对照版本固定下来。
-3. `pairwise_paper_review.py` 只随机化并去来源化 A/B PDF 顺序；实际 reviewer 仍须不知道来源。
-4. `error_injection/manifest.json` 覆盖目标语义、时间泄漏、不可行、proxy/exact 反转、连续量采样伪造、下游传播、旧图和 PDF 数字冲突。
-5. `process_metrics.py` 汇总运行时间、协议维护、审核、无价值实验、路线切换和论文长度。它不计算胜率或替代盲评。
+3. `pairwise_paper_review.py` 随机化并去来源化 A/B PDF 顺序，要求 3 个互相独立且不知道来源的 reviewer 回答统一的论文感、主线、推导、图表、前五页与模板感问题；脚本本身不替代人工盲评。
+4. `debureaucracy_replay.py` 同时报告文件数、字符数、估算 Token、精确重复内容和控制词负担；只有上下文不增加、科学信息覆盖不下降且真实 PDF A/B 完成盲评后，才可声称减负提高论文质量。
+5. `error_injection/manifest.json` 覆盖目标语义、时间泄漏、不可行、proxy/exact 反转、连续量采样伪造、下游传播、旧图和 PDF 数字冲突。
+6. `process_metrics.py` 汇总运行时间、协议维护、审核、无价值实验、路线切换和论文长度。它不计算胜率或替代盲评。
 
 初始通过条件应同时报告 pairwise 胜率、实验时间占比、协议维护时间、审核任务数、致命错误发现率和可复述题目特定贡献的论文比例。没有真实结果不得宣称达到阈值。

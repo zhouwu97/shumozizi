@@ -36,7 +36,8 @@
           "target_id": {"type": "string", "minLength": 1},
           "reason": {"type": "string", "minLength": 1},
           "expected_benefit": {"type": "string", "minLength": 1},
-          "status": {"enum": ["open", "closed"]}
+          "status": {"enum": ["open", "closed"]},
+          "blocking": {"type": "boolean"}
         }
       }
     }

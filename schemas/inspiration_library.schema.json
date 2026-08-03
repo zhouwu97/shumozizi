@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/inspiration_library.schema.json",
+  "title": "Advisory paper inspiration library",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "library_id", "cards"],
+  "properties": {
+    "schema_name": {"const": "inspiration_library"},
+    "schema_version": {"const": "1.0"},
+    "library_id": {"type": "string", "minLength": 1},
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["card_id", "title", "observations", "transfer_boundary"],
+        "properties": {
+          "card_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "title": {"type": "string", "minLength": 1},
+          "observations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "lesson"],
+              "properties": {
+                "kind": {"enum": ["page_rhythm", "figure_timing", "derivation_depth", "section_pacing", "abstract_strategy", "discovery_effect"]},
+                "lesson": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          "transfer_boundary": {"const": "expression_only_no_facts_formulas_data_or_conclusions"}
+        }
+      }
+    }
+  }
+}

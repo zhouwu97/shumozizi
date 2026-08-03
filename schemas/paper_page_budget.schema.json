@@ -20,23 +20,52 @@
   ],
   "properties": {
     "schema_name": {"const": "paper_page_budget"},
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"enum": ["1.0", "1.1"]},
     "run_id": {"type": "string", "minLength": 1},
     "artifact_path": {"type": "string", "minLength": 1},
     "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "page_count": {"type": "integer", "minimum": 1},
-    "target_page_range": {"const": [24, 30]},
-    "inspect_below_pages": {"const": 18},
+    "target_page_range": {
+      "type": "array",
+      "prefixItems": [{"type": "integer"}, {"type": "integer"}],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "inspect_below_pages": {"type": "integer", "minimum": 1},
     "enforce_minimum": {"type": "boolean"},
     "status": {
       "enum": [
         "under_18_review_required",
         "compression_review_required",
         "normal_range",
-        "over_30_review_required"
+        "over_30_review_required",
+        "under_18_editorial_signal",
+        "under_24_editorial_review",
+        "normal_planning_range",
+        "over_30_compression_review"
       ]
     },
     "explanation": {"type": "string", "minLength": 1},
     "generated_at": {"type": "string", "format": "date-time"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}},
+      "then": {
+        "properties": {
+          "target_page_range": {"const": [24, 30]},
+          "inspect_below_pages": {"const": 18},
+          "enforce_minimum": {"const": false},
+          "status": {
+            "enum": [
+              "under_18_editorial_signal",
+              "under_24_editorial_review",
+              "normal_planning_range",
+              "over_30_compression_review"
+            ]
+          }
+        }
+      }
+    }
+  ]
 }

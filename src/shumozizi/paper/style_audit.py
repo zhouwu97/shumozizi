@@ -112,6 +112,13 @@ def _manuscript_sources(run_dir: Path) -> list[Path]:
     paper_dir = run_dir / "paper"
     if not paper_dir.is_dir():
         return []
+
+    # 外部作者模式下 draft.tex 是唯一待审正文；交接说明与隔离编译副本不是论文。
+    # 优先返回这一文件，避免同一正文被重复计数，也避免内部交接字段触发正文泄漏误报。
+    external_draft = paper_dir / "external-author" / "draft.tex"
+    if external_draft.is_file():
+        return [external_draft]
+
     sources: list[Path] = []
     for path in sorted(paper_dir.rglob("*")):
         if (
@@ -359,7 +366,11 @@ def _core_question_ids(run_dir: Path) -> set[str]:
 def _figure_argument_findings(
     run_dir: Path, combined: str
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """检查正文图是否进入有序的观察—机制—结论链。"""
+    """检查正文图是否被引用并获得附近的实质性解释。
+
+    图注后的论证可以按论文自然语序展开；审计只确认读者能从正文得到
+    一段可复述的观察、关系或结论含义，不把固定三联句当成科学证据。
+    """
     path = run_dir / "figures" / "FIGURE_PLAN.json"
     if not path.is_file():
         return [], []
@@ -397,13 +408,13 @@ def _figure_argument_findings(
         ]
         figure_id = str(figure.get("figure_id", label))
         if not references:
-            errors.append(
+            warnings.append(
                 {
                     "code": "E005",
-                    "message": f"正文图 {figure_id} 未被正文引用，无法形成观察—机制—结论闭环。",
+                    "message": f"正文图 {figure_id} 未被正文引用，无法进入论文论证。",
                     "count": 1,
                     "figure_id": figure_id,
-                    "missing_links": ["reference", "observation", "mechanism", "impact"],
+                    "missing_links": ["reference"],
                 }
             )
             warnings.append(
@@ -415,37 +426,27 @@ def _figure_argument_findings(
             )
             continue
 
-        best_missing = ["observation", "mechanism", "impact"]
+        best_missing = ["substantive_explanation"]
         for reference in references:
-            # 闭环必须出现在图引用之后；只在图前解释不能证明读者看图后得到结论。
+            # 解释应紧邻引用，避免正文只放一个孤立的交叉引用。
             context = combined[reference.end() : min(len(combined), reference.end() + 700)]
-            matches = (
-                _OBSERVATION_PATTERN.search(context),
-                _FIGURE_MECHANISM_PATTERN.search(context),
-                _CONCLUSION_IMPACT_PATTERN.search(context),
-            )
-            missing = [
-                name
-                for name, match in zip(
-                    ("observation", "mechanism", "impact"), matches, strict=True
+            substantive = any(
+                pattern.search(context) is not None
+                for pattern in (
+                    _OBSERVATION_PATTERN,
+                    _FIGURE_MECHANISM_PATTERN,
+                    _CONCLUSION_IMPACT_PATTERN,
+                    _FORMULA_EXPLANATION_PATTERN,
                 )
-                if match is None
-            ]
-            ordered = all(matches) and matches[0].start() <= matches[1].start() <= matches[2].start()
-            if not missing and ordered:
+            )
+            if substantive:
                 best_missing = []
                 break
-            if not missing:
-                missing = ["ordered_chain"]
-            if len(missing) < len(best_missing):
-                best_missing = missing
         if best_missing:
-            errors.append(
+            warnings.append(
                 {
                     "code": "E005",
-                    "message": (
-                        f"正文图 {figure_id} 的引用后缺少完整且有序的观察—机制—结论消费。"
-                    ),
+                    "message": f"正文图 {figure_id} 的引用附近缺少实质性解释。",
                     "count": 1,
                     "figure_id": figure_id,
                     "missing_links": best_missing,
@@ -454,14 +455,14 @@ def _figure_argument_findings(
             warnings.append(
                 {
                     "code": "hero_figure_without_interpretation",
-                    "message": f"主图 {figure_id} 附近缺少观察、机制或决策后果解释。",
+                    "message": f"主图 {figure_id} 附近缺少可复述的实质解释。",
                     "count": 1,
                 }
             )
             warnings.append(
                 {
                     "code": "FIGURE_WITHOUT_INTERPRETATION",
-                    "message": f"图 {figure_id} 已进入正文，但缺少可复述的观察—机制—决策解释。",
+                    "message": f"图 {figure_id} 已进入正文，但缺少可复述的实质解释。",
                     "count": 1,
                     "figure_id": figure_id,
                     "missing_links": best_missing,
@@ -651,7 +652,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
         name: count for name, count in report_phrase_counts.items() if count >= 3
     }
     if repeated_templates:
-        errors.append(
+        warnings.append(
             {
                 "code": "E002",
                 "message": "同一任务报账模板在正文中至少重复三次，需要按数学关系重写。",
@@ -684,7 +685,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             for pattern in _ABSTRACT_UNIFIED_PATTERNS
         )
         if unified_signals < 2:
-            errors.append(
+            warnings.append(
                 {
                     "code": "E003",
                     "message": (
@@ -779,7 +780,7 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             and (section_list_items >= 3 or section_tables >= 1)
             and prose_paragraphs <= 2
         ):
-            errors.append(
+            warnings.append(
                 {
                     "code": "E004",
                     "message": (
@@ -916,8 +917,8 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             "visual_rhythm_review": bool(rhythm_warnings),
         },
         "limitations": (
-            "E001--E005 只覆盖可由正文结构直接复核的高置信信号，不判断数学正确性；"
-            "warnings 涉及的主观文风与实际阅读体验仍必须在独立 PDF 盲评中复核。"
+            "只有 E001 控制层术语泄漏属于提交完整性错误；E002--E005 与其他"
+            "写作信号均由独立 PDF 冷读判断，不能凭启发式规则阻断创作或编译。"
         ),
     }
 

@@ -354,11 +354,11 @@ def _validate_structure_map(run_dir: Path, document: dict[str, Any]) -> dict[str
         raise ContractError("问题重述必须禁止模型名称、最终数值和大段题面复制")
     planning = document["page_planning"]
     if planning != {
-        "recommended_body_pages": [24, 30],
-        "inspect_below_pages": 18,
-        "hard_gate": False,
+        "recommended_body_pages": [1, 30],
+        "inspect_below_pages": 1,
+        "hard_gate": True,
     }:
-        raise ContractError("CUMCM 页数只能使用 24–30 页软规划和 18 页以下复核提示")
+        raise ContractError("CUMCM 2026 只设置正文 30 页硬上限，不设置推荐最低页数")
     if version in {"1.1", "1.2"}:
         _validate_presentation_contract(run_dir, state, document["presentation_contract"])
     return document
@@ -1221,11 +1221,7 @@ def require_cumcm_paper_review_audit(run_dir: Path) -> dict[str, Any] | None:
 
 
 def _page_assessment(body_pages: int) -> str:
-    """按软页数规划返回人工复核类别。"""
-    if body_pages < 18:
-        return "under_18_review_required"
-    if body_pages < 24:
-        return "compression_review_required"
+    """按 CUMCM 2026 正文硬上限返回版面类别。"""
     if body_pages <= 30:
         return "normal_range"
     return "over_30_limit_review_required"
@@ -1407,9 +1403,6 @@ def finalize_cumcm_layout_audit(run_dir: Path, payload: dict[str, Any]) -> Path:
     elif note is not None and not isinstance(note, str):
         raise ContractError("page_review_note 必须是文本或 null")
     official_checked = payload.get("official_page_limit_checked") is True
-    if assessment == "over_30_limit_review_required" and not official_checked:
-        raise ContractError("正文超过 30 页时必须确认当年官方页数限制")
-
     issues: dict[str, list[str]] = {}
     for field in ISSUE_FIELDS:
         value = payload.get(field, [])
@@ -1443,7 +1436,11 @@ def finalize_cumcm_layout_audit(run_dir: Path, payload: dict[str, Any]) -> Path:
         _nonempty_text(underdevelopment_note, "underdevelopment_note", minimum=12)
     elif underdevelopment_note is not None and not isinstance(underdevelopment_note, str):
         raise ContractError("underdevelopment_note 必须是文本或 null")
-    hard_layout_issue = any(issues.values()) or underdevelopment_found
+    hard_layout_issue = (
+        any(issues.values())
+        or underdevelopment_found
+        or assessment == "over_30_limit_review_required"
+    )
     soft_conditions = bool(
         assessment != "normal_range"
         or docx_status != "render_checked"
