@@ -226,6 +226,59 @@ def test_figure_argument_accepts_natural_explanation_without_ordered_keywords(
     assert "E005" not in {item["code"] for item in report["errors"]}
 
 
+def test_sparse_paper_still_runs_visual_review(tmp_path: Path) -> None:
+    """两张正文图也必须触发稀疏与集中度复核，不能因低于旧阈值被跳过。"""
+    run_dir = _run(tmp_path, "sparse-visual-review")
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {
+            "schema_version": "1.4",
+            "units": [
+                {"question_id": "Q1", "core_question": True},
+                {"question_id": "Q2", "core_question": True},
+                {"question_id": "Q3", "core_question": True},
+            ],
+        },
+    )
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "figures": [
+                {
+                    "figure_id": "q1-boundary",
+                    "role": "insight",
+                    "placement": "body",
+                    "presentation_role": "supporting",
+                    "latex_label": "fig:q1-boundary",
+                },
+                {
+                    "figure_id": "q1-mechanism",
+                    "role": "decisive_evidence",
+                    "placement": "body",
+                    "presentation_role": "supporting",
+                    "latex_label": "fig:q1-mechanism",
+                },
+            ]
+        },
+    )
+    source = run_dir / "paper/sections/sparse.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section{Q1}\n"
+        "如图\\ref{fig:q1-boundary}和图\\ref{fig:q1-mechanism}所示，"
+        "容量边界收紧时最优点向可行域内部移动。\n"
+        "\\section{Q2}\nQ2 延续共享资源约束。\n"
+        "\\section{Q3}\nQ3 验证不同参数下的结果。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+    warning_codes = {item["code"] for item in report["warnings"]}
+
+    assert "VISUAL_SCARCITY_REVIEW" in warning_codes
+    assert "VISUAL_RHYTHM_REVIEW" in warning_codes
+
+
 def test_nested_question_headings_report_generic_template_repetition(
     tmp_path: Path,
 ) -> None:
