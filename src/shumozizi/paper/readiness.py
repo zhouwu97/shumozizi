@@ -18,6 +18,7 @@ from shumozizi.core.io import (
     ContractError,
     json_bytes,
     load_json,
+    resolve_inside,
     sha256_bytes,
     sha256_file,
 )
@@ -43,6 +44,7 @@ from shumozizi.simple.state import (
 
 _APPENDIX_MODES = {"pdf", "attachment", "both"}
 _FIGURE_PLAN_PATH = Path("figures/FIGURE_PLAN.json")
+_VISUAL_OPPORTUNITY_POOL_PATH = Path("figures/visual-opportunities.json")
 
 
 def _argument_map_path(run_dir: Path) -> Path:
@@ -339,6 +341,103 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
         return errors
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         return ["FIGURE_PLAN 2.1--2.4 闭环校验失败: " + str(exc)]
+
+
+def _visual_opportunity_assessment_errors(run_dir: Path) -> list[str]:
+    """复验没有 FIGURE_PLAN 时，视觉机会是否已经得到明确处置。
+
+    视觉机会池是 Figure Plan 的轻量替代：它允许评阅者将机会晋级为正式图，
+    也允许基于具体原因将机会放弃。这里不要求固定图数，只拒绝尚未评估或
+    尚未完成的机会池。
+    """
+    path = run_dir / _VISUAL_OPPORTUNITY_POOL_PATH
+    if not path.is_file():
+        return [
+            "VISUAL_NOT_ASSESSED：缺少 FIGURE_PLAN，也没有已完成的视觉机会评估；"
+            "请记录正式图需求或经评阅的放弃理由。"
+        ]
+    try:
+        from shumozizi.simple.visual_opportunities import read_visual_opportunity_pool
+
+        payload = read_visual_opportunity_pool(run_dir)
+    except (ContractError, OSError, TypeError, ValueError) as exc:
+        return [f"VISUAL_NOT_ASSESSED：视觉机会评估无法读取或验证：{exc}"]
+    if payload.get("status") != "current":
+        return ["VISUAL_NOT_ASSESSED：视觉机会池尚未完成正式评估"]
+    opportunities = payload.get("opportunities", [])
+    if not opportunities:
+        return ["VISUAL_NOT_ASSESSED：视觉机会池为空，未记录任何评估结论"]
+
+    errors: list[str] = []
+    current_figure_opportunities: set[str] = set()
+    index_path = run_dir / "figures" / "index.json"
+    if index_path.is_file():
+        try:
+            index = load_json(index_path)
+            current_figure_opportunities = {
+                str(item.get("visual_opportunity_id"))
+                for item in index.get("figures", [])
+                if isinstance(item, dict)
+                and item.get("status") == "current"
+                and isinstance(item.get("visual_opportunity_id"), str)
+            }
+        except (OSError, TypeError, ValueError):
+            errors.append("VISUAL_NOT_ASSESSED：当前图索引无法读取，无法确认正式图覆盖")
+
+    for item in opportunities:
+        if not isinstance(item, dict):
+            errors.append("VISUAL_NOT_ASSESSED：视觉机会池含非法条目")
+            continue
+        opportunity_id = str(item.get("opportunity_id", "<unknown>"))
+        status = item.get("status")
+        verdict = item.get("critic_verdict")
+        critic_path = item.get("critic_path")
+        if status not in {"promote", "drop"}:
+            errors.append(
+                f"VISUAL_NOT_ASSESSED：视觉机会 {opportunity_id} 尚未完成评阅"
+            )
+            continue
+        if not isinstance(critic_path, str) or not critic_path.strip():
+            errors.append(
+                f"VISUAL_NOT_ASSESSED：视觉机会 {opportunity_id} 缺少评阅记录"
+            )
+            continue
+        try:
+            review = resolve_inside(run_dir, critic_path, must_exist=True)
+            if not review.is_file() or not review.read_text(encoding="utf-8").strip():
+                raise OSError("评阅记录为空")
+        except (ContractError, OSError, UnicodeError) as exc:
+            errors.append(
+                f"VISUAL_NOT_ASSESSED：视觉机会 {opportunity_id} 的评阅记录不可用：{exc}"
+            )
+            continue
+        if status == "drop" and verdict != "DROP":
+            errors.append(
+                f"VISUAL_NOT_ASSESSED：视觉机会 {opportunity_id} 标记为放弃，但没有 DROP 评阅结论"
+            )
+        elif status == "promote":
+            if verdict != "PROMOTE":
+                errors.append(
+                    f"VISUAL_NOT_ASSESSED：视觉机会 {opportunity_id} 标记为正式图，但没有 PROMOTE 评阅结论"
+                )
+            elif opportunity_id not in current_figure_opportunities:
+                errors.append(
+                    f"VISUAL_NOT_ASSESSED：视觉机会 {opportunity_id} 已获 PROMOTE，但尚未由 current 正式图覆盖"
+                )
+    return errors
+
+
+def validate_candidate_visual_assessment(run_dir: Path) -> list[str]:
+    """要求 Candidate 已完成视觉评估，但不要求 Author 写作前已有 Figure Plan。
+
+    有 Figure Plan 时沿用其既有 required/waived 合同；没有 Plan 时，允许使用
+    已完成的视觉机会池。此函数只由最终 Candidate readiness 调用，绝不能成为
+    Author Pass 或 Sandbox 草图阶段的前置门。
+    """
+    if (run_dir / _FIGURE_PLAN_PATH).is_file():
+        errors = validate_required_figure_consumption(run_dir)
+        return [f"VISUAL_NOT_ASSESSED：{item}" for item in errors]
+    return _visual_opportunity_assessment_errors(run_dir)
 
 
 def presentation_figure_warnings(run_dir: Path) -> list[str]:
@@ -1114,6 +1213,9 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     errors.extend(_code_appendix_errors(run_dir))
     warnings.extend(_core_insight_usage_errors(run_dir, answers))
     if is_competition_first_v32_state(read_simple_state(run_dir)):
+        # Figure Plan 是可选的创作资产，但 Competition Candidate 不能因为它缺失
+        # 就跳过视觉判断；机会池提供不强制固定图数的替代评估路径。
+        errors.extend(validate_candidate_visual_assessment(run_dir))
         errors.extend(validate_required_figure_consumption(run_dir))
         plan_path = run_dir / _FIGURE_PLAN_PATH
         if plan_path.is_file():

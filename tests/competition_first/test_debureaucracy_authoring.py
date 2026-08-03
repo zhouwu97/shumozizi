@@ -20,6 +20,7 @@ from shumozizi.paper.narrative_competition import (
     write_narrative_candidates,
 )
 from shumozizi.paper.page_budget import audit_page_budget
+from shumozizi.paper.readiness import validate_candidate_visual_assessment
 from shumozizi.paper.templates import (
     materialize_selected_template,
     require_materialized_template,
@@ -137,6 +138,25 @@ def test_author_pass_exposes_two_default_inputs_and_separate_source(tmp_path: Pa
     brief = (run_dir / "paper/author-pass/AUTHOR_BRIEF.md").read_text(encoding="utf-8")
     assert "可以合并问题、重排章节" in brief
     assert "应提出返工请求" in brief
+
+
+def test_author_can_start_without_figure_plan(tmp_path: Path) -> None:
+    """视觉候选门只能约束最终 Candidate，不能重新阻断 Author 开稿。"""
+    run_dir = _author_ready_run(tmp_path, "author-without-figure-plan")
+
+    assert not (run_dir / "figures/FIGURE_PLAN.json").exists()
+    manifest = prepare_longform_author(run_dir)
+
+    assert manifest["research_package"]["path"] == "paper/author-pass/RESEARCH_PACKAGE.md"
+
+
+def test_missing_figure_plan_does_not_bypass_candidate_gate(tmp_path: Path) -> None:
+    """没有 Figure Plan 或替代评估时，Candidate 必须给出明确阻断原因。"""
+    run_dir = _author_ready_run(tmp_path, "candidate-without-visual-assessment")
+
+    errors = validate_candidate_visual_assessment(run_dir)
+
+    assert any(error.startswith("VISUAL_NOT_ASSESSED") for error in errors)
 
 
 def test_longform_rejects_formal_entrypoint_disguised_as_author_pass(tmp_path: Path) -> None:
