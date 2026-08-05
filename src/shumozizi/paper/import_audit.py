@@ -694,6 +694,10 @@ def import_external_draft(
         status = "needs_rebase"
     else:
         mark_authoring_status(root, "draft_imported")
+        # 外部 Author 稿与内部 longform 一样，导入成功后必须触发论文到视觉的回流。
+        from shumozizi.paper.visual_requirements import build_visual_requirements_from_paper
+
+        build_visual_requirements_from_paper(root)
         status = "draft_imported"
     return {
         "status": status,

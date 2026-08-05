@@ -210,6 +210,26 @@ def decide_author_request(
     }
     require_valid(document, "author_request_decisions")
     atomic_json(root / AUTHOR_REQUEST_DECISIONS_PATH, document)
+    from shumozizi.simple.visual_opportunities import add_visual_opportunity
+
+    for item in resolved:
+        if item["route"] != "visual" or item["decision"] not in {"fulfill", "substitute"}:
+            continue
+        request = by_gap[item["gap_id"]]
+        add_visual_opportunity(
+            root,
+            opportunity_id=f"author-{item['gap_id']}",
+            question_id=None,
+            visual_question=str(request["request"]),
+            atomic_claim=str(request["affected_argument"]),
+            candidate_archetypes=["undecided"],
+            origin="author_request",
+            provenance={
+                "gap_id": item["gap_id"],
+                "decision": item["decision"],
+                "decision_reason": item["reason"],
+            },
+        )
     _advance_authoring_for_requests(root, resolved)
     return document
 

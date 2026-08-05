@@ -52,6 +52,7 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         ("paper_material_pool", "1.0"),
         ("research_storyboard", "1.0"),
         ("visual_opportunity_pool", "1.0"),
+        ("paper_visual_requirements", "1.0"),
         ("visual_ideas", "1.0"),
         ("visual_competition", "1.0"),
         ("evidence_function_contract", "1.0"),

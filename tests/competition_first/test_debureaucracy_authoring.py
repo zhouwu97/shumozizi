@@ -130,6 +130,51 @@ def _blank_pdf(path: Path, page_count: int) -> None:
         writer.write(stream)
 
 
+def _reviewed_nonrequired_figure_plan(
+    run_dir: Path, *, questions: list[str], figure_count: int
+) -> None:
+    """写入已完成 waived 决策的轻量图表计划，供数量反例复用。"""
+    figures = [
+        {
+            "figure_id": f"reviewed-{index}",
+            "preferred": "skills/mathmodel-figure-templates",
+            "fallback": "skills/3coding-visual",
+            "selected_skill": "skills/mathmodel-figure-templates",
+            "template_id": "feasible-region-active-constraints",
+            "selection_reason": "夹具只验证视觉评估和图数量不是同一件事。",
+            "question_id": questions[(index - 1) % len(questions)],
+            "role": "insight",
+            "claim": "该图作为已评估的辅助视觉材料，不承担新的强制证明义务。",
+            "source_result_ids": ["r-q1"],
+            "script": f"code/figures/reviewed-{index}.py",
+            "output": f"figures/current/reviewed-{index}.pdf",
+            "paper_section": "paper/sections/questions.tex",
+            "caption": f"已评估图 {index}",
+            "latex_label": f"fig:reviewed-{index}",
+            "explanation_anchor": "辅助视觉材料",
+            "required": False,
+        }
+        for index in range(1, figure_count + 1)
+    ]
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.1",
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "question_id": question_id,
+                    "status": "waived",
+                    "reason": "评阅确认现有推导和结果已完整表达该问题，不需要额外必需图。",
+                }
+                for question_id in questions
+            ],
+            "figures": figures,
+        },
+    )
+
+
 def test_author_pass_exposes_two_default_inputs_and_separate_source(tmp_path: Path) -> None:
     """Author 默认只读两份材料，longform 源文件必须由 Author 另行产出。"""
     run_dir = _author_ready_run(tmp_path)
@@ -163,9 +208,36 @@ def test_missing_figure_plan_does_not_bypass_candidate_gate(tmp_path: Path) -> N
     assert any(error.startswith("VISUAL_NOT_ASSESSED") for error in errors)
 
 
+def test_four_reviewed_figures_do_not_create_a_minimum_count_gate(tmp_path: Path) -> None:
+    """已完成视觉评估的三问稿可以只有四张图，不能被机械图数门阻断。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "four-reviewed-figures",
+        required_questions=["Q1", "Q2", "Q3"],
+        workflow_version="3.2",
+    )
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {
+            "schema_version": "1.4",
+            "units": [
+                {"question_id": "Q1", "core_question": True},
+                {"question_id": "Q2", "core_question": True},
+                {"question_id": "Q3", "core_question": True},
+            ],
+        },
+    )
+    _reviewed_nonrequired_figure_plan(
+        run_dir, questions=["Q1", "Q2", "Q3"], figure_count=4
+    )
+
+    assert validate_candidate_visual_assessment(run_dir) == []
+
+
 def test_pending_visual_blocks_candidate_until_current(tmp_path: Path) -> None:
     """已选中新图但尚未 promotion 时，Candidate 不能继续消费旧 current。"""
     run_dir = _author_ready_run(tmp_path, "candidate-with-pending-visual")
+    _reviewed_nonrequired_figure_plan(run_dir, questions=["Q1"], figure_count=8)
     write_visual_ideas(
         run_dir,
         [

@@ -13,9 +13,9 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 
 从同一 Research Package 生成 2--3 个 Narrative Candidates，例如问题递进型、数学结构型或机制型；使用 fresh reviewer 选择最能让评委记住论文的一种，并说明风险与修订建议。不要让 `layout_optimizer.py` 的固定 block 顺序支配正文；旧布局输出只作 advisory 兼容。
 
-让 Author 独立撰写 `paper/longform-source.tex` 或 `paper/longform-source.typ`，并把无法支撑的推导、机制、反事实、视觉或研究证据写入 `paper/AUTHOR_GAPS.md`。随后运行 `python scripts/paper/compile_longform_draft.py <run_dir>` 生成 `paper/longform-draft.pdf`；该命令只编译 Author 源文件，拒绝把正式入口原样重编冒充 Author Pass。`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。
+让 Author 独立撰写 `paper/longform-source.tex` 或 `paper/longform-source.typ`，并把无法支撑的推导、机制、反事实、视觉或研究证据写入 `paper/AUTHOR_GAPS.md`。随后运行 `python scripts/paper/compile_longform_draft.py <run_dir>` 生成 `paper/longform-draft.pdf`；该命令只编译 Author 源文件，拒绝把正式入口原样重编冒充 Author Pass。编译前会刷新 `paper/generated/VISUAL_REQUIREMENTS.json`，把未被 current 图覆盖的数学对象、决定性证据、机制和边界需求自动追加到 living visual opportunity pool；不得因已有 2--3 张主图而跳过这些 supporting requirements。`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。
 
-独立 PDF 冷读只记录少量最高价值动作。普通扩写、压缩、重排、补机制或加图动作保持 advisory；只有 Reviewer 明确标记 `blocking=true` 的 P0/P1 且未关闭时阻断 `compile_paper.py`。冷读器不能直接修改正式结果；Author 也不能擅自修改科学层，但可请求 `writing_fix`、`visual_exploration`、`experiment` 或 `analysis` 返工。
+独立 PDF 冷读只记录少量最高价值动作。普通扩写、压缩、重排、补机制或加图动作保持 advisory；只有 Reviewer 明确标记 `blocking=true` 的 P0/P1 且未关闭时阻断 `compile_paper.py`。`ADD_FIGURE` 与 `ADD_COMPANION_FIGURE` 都必须携带结构化 figure 描述并自动进入 living visual opportunity pool，不能停在冷读清单。冷读器不能直接修改正式结果；Author 也不能擅自修改科学层，但可请求 `writing_fix`、`visual_exploration`、`experiment` 或 `analysis` 返工。
 
 ## 第零步：确认可以写论文
 
@@ -173,6 +173,8 @@ python scripts/paper/audit_report_style.py <run_dir>
 每问优先提供一张紧凑的直接答案表；当空间、流程、机制或权衡无法靠短文说清时，加入一张模型/机制图。图必须解释数学对象或支持判断，不能只美化流程。
 
 视觉想法先用 `write_visual_ideas.py` 写入轻量列表，并在 `figures/sandbox/<idea-id>/` 生成多个草图。草图不要求结果绑定、最终 caption、LaTeX label、manifest、panel mapping 或 design contract。fresh reviewer 选出最快说明机制且最不重复表格的候选后，`visual_sandbox.py graduate` 只记录 design reference、其哈希和目标 work 目录；必须再用 current 数据与正式 renderer 重新生成 work 候选，此时才进入来源绑定、图形 QA 和正文消费闭环。
+
+Author Pass 和长篇首稿会自动维护 `paper/generated/VISUAL_REQUIREMENTS.json`。也可手动运行 `python scripts/paper/build_visual_requirements.py <run_dir>` 刷新并路由；`--no-sync` 仅用于只读审计准备。需求按 `hero_figure` 与 `supporting_figure` 分层：前者追求少数可记忆主图，后者按真实论证需要生成且不设数量上限。候选稿必须逐项由 current 正式图覆盖，或由视觉评阅者给出实质 `DROP` 记录；缺少旧 `FIGURE_PLAN` 本身不阻断 Author 开稿。
 
 v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM semantic/classic 外壳。`design_only` 只提供当前题的结构启发，只有明确标记 `renderer_available` 的模板才可进入渲染计划；注册表不携带其他题目的数据、公式或结论。
 

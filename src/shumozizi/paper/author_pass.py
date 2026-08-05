@@ -317,6 +317,38 @@ def _citation_brief(root: Path) -> list[str]:
     return lines
 
 
+def _visual_requirement_brief(root: Path) -> list[str]:
+    """把论文驱动视觉需求压缩为 Author 可读提示，不暴露后台台账。"""
+    payload = _optional_json(root, "paper/generated/VISUAL_REQUIREMENTS.json")
+    requirements = payload.get("requirements", [])
+    lines = ["## 论文驱动视觉需求", ""]
+    if not isinstance(requirements, list) or not requirements:
+        lines.extend(
+            [
+                "- 当前论证没有识别出必须新增的视觉需求；这不构成固定图数目标。",
+                "",
+            ]
+        )
+        return lines
+    for item in requirements:
+        if not isinstance(item, dict):
+            continue
+        status = "已有正式图覆盖" if item.get("status") == "covered" else "需要视觉评估"
+        tier = "主图候选" if item.get("figure_tier") == "hero_figure" else "论证支持图"
+        lines.append(
+            f"- {item.get('question_id', '')} / {tier} / {status}："
+            f"{item.get('visual_question', '')}"
+        )
+    lines.extend(
+        [
+            "",
+            "主图只保留最值得记忆的少数视觉；论证支持图按推导、机制、比较和边界的实际需要增加，不设总数上限。",
+            "",
+        ]
+    )
+    return lines
+
+
 def _selected_narrative(root: Path, package_sha256: str) -> dict[str, Any]:
     """返回仍绑定当前 Research Package 的已选叙事候选。"""
     payload = _optional_json(root, NARRATIVE_COMPETITION_PATH.as_posix())
@@ -456,6 +488,8 @@ def _render_research_package(
                 lines.extend([f"**{title}**", "", content, ""])
     if not substantive:
         lines.extend(["当前没有已登记的关键推导或机制材料；Author 应提出返工请求，不得用结果报账替代论证。", ""])
+
+    lines.extend(_visual_requirement_brief(root))
 
     figures = _optional_json(root, "figures/index.json").get("figures", [])
     lines.extend(["## 可用正式图", ""])
@@ -618,6 +652,15 @@ def prepare_longform_author(
     from shumozizi.knowledge.inspiration import build_inspiration_context
 
     inspiration = build_inspiration_context(root)
+    from shumozizi.paper.visual_requirements import (
+        VISUAL_REQUIREMENTS_PATH,
+        build_visual_requirements_from_paper,
+    )
+
+    visual_requirements = build_visual_requirements_from_paper(
+        root,
+        sync_opportunities=False,
+    )
     _atomic_text(package_path, _render_research_package(root, state, answers, results))
     narrative = _selected_narrative(root, sha256_file(package_path))
     _atomic_text(brief_path, _render_author_brief(state, inspiration, narrative))
@@ -636,6 +679,11 @@ def prepare_longform_author(
         "author_brief": {
             "path": AUTHOR_BRIEF_PATH.as_posix(),
             "sha256": sha256_file(brief_path),
+        },
+        "visual_requirements": {
+            "path": VISUAL_REQUIREMENTS_PATH.as_posix(),
+            "sha256": sha256_file(root / VISUAL_REQUIREMENTS_PATH),
+            "open_count": visual_requirements["summary"]["open"],
         },
         "formal_result_digest": formal_result_digest(root),
         "prepared_at": utc_now(),
@@ -680,6 +728,11 @@ def verify_author_pass(run_dir: Path) -> dict[str, Any]:
             path = root / record["path"]
             if not path.is_file() or record.get("sha256") != sha256_file(path):
                 errors.append(f"{field} 已变化或缺失")
+        visual = payload.get("visual_requirements")
+        if isinstance(visual, dict):
+            visual_path = root / "paper/generated/VISUAL_REQUIREMENTS.json"
+            if not visual_path.is_file() or visual.get("sha256") != sha256_file(visual_path):
+                errors.append("visual_requirements 已变化或缺失")
         if payload.get("formal_result_digest") != formal_result_digest(root):
             errors.append("正式结果已变化，Author Pass 必须重建")
     except (ContractError, KeyError, OSError, TypeError, ValueError) as exc:

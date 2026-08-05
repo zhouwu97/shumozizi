@@ -9,6 +9,8 @@ description: 用当前真实结果探索、比较并晋级数学建模图表；�
 
 ## Stage A：Visual Sandbox
 
+若已形成长篇首稿，先运行 `python scripts/paper/build_visual_requirements.py <run_dir>`。该命令从建模合同、正式答案、论文论证材料和 current 图覆盖关系生成 `paper/generated/VISUAL_REQUIREMENTS.json`，并将未覆盖项追加到 living visual opportunity pool；不得只消费实验阶段偶然留下的已有图。
+
 用 `python scripts/figures/write_visual_ideas.py <run_dir> --input <ideas.json>` 写入轻量想法。每项只需：
 
 ```json
@@ -59,6 +61,6 @@ python scripts/figures/visual_sandbox.py review <run_dir> <idea-id> `
 
 ## 整篇视觉节奏
 
-在 PDF 层面检查模型首次出现时是否需要理解图、关键结果是否有决定性图、核心 insight 是否有视觉证据、是否连续多页只有公式和表、是否连续堆叠大图、是否有 2--3 张真正 memorable 的图。把缺口送回 Sandbox，不按“一问一图”或“图数不少于 N”补图。
+在 PDF 层面检查模型首次出现时是否需要理解图、关键结果是否有决定性图、核心 insight 是否有视觉证据、是否连续多页只有公式和表、是否连续堆叠大图。Hero / memorable figures 可优先保留 2--3 张；argument-supporting figures 按数学对象、机制、比较和边界的实际论证需要增加，不设数量上限。把缺口送回 Sandbox，不按“一问一图”或“图数不少于 N”补图，也不得把“2--3 张 memorable”误读为全文图数上限。
 
 知识库 visual pattern 只提供表达候选。使用前核对当前题是否真实具有所需结构数据；不满足时拒绝，不为匹配模式补造数据。所有正式图、表和结论最终只能来自本次 run 的 current/production/accepted 证据链。

@@ -335,6 +335,43 @@ def record_visual_critic(
     return record
 
 
+def add_visual_opportunity(
+    run_dir: Path,
+    *,
+    opportunity_id: str,
+    question_id: str | None,
+    visual_question: str,
+    atomic_claim: str,
+    candidate_archetypes: Iterable[str],
+    origin: str,
+    provenance: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """把论文或作者提出的结构化缺图追加到 living opportunity pool。"""
+    if not origin.strip():
+        raise ContractError("追加视觉机会必须声明 origin")
+    root = run_dir.resolve()
+    try:
+        payload = read_visual_opportunity_pool(root)
+    except ContractError:
+        payload = build_visual_opportunity_pool(root, opportunities=[], write=False)
+    if any(item.get("opportunity_id") == opportunity_id for item in payload["opportunities"]):
+        raise ContractError(f"视觉机会已存在: {opportunity_id}")
+    item = _opportunity(
+        opportunity_id=opportunity_id,
+        question_id=question_id,
+        visual_question=visual_question,
+        atomic_claim=atomic_claim,
+        candidate_archetypes=candidate_archetypes,
+    )
+    item["origin"] = origin.strip()
+    if provenance:
+        item.update(provenance)
+    payload["opportunities"].append(item)
+    payload["status"] = "current"
+    write_visual_opportunity_pool(root, payload)
+    return item
+
+
 def add_companion_figure_opportunity(
     run_dir: Path,
     *,
@@ -346,26 +383,22 @@ def add_companion_figure_opportunity(
     reviewer_context_id: str,
     finding_id: str,
 ) -> dict[str, Any]:
-    """把论文冷读提出的 ADD_COMPANION_FIGURE 写入 living opportunity pool。"""
+    """把论文冷读提出的新增图动作写入 living opportunity pool。"""
     if not reviewer_context_id.strip() or not finding_id.strip():
-        raise ContractError("伴随图机会必须绑定 reviewer_context_id 和 finding_id")
-    root = run_dir.resolve()
-    payload = read_visual_opportunity_pool(root)
-    if any(item.get("opportunity_id") == opportunity_id for item in payload["opportunities"]):
-        raise ContractError(f"视觉机会已存在: {opportunity_id}")
-    item = _opportunity(
+        raise ContractError("冷读新增图机会必须绑定 reviewer_context_id 和 finding_id")
+    return add_visual_opportunity(
+        run_dir,
         opportunity_id=opportunity_id,
         question_id=question_id,
         visual_question=visual_question,
         atomic_claim=atomic_claim,
         candidate_archetypes=candidate_archetypes,
+        origin="paper_cold_reader",
+        provenance={
+            "finding_id": finding_id,
+            "reviewer_context_id": reviewer_context_id,
+        },
     )
-    item["origin"] = "paper_cold_reader"
-    item["finding_id"] = finding_id
-    item["reviewer_context_id"] = reviewer_context_id
-    payload["opportunities"].append(item)
-    write_visual_opportunity_pool(root, payload)
-    return item
 
 
 def validate_visual_critic_record(

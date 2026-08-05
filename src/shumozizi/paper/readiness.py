@@ -434,10 +434,15 @@ def validate_candidate_visual_assessment(run_dir: Path) -> list[str]:
     已完成的视觉机会池。此函数只由最终 Candidate readiness 调用，绝不能成为
     Author Pass 或 Sandbox 草图阶段的前置门。
     """
+    from shumozizi.paper.visual_requirements import (
+        validate_paper_visual_requirement_closure,
+    )
+
+    requirement_errors = validate_paper_visual_requirement_closure(run_dir)
     if (run_dir / _FIGURE_PLAN_PATH).is_file():
         errors = validate_required_figure_consumption(run_dir)
-        return [f"VISUAL_NOT_ASSESSED：{item}" for item in errors]
-    return _visual_opportunity_assessment_errors(run_dir)
+        return [f"VISUAL_NOT_ASSESSED：{item}" for item in errors] + requirement_errors
+    return _visual_opportunity_assessment_errors(run_dir) + requirement_errors
 
 
 def validate_pending_visual_promotions(run_dir: Path) -> list[str]:

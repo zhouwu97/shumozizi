@@ -397,6 +397,18 @@ def compile_longform_draft(
         encoding="utf-8"
     ) == author_source.read_text(encoding="utf-8"):
         raise ContractError("longform-source 与正式入口完全相同，尚未完成真实 Author Pass")
+    # WHY: 首稿文本已经存在，此时才能让论文论证反向产生视觉需求；需求只进入
+    # living opportunity pool，不恢复 Author 动笔前填写 FIGURE_PLAN 的旧门。
+    from shumozizi.paper.visual_requirements import build_visual_requirements_from_paper
+
+    visual_requirements = build_visual_requirements_from_paper(root)
+    author_pass["visual_requirements"] = {
+        "path": "paper/generated/VISUAL_REQUIREMENTS.json",
+        "sha256": sha256_file(root / "paper/generated/VISUAL_REQUIREMENTS.json"),
+        "open_count": visual_requirements["summary"]["open"],
+    }
+    author_pass["prepared_at"] = utc_now()
+    atomic_json(root / AUTHOR_PASS_MANIFEST_PATH, author_pass)
     status_relative = _LONGFORM_DRAFT_STATUS_PATHS[engine]
     status_path = root / status_relative
     _atomic_text(status_path, _render_longform_status(engine=engine))
@@ -441,6 +453,8 @@ def compile_longform_draft(
         "paper_source_sha256": source_sha256,
         "research_package_sha256": author_pass["research_package"]["sha256"],
         "author_brief_sha256": author_pass["author_brief"]["sha256"],
+        "visual_requirements_path": "paper/generated/VISUAL_REQUIREMENTS.json",
+        "visual_requirement_open_count": visual_requirements["summary"]["open"],
         "page_budget_path": PAGE_BUDGET_PATH.as_posix(),
         "page_budget_sha256": sha256_file(root / PAGE_BUDGET_PATH),
         "page_count": page_budget["page_count"],
