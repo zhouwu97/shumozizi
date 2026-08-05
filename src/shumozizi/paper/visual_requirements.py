@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.schema import require_valid
+from shumozizi.paper.argument_extraction import extract_paper_argument_units
 from shumozizi.simple.state import read_simple_state, utc_now
 from shumozizi.simple.visual_requirements import derive_visual_requirements
 
@@ -38,22 +41,52 @@ _MATERIAL_CATEGORY_BY_PURPOSE = {
     "mechanism": {"mechanism"},
     "boundary": {"boundary/robustness"},
 }
-_FIGURE_ROLES_BY_PURPOSE = {
-    "model_understanding": {
-        "model_understanding",
-        "schematic",
-        "data_portrait",
-        "question_hero",
-    },
-    "decisive_evidence": {"decisive_evidence", "insight", "question_hero"},
-    "mechanism": {"mechanism", "insight", "question_hero"},
-    "boundary": {"boundary", "stability", "insight"},
-}
 _PREFERRED_STRUCTURES = {
     "model_understanding": ["mathematical-object schematic", "structure map"],
     "decisive_evidence": ["baseline comparison", "decision surface"],
     "mechanism": ["active-constraint plot", "mechanism map"],
     "boundary": ["sensitivity curve", "feasible-region boundary"],
+}
+_PREFERRED_ARCHETYPES = {
+    "model_understanding": [
+        {
+            "id": "model_evolution_schematic",
+            "renderer_status": "available",
+            "required_data": [
+                "nodes[].id", "nodes[].label", "nodes[].stage", "edges[].relation"
+            ],
+        },
+        {
+            "id": "argument_evidence_map",
+            "renderer_status": "available",
+            "required_data": [
+                "nodes[].id", "nodes[].label", "nodes[].kind", "edges[].relation"
+            ],
+        },
+    ],
+    "decisive_evidence": [
+        {
+            "id": "active_constraint_map",
+            "renderer_status": "available",
+            "required_data": [
+                "points", "feasible_mask", "boundaries", "active_constraints", "selected_point"
+            ],
+        }
+    ],
+    "mechanism": [
+        {
+            "id": "constraint_margin_timeline",
+            "renderer_status": "available",
+            "required_data": ["time", "series[].label", "series[].margin", "active_tolerance"],
+        }
+    ],
+    "boundary": [
+        {
+            "id": "uncertainty_threshold_ribbon",
+            "renderer_status": "available",
+            "required_data": ["x", "median", "bands", "threshold"],
+        }
+    ],
 }
 
 
@@ -174,33 +207,64 @@ def _insight_ids(value: object) -> set[str]:
 
 
 def _figure_covers(
+    root: Path,
     figure: dict[str, Any],
     *,
-    question_id: str,
-    purpose: str,
-    result_ids: set[str],
-    argument_unit_ids: set[str],
+    requirement_id: str,
+    requirement_digest: str,
 ) -> bool:
-    """判断 current 图是否在对象、证据来源和论证角色上覆盖需求。"""
-    figure_questions = _strings(figure.get("question_id")) | _strings(
-        figure.get("question_ids")
-    )
-    figure_results = _strings(figure.get("source_result_ids"))
-    figure_arguments = _strings(figure.get("argument_unit_ids")) | _strings(
-        figure.get("argument_unit_id")
-    )
-    # 显式论证单元比问题级作用域更精确；否则一张 Q1 主图会错误关闭 Q1
-    # 下所有同角色 supporting requirements。
-    same_scope = (
-        bool(argument_unit_ids.intersection(figure_arguments))
-        if argument_unit_ids
-        else question_id in figure_questions or bool(result_ids.intersection(figure_results))
-    )
-    if not same_scope:
+    """只接受精确绑定且已被实际论文源消费的正文 current 图。"""
+    if requirement_id not in _strings(figure.get("covered_requirement_ids")):
         return False
-    obligations = _strings(figure.get("obligation_types"))
+    if requirement_digest not in _strings(figure.get("covered_requirement_digests")):
+        return False
     role = str(figure.get("role", figure.get("promotion_role", ""))).casefold()
-    return purpose in obligations or role in _FIGURE_ROLES_BY_PURPOSE[purpose]
+    if role == "stability" or str(figure.get("placement", "body")).casefold() == "appendix":
+        return False
+    if not str(figure.get("focal_claim", "")).strip():
+        return False
+    anchors = {str(figure.get("figure_id", "")).strip()}
+    paper_location = str(figure.get("paper_location", "")).strip()
+    if paper_location:
+        anchors.add(paper_location)
+    for output in figure.get("outputs", []):
+        if not isinstance(output, dict) or not isinstance(output.get("path"), str):
+            continue
+        path = output["path"].replace("\\", "/")
+        anchors.update({path, Path(path).name, str(Path(path).with_suffix("")), Path(path).stem})
+    anchors.discard("")
+    for relative in (
+        "paper/longform-source.tex",
+        "paper/longform-source.typ",
+        "paper/external-author/draft.tex",
+        "paper/main.tex",
+        "paper/main.typ",
+    ):
+        source = root / relative
+        if not source.is_file():
+            continue
+        text = source.read_text(encoding="utf-8", errors="replace").replace("\\", "/")
+        if any(anchor in text for anchor in anchors):
+            return True
+    return False
+
+
+def _requirement_digest(item: dict[str, Any]) -> str:
+    """计算 claim、来源与论证单元共同决定的稳定需求摘要。"""
+    fields = {
+        key: item.get(key)
+        for key in (
+            "question_id",
+            "purpose",
+            "claim",
+            "visual_question",
+            "source_result_ids",
+            "source_insight_ids",
+            "argument_unit_ids",
+        )
+    }
+    encoded = json.dumps(fields, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _first_material(
@@ -247,15 +311,34 @@ def _visual_output_requirements(unit: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _question_requirements(
     *,
+    root: Path,
     question_id: str,
     unit: dict[str, Any],
     materials: list[dict[str, Any]],
     result_ids: set[str],
     insight_ids: set[str],
+    paper_arguments: list[dict[str, Any]],
     figures: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """生成一问的视觉需求；按论证角色生成，不按固定图数生成。"""
     explicit = _visual_output_requirements(unit)
+    for argument in paper_arguments:
+        role = str(argument.get("role", ""))
+        if role not in _PURPOSE_ORDER or argument.get("visualizability") not in {
+            "high",
+            "medium",
+        }:
+            continue
+        explicit.append(
+            {
+                "purpose": role,
+                "visual_question": f"如何让评委直接看到：{argument['claim']}？",
+                "claim": str(argument["claim"]),
+                "argument_unit_ids": [str(argument["argument_id"])],
+                "preferred_structures": _PREFERRED_STRUCTURES[role],
+                "source_span": argument.get("source_span"),
+            }
+        )
     purposes = {
         _PURPOSE_BY_OBLIGATION[item]
         for item in derive_visual_requirements(unit).obligations
@@ -281,13 +364,10 @@ def _question_requirements(
         if purpose in purposes and not any(item["purpose"] == purpose for item in explicit)
     ]
     requirements: list[dict[str, Any]] = []
-    purpose_counts: dict[str, int] = {}
     for seed in seeds:
         purpose = str(seed["purpose"])
         if purpose not in _PURPOSE_ORDER:
             purpose = "model_understanding"
-        purpose_counts[purpose] = purpose_counts.get(purpose, 0) + 1
-        suffix = purpose_counts[purpose]
         material = _first_material(materials, purpose)
         title = str(material.get("title", "")).strip() if material else ""
         content = str(material.get("content", "")).strip() if material else ""
@@ -298,45 +378,44 @@ def _question_requirements(
             f"如何让评委直接看到：{title or claim}？"
         )
         argument_unit_ids = set(map(str, seed.get("argument_unit_ids", [])))
+        preferred = list(dict.fromkeys([
+            *map(str, seed.get("preferred_structures", [])),
+            *_PREFERRED_STRUCTURES[purpose],
+        ]))
+        requirement: dict[str, Any] = {
+            "question_id": question_id,
+            "figure_tier": (
+                "hero_figure"
+                if purpose == "decisive_evidence" and unit.get("core_question") is True
+                else "supporting_figure"
+            ),
+            "purpose": purpose,
+            "claim": claim,
+            "visual_question": visual_question,
+            "source_result_ids": sorted(result_ids),
+            "source_insight_ids": sorted(insight_ids),
+            "argument_unit_ids": sorted(argument_unit_ids),
+            "preferred_structures": preferred,
+            "preferred_archetypes": _PREFERRED_ARCHETYPES[purpose],
+            "source_span": seed.get("source_span"),
+        }
+        digest = _requirement_digest(requirement)
+        requirement["requirement_digest"] = digest
+        requirement["requirement_id"] = f"VR-{question_id}-{purpose}-{digest[:10]}"
         covered = [
             str(figure.get("figure_id"))
             for figure in figures
             if isinstance(figure.get("figure_id"), str)
             and _figure_covers(
+                root,
                 figure,
-                question_id=question_id,
-                purpose=purpose,
-                result_ids=result_ids,
-                argument_unit_ids=argument_unit_ids,
+                requirement_id=requirement["requirement_id"],
+                requirement_digest=digest,
             )
         ]
-        requirement_id = f"VR-{question_id}-{purpose}"
-        if suffix > 1:
-            requirement_id += f"-{suffix}"
-        preferred = list(dict.fromkeys([
-            *map(str, seed.get("preferred_structures", [])),
-            *_PREFERRED_STRUCTURES[purpose],
-        ]))
-        requirements.append(
-            {
-                "requirement_id": requirement_id,
-                "question_id": question_id,
-                "figure_tier": (
-                    "hero_figure"
-                    if purpose == "decisive_evidence" and unit.get("core_question") is True
-                    else "supporting_figure"
-                ),
-                "purpose": purpose,
-                "claim": claim,
-                "visual_question": visual_question,
-                "source_result_ids": sorted(result_ids),
-                "source_insight_ids": sorted(insight_ids),
-                "argument_unit_ids": sorted(argument_unit_ids),
-                "preferred_structures": preferred,
-                "covered_by_figure_ids": covered,
-                "status": "covered" if covered else "open",
-            }
-        )
+        requirement["covered_by_figure_ids"] = covered
+        requirement["status"] = "covered" if covered else "open"
+        requirements.append(requirement)
     return requirements
 
 
@@ -350,15 +429,22 @@ def derive_visual_requirements_from_paper(run_dir: Path) -> dict[str, Any]:
     grouped_materials = _materials_by_question(materials)
     results = _answer_result_ids(root)
     figures = _current_figures(root)
+    paper_arguments = extract_paper_argument_units(root, write=True).get("arguments", [])
     requirements = [
         requirement
         for question_id in state.get("required_questions", [])
         for requirement in _question_requirements(
+            root=root,
             question_id=str(question_id),
             unit=units.get(str(question_id), {}),
             materials=grouped_materials.get(str(question_id), []),
             result_ids=results.get(str(question_id), set()),
             insight_ids=_insight_ids(units.get(str(question_id), {})),
+            paper_arguments=[
+                item
+                for item in paper_arguments
+                if isinstance(item, dict) and item.get("question_id") == str(question_id)
+            ],
             figures=figures,
         )
     ]
@@ -400,6 +486,14 @@ def _sync_open_requirements(run_dir: Path, payload: dict[str, Any]) -> None:
     except (ContractError, OSError, TypeError, ValueError):
         existing_items = []
     refreshed = build_visual_opportunity_pool(root, opportunities=[], write=False)
+    active_ids = {str(item["requirement_id"]) for item in payload["requirements"]}
+    existing_items = [
+        item
+        for item in existing_items
+        if not isinstance(item, dict)
+        or item.get("origin") != "paper_visual_requirement"
+        or item.get("requirement_id") in active_ids
+    ]
     known = {
         str(item.get("requirement_id", item.get("opportunity_id", "")))
         for item in existing_items
@@ -424,8 +518,10 @@ def _sync_open_requirements(run_dir: Path, payload: dict[str, Any]) -> None:
                 "critic_path": None,
                 "origin": "paper_visual_requirement",
                 "requirement_id": requirement["requirement_id"],
+                "requirement_digest": requirement["requirement_digest"],
                 "figure_tier": requirement["figure_tier"],
                 "purpose": requirement["purpose"],
+                "source_span": requirement.get("source_span"),
             }
         )
     refreshed["opportunities"] = existing_items
@@ -488,15 +584,25 @@ def validate_paper_visual_requirement_closure(run_dir: Path) -> list[str]:
                 f"VISUAL_REQUIREMENT_OPEN：{requirement_id} 尚未路由到视觉机会池"
             )
             continue
-        if opportunity.get("status") == "drop" and opportunity.get("critic_verdict") == "DROP":
-            critic_path = opportunity.get("critic_path")
+        if (
+            opportunity.get("status") == "drop"
+            and opportunity.get("critic_verdict") == "DROP"
+            and opportunity.get("requirement_digest") == requirement["requirement_digest"]
+        ):
+            critic_path = opportunity.get("critic_record_path")
             if isinstance(critic_path, str):
                 try:
                     critic = resolve_inside(root, critic_path, must_exist=True)
                 except ContractError:
                     critic = None
-                if critic is not None and critic.stat().st_size > 0:
-                    continue
+                if critic is not None:
+                    record = load_json(critic)
+                    if (
+                        record.get("verdict") == "DROP"
+                        and record.get("requirement_digest")
+                        == requirement["requirement_digest"]
+                    ):
+                        continue
         errors.append(
             f"VISUAL_REQUIREMENT_OPEN：{requirement_id} 尚未由 current 图覆盖或经实质评阅放弃"
         )

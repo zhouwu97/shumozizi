@@ -160,6 +160,23 @@ class V3FigureTests(unittest.TestCase):
             for suffix in (".png", ".pdf", ".svg"):
                 self.assertGreater(stem.with_suffix(suffix).stat().st_size, 0)
 
+    def test_v34_canonical_archetypes_use_real_renderer_contracts(self) -> None:
+        """v3.4 高价值 archetype ID 应直接消费公开数据接口并真实出图。"""
+        fixture_root = Path(__file__).parent / "fixtures" / "figures"
+        aliases = {
+            "active_constraint_map": "feasible-region-active-constraints.json",
+            "constraint_margin_timeline": "constraint_margin_timeline.json",
+            "uncertainty_threshold_ribbon": "uncertainty-fan-threshold.json",
+            "model_evolution_schematic": "model_evolution_schematic.json",
+            "argument_evidence_map": "argument_evidence_map.json",
+        }
+        for template_id, fixture_name in aliases.items():
+            data = load_data(template_id, fixture_root / fixture_name)
+            stem = self.root / "v34-renders" / template_id
+            render(template_id, data, stem)
+            self.assertGreater(stem.with_suffix(".png").stat().st_size, 0)
+            self.assertTrue(stem.with_suffix(".visual_manifest.json").is_file())
+
     def test_source_result_supersession_requires_figure_regeneration(self) -> None:
         """源结果被同问同类的新执行替代后，旧图必须阻断最终检查。"""
         generate_from_result(

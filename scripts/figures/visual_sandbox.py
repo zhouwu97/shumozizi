@@ -30,6 +30,11 @@ def main() -> int:
     review.add_argument("--full-width-value", required=True)
     review.add_argument("--table-redundancy", required=True)
     review.add_argument("--rationale", required=True)
+    review.add_argument(
+        "--candidate-structures",
+        type=Path,
+        help="hero 图候选路径到 visual_structure 的 JSON 对象",
+    )
     graduate = subparsers.add_parser("graduate")
     graduate.add_argument("run_dir", type=Path)
     graduate.add_argument("idea_id")
@@ -45,6 +50,11 @@ def main() -> int:
             full_width_value=args.full_width_value,
             table_redundancy=args.table_redundancy,
             rationale=args.rationale,
+            candidate_structures=(
+                json.loads(args.candidate_structures.read_text(encoding="utf-8"))
+                if args.candidate_structures
+                else None
+            ),
         )
     else:
         payload = graduate_visual_candidate(

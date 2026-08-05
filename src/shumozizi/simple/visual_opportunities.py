@@ -319,6 +319,7 @@ def record_visual_critic(
         "verdict": verdict,
         "reviewer_context_id": reviewer_context_id,
         "fresh": fresh,
+        "requirement_digest": target.get("requirement_digest"),
         "review": review,
         **artifact_binding,
         "recorded_at": utc_now(),
@@ -330,6 +331,7 @@ def record_visual_critic(
     target["status"] = _STATUS_BY_VERDICT[verdict]
     target["critic_verdict"] = verdict
     target["critic_path"] = md_path.relative_to(root).as_posix()
+    target["critic_record_path"] = json_path.relative_to(root).as_posix()
     target["critic_context_id"] = reviewer_context_id
     write_visual_opportunity_pool(root, payload)
     return record
@@ -417,6 +419,19 @@ def validate_visual_critic_record(
         raise ContractError("视觉批评回执与当前机会池不一致")
     if payload.get("verdict") not in VISUAL_VERDICTS:
         raise ContractError("视觉批评回执 verdict 无效")
+    opportunity = next(
+        (
+            item
+            for item in pool.get("opportunities", [])
+            if isinstance(item, dict) and item.get("opportunity_id") == opportunity_id
+        ),
+        None,
+    )
+    if opportunity is None:
+        raise ContractError("视觉批评绑定的机会已不存在")
+    requirement_digest = opportunity.get("requirement_digest")
+    if requirement_digest is not None and payload.get("requirement_digest") != requirement_digest:
+        raise ContractError("视觉批评绑定的论文视觉需求摘要已失效")
     if require_artifact_binding:
         if payload.get("fresh") is not True or not str(payload.get("reviewer_context_id", "")).strip():
             raise ContractError("视觉批评硬门要求 fresh=true 且有 reviewer_context_id")

@@ -22,14 +22,19 @@ from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state
 
 TEMPLATE_SCRIPTS = {
+    "active_constraint_map": "make_feasible_region_active_constraints.py",
+    "argument_evidence_map": "make_multi_panel_evidence_chain.py",
+    "constraint_margin_timeline": "make_interval_event_timeline.py",
     "cv-roc-ci": "make_cv_roc_ci.py",
     "feasible-region-active-constraints": "make_feasible_region_active_constraints.py",
     "interval-event-timeline": "make_interval_event_timeline.py",
+    "model_evolution_schematic": "make_multi_panel_evidence_chain.py",
     "multi-panel-evidence-chain": "make_multi_panel_evidence_chain.py",
     "prediction-marginal-grid": "make_prediction_marginal_grid.py",
     "paired-raincloud": "make_paired_raincloud.py",
     "correlation-pairgrid": "make_correlation_pairgrid.py",
     "uncertainty-fan-threshold": "make_uncertainty_fan_threshold.py",
+    "uncertainty_threshold_ribbon": "make_uncertainty_fan_threshold.py",
 }
 
 

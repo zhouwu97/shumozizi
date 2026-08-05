@@ -15,12 +15,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "question", "sources", "idea", "status"],
+        "required": ["id", "question", "sources", "idea", "figure_tier", "status"],
         "properties": {
           "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
           "question": {"type": "string", "minLength": 1},
           "sources": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "idea": {"type": "string", "minLength": 1},
+          "figure_tier": {"enum": ["hero_figure", "supporting_figure"]},
           "status": {"enum": ["sketch", "competing", "selected", "selected_pending_promotion", "dropped", "promoted"]},
           "selected_candidate": {"type": "string", "minLength": 1},
           "pending_promotion": {

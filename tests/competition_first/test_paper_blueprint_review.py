@@ -23,6 +23,7 @@ from shumozizi.paper.paper_review import (
     close_paper_review_finding,
     first_draft_cold_read_prompt,
     merge_paper_review_findings,
+    paper_review_errors,
     paper_review_status,
     parse_paper_review,
     unclosed_high_priority_findings,
@@ -317,6 +318,37 @@ def test_paper_review_p0_p1_needs_strong_closure(tmp_path: Path) -> None:
         evidence_of_closure=["paper/main.tex 第 4 章已增加结构图与解释段。"],
     )
     assert unclosed_high_priority_findings(repaired) == []
+    assert paper_review_status(run_dir)["candidate_allowed"] is True
+
+
+def test_high_confidence_report_style_cannot_be_accepted_or_deferred(tmp_path: Path) -> None:
+    """高置信度报告体 finding 必须修复或由 reviewer 证明误报。"""
+    run_dir = _new_run(tmp_path, "paper-review-report-style")
+    finding = _finding(finding_id="STYLE-001", severity="P2")
+    finding["finding"] = "REPORT_STYLE_PATTERN：核心问只有方法报账、表格和结论。"
+    atomic_json(run_dir / "review/report-style.json", {"findings": [finding]})
+    merge_paper_review_findings(
+        run_dir,
+        input_path="review/report-style.json",
+        source="report_style_audit",
+    )
+
+    with pytest.raises(ContractError, match="只能 repaired 或 false_positive"):
+        close_paper_review_finding(
+            run_dir,
+            finding_id="STYLE-001",
+            status="accepted",
+            evidence_of_closure=["作者接受该风格风险。"],
+        )
+    assert paper_review_status(run_dir)["candidate_allowed"] is False
+
+    repaired = close_paper_review_finding(
+        run_dir,
+        finding_id="STYLE-001",
+        status="repaired",
+        evidence_of_closure=["独立冷读确认正文已加入推导、机制和跨段论证。"],
+    )
+    assert paper_review_errors(repaired, run_dir=run_dir) == []
     assert paper_review_status(run_dir)["candidate_allowed"] is True
 
 

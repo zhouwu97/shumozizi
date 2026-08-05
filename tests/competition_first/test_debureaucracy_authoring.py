@@ -384,7 +384,9 @@ def test_visual_sandbox_winner_marks_pending_promotion(tmp_path: Path) -> None:
     )
     promoted = graduate_visual_candidate(run_dir, "q1-bottleneck")
 
-    assert ideas["ideas"][0].keys() == {"id", "question", "sources", "idea", "status"}
+    assert ideas["ideas"][0].keys() == {
+        "id", "question", "sources", "idea", "figure_tier", "status"
+    }
     assert len(review["candidates"]) == 2
     assert promoted["formal_render_required"] is True
     assert promoted["selected_design_reference"].endswith("b.png")
@@ -395,6 +397,59 @@ def test_visual_sandbox_winner_marks_pending_promotion(tmp_path: Path) -> None:
     assert recorded["pending_promotion"]["candidate_version"] == "v1"
     assert not (run_dir / "figures/work/q1-bottleneck/v1").exists()
     assert not (run_dir / "figures/FIGURE_PLAN.json").exists()
+
+
+def test_hero_visual_competition_requires_distinct_structures(tmp_path: Path) -> None:
+    """主图不得以单候选或同构换色冒充视觉竞争。"""
+    run_dir = initialize_simple_run(tmp_path, "hero-competition", required_questions=["Q1"])
+    write_visual_ideas(
+        run_dir,
+        [
+            {
+                "id": "q1-hero",
+                "question": "哪个结构最快解释核心结论？",
+                "sources": ["Q1"],
+                "idea": "比较可行域与时间机制两种主图结构。",
+                "figure_tier": "hero_figure",
+            }
+        ],
+    )
+    sandbox = run_dir / "figures/sandbox/q1-hero"
+    sandbox.mkdir(parents=True)
+    (sandbox / "a.png").write_bytes(b"candidate-a")
+    with pytest.raises(ContractError, match="至少需要两个候选"):
+        record_visual_competition(
+            run_dir,
+            "q1-hero",
+            selected_candidate="figures/sandbox/q1-hero/a.png",
+            reviewer_context_id="fresh-visual-reader",
+            fastest_mechanism="A 最快显示核心结论。",
+            full_width_value="主图需要完整宽度。",
+            table_redundancy="表格无法显示机制。",
+            rationale="候选需要比较。",
+        )
+
+    (sandbox / "b.png").write_bytes(b"candidate-b")
+    paths = {
+        "figures/sandbox/q1-hero/a.png": "feasible_region",
+        "figures/sandbox/q1-hero/b.png": "constraint_timeline",
+    }
+    review = record_visual_competition(
+        run_dir,
+        "q1-hero",
+        selected_candidate="figures/sandbox/q1-hero/b.png",
+        reviewer_context_id="fresh-visual-reader",
+        fastest_mechanism="B 最快显示约束激活时段。",
+        full_width_value="时间机制需要完整宽度。",
+        table_redundancy="表格无法显示激活顺序。",
+        rationale="两种数学结构完成了真实竞争。",
+        candidate_structures=paths,
+    )
+
+    assert review["figure_tier"] == "hero_figure"
+    assert {item["visual_structure"] for item in review["candidates"]} == {
+        "feasible_region", "constraint_timeline"
+    }
 
 
 def test_narrative_competition_is_advisory_and_research_package_bound(tmp_path: Path) -> None:

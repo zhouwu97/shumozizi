@@ -908,6 +908,14 @@ def _paper_review_closure_errors(run_dir: Path) -> list[str]:
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         return [f"PAPER_REVIEW 批量返修闭环无效: {exc}"]
     dispositions = {"accepted", "repaired", "false_positive", "deferred_with_reason"}
+    report_style_repair_only = {
+        "REPORT_STYLE_PATTERN",
+        "PAPER_SECTION_UNDERDEVELOPED",
+        "core_question_without_derivation",
+        "core_question_without_mechanism",
+        "generic_question_heading_repetition",
+        "NARRATIVE_SCARCITY_REVIEW",
+    }
     findings = document.get("findings", [])
     try:
         style = audit_report_like_manuscript(run_dir)
@@ -926,7 +934,12 @@ def _paper_review_closure_errors(run_dir: Path) -> list[str]:
             ),
             None,
         )
-        if matched is None or matched.get("status") not in dispositions:
+        allowed = (
+            {"repaired", "false_positive"}
+            if code in report_style_repair_only
+            else dispositions
+        )
+        if matched is None or matched.get("status") not in allowed:
             errors.append(f"文风 warning [{code}] 尚未在 PAPER_REVIEW 中处置")
         elif not matched.get("evidence_of_closure"):
             errors.append(f"文风 warning [{code}] 的处置缺少 closure 证据")

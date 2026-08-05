@@ -582,6 +582,40 @@ def _promotion_record(
     return receipt_record
 
 
+def _paper_visual_requirement_binding(
+    run_dir: Path,
+    *,
+    opportunity: dict[str, Any] | None,
+    promotion_receipt: str | None,
+) -> dict[str, Any]:
+    """从晋级回执复制论文视觉需求的精确覆盖绑定。"""
+    if opportunity is None or opportunity.get("origin") != "paper_visual_requirement":
+        return {}
+    requirement_id = opportunity.get("requirement_id")
+    requirement_digest = opportunity.get("requirement_digest")
+    if not isinstance(requirement_id, str) or not isinstance(requirement_digest, str):
+        raise ContractError("论文视觉机会缺少 requirement_id 或 requirement_digest")
+    if not isinstance(promotion_receipt, str):
+        raise ContractError("论文视觉需求图必须绑定正式晋级回执")
+    receipt = load_json(resolve_inside(run_dir, promotion_receipt, must_exist=True))
+    gate = receipt.get("visual_critic")
+    focal_claim = receipt.get("human_review", {}).get("focal_claim")
+    if (
+        not isinstance(gate, dict)
+        or gate.get("requirement_id") != requirement_id
+        or gate.get("requirement_digest") != requirement_digest
+        or not isinstance(focal_claim, str)
+        or not focal_claim.strip()
+        or gate.get("focal_claim") != focal_claim
+    ):
+        raise ContractError("图晋级回执未绑定当前论文视觉需求摘要和人工 focal_claim")
+    return {
+        "covered_requirement_ids": [requirement_id],
+        "covered_requirement_digests": [requirement_digest],
+        "focal_claim": focal_claim.strip(),
+    }
+
+
 def _register_competition_figure(
     run_dir: Path,
     *,
@@ -620,6 +654,7 @@ def _register_competition_figure(
         raise ContractError("figure placement 必须为 body 或 appendix")
     if critic_verdict is not None and critic_verdict not in {"PROMOTE", "REVISE", "SPLIT", "DROP"}:
         raise ContractError("critic_verdict 必须为 PROMOTE、REVISE、SPLIT 或 DROP")
+    opportunity: dict[str, Any] | None = None
     if visual_opportunity_id is not None:
         opportunity_path = run_dir / "figures/visual-opportunities.json"
         if not opportunity_path.is_file():
@@ -712,6 +747,13 @@ def _register_competition_figure(
             promotion_receipt=promotion_receipt,
             role=role,
         )
+    entry.update(
+        _paper_visual_requirement_binding(
+            run_dir,
+            opportunity=opportunity,
+            promotion_receipt=promotion_receipt,
+        )
+    )
     for existing in index["figures"]:
         if existing["figure_id"] == figure_id and existing["status"] == "current":
             existing["status"] = "superseded"
@@ -908,6 +950,7 @@ def register_presentation_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    opportunity: dict[str, Any] | None = None
     if visual_opportunity_id is not None:
         from shumozizi.paper.policy import policy_fingerprint
         from shumozizi.simple.visual_opportunities import (
@@ -961,6 +1004,13 @@ def register_presentation_figure(
             entry["selected_version"] = selected_version
         if paper_location is not None:
             entry["paper_location"] = paper_location
+    entry.update(
+        _paper_visual_requirement_binding(
+            run_dir,
+            opportunity=opportunity,
+            promotion_receipt=promotion_receipt,
+        )
+    )
     index = read_figure_index(run_dir)
     index["schema_version"] = "1.3"
     for existing in index["figures"]:

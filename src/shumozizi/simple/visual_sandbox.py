@@ -41,6 +41,7 @@ def write_visual_ideas(run_dir: Path, ideas: Iterable[dict[str, Any]]) -> dict[s
                 "question": str(raw.get("question", "")).strip(),
                 "sources": list(dict.fromkeys(map(str, raw.get("sources", [])))),
                 "idea": str(raw.get("idea", "")).strip(),
+                "figure_tier": str(raw.get("figure_tier", "supporting_figure")),
                 "status": str(raw.get("status", "sketch")),
                 **(
                     {"selected_candidate": str(raw["selected_candidate"])}
@@ -89,6 +90,7 @@ def record_visual_competition(
     full_width_value: str,
     table_redundancy: str,
     rationale: str,
+    candidate_structures: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """记录候选图竞争结论，不把草图误登记为 current 证据。"""
     root = run_dir.resolve()
@@ -100,8 +102,26 @@ def record_visual_competition(
     selected = resolve_inside(root, selected_candidate, must_exist=True)
     if selected not in candidates:
         raise ContractError("selected_candidate 必须位于对应 figures/sandbox 目录")
+    structures = candidate_structures or {}
+    relative_candidates = [relative_inside(root, path).as_posix() for path in candidates]
+    if target.get("figure_tier") == "hero_figure":
+        if len(candidates) < 2:
+            raise ContractError("hero_figure 至少需要两个候选设计")
+        missing = [path for path in relative_candidates if not str(structures.get(path, "")).strip()]
+        if missing:
+            raise ContractError("hero_figure 必须为每个候选声明 visual_structure")
+        if len({str(structures[path]).strip() for path in relative_candidates}) < 2:
+            raise ContractError("hero_figure 候选必须包含至少两种不同 visual_structure")
     records = [
-        {"path": relative_inside(root, path).as_posix(), "sha256": sha256_file(path)}
+        {
+            "path": relative_inside(root, path).as_posix(),
+            "sha256": sha256_file(path),
+            **(
+                {"visual_structure": str(structures[relative_inside(root, path).as_posix()]).strip()}
+                if relative_inside(root, path).as_posix() in structures
+                else {}
+            ),
+        }
         for path in candidates
     ]
     payload = {
@@ -109,6 +129,7 @@ def record_visual_competition(
         "schema_version": "1.0",
         "run_id": ideas["run_id"],
         "idea_id": idea_id,
+        "figure_tier": target.get("figure_tier", "supporting_figure"),
         "reviewer_context_id": reviewer_context_id,
         "candidates": records,
         "selected_candidate": relative_inside(root, selected).as_posix(),

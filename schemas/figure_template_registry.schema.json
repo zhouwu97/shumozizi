@@ -13,7 +13,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["template_id", "family", "information_structure", "claim_roles", "status"],
+        "required": ["template_id", "family", "information_structure", "claim_roles", "status", "required_data"],
         "properties": {
           "template_id": {"type": "string", "minLength": 1},
           "family": {"enum": ["scientific", "schematic", "competition"]},
@@ -21,6 +21,7 @@
           "claim_roles": {"type": "array", "minItems": 1, "items": {"type": "string"}},
           "status": {"enum": ["design_only", "renderer_available"]},
           "renderer": {"type": ["string", "null"]},
+          "required_data": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "notes": {"type": "string"}
         }
       }

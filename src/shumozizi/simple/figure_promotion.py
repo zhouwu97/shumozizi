@@ -981,6 +981,9 @@ def promote_figure_candidate(
                 "candidate_png_sha256": sha256_file(candidate_png_path),
                 "candidate_pdf_sha256": sha256_file(candidate_pdf_path),
                 "visual_policy_fingerprint": critic.get("visual_policy_fingerprint"),
+                "requirement_id": opportunity.get("requirement_id"),
+                "requirement_digest": opportunity.get("requirement_digest"),
+                "focal_claim": validated_review["focal_claim"],
             }
     work_digest = sha256_bytes(
         json_bytes(

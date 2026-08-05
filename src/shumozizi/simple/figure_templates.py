@@ -12,15 +12,25 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, sha256_file
 
 SUPPORTED_TEMPLATES = (
+    "active_constraint_map",
+    "argument_evidence_map",
     "correlation-pairgrid",
+    "constraint_margin_timeline",
     "cv-roc-ci",
     "feasible-region-active-constraints",
     "interval-event-timeline",
+    "model_evolution_schematic",
     "multi-panel-evidence-chain",
     "paired-raincloud",
     "prediction-marginal-grid",
     "uncertainty-fan-threshold",
+    "uncertainty_threshold_ribbon",
 )
+
+_CANONICAL_RENDERER_BASE = {
+    "active_constraint_map": "feasible-region-active-constraints",
+    "uncertainty_threshold_ribbon": "uncertainty-fan-threshold",
+}
 
 
 def _plot_modules() -> tuple[Any, Any, Any]:
@@ -163,6 +173,7 @@ def load_data(template_id: str, path: Path) -> dict[str, Any]:
         ContractError: 模板不受支持或输入不符合公开数据接口。
     """
     payload = _payload_from_file(path)
+    template_id = _CANONICAL_RENDERER_BASE.get(template_id, template_id)
     if template_id == "cv-roc-ci":
         models = payload.get("models")
         if not isinstance(models, list) or not models:
@@ -418,6 +429,73 @@ def load_data(template_id: str, path: Path) -> dict[str, Any]:
                 }
             )
         return {"panels": normalized_panels}
+    if template_id == "constraint_margin_timeline":
+        time = _number_list(payload.get("time"), "time", minimum=3)
+        series = payload.get("series")
+        if not isinstance(series, list) or not series:
+            raise ContractError("constraint_margin_timeline 需要非空 series")
+        normalized_series = []
+        for index, raw in enumerate(series):
+            item = _object(raw, f"series[{index}]")
+            label = item.get("label")
+            margin = _number_list(item.get("margin"), f"series[{index}].margin", minimum=3)
+            if not isinstance(label, str) or not label.strip() or len(margin) != len(time):
+                raise ContractError(f"series[{index}] 需要非空 label 和与 time 等长的 margin")
+            normalized_series.append({"label": label.strip(), "margin": margin})
+        try:
+            tolerance = float(payload.get("active_tolerance", 0.0))
+        except (TypeError, ValueError) as exc:
+            raise ContractError("active_tolerance 必须是非负数值") from exc
+        if tolerance < 0:
+            raise ContractError("active_tolerance 必须是非负数值")
+        return {
+            "time": time,
+            "series": normalized_series,
+            "active_tolerance": tolerance,
+            "time_label": str(payload.get("time_label", "Time")),
+            "margin_label": str(payload.get("margin_label", "Constraint margin")),
+        }
+    if template_id in {"model_evolution_schematic", "argument_evidence_map"}:
+        nodes = payload.get("nodes")
+        edges = payload.get("edges")
+        layer_field = "stage" if template_id == "model_evolution_schematic" else "kind"
+        if not isinstance(nodes, list) or len(nodes) < 2 or not isinstance(edges, list) or not edges:
+            raise ContractError(f"{template_id} 需要至少两个 nodes 和非空 edges")
+        normalized_nodes = []
+        node_ids: set[str] = set()
+        for index, raw in enumerate(nodes):
+            item = _object(raw, f"nodes[{index}]")
+            node_id, label, layer = item.get("id"), item.get("label"), item.get(layer_field)
+            if (
+                not isinstance(node_id, str)
+                or not node_id.strip()
+                or node_id in node_ids
+                or not isinstance(label, str)
+                or not label.strip()
+                or not isinstance(layer, str)
+                or not layer.strip()
+            ):
+                raise ContractError(f"nodes[{index}] 需要唯一 id、非空 label 和 {layer_field}")
+            node_ids.add(node_id.strip())
+            normalized_nodes.append(
+                {"id": node_id.strip(), "label": label.strip(), layer_field: layer.strip()}
+            )
+        normalized_edges = []
+        for index, raw in enumerate(edges):
+            item = _object(raw, f"edges[{index}]")
+            source, target, relation = item.get("source"), item.get("target"), item.get("relation")
+            if source not in node_ids or target not in node_ids:
+                raise ContractError(f"edges[{index}] 必须引用已声明节点")
+            if not isinstance(relation, str) or not relation.strip():
+                raise ContractError(f"edges[{index}].relation 必须是非空文本")
+            normalized_edges.append(
+                {"source": source, "target": target, "relation": relation.strip()}
+            )
+        return {
+            "nodes": normalized_nodes,
+            "edges": normalized_edges,
+            "layer_field": layer_field,
+        }
     raise ContractError(
         f"模板尚未接入真实数据接口: {template_id}；当前可用: {', '.join(SUPPORTED_TEMPLATES)}"
     )
@@ -855,6 +933,131 @@ def _render_multi_panel_evidence_chain(data: dict[str, Any], plt: Any, np: Any) 
     return figure
 
 
+def _render_constraint_margin_timeline(data: dict[str, Any], plt: Any, np: Any) -> Any:
+    """绘制各约束余量随时间变化及真正激活的临界时段。"""
+    figure, axis = plt.subplots(figsize=(9.2, 5.8))
+    time = np.asarray(data["time"], dtype=float)
+    tolerance = float(data["active_tolerance"])
+    colors = plt.get_cmap("tab10").colors
+    active_labels: list[str] = []
+    for index, series in enumerate(data["series"]):
+        margin = np.asarray(series["margin"], dtype=float)
+        axis.plot(time, margin, marker="o", linewidth=1.6, color=colors[index], label=series["label"])
+        active = margin <= tolerance
+        if active.any():
+            label = f"{series['label']} active"
+            active_labels.append(label)
+            axis.scatter(time[active], margin[active], s=52, marker="D", color=colors[index], label=label)
+    threshold_label = f"Active tolerance = {tolerance:g}"
+    axis.axhline(tolerance, linestyle="--", linewidth=1.2, color="#8c3f3f", label=threshold_label)
+    axis.set(
+        xlabel=data["time_label"],
+        ylabel=data["margin_label"],
+        title="Constraint margins and active periods",
+    )
+    axis.grid(alpha=0.2)
+    axis.legend(fontsize=8, ncol=2)
+    figure.tight_layout()
+    figure._shumozizi_panels = ["main"]
+    figure._shumozizi_elements = [
+        {"type": "active_threshold", "label": threshold_label, "panel": "main"},
+        *[
+            {"type": "active_constraint_period", "label": label, "panel": "main"}
+            for label in active_labels
+        ],
+    ]
+    return figure
+
+
+def _render_layered_network(
+    data: dict[str, Any],
+    plt: Any,
+    *,
+    title: str,
+    node_type: str,
+) -> Any:
+    """按显式 stage/kind 分层绘制可追溯节点与有向关系。"""
+    figure, axis = plt.subplots(figsize=(10.0, 5.8))
+    layer_field = data["layer_field"]
+    layers = list(dict.fromkeys(node[layer_field] for node in data["nodes"]))
+    nodes_by_layer = {
+        layer: [node for node in data["nodes"] if node[layer_field] == layer]
+        for layer in layers
+    }
+    positions: dict[str, tuple[float, float]] = {}
+    for x_index, layer in enumerate(layers):
+        layer_nodes = nodes_by_layer[layer]
+        for y_index, node in enumerate(layer_nodes):
+            y = (len(layer_nodes) - 1) / 2 - y_index
+            positions[node["id"]] = (float(x_index), float(y))
+    for edge in data["edges"]:
+        source = positions[edge["source"]]
+        target = positions[edge["target"]]
+        axis.annotate(
+            "",
+            xy=target,
+            xytext=source,
+            arrowprops={"arrowstyle": "->", "color": "#66727a", "linewidth": 1.2},
+            zorder=1,
+        )
+        midpoint = ((source[0] + target[0]) / 2, (source[1] + target[1]) / 2 + 0.08)
+        axis.text(*midpoint, edge["relation"], ha="center", va="bottom", fontsize=8, color="#4b555b")
+    colors = plt.get_cmap("Set2").colors
+    for node in data["nodes"]:
+        x, y = positions[node["id"]]
+        layer_index = layers.index(node[layer_field])
+        axis.text(
+            x,
+            y,
+            node["label"],
+            ha="center",
+            va="center",
+            fontsize=9,
+            bbox={
+                "boxstyle": "round,pad=0.45",
+                "facecolor": colors[layer_index % len(colors)],
+                "edgecolor": "#4d5960",
+                "linewidth": 0.9,
+            },
+            zorder=2,
+        )
+    axis.set_xlim(-0.55, max(0.55, len(layers) - 0.45))
+    max_layer = max(len(nodes) for nodes in nodes_by_layer.values())
+    axis.set_ylim(-max_layer / 2 - 0.5, max_layer / 2 + 0.5)
+    axis.set_xticks(range(len(layers)), layers)
+    axis.set_yticks([])
+    axis.set_title(title, pad=14)
+    for spine in axis.spines.values():
+        spine.set_visible(False)
+    figure.tight_layout()
+    figure._shumozizi_panels = ["main"]
+    figure._shumozizi_elements = [
+        {"type": node_type, "label": node["label"], "panel": "main"}
+        for node in data["nodes"]
+    ]
+    return figure
+
+
+def _render_model_evolution_schematic(data: dict[str, Any], plt: Any, np: Any) -> Any:
+    """绘制多问模型对象的继承、新增约束与结构演化。"""
+    return _render_layered_network(
+        data,
+        plt,
+        title="Model evolution across questions",
+        node_type="model_component",
+    )
+
+
+def _render_argument_evidence_map(data: dict[str, Any], plt: Any, np: Any) -> Any:
+    """绘制结论、推导、证据和边界之间的有向论证关系。"""
+    return _render_layered_network(
+        data,
+        plt,
+        title="Argument and evidence map",
+        node_type="argument_unit",
+    )
+
+
 def _text_boxes(figure: Any) -> list[dict[str, float | str]]:
     """导出 Matplotlib 文字 artist 的像素边界，供图表 QA 检查。
 
@@ -994,16 +1197,19 @@ def render(template_id: str, data: dict[str, Any], output_stem: Path) -> Path:
     """
     _, plt, np = _plot_modules()
     renderers = {
+        "argument_evidence_map": _render_argument_evidence_map,
+        "constraint_margin_timeline": _render_constraint_margin_timeline,
         "cv-roc-ci": _render_cv_roc_ci,
         "feasible-region-active-constraints": _render_feasible_region_active_constraints,
         "interval-event-timeline": _render_interval_event_timeline,
         "multi-panel-evidence-chain": _render_multi_panel_evidence_chain,
+        "model_evolution_schematic": _render_model_evolution_schematic,
         "prediction-marginal-grid": _render_prediction_marginal_grid,
         "paired-raincloud": _render_paired_raincloud,
         "correlation-pairgrid": _render_correlation_pairgrid,
         "uncertainty-fan-threshold": _render_uncertainty_fan_threshold,
     }
-    renderer = renderers.get(template_id)
+    renderer = renderers.get(_CANONICAL_RENDERER_BASE.get(template_id, template_id))
     if renderer is None:
         raise ContractError(f"模板尚未接入真实数据接口: {template_id}")
     output_stem.parent.mkdir(parents=True, exist_ok=True)
