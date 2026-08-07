@@ -38,6 +38,13 @@ _BLOCKING_INTERNAL_TERMS = {
     "回执": re.compile(r"回执"),
     "objective_answer": re.compile(r"\bobjective_answer\b", re.IGNORECASE),
     "current result": re.compile(r"\bcurrent result\b", re.IGNORECASE),
+    # 规划层元评审措辞（结构地图 reason/叙事竞争 risks 等）只描述"如何被审核"，
+    # 不是论文对读者的论证语言，泄漏进正文一律视为 E001。
+    "证据桥": re.compile(r"证据桥"),
+    "可信边界": re.compile(r"可信边界"),
+    "结构证据": re.compile(r"结构证据"),
+    "支持边界": re.compile(r"支持边界"),
+    "关键验证证据": re.compile(r"关键验证证据"),
 }
 _ADVISORY_INTERNAL_TERMS = (
     "oracle",

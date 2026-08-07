@@ -140,6 +140,58 @@ def test_report_style_audit_covers_depth_density_and_hero_binding(
     assert "hero_figure_not_in_argument" in warning_codes
 
 
+def test_planning_layer_vocabulary_triggers_e001(tmp_path: Path) -> None:
+    """结构地图/叙事竞争层的元评审措辞泄漏进正文应形成 E001 硬错误。"""
+    run_dir = _run(tmp_path, "planning-vocabulary-leak")
+    source = run_dir / "paper/sections/main.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section{Q1}\n"
+        "图\\ref{fig:shared-edge}给出实际网络中的证据桥。\n"
+        "\\section{Q2}\n"
+        "该临界反例构成结构证据，说明逐源判定不可靠。\n"
+        "\\section{Q3}\n"
+        "验证只保留会改变模型可信边界的四类证据。\n"
+        "表\\ref{tab:validation}给出四类关键验证证据及支持边界。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+    error_codes = {item["code"] for item in report["errors"]}
+
+    assert "E001" in error_codes
+    assert report["advisory_only"] is False
+    e001 = next(item for item in report["errors"] if item["code"] == "E001")
+    assert {"证据桥", "可信边界", "结构证据", "支持边界", "关键验证证据"} <= set(
+        e001["terms"]
+    )
+
+
+def test_verification_language_does_not_trigger_e001(tmp_path: Path) -> None:
+    """正常的验证/复核学术表达不属于规划层元语言，不应触发 E001。"""
+    run_dir = _run(tmp_path, "verification-language-ok")
+    source = run_dir / "paper/sections/main.tex"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "\\section*{摘要}\n"
+        "共享容量约束是统一困难，活跃约束揭示边际收益递减规律。\n"
+        "\\section{Q1}\n"
+        "采用独立程序对到达时刻进行复算，得到一致结果。\n"
+        "\\section{Q2}\n"
+        "通过解析小网络验证事件传播结果。\n"
+        "\\section{Q3}\n"
+        "该反例说明单源安全并不能推出双源联合安全。\n"
+        "用质量守恒、事件时序、路径到达和连续水深四个维度检验模型。\n",
+        encoding="utf-8",
+    )
+
+    report = audit_report_like_manuscript(run_dir)
+    error_codes = {item["code"] for item in report["errors"]}
+
+    assert "E001" not in error_codes
+    assert report["advisory_only"] is True
+
+
 def test_report_style_hard_errors_use_conservative_context(tmp_path: Path) -> None:
     """附录术语、带统一主线的摘要和单次自然句式不应触发硬错误。"""
     run_dir = _run(tmp_path, "report-style-context")
