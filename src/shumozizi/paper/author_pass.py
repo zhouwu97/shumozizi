@@ -355,8 +355,9 @@ def _visual_requirement_brief(root: Path) -> list[str]:
             # 回退：用 figure_id 构造约定路径。
             include = f"../figures/current/{figure_id}.pdf"
         takeaway = str(item.get("takeaway", item.get("question", ""))).strip()
+        q_label = f"Q{str(question_id).lstrip('Q')}" if question_id else ""
         lines.append(
-            f"- Q{question_id} 图 {figure_id}：`\\includegraphics[width=0.9\\textwidth]{{{include}}}`"
+            f"- {q_label} 图 {figure_id}：`\\includegraphics[width=0.9\\textwidth]{{{include}}}`"
             + (f" —— {takeaway}" if takeaway else "")
         )
         referenced += 1
