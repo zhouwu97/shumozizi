@@ -1340,6 +1340,15 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
         errors.extend(validate_candidate_visual_assessment(run_dir))
         errors.extend(validate_pending_visual_promotions(run_dir))
         errors.extend(validate_required_figure_consumption(run_dir))
+        # 生产事实链闭合门：frozen answer -> registered result -> paper answer map
+        # -> figure source 必须一致，否则 RENDER_FORBIDDEN。
+        from shumozizi.simple.answer_consistency import answer_consistency_gate
+
+        consistency = answer_consistency_gate(run_dir)
+        errors.extend(
+            f"ANSWER_CONSISTENCY_GATE: [{v.get('question_id')}] {v.get('code')}: {v.get('detail')}"
+            for v in consistency.get("violations", [])
+        )
         plan_path = run_dir / _FIGURE_PLAN_PATH
         if plan_path.is_file():
             try:

@@ -107,6 +107,18 @@ def answer_consistency_gate(run_dir: Path) -> dict[str, Any]:
                             "detail": f"{ana_primary} 登记输出 {relative} 在磁盘缺失",
                         }
                     )
+        # 2b) 已登记结果的指标必须非空且可追溯；空 metrics 说明是占位登记，
+        #     不能支撑正式答案（如 q3_threshold_search 的 metrics={}）。
+        if ana_primary and ana_primary in registered:
+            metrics = registered[ana_primary].get("metrics")
+            if not isinstance(metrics, dict) or not metrics:
+                violations.append(
+                    {
+                        "question_id": question_id,
+                        "code": "registered_result_empty_metrics",
+                        "detail": f"{ana_primary} 的登记指标为空，不能作为正式答案证据",
+                    }
+                )
         # 3) 论文 answer-map 必须引用冻结答案的 primary result，且全部已登记。
         paper_ids = _paper_result_ids(paper, question_id)
         if paper_ids:

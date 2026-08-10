@@ -58,6 +58,7 @@ def _consistent_run(tmp_path: Path) -> Path:
                     "question_id": "Q1",
                     "status": "current",
                     "execution_valid": True,
+                    "metrics": {"conductive": 1},
                     "output_files": ["results/raw/q1-final.json"],
                 }
             ],
@@ -106,6 +107,21 @@ def test_gate_blocks_missing_registered_artifact(tmp_path: Path) -> None:
     assert verdict["status"] == "blocked"
     codes = {item["code"] for item in verdict["violations"]}
     assert "registered_artifact_missing" in codes
+
+
+def test_gate_blocks_empty_metrics_placeholder_registration(tmp_path: Path) -> None:
+    """已登记结果的指标为空（占位登记）必须 RENDER_FORBIDDEN。"""
+    run_dir = _consistent_run(tmp_path)
+    index_path = run_dir / "results/index.json"
+    index = __import__("json").loads(index_path.read_text(encoding="utf-8"))
+    for result in index["results"]:
+        if result["result_id"] == "q1-final":
+            result["metrics"] = {}
+    index_path.write_text(__import__("json").dumps(index, ensure_ascii=False), encoding="utf-8")
+    verdict = answer_consistency_gate(run_dir)
+    assert verdict["status"] == "blocked"
+    codes = {item["code"] for item in verdict["violations"]}
+    assert "registered_result_empty_metrics" in codes
 
 
 def test_gate_blocks_paper_not_aligned(tmp_path: Path) -> None:
