@@ -269,17 +269,14 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
             }
         except (OSError, ValueError):
             core_questions = set()
-    # 基线：无论 FIGURE_PLAN 版本，正文必须引用至少一张 current 正式图。
-    # 这修复"图已生成并登记但论文完全没有图"的证据链断点——旧门依赖
-    # FIGURE_PLAN 2.1 才启用，fresh run 无 FIGURE_PLAN 时完全休眠。
+    # 基线：无 FIGURE_PLAN 时，正文必须引用至少一张 current 正式图。
+    # 这修复"图已生成并登记但论文完全没有图"的证据链断点——旧门只在
+    # FIGURE_PLAN 2.1 存在时才启用，fresh run 无 FIGURE_PLAN 时完全休眠。
+    # 存在 FIGURE_PLAN 时走下方更完整的 2.1--2.4 逻辑，不在此短路。
     baseline_errors = _validate_paper_references_current_figure(run_dir)
-    if baseline_errors:
-        return baseline_errors
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
-        # 新 Author Pass 允许先在 Visual Sandbox 探索；只有真正进入正文的 current 图
-        # 才需要来源、QA、引用和解释闭环。
-        return []
+        return baseline_errors
     try:
         plan = load_json(plan_path)
         plan_version = plan.get("schema_version")
