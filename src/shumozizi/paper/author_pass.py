@@ -318,31 +318,54 @@ def _citation_brief(root: Path) -> list[str]:
 
 
 def _visual_requirement_brief(root: Path) -> list[str]:
-    """把论文驱动视觉需求压缩为 Author 可读提示，不暴露后台台账。"""
-    payload = _optional_json(root, "paper/generated/VISUAL_REQUIREMENTS.json")
-    requirements = payload.get("requirements", [])
-    lines = ["## 论文驱动视觉需求", ""]
-    if not isinstance(requirements, list) or not requirements:
+    """把已就绪的 current 正式图压缩为 Author 必须引用的资产清单。
+
+    与旧版的关键区别：不再把视觉状态写成"需求需要视觉评估"（会误导 Author
+    以为图还没生成），而是列出 figures/index.json 中 status=current 的正式图、
+    它们在正文可直接引用的 ``\\includegraphics`` 相对路径（从 paper/ 出发），
+    并给出强制要求：正文必须引用其中的大部分，每张配图注与一句"展示了什么"的解读。
+    这修复"图生产了但论文没有图"的证据链断点。
+    """
+    lines = ["## 已就绪正式图（必须引用，不得写纯文字论文）", ""]
+    figures = _optional_json(root, "figures/index.json").get("figures", [])
+    current = [
+        item
+        for item in figures
+        if isinstance(item, dict) and item.get("status") == "current"
+    ] if isinstance(figures, list) else []
+    if not current:
         lines.extend(
             [
-                "- 当前论证没有识别出必须新增的视觉需求；这不构成固定图数目标。",
+                "- 当前没有已就绪的 current 正式图；若论证需要图，提出返工请求补充，不得用装饰图替代。",
                 "",
             ]
         )
         return lines
-    for item in requirements:
-        if not isinstance(item, dict):
-            continue
-        status = "已有正式图覆盖" if item.get("status") == "covered" else "需要视觉评估"
-        tier = "主图候选" if item.get("figure_tier") == "hero_figure" else "论证支持图"
+    referenced = 0
+    for item in current:
+        figure_id = str(item.get("figure_id", ""))
+        question_id = str(item.get("question_id", ""))
+        # 取 current 输出中的 pdf 作为正文引用路径。
+        include = ""
+        for output in item.get("outputs", []):
+            if isinstance(output, dict) and str(output.get("path", "")).startswith("figures/current/") and str(output.get("path")).endswith(".pdf"):
+                include = "../" + str(output["path"])
+                break
+        if not include:
+            # 回退：用 figure_id 构造约定路径。
+            include = f"../figures/current/{figure_id}.pdf"
+        takeaway = str(item.get("takeaway", item.get("question", ""))).strip()
         lines.append(
-            f"- {item.get('question_id', '')} / {tier} / {status}："
-            f"{item.get('visual_question', '')}"
+            f"- Q{question_id} 图 {figure_id}：`\\includegraphics[width=0.9\\textwidth]{{{include}}}`"
+            + (f" —— {takeaway}" if takeaway else "")
         )
+        referenced += 1
     lines.extend(
         [
             "",
-            "主图只保留最值得记忆的少数视觉；论证支持图按推导、机制、比较和边界的实际需要增加，不设总数上限。",
+            f"以上 {referenced} 张正式图已由 current production 数据确定性生成，正文必须引用其中的大部分，"
+            "每张配图号、图注，并在图注后写一句'这张图展示了什么、能得出什么结论'。"
+            "不要因为图注复杂就省略图。",
             "",
         ]
     )
@@ -569,6 +592,26 @@ def _render_author_brief(
             "正式答案、数字、题意语义和主张边界不可擅自修改。若无法解释结果或缺少必要对照、机制、图或证据，应提出返工请求。",
             "",
             "前五页优先建立答案与证据链：第 1 页摘要直接报告各问方法、关键数值、条件边界和模型判定；第 2 页给出逐问直接答案表与共享对象路线图；第 3 页呈现原始数据直觉和分析窗口；第 4–5 页尽早放置至少一张决定性 Hero 图及其机制解释。不要等到后半篇才首次展示主要结论。",
+            "",
+            "结构必须严格遵循国赛（CUMCM）范式，以下各模块独立成节，不得混写："
+            "（1）问题重述（用自己的话精炼重述背景、条件与四个问题）；"
+            "（2）模型假设（每条假设配合理性说明）；"
+            "（3）符号说明（变量/含义/取值三列）；"
+            "（4）模型建立与求解（Q1–Q4 作为模型应用子节）；"
+            "（5）模型检验与分析（对照验证、灵敏度、对比）；"
+            "（6）模型评价与推广（优缺点与推广价值）。",
+            "",
+            "文风必须是学术论文而非技术报告："
+            "全文用被动语态与客观陈述，禁止'我们/大家'等第一人称；"
+            "每段第一句是主题句，后续围绕它展开；"
+            "每个数值结果后必须解读其物理/工程意义（'这表明……'、'其原因在于……'）；"
+            "正文叙述中尽量用文字描述代替符号（如'介质 A 的最优体积分数为 1.24%'而非只有 $f_A^*=1.24\\%$）。",
+            "",
+            "初稿完成后必须执行 SECOND STEP：通读全文，按每个结果的数据特征"
+            "（分布/概率/优化/关系/网络）补充至少 3 张、2 种以上类型的高级图"
+            "（小提琴图、森林图、帕累托前沿、可行域等高线、CI 误差带等），"
+            "复用 mathmodel-advanced-figures skill 的统一样式与 production 数据，"
+            "每张配图号、图注与一句'展示了什么、能得出什么结论'。只增强可视化，不改数据、模型与结论。",
             "",
             "不要把审核清单、内部结果编号、回执、哈希、工作流阶段或工具探测写入正文。",
             "",

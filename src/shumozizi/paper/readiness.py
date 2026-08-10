@@ -191,6 +191,64 @@ def _normalized_latex_path(value: str) -> str:
     return normalized[: -len(suffix)] if suffix in {".pdf", ".png", ".jpg", ".jpeg"} else normalized
 
 
+def _paper_tex_text(run_dir: Path) -> str:
+    """拼接论文正文 tex（main + sections + longform 源）用于图引用扫描。"""
+    parts: list[str] = []
+    candidates = [
+        run_dir / "paper" / "main.tex",
+        run_dir / "paper" / "longform-source.tex",
+        run_dir / "paper" / "longform-draft.tex",
+    ]
+    sections_dir = run_dir / "paper" / "sections"
+    if sections_dir.is_dir():
+        candidates.extend(sorted(sections_dir.glob("*.tex")))
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path)
+        if key in seen or not path.is_file():
+            continue
+        seen.add(key)
+        try:
+            parts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return "\n".join(parts)
+
+
+def _validate_paper_references_current_figure(run_dir: Path) -> list[str]:
+    """编译后硬门：正文必须引用至少一张 current 正式图，否则 RENDER_FORBIDDEN。
+
+    图已生成并登记但论文完全没有 \\includegraphics 是"论文没有图"的根因之一；
+    此检查不依赖 FIGURE_PLAN 版本，任何提交前都必须通过。
+    """
+    tex = _paper_tex_text(run_dir)
+    if not tex.strip():
+        return []  # 无 tex 时由其他就绪门判定，这里不做图消费判断。
+    import re
+
+    includes = re.findall(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}", tex)
+    included = {_normalized_latex_path(item) for item in includes}
+    try:
+        figures = load_json(run_dir / "figures" / "index.json").get("figures", [])
+    except (OSError, ValueError, TypeError):
+        figures = []
+    current_stems: set[str] = set()
+    for figure in figures:
+        if not isinstance(figure, dict) or figure.get("status") != "current":
+            continue
+        for output in figure.get("outputs", []):
+            if isinstance(output, dict) and str(output.get("path", "")).startswith("figures/current/"):
+                current_stems.add(_normalized_latex_path(str(output["path"])))
+        current_stems.add(_normalized_latex_path(f"figures/current/{figure.get('figure_id', '')}"))
+    matched = included & current_stems
+    if not matched:
+        return [
+            "RENDER_FORBIDDEN：正文没有引用任何 current 正式图；"
+            "author-pass 必须把已就绪图（figures/index.json 的 current 条目）插入正文并配图注解读。"
+        ]
+    return []
+
+
 def validate_required_figure_consumption(run_dir: Path) -> list[str]:
     """复验 FIGURE_PLAN 2.1--2.4 的必需图已生成并在 LaTeX 正文中消费。
 
@@ -211,6 +269,12 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
             }
         except (OSError, ValueError):
             core_questions = set()
+    # 基线：无论 FIGURE_PLAN 版本，正文必须引用至少一张 current 正式图。
+    # 这修复"图已生成并登记但论文完全没有图"的证据链断点——旧门依赖
+    # FIGURE_PLAN 2.1 才启用，fresh run 无 FIGURE_PLAN 时完全休眠。
+    baseline_errors = _validate_paper_references_current_figure(run_dir)
+    if baseline_errors:
+        return baseline_errors
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
         # 新 Author Pass 允许先在 Visual Sandbox 探索；只有真正进入正文的 current 图
