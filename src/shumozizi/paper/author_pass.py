@@ -317,6 +317,38 @@ def _citation_brief(root: Path) -> list[str]:
     return lines
 
 
+def _visual_requirement_brief(root: Path) -> list[str]:
+    """把论文驱动视觉需求压缩为 Author 可读提示，不暴露后台台账。"""
+    payload = _optional_json(root, "paper/generated/VISUAL_REQUIREMENTS.json")
+    requirements = payload.get("requirements", [])
+    lines = ["## 论文驱动视觉需求", ""]
+    if not isinstance(requirements, list) or not requirements:
+        lines.extend(
+            [
+                "- 当前论证没有识别出必须新增的视觉需求；这不构成固定图数目标。",
+                "",
+            ]
+        )
+        return lines
+    for item in requirements:
+        if not isinstance(item, dict):
+            continue
+        status = "已有正式图覆盖" if item.get("status") == "covered" else "需要视觉评估"
+        tier = "主图候选" if item.get("figure_tier") == "hero_figure" else "论证支持图"
+        lines.append(
+            f"- {item.get('question_id', '')} / {tier} / {status}："
+            f"{item.get('visual_question', '')}"
+        )
+    lines.extend(
+        [
+            "",
+            "主图只保留最值得记忆的少数视觉；论证支持图按推导、机制、比较和边界的实际需要增加，不设总数上限。",
+            "",
+        ]
+    )
+    return lines
+
+
 def _selected_narrative(root: Path, package_sha256: str) -> dict[str, Any]:
     """返回仍绑定当前 Research Package 的已选叙事候选。"""
     payload = _optional_json(root, NARRATIVE_COMPETITION_PATH.as_posix())
@@ -427,6 +459,24 @@ def _render_research_package(
                 "",
             ]
         )
+        objective = answer.get("objective_answer")
+        boundary = (
+            objective.get("claim_boundary")
+            if isinstance(objective, dict)
+            else None
+        )
+        if isinstance(boundary, dict):
+            label = str(boundary.get("label", "")).strip()
+            statement = str(boundary.get("statement", "")).strip()
+            if label and statement:
+                lines.append(f"主张边界（{label}）：{statement}")
+                assumptions = boundary.get("assumptions", [])
+                if isinstance(assumptions, list) and assumptions:
+                    lines.append("必要假设：" + "；".join(map(str, assumptions)))
+                range_ids = boundary.get("range_result_ids", [])
+                if isinstance(range_ids, list) and range_ids:
+                    lines.append("范围证据结果：" + "、".join(map(str, range_ids)))
+                lines.append("")
         metrics = result.get("metrics", {})
         if isinstance(metrics, dict) and metrics:
             visible = [
@@ -456,6 +506,8 @@ def _render_research_package(
                 lines.extend([f"**{title}**", "", content, ""])
     if not substantive:
         lines.extend(["当前没有已登记的关键推导或机制材料；Author 应提出返工请求，不得用结果报账替代论证。", ""])
+
+    lines.extend(_visual_requirement_brief(root))
 
     figures = _optional_json(root, "figures/index.json").get("figures", [])
     lines.extend(["## 可用正式图", ""])
@@ -515,6 +567,8 @@ def _render_author_brief(
             "先写完整科学论文，不以当前页数、章节数或图数为目标。可以合并问题、重排章节、展开推导、改变图文节奏和叙事焦点。",
             "",
             "正式答案、数字、题意语义和主张边界不可擅自修改。若无法解释结果或缺少必要对照、机制、图或证据，应提出返工请求。",
+            "",
+            "前五页优先建立答案与证据链：第 1 页摘要直接报告各问方法、关键数值、条件边界和模型判定；第 2 页给出逐问直接答案表与共享对象路线图；第 3 页呈现原始数据直觉和分析窗口；第 4–5 页尽早放置至少一张决定性 Hero 图及其机制解释。不要等到后半篇才首次展示主要结论。",
             "",
             "不要把审核清单、内部结果编号、回执、哈希、工作流阶段或工具探测写入正文。",
             "",
@@ -618,6 +672,15 @@ def prepare_longform_author(
     from shumozizi.knowledge.inspiration import build_inspiration_context
 
     inspiration = build_inspiration_context(root)
+    from shumozizi.paper.visual_requirements import (
+        VISUAL_REQUIREMENTS_PATH,
+        build_visual_requirements_from_paper,
+    )
+
+    visual_requirements = build_visual_requirements_from_paper(
+        root,
+        sync_opportunities=False,
+    )
     _atomic_text(package_path, _render_research_package(root, state, answers, results))
     narrative = _selected_narrative(root, sha256_file(package_path))
     _atomic_text(brief_path, _render_author_brief(state, inspiration, narrative))
@@ -636,6 +699,11 @@ def prepare_longform_author(
         "author_brief": {
             "path": AUTHOR_BRIEF_PATH.as_posix(),
             "sha256": sha256_file(brief_path),
+        },
+        "visual_requirements": {
+            "path": VISUAL_REQUIREMENTS_PATH.as_posix(),
+            "sha256": sha256_file(root / VISUAL_REQUIREMENTS_PATH),
+            "open_count": visual_requirements["summary"]["open"],
         },
         "formal_result_digest": formal_result_digest(root),
         "prepared_at": utc_now(),
@@ -680,6 +748,11 @@ def verify_author_pass(run_dir: Path) -> dict[str, Any]:
             path = root / record["path"]
             if not path.is_file() or record.get("sha256") != sha256_file(path):
                 errors.append(f"{field} 已变化或缺失")
+        visual = payload.get("visual_requirements")
+        if isinstance(visual, dict):
+            visual_path = root / "paper/generated/VISUAL_REQUIREMENTS.json"
+            if not visual_path.is_file() or visual.get("sha256") != sha256_file(visual_path):
+                errors.append("visual_requirements 已变化或缺失")
         if payload.get("formal_result_digest") != formal_result_digest(root):
             errors.append("正式结果已变化，Author Pass 必须重建")
     except (ContractError, KeyError, OSError, TypeError, ValueError) as exc:

@@ -27,6 +27,10 @@ venv/
 .DS_Store
 Thumbs.db
 
+# 工具生成索引与运行延续状态
+.codegraph/
+.omo/
+
 # 编译和临时文件
 tmp/
 cache/

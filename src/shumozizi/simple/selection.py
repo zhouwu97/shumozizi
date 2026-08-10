@@ -13,6 +13,35 @@ from shumozizi.simple.state import utc_now
 REGISTRY_PATH = Path("results/candidate_registry.json")
 _DIRECTIONS = {"maximize", "minimize"}
 _SEMANTICS = {"additive", "union"}
+_PROMOTABLE_RESULT_STATUSES = {"current", "candidate_eligible"}
+
+
+def promotable_production_result(result: dict[str, Any]) -> bool:
+    """判断结果能否进入 verified incumbent 选择。
+
+    历史索引没有 ``provisional`` 字段时按 ``False`` 解释，以维持已完成 production
+    运行的读取兼容；新暂存记录必须显式完成非暂存 production 重跑后才可被提升。
+
+    Args:
+        result: ``results/index.json`` 中的单条结果。
+
+    Returns:
+        仅当条目是可验证的正式 current 或受控候选时为真。
+    """
+    return bool(
+        result.get("execution_valid") is True
+        and result.get("execution_mode", "production") == "production"
+        and result.get("provisional", False) is False
+        and result.get("status") in _PROMOTABLE_RESULT_STATUSES
+    )
+
+
+def require_promotable_production_result(result: dict[str, Any]) -> None:
+    """拒绝暂存、诊断或已失效结果绕过正式晋级边界。"""
+    if not promotable_production_result(result):
+        raise ContractError(
+            "候选必须是非暂存的 production current 或 candidate_eligible 结果"
+        )
 
 
 def validate_selection_contract(
@@ -259,7 +288,7 @@ def _synchronize_current_results(index: dict[str, Any], registry: dict[str, Any]
         if group.get("best_result_id")
     }
     for result in index["results"]:
-        if result["result_id"] in active and result["execution_valid"]:
+        if result["result_id"] in active and promotable_production_result(result):
             result["status"] = "current"
 
 
@@ -313,12 +342,9 @@ def register_verified_candidate(
     validate_selection_contract(selection_contract)
     index = read_result_index(run_dir)
     result = next((item for item in index["results"] if item["result_id"] == result_id), None)
-    if (
-        result is None
-        or not result["execution_valid"]
-        or result.get("execution_mode", "production") != "production"
-    ):
+    if result is None:
         raise ContractError("候选必须是已登记且 execution_valid=true 的结果")
+    require_promotable_production_result(result)
     objective = selection_contract["objective"]
     metric = str(objective["metric"])
     exact = _exact_metric(result, run_dir, metric)

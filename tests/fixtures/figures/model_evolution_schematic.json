@@ -1,0 +1,15 @@
+{
+  "figure_data": {
+    "nodes": [
+      {"id": "demand", "label": "Demand state", "stage": "Q1"},
+      {"id": "capacity", "label": "Capacity balance", "stage": "Q1"},
+      {"id": "sharing", "label": "Shared resources", "stage": "Q2"},
+      {"id": "robust", "label": "Robust decision", "stage": "Q3"}
+    ],
+    "edges": [
+      {"source": "demand", "target": "sharing", "relation": "inherits"},
+      {"source": "capacity", "target": "sharing", "relation": "couples"},
+      {"source": "sharing", "target": "robust", "relation": "adds uncertainty"}
+    ]
+  }
+}

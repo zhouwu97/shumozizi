@@ -20,6 +20,20 @@ from shumozizi.simple.state import read_simple_state, utc_now
 VISUAL_IDEAS_PATH = Path("figures/visual-ideas.json")
 VISUAL_SANDBOX_ROOT = Path("figures/sandbox")
 VISUAL_COMPETITION_ROOT = Path("figures/reviews/sandbox")
+_PENDING_PROMOTION_STATUS = "selected_pending_promotion"
+
+# 9.2 视觉竞争评审字段：只评价表达方案，不判断科学结论。
+VISUAL_COMPETITION_FIELDS = (
+    "model_object_visibility",
+    "domain_specificity",
+    "mechanism_or_path_visibility",
+    "constraint_or_boundary_visibility",
+    "uncertainty_visibility",
+    "paper_size_legibility",
+    "information_density",
+    "reading_order",
+    "known_risks",
+)
 
 
 def write_visual_ideas(run_dir: Path, ideas: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -40,6 +54,7 @@ def write_visual_ideas(run_dir: Path, ideas: Iterable[dict[str, Any]]) -> dict[s
                 "question": str(raw.get("question", "")).strip(),
                 "sources": list(dict.fromkeys(map(str, raw.get("sources", [])))),
                 "idea": str(raw.get("idea", "")).strip(),
+                "figure_tier": str(raw.get("figure_tier", "supporting_figure")),
                 "status": str(raw.get("status", "sketch")),
                 **(
                     {"selected_candidate": str(raw["selected_candidate"])}
@@ -67,6 +82,55 @@ def read_visual_ideas(run_dir: Path) -> dict[str, Any]:
     return payload
 
 
+def upsert_visual_idea(
+    run_dir: Path,
+    *,
+    idea_id: str,
+    question: str,
+    sources: Iterable[str] = (),
+    idea: str,
+    figure_tier: str = "supporting_figure",
+) -> dict[str, Any]:
+    """登记或更新一个候选设计想法，同时保留既有晋级状态。"""
+    root = run_dir.resolve()
+    path = root / VISUAL_IDEAS_PATH
+    if path.is_file():
+        payload = read_visual_ideas(root)
+    else:
+        payload = {
+            "schema_name": "visual_ideas",
+            "schema_version": "1.0",
+            "run_id": read_simple_state(root)["run_id"],
+            "ideas": [],
+            "updated_at": utc_now(),
+        }
+    existing = next((item for item in payload["ideas"] if item.get("id") == idea_id), None)
+    if existing is None:
+        payload["ideas"].append(
+            {
+                "id": idea_id,
+                "question": question.strip(),
+                "sources": sorted({str(item) for item in sources if str(item).strip()}),
+                "idea": idea.strip(),
+                "figure_tier": figure_tier,
+                "status": "sketch",
+            }
+        )
+    else:
+        existing.update(
+            {
+                "question": question.strip(),
+                "sources": sorted({str(item) for item in sources if str(item).strip()}),
+                "idea": idea.strip(),
+                "figure_tier": figure_tier,
+            }
+        )
+    payload["updated_at"] = utc_now()
+    require_valid(payload, "visual_ideas")
+    atomic_json(path, payload)
+    return payload
+
+
 def sandbox_candidates(run_dir: Path, idea_id: str) -> list[Path]:
     """列出某想法的草图文件；草图可只有 PNG、PDF 或其他静态图格式。"""
     root = run_dir.resolve()
@@ -88,8 +152,15 @@ def record_visual_competition(
     full_width_value: str,
     table_redundancy: str,
     rationale: str,
+    candidate_structures: dict[str, str] | None = None,
+    **review_fields: object,
 ) -> dict[str, Any]:
-    """记录候选图竞争结论，不把草图误登记为 current 证据。"""
+    """记录候选图竞争结论，不把草图误登记为 current 证据。
+
+    hero_figure 必须同时给出 9.2 评审字段（对象可见性、领域特异性、机制/
+    路径、边界、不确定性、论文尺寸可读性、信息密度、阅读顺序与已知风险）；
+    supporting 图至少保留既有五项判断，评审字段可后续补充。
+    """
     root = run_dir.resolve()
     ideas = read_visual_ideas(root)
     target = next((item for item in ideas["ideas"] if item["id"] == idea_id), None)
@@ -99,15 +170,43 @@ def record_visual_competition(
     selected = resolve_inside(root, selected_candidate, must_exist=True)
     if selected not in candidates:
         raise ContractError("selected_candidate 必须位于对应 figures/sandbox 目录")
+    structures = candidate_structures or {}
+    relative_candidates = [relative_inside(root, path).as_posix() for path in candidates]
+    if target.get("figure_tier") == "hero_figure":
+        if len(candidates) < 2:
+            raise ContractError("hero_figure 至少需要两个候选设计")
+        missing = [path for path in relative_candidates if not str(structures.get(path, "")).strip()]
+        if missing:
+            raise ContractError("hero_figure 必须为每个候选声明 visual_structure")
+        if len({str(structures[path]).strip() for path in relative_candidates}) < 2:
+            raise ContractError("hero_figure 候选必须包含至少两种不同 visual_structure")
+        missing_reviews = [
+            field
+            for field in VISUAL_COMPETITION_FIELDS
+            if not str(review_fields.get(field, "")).strip()
+        ]
+        if missing_reviews:
+            raise ContractError(
+                "hero_figure 评审必须填写 9.2 字段: " + "、".join(missing_reviews)
+            )
     records = [
-        {"path": relative_inside(root, path).as_posix(), "sha256": sha256_file(path)}
+        {
+            "path": relative_inside(root, path).as_posix(),
+            "sha256": sha256_file(path),
+            **(
+                {"visual_structure": str(structures[relative_inside(root, path).as_posix()]).strip()}
+                if relative_inside(root, path).as_posix() in structures
+                else {}
+            ),
+        }
         for path in candidates
     ]
     payload = {
         "schema_name": "visual_competition",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": ideas["run_id"],
         "idea_id": idea_id,
+        "figure_tier": target.get("figure_tier", "supporting_figure"),
         "reviewer_context_id": reviewer_context_id,
         "candidates": records,
         "selected_candidate": relative_inside(root, selected).as_posix(),
@@ -115,6 +214,11 @@ def record_visual_competition(
         "full_width_value": full_width_value,
         "table_redundancy": table_redundancy,
         "rationale": rationale,
+        **{
+            field: str(review_fields[field]).strip()
+            for field in VISUAL_COMPETITION_FIELDS
+            if str(review_fields.get(field, "")).strip()
+        },
         "recorded_at": utc_now(),
     }
     require_valid(payload, "visual_competition")
@@ -127,8 +231,108 @@ def record_visual_competition(
     return payload
 
 
+def _current_figure_version(root: Path, figure_id: str) -> str | None:
+    """从 current 图索引或其晋级回执中读取当前候选版本。
+
+    旧图可能没有版本字段；此时明确返回 ``None``，避免把不存在的版本号伪造为
+    已完成闭环的证据。
+    """
+    index_path = root / "figures" / "index.json"
+    if not index_path.is_file():
+        return None
+    try:
+        index = load_json(index_path)
+        current = [
+            item
+            for item in index.get("figures", [])
+            if isinstance(item, dict)
+            and item.get("figure_id") == figure_id
+            and item.get("status") == "current"
+        ]
+        if not current:
+            return None
+        entry = current[-1]
+        version = entry.get("selected_version")
+        if isinstance(version, str) and version.strip():
+            return version
+        receipt = entry.get("promotion_receipt")
+        if not isinstance(receipt, dict) or not isinstance(receipt.get("path"), str):
+            return None
+        receipt_path = resolve_inside(root, receipt["path"], must_exist=True)
+        recorded = load_json(receipt_path).get("candidate_version")
+        return recorded if isinstance(recorded, str) and recorded.strip() else None
+    except (ContractError, OSError, TypeError, ValueError):
+        return None
+
+
+def pending_visual_promotions(run_dir: Path) -> list[dict[str, Any]]:
+    """返回尚未晋级为 current 的 Sandbox 选图记录。
+
+    缺少 Sandbox 文件表示尚无草图流程，不能视为错误；调用方可据此决定是否需要
+    阻断最终 Candidate。损坏的已存在文档仍由 ``read_visual_ideas`` 显式报错。
+    """
+    root = run_dir.resolve()
+    if not (root / VISUAL_IDEAS_PATH).is_file():
+        return []
+    ideas = read_visual_ideas(root)
+    pending: list[dict[str, Any]] = []
+    for item in ideas["ideas"]:
+        record = item.get("pending_promotion")
+        if item.get("status") != _PENDING_PROMOTION_STATUS or not isinstance(record, dict):
+            continue
+        pending.append({"idea_id": item["id"], **record})
+    return pending
+
+
+def close_pending_visual_promotion(
+    run_dir: Path,
+    *,
+    figure_id: str,
+    candidate_version: str,
+    promotion_receipt_path: str,
+) -> list[str]:
+    """在正式图晋级后关闭匹配的 Sandbox pending 状态。
+
+    只关闭图 ID 和候选版本同时匹配的记录，避免较早版本的 promotion 意外覆盖
+    已选中的更新设计。
+    """
+    root = run_dir.resolve()
+    if not (root / VISUAL_IDEAS_PATH).is_file():
+        return []
+    ideas = read_visual_ideas(root)
+    receipt = resolve_inside(root, promotion_receipt_path, must_exist=True)
+    closed: list[str] = []
+    for item in ideas["ideas"]:
+        pending = item.get("pending_promotion")
+        if (
+            item.get("status") != _PENDING_PROMOTION_STATUS
+            or not isinstance(pending, dict)
+            or pending.get("figure_id") != figure_id
+            or pending.get("candidate_version") != candidate_version
+        ):
+            continue
+        item["status"] = "promoted"
+        item.pop("pending_promotion", None)
+        item["promotion_receipt"] = {
+            "path": relative_inside(root, receipt).as_posix(),
+            "sha256": sha256_file(receipt),
+            "candidate_version": candidate_version,
+            "promoted_at": utc_now(),
+        }
+        closed.append(str(item["id"]))
+    if closed:
+        ideas["updated_at"] = utc_now()
+        require_valid(ideas, "visual_ideas")
+        atomic_json(root / VISUAL_IDEAS_PATH, ideas)
+    return closed
+
+
 def graduate_visual_candidate(
-    run_dir: Path, idea_id: str, *, candidate_version: str = "v1"
+    run_dir: Path,
+    idea_id: str,
+    *,
+    candidate_version: str = "v1",
+    figure_id: str | None = None,
 ) -> dict[str, Any]:
     """冻结胜出设计参考，并要求从 current 数据重新生成正式图。
 
@@ -143,17 +347,36 @@ def graduate_visual_candidate(
         item["sha256"] for item in review["candidates"] if item["path"] == review["selected_candidate"]
     ):
         raise ContractError("胜出草图已变化，必须重新视觉竞争")
-    target_dir = root / "figures/work" / idea_id / candidate_version
+    target_figure_id = figure_id or idea_id
+    if not target_figure_id.replace("-", "").replace("_", "").replace(".", "").isalnum():
+        raise ContractError("figure_id 必须是字母、数字、点、连字符或下划线")
+    target_dir = root / "figures/work" / target_figure_id / candidate_version
     ideas = read_visual_ideas(root)
     item = next(raw for raw in ideas["ideas"] if raw["id"] == idea_id)
-    item["status"] = "selected"
+    selected_reference = relative_inside(root, source).as_posix()
+    selected_sha256 = sha256_file(source)
+    item["status"] = _PENDING_PROMOTION_STATUS
+    item["pending_promotion"] = {
+        "status": _PENDING_PROMOTION_STATUS,
+        "figure_id": target_figure_id,
+        "candidate_version": candidate_version,
+        "selected_design_reference": selected_reference,
+        "selected_design_sha256": selected_sha256,
+        "current_version": _current_figure_version(root, target_figure_id),
+        "target_work_dir": relative_inside(root, target_dir).as_posix(),
+        "selected_at": utc_now(),
+    }
     ideas["updated_at"] = utc_now()
+    require_valid(ideas, "visual_ideas")
     atomic_json(root / VISUAL_IDEAS_PATH, ideas)
     return {
         "idea_id": idea_id,
+        "figure_id": target_figure_id,
         "candidate_version": candidate_version,
-        "selected_design_reference": relative_inside(root, source).as_posix(),
-        "selected_design_sha256": sha256_file(source),
+        "selected_design_reference": selected_reference,
+        "selected_design_sha256": selected_sha256,
+        "current_version": item["pending_promotion"]["current_version"],
+        "status": _PENDING_PROMOTION_STATUS,
         "formal_render_required": True,
         "target_work_dir": relative_inside(root, target_dir).as_posix(),
         "next_action": "regenerate_from_current_sources",

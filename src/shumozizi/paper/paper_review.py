@@ -18,6 +18,25 @@ _BLOCK_END = "<!-- PAPER_REVIEW_FINDINGS:END -->"
 _REPAIR_TYPES = ("science", "argument", "style", "figure", "render")
 _HIGH_PRIORITY_CLOSED = {"repaired", "false_positive"}
 _DISPOSITIONED = {"accepted", "repaired", "false_positive", "deferred_with_reason"}
+_REPORT_STYLE_REPAIR_ONLY_CODES = frozenset(
+    {
+        "REPORT_STYLE_PATTERN",
+        "PAPER_SECTION_UNDERDEVELOPED",
+        "core_question_without_derivation",
+        "core_question_without_mechanism",
+        "generic_question_heading_repetition",
+        "NARRATIVE_SCARCITY_REVIEW",
+    }
+)
+
+
+def _report_style_gate_code(item: Mapping[str, Any]) -> str | None:
+    """识别高置信度报告体 finding；其余编辑信号继续保持 advisory。"""
+    serialized = json.dumps(dict(item), ensure_ascii=False).casefold()
+    return next(
+        (code for code in _REPORT_STYLE_REPAIR_ONLY_CODES if code.casefold() in serialized),
+        None,
+    )
 
 
 def _atomic_text(path: Path, text: str) -> None:
@@ -107,6 +126,15 @@ def paper_review_errors(document: Mapping[str, Any], *, run_dir: Path | None = N
             errors.append(f"{label} 已处置但缺少 evidence_of_closure")
         if item.get("severity") in {"P0", "P1"} and status not in _HIGH_PRIORITY_CLOSED:
             errors.append(f"{label} 是未闭合的 {item.get('severity')} finding")
+        report_style_code = _report_style_gate_code(item)
+        if (
+            report_style_code is not None
+            and status in _DISPOSITIONED
+            and status not in _HIGH_PRIORITY_CLOSED
+        ):
+            errors.append(
+                f"{label} 命中高置信度报告体 {report_style_code}，候选稿只能 repaired 或 false_positive"
+            )
         if root is not None:
             for target in item.get("target_files", []):
                 try:
@@ -268,11 +296,20 @@ def paper_review_status(run_dir: Path) -> dict[str, Any]:
     """汇总 PAPER_REVIEW 的闭环状态，供 CLI 与候选门禁复用。"""
     document = load_paper_review(run_dir)
     unclosed = unclosed_high_priority_findings(document)
+    unclosed_report_style = [
+        str(item.get("finding_id"))
+        for item in document.get("findings", [])
+        if isinstance(item, Mapping)
+        and _report_style_gate_code(item) is not None
+        and item.get("status") not in _HIGH_PRIORITY_CLOSED
+    ]
+    errors = paper_review_errors(document, run_dir=run_dir)
     return {
-        "valid": not paper_review_errors(document, run_dir=run_dir),
+        "valid": not errors,
         "finding_count": len(document["findings"]),
         "unclosed_p0_p1": unclosed,
-        "candidate_allowed": not unclosed,
+        "unclosed_report_style": unclosed_report_style,
+        "candidate_allowed": not unclosed and not unclosed_report_style and not errors,
     }
 
 

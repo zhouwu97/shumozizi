@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/paper_argument_units.schema.json",
+  "title": "Arguments extracted from the actual paper source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "source_path", "source_sha256",
+    "extraction_method", "arguments", "generated_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "paper_argument_units"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "source_path": {"type": ["string", "null"]},
+    "source_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "extraction_method": {"const": "structured_text_heuristic"},
+    "arguments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "argument_id", "argument_digest", "question_id", "claim", "role",
+          "source_span", "source_result_ids", "visualizability", "existing_figure_ids"
+        ],
+        "properties": {
+          "argument_id": {"type": "string", "minLength": 1},
+          "argument_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "question_id": {"type": "string", "minLength": 1},
+          "claim": {"type": "string", "minLength": 1},
+          "role": {"enum": ["model_understanding", "decisive_evidence", "mechanism", "boundary", "claim"]},
+          "source_span": {"type": "string", "minLength": 1},
+          "source_result_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "visualizability": {"enum": ["high", "medium", "low"]},
+          "existing_figure_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  }
+}

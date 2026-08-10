@@ -1,0 +1,15 @@
+{
+  "figure_data": {
+    "nodes": [
+      {"id": "claim", "label": "Plan A is preferred", "kind": "Claim"},
+      {"id": "derivation", "label": "Capacity lower bound", "kind": "Derivation"},
+      {"id": "experiment", "label": "Exact-score comparison", "kind": "Evidence"},
+      {"id": "boundary", "label": "Valid for demand <= 120", "kind": "Boundary"}
+    ],
+    "edges": [
+      {"source": "derivation", "target": "claim", "relation": "supports"},
+      {"source": "experiment", "target": "claim", "relation": "confirms"},
+      {"source": "boundary", "target": "claim", "relation": "limits"}
+    ]
+  }
+}

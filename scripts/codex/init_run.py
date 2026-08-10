@@ -50,6 +50,9 @@ def main() -> int:
         else:
             problem = None
             default_id = f"v3-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        workflow_version = (
+            "3.2" if args.workflow == "competition-first-v3.2" else "3.1"
+        )
         run_dir = initialize_simple_run(
             repo_root,
             args.run_id or default_id,
@@ -59,9 +62,17 @@ def main() -> int:
             required_questions=args.questions,
             total_hours=args.total_hours,
             token_soft_cap=args.token_soft_cap,
-            workflow_version="3.2" if args.workflow == "competition-first-v3.2" else "3.1",
+            workflow_version=workflow_version,
+            initial_execution_mode=(
+                "exploration" if workflow_version == "3.2" else "production"
+            ),
+            execution_policy=(
+                "risk-adaptive-v1"
+                if workflow_version == "3.2"
+                else "legacy-production-v1"
+            ),
         )
-        version = "3.2" if args.workflow == "competition-first-v3.2" else "3.1"
+        version = workflow_version
     else:
         if not args.problem_path:
             parser.error("legacy-v2 必须提供 problem_path")

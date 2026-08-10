@@ -64,7 +64,7 @@ def record_paper_cold_reader_actions(
     reviewer_context_id: str,
     source_pdf: str = "paper/longform-draft.pdf",
 ) -> dict[str, Any]:
-    """记录新鲜冷读动作，并为伴随图动作创建视觉机会。"""
+    """记录新鲜冷读动作，并为所有新增图动作创建视觉机会。"""
     if not isinstance(reviewer_context_id, str) or not reviewer_context_id.strip():
         raise ContractError("论文冷读必须绑定独立 reviewer_context_id")
     root = run_dir.resolve()
@@ -75,11 +75,13 @@ def record_paper_cold_reader_actions(
     if any(item["status"] not in {"open", "closed"} for item in normalized):
         raise ContractError("论文编辑动作 status 必须为 open 或 closed")
     for item in normalized:
-        if item["action"] != "ADD_COMPANION_FIGURE":
+        if item["action"] not in {"ADD_FIGURE", "ADD_COMPANION_FIGURE"}:
             continue
-        payload = item.get("companion_figure")
+        payload = item.get("companion_figure", item.get("figure"))
         if not isinstance(payload, dict):
-            raise ContractError("ADD_COMPANION_FIGURE 必须提供 companion_figure 对象")
+            raise ContractError(
+                f"{item['action']} 必须提供 figure 或 companion_figure 对象"
+            )
         add_companion_figure_opportunity(
             root,
             opportunity_id=str(payload.get("opportunity_id", item["action_id"])),

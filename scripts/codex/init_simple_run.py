@@ -60,6 +60,14 @@ def main() -> int:
         workflow_version=args.workflow_version,
         require_web_review=args.require_web_review,
         paper_draft_mode=args.paper_draft_mode,
+        initial_execution_mode=(
+            "exploration" if args.workflow_version == "3.2" else "production"
+        ),
+        execution_policy=(
+            "risk-adaptive-v1"
+            if args.workflow_version == "3.2"
+            else "legacy-production-v1"
+        ),
     )
     print(
         json.dumps(

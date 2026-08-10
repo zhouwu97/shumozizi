@@ -57,6 +57,7 @@ from shumozizi.simple.state import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.paper_e2e
 
 
 def _science_ready_run(tmp_path: Path, name: str = "e2e") -> Path:

@@ -42,8 +42,9 @@
               }
             }
           },
-          "status": {"enum": ["current", "superseded", "failed", "diagnostic"]},
+          "status": {"enum": ["current", "candidate_eligible", "superseded", "failed", "diagnostic"]},
           "execution_mode": {"enum": ["production", "exploration"]},
+          "provisional": {"type": "boolean"},
           "objective_semantics_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
           "dependency_scope": {"enum": ["question", "shared", "global"]},
           "affected_question_ids": {

@@ -541,12 +541,20 @@ def _promotion_record(
     receipt_figure_role = receipt.get("figure_role")
     receipt_presentation_role = receipt.get("presentation_role")
     receipt_version = receipt.get("schema_version")
-    validate_human_figure_review(
-        receipt.get("human_review"),
+    human_review = receipt.get("human_review") or {}
+    validated = validate_human_figure_review(
+        human_review,
         figure_role=receipt_figure_role,
         presentation_role=receipt_presentation_role,
         require_element_binding=receipt_version == "1.2",
     )
+    # 机械复核只能产生 mechanically_qualified，人工视觉门保持 pending；
+    # 不能在回执校验层把机械复核当作人工验收。
+    if validated.get("qualification") == "mechanically_qualified":
+        if human_review.get("reviewed") is True:
+            raise ContractError("机械复核 receipt 不得设置 reviewed=true")
+    elif human_review.get("reviewed") is not True:
+        raise ContractError("人工视觉门未通过：reviewed 必须为 true")
     manifest_valid = True
     if receipt_version == "1.2":
         manifest = receipt.get("visual_manifest")
@@ -572,14 +580,47 @@ def _promotion_record(
         or receipt_figure_role != role
         or receipt_presentation_role != presentation_role
         or receipt.get("qa", {}).get("success") is not True
-        or receipt.get("human_review", {}).get("reviewed") is not True
-        or receipt.get("human_review", {}).get("verdict") != "promote"
-        or receipt.get("human_review", {}).get("issues") != []
+        or human_review.get("verdict") != "promote"
+        or human_review.get("issues") != []
         or not manifest_valid
         or any(promoted_hashes.get(item["path"]) != item["sha256"] for item in output_records)
     ):
         raise ContractError("图表晋级回执未绑定当前角色、输出、机械 QA 或内容化人工复核")
     return receipt_record
+
+
+def _paper_visual_requirement_binding(
+    run_dir: Path,
+    *,
+    opportunity: dict[str, Any] | None,
+    promotion_receipt: str | None,
+) -> dict[str, Any]:
+    """从晋级回执复制论文视觉需求的精确覆盖绑定。"""
+    if opportunity is None or opportunity.get("origin") != "paper_visual_requirement":
+        return {}
+    requirement_id = opportunity.get("requirement_id")
+    requirement_digest = opportunity.get("requirement_digest")
+    if not isinstance(requirement_id, str) or not isinstance(requirement_digest, str):
+        raise ContractError("论文视觉机会缺少 requirement_id 或 requirement_digest")
+    if not isinstance(promotion_receipt, str):
+        raise ContractError("论文视觉需求图必须绑定正式晋级回执")
+    receipt = load_json(resolve_inside(run_dir, promotion_receipt, must_exist=True))
+    gate = receipt.get("visual_critic")
+    focal_claim = receipt.get("human_review", {}).get("focal_claim")
+    if (
+        not isinstance(gate, dict)
+        or gate.get("requirement_id") != requirement_id
+        or gate.get("requirement_digest") != requirement_digest
+        or not isinstance(focal_claim, str)
+        or not focal_claim.strip()
+        or gate.get("focal_claim") != focal_claim
+    ):
+        raise ContractError("图晋级回执未绑定当前论文视觉需求摘要和人工 focal_claim")
+    return {
+        "covered_requirement_ids": [requirement_id],
+        "covered_requirement_digests": [requirement_digest],
+        "focal_claim": focal_claim.strip(),
+    }
 
 
 def _register_competition_figure(
@@ -620,6 +661,7 @@ def _register_competition_figure(
         raise ContractError("figure placement 必须为 body 或 appendix")
     if critic_verdict is not None and critic_verdict not in {"PROMOTE", "REVISE", "SPLIT", "DROP"}:
         raise ContractError("critic_verdict 必须为 PROMOTE、REVISE、SPLIT 或 DROP")
+    opportunity: dict[str, Any] | None = None
     if visual_opportunity_id is not None:
         opportunity_path = run_dir / "figures/visual-opportunities.json"
         if not opportunity_path.is_file():
@@ -712,6 +754,13 @@ def _register_competition_figure(
             promotion_receipt=promotion_receipt,
             role=role,
         )
+    entry.update(
+        _paper_visual_requirement_binding(
+            run_dir,
+            opportunity=opportunity,
+            promotion_receipt=promotion_receipt,
+        )
+    )
     for existing in index["figures"]:
         if existing["figure_id"] == figure_id and existing["status"] == "current":
             existing["status"] = "superseded"
@@ -908,6 +957,7 @@ def register_presentation_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    opportunity: dict[str, Any] | None = None
     if visual_opportunity_id is not None:
         from shumozizi.paper.policy import policy_fingerprint
         from shumozizi.simple.visual_opportunities import (
@@ -961,6 +1011,29 @@ def register_presentation_figure(
             entry["selected_version"] = selected_version
         if paper_location is not None:
             entry["paper_location"] = paper_location
+    entry.update(
+        _paper_visual_requirement_binding(
+            run_dir,
+            opportunity=opportunity,
+            promotion_receipt=promotion_receipt,
+        )
+    )
+    # 人工视觉门：机械复核（receipt qualification=mechanically_qualified）只能
+    # 工程晋级；index 必须显式标记 human_vision_gate=pending，不得视为人工验收。
+    if promotion_receipt is not None:
+        try:
+            promotion_payload = load_json(
+                resolve_inside(run_dir, promotion_receipt, must_exist=True)
+            )
+        except ContractError:
+            promotion_payload = {}
+        human = promotion_payload.get("human_review") or {}
+        if human.get("qualification") == "mechanically_qualified":
+            entry["human_vision_gate"] = "pending"
+            entry["human_vision_performed"] = False
+        else:
+            entry["human_vision_gate"] = "passed"
+            entry["human_vision_performed"] = True
     index = read_figure_index(run_dir)
     index["schema_version"] = "1.3"
     for existing in index["figures"]:

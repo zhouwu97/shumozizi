@@ -217,6 +217,8 @@ def initialize_simple_run(
     workflow_version: str = "3.1",
     require_web_review: bool = False,
     paper_draft_mode: str | None = None,
+    initial_execution_mode: str = "production",
+    execution_policy: str = "legacy-production-v1",
 ) -> Path:
     """创建可独立恢复的 v3 运行目录。
 
@@ -233,6 +235,8 @@ def initialize_simple_run(
         require_web_review: 是否把网页版 GPT 人工新对话审核设为必需交付步骤。
         paper_draft_mode: 可选首稿模式；直接调用旧 Python API 未指定时保持
             reviewable fallback 兼容，新 CLI 默认显式传入长篇科学首稿。
+        initial_execution_mode: 初始实验用途；旧 API 默认保持 production 兼容。
+        execution_policy: 执行策略；新 v3.2 CLI 使用风险自适应策略。
 
     Returns:
         新建运行目录。
@@ -246,6 +250,12 @@ def initialize_simple_run(
         raise ContractError("workflow_version 必须为 3.1 或 3.2")
     if paper_draft_mode not in {None, "longform_scientific_draft", "reviewable_draft"}:
         raise ContractError("paper_draft_mode 必须为 longform_scientific_draft 或 reviewable_draft")
+    if initial_execution_mode not in {"production", "exploration"}:
+        raise ContractError("initial_execution_mode 必须为 production 或 exploration")
+    if execution_policy not in {"legacy-production-v1", "risk-adaptive-v1"}:
+        raise ContractError("execution_policy 必须为 legacy-production-v1 或 risk-adaptive-v1")
+    if workflow_version != "3.2" and execution_policy == "risk-adaptive-v1":
+        raise ContractError("risk-adaptive-v1 仅适用于 v3.2 运行")
     identifier = safe_simple_run_id(run_id)
     runs_root = (root / "runs").resolve()
     run_dir = (runs_root / identifier).resolve()
@@ -263,7 +273,8 @@ def initialize_simple_run(
         "run_id": identifier,
         "workflow": f"competition-first-v{workflow_version}",
         "phase": "analysis",
-        "execution_mode": "production",
+        "execution_mode": initial_execution_mode,
+        "execution_policy": execution_policy,
         "revision": 0,
         "paper_render_revision": 0,
         "paper_reviewed_revision": 0,

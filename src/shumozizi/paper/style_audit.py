@@ -38,6 +38,13 @@ _BLOCKING_INTERNAL_TERMS = {
     "回执": re.compile(r"回执"),
     "objective_answer": re.compile(r"\bobjective_answer\b", re.IGNORECASE),
     "current result": re.compile(r"\bcurrent result\b", re.IGNORECASE),
+    # 规划层元评审措辞（结构地图 reason/叙事竞争 risks 等）只描述"如何被审核"，
+    # 不是论文对读者的论证语言，泄漏进正文一律视为 E001。
+    "证据桥": re.compile(r"证据桥"),
+    "可信边界": re.compile(r"可信边界"),
+    "结构证据": re.compile(r"结构证据"),
+    "支持边界": re.compile(r"支持边界"),
+    "关键验证证据": re.compile(r"关键验证证据"),
 }
 _ADVISORY_INTERNAL_TERMS = (
     "oracle",
@@ -528,12 +535,13 @@ def _scarcity_findings(
                 "page_count": pages,
             }
         )
-    if len(core_questions) >= 3 and figure_count <= 3:
+    if core_questions and figure_count <= 3:
         warnings.append(
             {
                 "code": "VISUAL_SCARCITY_REVIEW",
                 "message": "正文图数不超过 3 张；请人工确认数学结构、机制与边界不应有互补视觉证据。",
                 "count": 1,
+                "core_questions": sorted(core_questions),
                 "body_figure_count": figure_count,
             }
         )
@@ -548,7 +556,7 @@ def _visual_rhythm_findings(
     body_figure_count: int,
 ) -> list[dict[str, Any]]:
     """检查图是否过度集中在单问或集中堆叠，提示页面节奏人工复核。"""
-    if len(core_questions) < 3 or body_figure_count < 4:
+    if len(core_questions) < 2:
         return []
     references_by_question = {
         question: len(re.findall(r"\\(?:auto|page|c)?ref\{fig:[^}]+\}|@fig:[A-Za-z0-9._:-]+", body))

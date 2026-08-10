@@ -1,0 +1,12 @@
+{
+  "figure_data": {
+    "time": [15, 16, 17, 18, 19, 20, 21],
+    "series": [
+      {"label": "Resource capacity", "margin": [8, 5, 0, -1, 0, 4, 7]},
+      {"label": "Safety reserve", "margin": [6, 5, 4, 3, 4, 5, 6]}
+    ],
+    "active_tolerance": 0,
+    "time_label": "Day",
+    "margin_label": "Remaining capacity"
+  }
+}

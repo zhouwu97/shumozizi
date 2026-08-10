@@ -109,6 +109,28 @@ jobs:
           python -m pytest -q -m paper_e2e -k real_latex_cumcm
           tests/test_paper_templates_and_compiler.py
 
+  external-author-e2e:
+    name: external author end-to-end workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package and XeLaTeX toolchain
+        run: |
+          python -m pip install -e ".[test]"
+          sudo apt-get update
+          sudo apt-get install -y latexmk texlive-xetex texlive-lang-chinese texlive-latex-extra texlive-fonts-recommended
+      - name: Run External Author E2E workflow
+        run: >-
+          python -m pytest -q -m paper_e2e
+          tests/competition_first/test_external_author_e2e.py
+
   typst-e2e:
     name: real Typst compile
     runs-on: ubuntu-latest
@@ -194,7 +216,7 @@ jobs:
       - name: Run deterministic test-file shard
         shell: pwsh
         run: |
-          $all = @(Get-ChildItem tests -Filter "test_*.py" | Sort-Object Name)
+          $all = @(Get-ChildItem tests -Recurse -File -Filter "test_*.py" | Sort-Object FullName)
           $files = @()
           for ($index = 0; $index -lt $all.Count; $index++) {
             if (($index % 4) -eq ${{ matrix.shard }}) {

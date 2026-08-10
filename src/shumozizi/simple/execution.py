@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 import time
@@ -18,6 +19,10 @@ from shumozizi.simple.state import read_simple_state, utc_now
 
 def _output_snapshot(run_dir: Path, paths: list[str]) -> dict[str, dict[str, Any]]:
     """保存运行前的输出文件状态，用于运行后检测新鲜度。
+
+        execution_mode: 本次执行用途；省略时兼容读取运行状态中的默认用途。
+        provisional: 为真时只登记诊断执行。省略时，exploration 自动暂存，
+            production 自动作为正式执行。
 
     Returns:
         路径到 ``{exists, sha256, size, mtime_ns}`` 的映射。
@@ -106,6 +111,27 @@ def _source_script(run_dir: Path, arguments: list[str]) -> str | None:
         except ContractError:
             continue
         return relative_inside(run_dir, script).as_posix()
+    # MATLAB 的 -batch 常把 run('code/foo.m') 嵌入命令表达式；提取其中受控路径，
+    # 使独立 oracle 的源码边界能被结果登记，而不是因为调用语法丢失审计入口。
+    for argument in arguments[1:]:
+        for matched in re.findall(r"[A-Za-z0-9_./\\-]+\.(?:py|m|r|jl)", argument):
+            candidate = Path(matched)
+            try:
+                script = resolve_inside(run_dir, candidate.as_posix(), must_exist=True)
+            except ContractError:
+                continue
+            return relative_inside(run_dir, script).as_posix()
+    # MATLAB 也允许 -batch <function_name>；当函数名只含标识符时，尝试运行目录
+    # 根部与 code/matlab 的同名入口，避免为了登记源码而在命令中加入无关 shell 语义。
+    for argument in arguments[1:]:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", argument):
+            continue
+        for candidate in (Path(f"{argument}.m"), Path("code") / "matlab" / f"{argument}.m"):
+            try:
+                script = resolve_inside(run_dir, candidate.as_posix(), must_exist=True)
+            except ContractError:
+                continue
+            return relative_inside(run_dir, script).as_posix()
     return None
 
 
@@ -182,7 +208,9 @@ def execute_simple_experiment(
     metric_paths: dict[str, str] | None = None,
     timeout_seconds: float | None = None,
     require_fresh_outputs: bool = False,
-    provisional: bool = False,
+    execution_mode: str | None = None,
+    provisional: bool | None = None,
+    candidate_eligible: bool = False,
 ) -> dict[str, Any]:
     """实际运行一次 v3 实验并将事实写入 ``results/index.json``。
 
@@ -198,7 +226,9 @@ def execute_simple_experiment(
         metric_paths: 可选的指标名到 JSON 点路径映射。
         timeout_seconds: 可选超时秒数。
         require_fresh_outputs: 为真时拒绝命令启动前已存在的预期输出。
-        provisional: 为真时只登记诊断执行，等待上层质量协议提升。
+        execution_mode: 为 ``None`` 时继承运行状态，保持旧调用的用途语义。
+        provisional: 为真时只登记诊断执行，不能被质量层提升。
+        candidate_eligible: 仅供正式 adapter 精评在审计前保留可选择资格。
 
     Returns:
         包含成功状态、结果条目和错误信息的执行摘要。
@@ -209,6 +239,23 @@ def execute_simple_experiment(
     identifier = safe_result_id(result_id)
     root = run_dir.resolve()
     state = read_simple_state(root)
+    effective_execution_mode = execution_mode or str(state["execution_mode"])
+    if effective_execution_mode not in {"production", "exploration"}:
+        raise ContractError("execution_mode 必须为 production 或 exploration")
+    if effective_execution_mode == "production":
+        # 在启动外部命令前执行门禁，避免先产生“正式结果”再补风险说明。
+        from shumozizi.simple.modeling_units import require_risk_adaptive_production_ready
+
+        require_risk_adaptive_production_ready(root, question_id)
+    if provisional is None:
+        # 探索数据只用于决定正式重跑，不能仅凭成功退出码进入正式结果链。
+        effective_provisional = effective_execution_mode == "exploration"
+    elif isinstance(provisional, bool):
+        effective_provisional = provisional
+    else:
+        raise ContractError("provisional 必须为布尔值")
+    if not isinstance(candidate_eligible, bool):
+        raise ContractError("candidate_eligible 必须为布尔值")
     arguments = _parse_command(command)
     if not expected_outputs:
         raise ContractError("至少提供一个 --expect 输出文件")
@@ -224,7 +271,7 @@ def execute_simple_experiment(
     output_snapshot = _output_snapshot(root, normalized_outputs)
     enforce_fresh = (
         require_fresh_outputs
-        or str(state.get("execution_mode")) == "production"
+        or effective_execution_mode == "production"
     )
     explicit_inputs = input_files or []
     source_script = _source_script(root, arguments)
@@ -314,8 +361,9 @@ def execute_simple_experiment(
             started_at=started_at,
             finished_at=finished_at,
             duration_seconds=duration_seconds,
-            execution_mode=str(state["execution_mode"]),
-            provisional=provisional,
+            execution_mode=effective_execution_mode,
+            provisional=effective_provisional,
+            candidate_eligible=candidate_eligible,
             error=error,
             objective_semantics_sha256=objective_semantics_for_question(root, question_id),
             dependency_scope="question",

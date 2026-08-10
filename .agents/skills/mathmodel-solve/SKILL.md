@@ -20,6 +20,8 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 
 新运行使用 `MODELING_UNITS` 1.4。每问在答案合同前填写轻量 `question_delta`；新增实体、资源、共享约束、聚合词或分解后组合时必须重新检查目标。`primary_endpoint` 同时用自然语言和公式声明原子成功、实体内、资源间、实体间、时间和量词次序六项聚合。高风险问题复用这一处 `semantic_counterexample`，不在其它协议重复抄写。高风险核心问题在任何路线搜索前先运行 3--5 个人工评分案例，包括同时满足、错开满足、单主体长期满足、总量高但瓶颈为零，以及必要时多资源联合成功；评分器未按预期排序时先改 endpoint/scorer，不比较优化器。
 
+每个核心问题还要把最高价值的前置攻击写入同一单元的 `risk_package`，可先用 `python scripts/simple/manage_risk_route.py plan <run_dir> --question <Q?> --auto` 生成模板后按题意修订。包中必须声明三类主张标签 `unconditional`、`conditional_on_assumption`、`sensitivity_only`、快速路线的四个进入条件、深化触发条件和每项检查的决策价值；它不是新状态门。逆问题用 profile、近优集合和补偿带攻击唯一性；多主体/分解用联合 scorer 最小反例；时间序列用连续留出或滚动留出；模型比较使用共同数据窗口、切分、scorer、预算和事前门槛。攻击推翻唯一性时，实际回填必须把结果标为条件结果或范围，不能只在局限性中补一句。
+
 目标候选使用 `OBJECTIVE_CANDIDATES` 1.1，顺序固定为“题面合法性 -> 同源反例区分 -> 仍合理候选的策略后果”。每个候选先声明题面原句、保留/改变的量词、引入的价值偏好、是否只为方便求解，并分为直接支持、合理假设支持、仅敏感性或与题意不符；只有前两类能成为正式目标。仅剩一个合法候选时不强迫跑多目标实验；仍有两个及以上时，才用共同的效率与公平/瓶颈/安全指标跑低成本后果 probe。高风险问题不能靠一句 `determined_basis` 跳过：必须明确正式目标、一个被拒绝替代及拒绝理由，并由 `MODELING_UNITS` 中的反例区分。
 
 标出决定奖项上限的核心问题（`core_question=true`）。核心问题必须事前声明 `significant_improvement_ratio`，其竞争路线还要写清结构利用方式和可量化的 `expected_improvement_ratio`——纯文字的"高上限"事后无法与实测对照。

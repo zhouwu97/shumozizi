@@ -482,3 +482,48 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             changed_at=changed_at,
         )
     return state
+
+
+def enable_risk_adaptive_execution_policy(run_dir: Path) -> dict[str, Any]:
+    """安全迁移尚未产生 production 结果的 v3.2 运行。
+
+    该迁移只用于修复旧初始化默认值。已有 production 记录时拒绝迁移，避免
+    把事后补做的探索检查伪装成首次正式运行之前完成。
+
+    Args:
+        run_dir: 待迁移的运行目录。
+
+    Returns:
+        已原子写入的新状态。
+
+    Raises:
+        ContractError: 运行版本、阶段或既有结果不允许安全迁移。
+    """
+    state = read_simple_state(run_dir)
+    if not is_competition_first_v32_state(state):
+        raise ContractError("仅 Competition-First v3.2 可启用 risk-adaptive-v1")
+    if state["phase"] not in {"analysis", "experiment"}:
+        raise ContractError("仅 analysis/experiment 阶段可迁移风险自适应执行策略")
+    from shumozizi.simple.results import read_result_index
+
+    production_ids = [
+        str(item.get("result_id", "<unknown>"))
+        for item in read_result_index(run_dir)["results"]
+        if item.get("execution_mode") == "production"
+    ]
+    if production_ids:
+        raise ContractError(
+            "已有 production 结果，不能事后启用 risk-adaptive-v1: "
+            + "、".join(production_ids)
+        )
+    if (
+        state.get("execution_policy") == "risk-adaptive-v1"
+        and state.get("execution_mode") == "exploration"
+    ):
+        return state
+    state["execution_policy"] = "risk-adaptive-v1"
+    state["execution_mode"] = "exploration"
+    state["revision"] += 1
+    state["updated_at"] = utc_now()
+    write_simple_state(run_dir, state)
+    return state

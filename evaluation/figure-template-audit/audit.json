@@ -1,0 +1,134 @@
+{
+  "schema_name": "figure_template_visual_audit",
+  "schema_version": "1.1",
+  "qa_data_only": true,
+  "paper_evidence_allowed": false,
+  "paper_width_cm": 15.8,
+  "dpi": 300,
+  "review_method": [
+    "同一 QA 数据批次实际渲染 PNG/PDF/SVG",
+    "统一缩放到 15.8 cm、300 dpi 后人工查看",
+    "彩色与灰度 contact sheet 人工比较",
+    "MathModel 原始 preview 与 production 并排人工比较"
+  ],
+  "source_verification": {
+    "installed_root": "C:/Users/haha/AppData/Roaming/@mathmodel/desktop/skills-plugin/skills/mathmodel-figure-templates",
+    "preview_files_byte_equal": 11,
+    "template_scripts_equal_after_line_ending_normalization": 11
+  },
+  "status_policy": {
+    "preview_grade": "高级结构已由真实数据合同驱动，达到当前生产晋级标准；不表示数值或版式逐像素复制参考图。",
+    "safe_adapted": "证据语义正确且可安全使用，但视觉密度或组合结构低于参考预览。",
+    "needs_visual_refinement": "renderer 可用但不得作为高级成品自动推荐，需继续深化后再晋级。"
+  },
+  "templates": [
+    {
+      "template_id": "cv-roc-ci",
+      "status": "safe_adapted",
+      "grayscale_readability": "good",
+      "main_gap": "真实折间带已保留，但缺参考预览中的多模型并排、汇总表和更完整图例。"
+    },
+    {
+      "template_id": "prediction-marginal-grid",
+      "status": "needs_visual_refinement",
+      "grayscale_readability": "good",
+      "main_gap": "当前主要是预测—观测散点，尚缺上下/右侧边际分布和多模型紧凑网格。"
+    },
+    {
+      "template_id": "paired-raincloud",
+      "status": "preview_grade",
+      "grayscale_readability": "good",
+      "main_gap": "已具半小提琴、原始点、箱体、95% 均值区间和配对连接；多组输入时仍需控制横向密度。"
+    },
+    {
+      "template_id": "correlation-pairgrid",
+      "status": "safe_adapted",
+      "grayscale_readability": "good",
+      "main_gap": "对角分布、下三角散点回归和上三角相关系数均在，但 QA 字段数少于参考预览。"
+    },
+    {
+      "template_id": "feasible-region-active-constraints",
+      "status": "preview_grade",
+      "grayscale_readability": "good",
+      "main_gap": "仓内原生高级结构图，无外部同名预览；正式使用仍须由 current 可行性与约束数据生成。"
+    },
+    {
+      "template_id": "interval-event-timeline",
+      "status": "preview_grade",
+      "grayscale_readability": "good",
+      "main_gap": "仓内原生高级结构图；事件密集时需按论文宽度减少标签。"
+    },
+    {
+      "template_id": "uncertainty-fan-threshold",
+      "status": "preview_grade",
+      "grayscale_readability": "good",
+      "main_gap": "仓内原生高级证据图；区间必须来自真实不确定性计算。"
+    },
+    {
+      "template_id": "multi-panel-evidence-chain",
+      "status": "preview_grade",
+      "grayscale_readability": "good",
+      "main_gap": "仓内原生组合证据图；面板数量和阅读顺序必须由论文主线决定。"
+    },
+    {
+      "template_id": "rf-tpe-surface",
+      "status": "safe_adapted",
+      "grayscale_readability": "good",
+      "main_gap": "新增 3D + 等值双视图，但曲面只是在稀疏真实 trials 间的三角插值，不是目标函数真值。"
+    },
+    {
+      "template_id": "taylor-diagram",
+      "status": "safe_adapted",
+      "grayscale_readability": "good",
+      "main_gap": "统一 reference_std 语义已强制，但当前缺参考预览中的多数据集面板和 RMS 等值辅助线。"
+    },
+    {
+      "template_id": "multiclass-shap-combo",
+      "status": "needs_visual_refinement",
+      "grayscale_readability": "conditional",
+      "main_gap": "仅保留聚合重要性与稀疏样本贡献，尚未形成 feature × class 的密集 beeswarm 组合证据。"
+    },
+    {
+      "template_id": "grouped-corr-split-violin",
+      "status": "needs_visual_refinement",
+      "grayscale_readability": "good",
+      "main_gap": "尚缺参考图的下三角分组相关结构、聚类/分组注释和真正共享轮廓的 split violin。"
+    },
+    {
+      "template_id": "grouped-circular-heatmap",
+      "status": "needs_visual_refinement",
+      "grayscale_readability": "weak",
+      "main_gap": "统一色标和直接环标签已补齐，但少量径向单元仍低于多环、多分组、径向标注的参考结构。"
+    },
+    {
+      "template_id": "nature-chord-diagram",
+      "status": "preview_grade",
+      "grayscale_readability": "conditional",
+      "main_gap": "已纠正为真实扇区和按权重带宽编码的 ribbon；灰度输出仍建议加组别纹理或直接组名。"
+    },
+    {
+      "template_id": "urban-park-cooling-combo",
+      "status": "needs_visual_refinement",
+      "grayscale_readability": "good",
+      "main_gap": "分布侧已升级为 violin + box + 原始点，但仍缺参考预览的多层级 ridgeline、排序摘要和多面板城市结构。"
+    }
+  ],
+  "contact_sheets": [
+    "contact-sheet-color.png",
+    "contact-sheet-grayscale.png",
+    "preview-vs-production.png"
+  ],
+  "retention": {
+    "keep": [
+      "audit.json",
+      "AUDIT.md",
+      "contact-sheet-color.png",
+      "contact-sheet-grayscale.png",
+      "preview-vs-production.png"
+    ],
+    "regenerable_not_for_commit": [
+      "production/",
+      "paper-width-15.8cm/"
+    ]
+  }
+}

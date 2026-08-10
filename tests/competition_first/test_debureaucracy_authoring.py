@@ -20,6 +20,10 @@ from shumozizi.paper.narrative_competition import (
     write_narrative_candidates,
 )
 from shumozizi.paper.page_budget import audit_page_budget
+from shumozizi.paper.readiness import (
+    check_paper_readiness,
+    validate_candidate_visual_assessment,
+)
 from shumozizi.paper.templates import (
     materialize_selected_template,
     require_materialized_template,
@@ -29,6 +33,7 @@ from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.review_focus import record_scientific_challenge_evidence
 from shumozizi.simple.visual_sandbox import (
     graduate_visual_candidate,
+    read_visual_ideas,
     record_visual_competition,
     write_visual_ideas,
 )
@@ -125,6 +130,51 @@ def _blank_pdf(path: Path, page_count: int) -> None:
         writer.write(stream)
 
 
+def _reviewed_nonrequired_figure_plan(
+    run_dir: Path, *, questions: list[str], figure_count: int
+) -> None:
+    """写入已完成 waived 决策的轻量图表计划，供数量反例复用。"""
+    figures = [
+        {
+            "figure_id": f"reviewed-{index}",
+            "preferred": "skills/mathmodel-figure-templates",
+            "fallback": "skills/3coding-visual",
+            "selected_skill": "skills/mathmodel-figure-templates",
+            "template_id": "feasible-region-active-constraints",
+            "selection_reason": "夹具只验证视觉评估和图数量不是同一件事。",
+            "question_id": questions[(index - 1) % len(questions)],
+            "role": "insight",
+            "claim": "该图作为已评估的辅助视觉材料，不承担新的强制证明义务。",
+            "source_result_ids": ["r-q1"],
+            "script": f"code/figures/reviewed-{index}.py",
+            "output": f"figures/current/reviewed-{index}.pdf",
+            "paper_section": "paper/sections/questions.tex",
+            "caption": f"已评估图 {index}",
+            "latex_label": f"fig:reviewed-{index}",
+            "explanation_anchor": "辅助视觉材料",
+            "required": False,
+        }
+        for index in range(1, figure_count + 1)
+    ]
+    atomic_json(
+        run_dir / "figures/FIGURE_PLAN.json",
+        {
+            "schema_name": "figure_plan",
+            "schema_version": "2.1",
+            "run_id": run_dir.name,
+            "visual_decisions": [
+                {
+                    "question_id": question_id,
+                    "status": "waived",
+                    "reason": "评阅确认现有推导和结果已完整表达该问题，不需要额外必需图。",
+                }
+                for question_id in questions
+            ],
+            "figures": figures,
+        },
+    )
+
+
 def test_author_pass_exposes_two_default_inputs_and_separate_source(tmp_path: Path) -> None:
     """Author 默认只读两份材料，longform 源文件必须由 Author 另行产出。"""
     run_dir = _author_ready_run(tmp_path)
@@ -137,6 +187,89 @@ def test_author_pass_exposes_two_default_inputs_and_separate_source(tmp_path: Pa
     brief = (run_dir / "paper/author-pass/AUTHOR_BRIEF.md").read_text(encoding="utf-8")
     assert "可以合并问题、重排章节" in brief
     assert "应提出返工请求" in brief
+
+
+def test_author_can_start_without_figure_plan(tmp_path: Path) -> None:
+    """视觉候选门只能约束最终 Candidate，不能重新阻断 Author 开稿。"""
+    run_dir = _author_ready_run(tmp_path, "author-without-figure-plan")
+
+    assert not (run_dir / "figures/FIGURE_PLAN.json").exists()
+    manifest = prepare_longform_author(run_dir)
+
+    assert manifest["research_package"]["path"] == "paper/author-pass/RESEARCH_PACKAGE.md"
+
+
+def test_missing_figure_plan_does_not_bypass_candidate_gate(tmp_path: Path) -> None:
+    """没有 Figure Plan 或替代评估时，Candidate 必须给出明确阻断原因。"""
+    run_dir = _author_ready_run(tmp_path, "candidate-without-visual-assessment")
+
+    errors = validate_candidate_visual_assessment(run_dir)
+
+    assert any(error.startswith("VISUAL_NOT_ASSESSED") for error in errors)
+
+
+def test_four_reviewed_figures_do_not_create_a_minimum_count_gate(tmp_path: Path) -> None:
+    """已完成视觉评估的三问稿可以只有四张图，不能被机械图数门阻断。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "four-reviewed-figures",
+        required_questions=["Q1", "Q2", "Q3"],
+        workflow_version="3.2",
+    )
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {
+            "schema_version": "1.4",
+            "units": [
+                {"question_id": "Q1", "core_question": True},
+                {"question_id": "Q2", "core_question": True},
+                {"question_id": "Q3", "core_question": True},
+            ],
+        },
+    )
+    _reviewed_nonrequired_figure_plan(
+        run_dir, questions=["Q1", "Q2", "Q3"], figure_count=4
+    )
+
+    assert validate_candidate_visual_assessment(run_dir) == []
+
+
+def test_pending_visual_blocks_candidate_until_current(tmp_path: Path) -> None:
+    """已选中新图但尚未 promotion 时，Candidate 不能继续消费旧 current。"""
+    run_dir = _author_ready_run(tmp_path, "candidate-with-pending-visual")
+    _reviewed_nonrequired_figure_plan(run_dir, questions=["Q1"], figure_count=8)
+    write_visual_ideas(
+        run_dir,
+        [
+            {
+                "id": "q1-boundary",
+                "question": "哪个边界决定 Q1 的最终答案？",
+                "sources": ["Q1"],
+                "idea": "用边界与最优点的关系解释结果。",
+            }
+        ],
+    )
+    sandbox = run_dir / "figures/sandbox/q1-boundary"
+    sandbox.mkdir(parents=True)
+    (sandbox / "winner.png").write_bytes(b"winner")
+    record_visual_competition(
+        run_dir,
+        "q1-boundary",
+        selected_candidate="figures/sandbox/q1-boundary/winner.png",
+        reviewer_context_id="fresh-boundary-reviewer",
+        fastest_mechanism="候选图直接显示活动边界和最终决策点。",
+        full_width_value="边界与决策点需要并列显示才能承担正文解释任务。",
+        table_redundancy="数值表无法直观看到活动边界的几何关系。",
+        rationale="胜出设计能同时表达正式答案、约束机制和适用边界。",
+    )
+    graduate_visual_candidate(run_dir, "q1-boundary", candidate_version="v2")
+
+    status = check_paper_readiness(run_dir)
+
+    assert any(
+        "PENDING_VISUAL_PROMOTION" in error and "q1-boundary" in error and "v2" in error
+        for error in status["errors"]
+    ), status["errors"]
 
 
 def test_longform_rejects_formal_entrypoint_disguised_as_author_pass(tmp_path: Path) -> None:
@@ -219,8 +352,8 @@ def test_author_pass_and_compile_block_open_scientific_p1(tmp_path: Path) -> Non
         compile_longform_draft(run_dir)
 
 
-def test_visual_sandbox_competes_without_figure_contract(tmp_path: Path) -> None:
-    """视觉想法可直接草绘、竞争并进入 work，不要求完整 Figure Contract。"""
+def test_visual_sandbox_winner_marks_pending_promotion(tmp_path: Path) -> None:
+    """Sandbox 胜出设计应显式等待正式渲染和 promotion，而非伪装成 current。"""
     run_dir = initialize_simple_run(tmp_path, "visual", required_questions=["Q1"])
     ideas = write_visual_ideas(
         run_dir,
@@ -251,12 +384,81 @@ def test_visual_sandbox_competes_without_figure_contract(tmp_path: Path) -> None
     )
     promoted = graduate_visual_candidate(run_dir, "q1-bottleneck")
 
-    assert ideas["ideas"][0].keys() == {"id", "question", "sources", "idea", "status"}
+    assert ideas["ideas"][0].keys() == {
+        "id", "question", "sources", "idea", "figure_tier", "status"
+    }
     assert len(review["candidates"]) == 2
     assert promoted["formal_render_required"] is True
     assert promoted["selected_design_reference"].endswith("b.png")
+    assert promoted["status"] == "selected_pending_promotion"
+    recorded = read_visual_ideas(run_dir)["ideas"][0]
+    assert recorded["status"] == "selected_pending_promotion"
+    assert recorded["pending_promotion"]["figure_id"] == "q1-bottleneck"
+    assert recorded["pending_promotion"]["candidate_version"] == "v1"
     assert not (run_dir / "figures/work/q1-bottleneck/v1").exists()
     assert not (run_dir / "figures/FIGURE_PLAN.json").exists()
+
+
+def test_hero_visual_competition_requires_distinct_structures(tmp_path: Path) -> None:
+    """主图不得以单候选或同构换色冒充视觉竞争。"""
+    run_dir = initialize_simple_run(tmp_path, "hero-competition", required_questions=["Q1"])
+    write_visual_ideas(
+        run_dir,
+        [
+            {
+                "id": "q1-hero",
+                "question": "哪个结构最快解释核心结论？",
+                "sources": ["Q1"],
+                "idea": "比较可行域与时间机制两种主图结构。",
+                "figure_tier": "hero_figure",
+            }
+        ],
+    )
+    sandbox = run_dir / "figures/sandbox/q1-hero"
+    sandbox.mkdir(parents=True)
+    (sandbox / "a.png").write_bytes(b"candidate-a")
+    with pytest.raises(ContractError, match="至少需要两个候选"):
+        record_visual_competition(
+            run_dir,
+            "q1-hero",
+            selected_candidate="figures/sandbox/q1-hero/a.png",
+            reviewer_context_id="fresh-visual-reader",
+            fastest_mechanism="A 最快显示核心结论。",
+            full_width_value="主图需要完整宽度。",
+            table_redundancy="表格无法显示机制。",
+            rationale="候选需要比较。",
+        )
+
+    (sandbox / "b.png").write_bytes(b"candidate-b")
+    paths = {
+        "figures/sandbox/q1-hero/a.png": "feasible_region",
+        "figures/sandbox/q1-hero/b.png": "constraint_timeline",
+    }
+    review = record_visual_competition(
+        run_dir,
+        "q1-hero",
+        selected_candidate="figures/sandbox/q1-hero/b.png",
+        reviewer_context_id="fresh-visual-reader",
+        fastest_mechanism="B 最快显示约束激活时段。",
+        full_width_value="时间机制需要完整宽度。",
+        table_redundancy="表格无法显示激活顺序。",
+        rationale="两种数学结构完成了真实竞争。",
+        candidate_structures=paths,
+        model_object_visibility="可行域与时间机制的对象均可见。",
+        domain_specificity="换题后约束时序含义完全改变。",
+        mechanism_or_path_visibility="激活时段与边界变化路径可见。",
+        constraint_or_boundary_visibility="约束边界直接标出。",
+        uncertainty_visibility="区间在候选 B 中以带显示。",
+        paper_size_legibility="正文整栏下最小字可读。",
+        information_density="两面板各承担一个对象。",
+        reading_order="A 到 B 按对象到结论顺序阅读。",
+        known_risks="三维面板可能遮挡关键路径。",
+    )
+
+    assert review["figure_tier"] == "hero_figure"
+    assert {item["visual_structure"] for item in review["candidates"]} == {
+        "feasible_region", "constraint_timeline"
+    }
 
 
 def test_narrative_competition_is_advisory_and_research_package_bound(tmp_path: Path) -> None:

@@ -319,6 +319,7 @@ def record_visual_critic(
         "verdict": verdict,
         "reviewer_context_id": reviewer_context_id,
         "fresh": fresh,
+        "requirement_digest": target.get("requirement_digest"),
         "review": review,
         **artifact_binding,
         "recorded_at": utc_now(),
@@ -330,9 +331,47 @@ def record_visual_critic(
     target["status"] = _STATUS_BY_VERDICT[verdict]
     target["critic_verdict"] = verdict
     target["critic_path"] = md_path.relative_to(root).as_posix()
+    target["critic_record_path"] = json_path.relative_to(root).as_posix()
     target["critic_context_id"] = reviewer_context_id
     write_visual_opportunity_pool(root, payload)
     return record
+
+
+def add_visual_opportunity(
+    run_dir: Path,
+    *,
+    opportunity_id: str,
+    question_id: str | None,
+    visual_question: str,
+    atomic_claim: str,
+    candidate_archetypes: Iterable[str],
+    origin: str,
+    provenance: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """把论文或作者提出的结构化缺图追加到 living opportunity pool。"""
+    if not origin.strip():
+        raise ContractError("追加视觉机会必须声明 origin")
+    root = run_dir.resolve()
+    try:
+        payload = read_visual_opportunity_pool(root)
+    except ContractError:
+        payload = build_visual_opportunity_pool(root, opportunities=[], write=False)
+    if any(item.get("opportunity_id") == opportunity_id for item in payload["opportunities"]):
+        raise ContractError(f"视觉机会已存在: {opportunity_id}")
+    item = _opportunity(
+        opportunity_id=opportunity_id,
+        question_id=question_id,
+        visual_question=visual_question,
+        atomic_claim=atomic_claim,
+        candidate_archetypes=candidate_archetypes,
+    )
+    item["origin"] = origin.strip()
+    if provenance:
+        item.update(provenance)
+    payload["opportunities"].append(item)
+    payload["status"] = "current"
+    write_visual_opportunity_pool(root, payload)
+    return item
 
 
 def add_companion_figure_opportunity(
@@ -346,26 +385,22 @@ def add_companion_figure_opportunity(
     reviewer_context_id: str,
     finding_id: str,
 ) -> dict[str, Any]:
-    """把论文冷读提出的 ADD_COMPANION_FIGURE 写入 living opportunity pool。"""
+    """把论文冷读提出的新增图动作写入 living opportunity pool。"""
     if not reviewer_context_id.strip() or not finding_id.strip():
-        raise ContractError("伴随图机会必须绑定 reviewer_context_id 和 finding_id")
-    root = run_dir.resolve()
-    payload = read_visual_opportunity_pool(root)
-    if any(item.get("opportunity_id") == opportunity_id for item in payload["opportunities"]):
-        raise ContractError(f"视觉机会已存在: {opportunity_id}")
-    item = _opportunity(
+        raise ContractError("冷读新增图机会必须绑定 reviewer_context_id 和 finding_id")
+    return add_visual_opportunity(
+        run_dir,
         opportunity_id=opportunity_id,
         question_id=question_id,
         visual_question=visual_question,
         atomic_claim=atomic_claim,
         candidate_archetypes=candidate_archetypes,
+        origin="paper_cold_reader",
+        provenance={
+            "finding_id": finding_id,
+            "reviewer_context_id": reviewer_context_id,
+        },
     )
-    item["origin"] = "paper_cold_reader"
-    item["finding_id"] = finding_id
-    item["reviewer_context_id"] = reviewer_context_id
-    payload["opportunities"].append(item)
-    write_visual_opportunity_pool(root, payload)
-    return item
 
 
 def validate_visual_critic_record(
@@ -384,6 +419,19 @@ def validate_visual_critic_record(
         raise ContractError("视觉批评回执与当前机会池不一致")
     if payload.get("verdict") not in VISUAL_VERDICTS:
         raise ContractError("视觉批评回执 verdict 无效")
+    opportunity = next(
+        (
+            item
+            for item in pool.get("opportunities", [])
+            if isinstance(item, dict) and item.get("opportunity_id") == opportunity_id
+        ),
+        None,
+    )
+    if opportunity is None:
+        raise ContractError("视觉批评绑定的机会已不存在")
+    requirement_digest = opportunity.get("requirement_digest")
+    if requirement_digest is not None and payload.get("requirement_digest") != requirement_digest:
+        raise ContractError("视觉批评绑定的论文视觉需求摘要已失效")
     if require_artifact_binding:
         if payload.get("fresh") is not True or not str(payload.get("reviewer_context_id", "")).strip():
             raise ContractError("视觉批评硬门要求 fresh=true 且有 reviewer_context_id")

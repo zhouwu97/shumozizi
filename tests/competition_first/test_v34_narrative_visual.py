@@ -341,10 +341,11 @@ def test_evidence_is_deduplicated_by_function_not_by_conclusion() -> None:
 
 
 def test_v34_template_registry_separates_design_assets_from_renderers() -> None:
-    """科研图、示意图和比赛外壳都可被检索，但 design_only 不伪装成 renderer。"""
+    """五类高价值结构和比赛外壳都必须声明真实 renderer contract。"""
     registry = v34_template_registry_payload()
     assert len(registry["templates"]) >= 7
-    assert select_v34_template("model_evolution_schematic")["status"] == "design_only"
+    assert select_v34_template("model_evolution_schematic")["status"] == "renderer_available"
+    assert select_v34_template("model_evolution_schematic")["required_data"]
     assert select_v34_template("cumcm_semantic_v34")["status"] == "renderer_available"
 
 

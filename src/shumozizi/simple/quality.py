@@ -16,6 +16,7 @@ from shumozizi.simple.review import scientific_review_status
 from shumozizi.simple.selection import (
     read_candidate_registry,
     register_verified_candidate,
+    require_promotable_production_result,
     retain_verified_incumbents,
     selection_group_key,
     validate_selection_contract,
@@ -227,6 +228,9 @@ def _accepted_record(
         raise ContractError("verification 收据 question_id 与登记执行不一致")
     if verified["execution_mode"] != "production" or _result_mode(result) != "production":
         raise ContractError("exploration 结果不得申请 accepted")
+    # 独立收据只能验证本次执行内容，不能把 ``--provisional`` 的探索/分段产物
+    # 变成正式答案；受控 adapter 精评会在审计前显式登记为 candidate_eligible。
+    require_promotable_production_result(result)
     challenge = verified["challenge"]
     semantic_error = challenge.get("outcome") == "model_or_scorer_semantic_error"
     base_eligible = bool(
@@ -382,6 +386,7 @@ def _quality_allows_local_facts(run_dir: Path, result_id: str) -> bool:
             result
             and result["status"] == "current"
             and _result_mode(result) == "production"
+            and result.get("provisional", False) is False
             and result["execution_valid"]
             and assessment
             and assessment["result_sha256"] == _result_digest(result)

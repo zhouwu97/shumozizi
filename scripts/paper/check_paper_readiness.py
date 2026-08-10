@@ -37,10 +37,11 @@ def _main() -> int:
     status = check_paper_readiness(run_dir)
 
     if status["ready"]:
-        print("✅ 论文编译前提检查通过")
+        # Windows 默认 GBK 控制台不能稳定输出符号字符，使用 ASCII 前缀避免成功被误判为失败。
+        print("[OK] 论文编译前提检查通过")
         return _EXIT_OK
 
-    print("❌ 论文编译前提未满足:", file=sys.stderr)
+    print("[BLOCKED] 论文编译前提未满足:", file=sys.stderr)
     for error in status["errors"]:
         print(f"  - {error}", file=sys.stderr)
 
