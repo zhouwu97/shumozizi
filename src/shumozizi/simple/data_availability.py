@@ -53,7 +53,7 @@ for _groups in _OBJECT_GROUPS.values():
 # 生产持久化常见别名（observing 实际 results/raw 工件命名）。
 _ALIASES["probability"] = {
     "probability", "p_estimate", "prob_estimate", "prob", "p_hat",
-    "point_estimate", "estimate",
+    "point_estimate", "estimate", "p",
 }
 _ALIASES["successes"] |= {"n_conductive", "conductive_count", "conductive"}
 _ALIASES["trials"] |= {"n_samples", "sample_count"}
@@ -158,7 +158,7 @@ def _reachable_keys(value: Any, depth: int = 0) -> set[str]:
 
 _PROBABILITY_VALUE_KEYS = frozenset(
     {
-        "p_estimate", "prob_estimate", "probability", "prob", "point_estimate",
+        "p_estimate", "prob_estimate", "probability", "prob", "point_estimate", "p",
         "ci_lower", "wilson_low", "interval_low", "ci_low",
         "ci_upper", "wilson_high", "interval_high", "ci_hi",
     }
