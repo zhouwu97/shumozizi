@@ -18,6 +18,7 @@ from shumozizi.paper.visual_requirements import (
     VISUAL_REQUIREMENTS_PATH,
     build_visual_requirements_from_paper,
 )
+from shumozizi.simple.data_availability import availability_for_requirement
 from shumozizi.simple.paper_image_types import (
     ACADEMIC_INFOGRAPHIC_STYLE,
     MIN_NON_TEXT_VISUAL_ELEMENTS,
@@ -518,6 +519,7 @@ def build_paper_image_prompts(run_dir: Path, *, refresh_requirements: bool = Tru
     selected_ids, diagnostics = _selected_hero_ids(raw_requirements, units)
     root_prompts = root / PROMPT_ROOT
     planned: list[dict[str, Any]] = []
+    renderer_handled: list[dict[str, Any]] = []
     seen_requirement_ids: set[str] = set()
     seen_image_ids: set[str] = set()
     for requirement in raw_requirements:
@@ -526,6 +528,19 @@ def build_paper_image_prompts(run_dir: Path, *, refresh_requirements: bool = Tru
         if not requirement_id or requirement_id in seen_requirement_ids:
             raise ContractError(f"论文图片需求 ID 缺失或重复: {requirement_id or '<empty>'}")
         seen_requirement_ids.add(requirement_id)
+        # 数据证据类需求（有确定性 renderer archetype）不生成 AI 解释图 Prompt，
+        # 正式图由 renderer 从 production 数据直接生成（路由分离根因 4）。
+        recommendation = recommend_paper_image(requirement, units.get(question_id, {}))
+        if recommendation.get("production_status") == "renderer_ready":
+            renderer_handled.append(
+                {
+                    "requirement_id": requirement_id,
+                    "renderer_archetype": recommendation.get("renderer_archetype"),
+                    "production_status": "renderer_ready",
+                    "data_availability": availability_for_requirement(root, requirement),
+                }
+            )
+            continue
         visual_type = _visual_type(requirement)
         image_id = _image_id(requirement, visual_type)
         if image_id in seen_image_ids:
@@ -569,8 +584,10 @@ def build_paper_image_prompts(run_dir: Path, *, refresh_requirements: bool = Tru
         "requirements_path": relative_inside(root, requirements_path).as_posix(),
         "prompts_root": relative_inside(root, root_prompts).as_posix(),
         "planned": planned,
+        "renderer_handled": renderer_handled,
         "generated_count": sum(item["status"] == "planned" for item in planned),
         "suggested_only_count": sum(item["status"] == "suggested_only" for item in planned),
+        "renderer_handled_count": len(renderer_handled),
     }
     atomic_json(root / PLAN_PATH, payload)
     return payload
