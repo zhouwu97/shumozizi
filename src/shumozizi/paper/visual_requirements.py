@@ -25,6 +25,7 @@ from shumozizi.core.io import (
 )
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.argument_extraction import extract_paper_argument_units
+from shumozizi.simple.data_availability import availability_for_requirement
 from shumozizi.simple.paper_image_types import recommend_paper_image
 from shumozizi.simple.state import read_simple_state, utc_now
 from shumozizi.simple.visual_requirements import (
@@ -581,6 +582,14 @@ def _visual_output_requirements(unit: dict[str, Any]) -> list[dict[str, Any]]:
                     for item in raw.get("required_visibility", [])
                     if isinstance(item, str) and item.strip()
                 ],
+                # visual_outputs 声明的 output_path 是结构化绘图原语工件（results/raw/），
+                # 必须与 answer-map 主结果一起作为 source 绑定，否则数据可画性解析器
+                # 找不到坐标/边等绘图原语，会把“有数据”误判成 data_missing。
+                "source_artifact_paths": [
+                    str(raw["output_path"]).strip()
+                ]
+                if raw.get("output_path") and str(raw["output_path"]).strip()
+                else [],
                 "ordinal": index,
             }
         )
@@ -596,6 +605,27 @@ def _compose_takeaway(claims: list[str]) -> str:
     if len(longest) <= 200:
         return longest
     return longest[:200].rsplit("。", 1)[0] + "。"
+
+
+def _object_artifact_paths(unit: dict[str, Any], mathematical_object: str) -> list[str]:
+    """收集该数学对象声明的 visual_output output_path 绘图原语工件。
+
+    正文抽取需求补充的是同一对象的论证角色，应共享事前合同绑定的结构化工件，
+    否则 resolver 会因“没绑定坐标工件”把有数据的 supporting 需求误判为
+    data_missing（与显式合同需求不一致）。
+    """
+    if not mathematical_object:
+        return []
+    paths: list[str] = []
+    for output in unit.get("visual_outputs", []):
+        if not isinstance(output, dict):
+            continue
+        if str(output.get("mathematical_object", "")).strip() != mathematical_object:
+            continue
+        value = output.get("output_path")
+        if isinstance(value, str) and value.strip() and value.strip() not in paths:
+            paths.append(value.strip())
+    return paths
 
 
 def _paper_argument_requirements(
@@ -787,6 +817,24 @@ def _question_requirements(
                 or route["preferred_archetypes"]
                 or _PREFERRED_ARCHETYPES[purpose]
             ),
+            # 事前 visual_outputs 声明的 required_visibility 必须贯穿到机会池，
+            # 不能在中途重建 requirement 时丢弃（否则下游只知道“要画什么对象”，
+            # 不知道“正式图必须同时看到哪些要素”）。
+            "required_visibility": [
+                str(item)
+                for item in seed.get("required_visibility", [])
+                if isinstance(item, str) and item.strip()
+            ],
+            "source_artifact_paths": list(
+                dict.fromkeys(
+                    [
+                        str(item)
+                        for item in seed.get("source_artifact_paths", [])
+                        if isinstance(item, str) and item.strip()
+                    ]
+                    + _object_artifact_paths(unit, mathematical_object)
+                )
+            ),
             "source_span": seed.get("source_span"),
         }
         requirement["paper_image_opportunity"] = recommend_paper_image(requirement, unit)
@@ -898,6 +946,24 @@ def _sync_open_requirements(run_dir: Path, payload: dict[str, Any]) -> None:
     for requirement in payload["requirements"]:
         if requirement["status"] != "open" or requirement["requirement_id"] in known:
             continue
+        # candidate_archetypes 必须传真实 renderer archetype ID，而不是人类可读的
+        # preferred_structures 描述；机器路由（figure_design、prompt 规划、renderer
+        # 分发）只认 archetype ID，否则会在需求与机会之间丢失渲染目标（根因 3）。
+        preferred_archetypes = [
+            item
+            for item in requirement.get("preferred_archetypes", [])
+            if isinstance(item, dict) and str(item.get("id", "")).strip()
+        ]
+        archetype_ids = [
+            str(item["id"])
+            for item in preferred_archetypes
+        ]
+        required_data: list[str] = []
+        for item in preferred_archetypes:
+            for field in item.get("required_data", []):
+                if isinstance(field, str) and field.strip() and field not in required_data:
+                    required_data.append(field)
+        data_availability = availability_for_requirement(root, requirement)
         existing_items.append(
             {
                 "opportunity_id": requirement["requirement_id"],
@@ -906,7 +972,9 @@ def _sync_open_requirements(run_dir: Path, payload: dict[str, Any]) -> None:
                 "atomic_claim": requirement["claim"],
                 "source_result_ids": requirement["source_result_ids"],
                 "source_figure_ids": [],
-                "candidate_archetypes": requirement["preferred_structures"],
+                "candidate_archetypes": archetype_ids
+                or [str(item) for item in requirement.get("preferred_structures", [])]
+                or ["undecided"],
                 "selected_archetype": None,
                 "paper_location": requirement["question_id"],
                 "status": "candidate",
@@ -920,9 +988,12 @@ def _sync_open_requirements(run_dir: Path, payload: dict[str, Any]) -> None:
                 "mathematical_object": requirement.get("mathematical_object", ""),
                 "argument_role": requirement.get("purpose"),
                 "required_visibility": requirement.get("required_visibility", []),
+                "required_data": required_data,
+                "source_artifact_paths": requirement.get("source_artifact_paths", []),
                 "forbidden_defaults": requirement.get("forbidden_defaults", []),
                 "source_span": requirement.get("source_span"),
                 "paper_image_opportunity": requirement["paper_image_opportunity"],
+                "data_availability": data_availability,
             }
         )
     refreshed["opportunities"] = existing_items

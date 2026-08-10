@@ -889,32 +889,45 @@ def render_shared_model_pipeline(
     return _save(fig, output_stem)
 
 
+# 正式 renderer 分发表：archetype ID 是路由与数据可画性解析器的唯一权威。
+# resolver 判断 can_render 时以本表为准，避免“路由说可用、renderer 实际未接入”。
+_RENDERER_DISPATCH: dict[str, Any] = {
+    "periodic_spatial_scene": render_periodic_spatial_scene,
+    "spatial_scene_cross_section": render_periodic_spatial_scene,
+    "spatial_contact_backbone_triptych": render_periodic_spatial_scene,
+    "contact_network_backbone": render_contact_network_backbone,
+    "oracle_comparison_zoom": render_geometric_oracle_comparison,
+    "probability_threshold_curve": render_probability_threshold_curve,
+    "uncertainty_margin_ribbon": render_probability_threshold_curve,
+    "integer_feasible_region": render_integer_feasible_region,
+    "cost_reliability_frontier": render_cost_reliability_frontier,
+    "convergence_envelope": render_convergence_envelope,
+    "implementation_agreement": render_implementation_agreement,
+    "shared_model_pipeline": render_shared_model_pipeline,
+}
+
+DETERMINISTIC_RENDERER_ARCHETYPES = frozenset(_RENDERER_DISPATCH)
+
+
+def deterministic_renderer_archetypes() -> frozenset[str]:
+    """返回已接入正式 renderer 的 archetype ID 集合（数据可画性路由权威）。"""
+    return DETERMINISTIC_RENDERER_ARCHETYPES
+
+
 def render_figure(
     document: dict[str, Any], archetype: str, output_stem: Path
 ) -> dict[str, Any]:
     """按 archetype 分发到正式 renderer；未知 archetype 明确失败。"""
-    renderers = {
-        "periodic_spatial_scene": render_periodic_spatial_scene,
-        "spatial_scene_cross_section": render_periodic_spatial_scene,
-        "spatial_contact_backbone_triptych": render_periodic_spatial_scene,
-        "contact_network_backbone": render_contact_network_backbone,
-        "oracle_comparison_zoom": render_geometric_oracle_comparison,
-        "probability_threshold_curve": render_probability_threshold_curve,
-        "uncertainty_margin_ribbon": render_probability_threshold_curve,
-        "integer_feasible_region": render_integer_feasible_region,
-        "cost_reliability_frontier": render_cost_reliability_frontier,
-        "convergence_envelope": render_convergence_envelope,
-        "implementation_agreement": render_implementation_agreement,
-        "shared_model_pipeline": render_shared_model_pipeline,
-    }
-    if archetype not in renderers:
+    renderer = _RENDERER_DISPATCH.get(archetype)
+    if renderer is None:
         raise ValueError(f"未注册正式 renderer archetype: {archetype}")
-    return renderers[archetype](document, output_stem)
+    return renderer(document, output_stem)
 
 
 __all__ = [
     "INK", "TEAL", "GREEN", "CORAL", "GOLD", "BLUE", "GRAY", "LIGHT",
     "MIN_FONT_PT", "RENDERER_REGISTRY", "render_figure",
+    "deterministic_renderer_archetypes", "DETERMINISTIC_RENDERER_ARCHETYPES",
     "render_periodic_spatial_scene",
     "render_contact_network_backbone",
     "render_geometric_oracle_comparison",

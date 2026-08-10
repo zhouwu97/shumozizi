@@ -59,9 +59,45 @@ GENERIC_BOX_LEVELS = frozenset({"LOW", "MEDIUM", "HIGH"})
 MIN_NON_TEXT_VISUAL_ELEMENTS = 2
 
 
+def _first_renderer_archetype(requirement: dict[str, Any]) -> str | None:
+    """返回需求中第一个已接入正式 renderer 的 archetype ID；无则返回 None。
+
+    以 figures.renderers 的分发表为唯一权威，排除默认 ``mathematical_object_schematic``
+    这类“设计可用但无生产 renderer”的伪可用 archetype。
+    """
+    from shumozizi.figures.renderers import deterministic_renderer_archetypes
+
+    deterministic = deterministic_renderer_archetypes()
+    for item in requirement.get("preferred_archetypes", []):
+        if isinstance(item, dict) and str(item.get("id", "")) in deterministic:
+            return str(item["id"])
+    return None
+
+
 def recommend_paper_image(requirement: dict[str, Any], unit: dict[str, Any]) -> dict[str, Any]:
-    """根据结构化论文需求给出轻量图片类型和优先级建议。"""
+    """根据结构化论文需求给出图片类型、生产路径与优先级建议。
+
+    路由分离（根因 4 修复）：数据证据类论证（Q3/Q4 的概率、搜索、可行域、几何）
+    优先由确定性 renderer 从 current production 结果生成，不再因为 purpose 落入
+    else 分支而被误送 academic_flowchart；AI 解释图只负责没有生产 renderer 的
+    模型/机制/流程示意，且只作设计参考，不承担证据。
+    """
     purpose = str(requirement.get("purpose", ""))
+    renderer_archetype = _first_renderer_archetype(requirement)
+    if renderer_archetype is not None:
+        priority = PRIORITY_HIGH if purpose == "decisive_evidence" else PRIORITY_MEDIUM
+        return {
+            "recommended_visual_type": None,
+            "priority": priority,
+            "reason": (
+                f"该论证由确定性 renderer（{renderer_archetype}）从 current production "
+                "结果直接生成；AI 解释图最多作布局参考，不承担证据。"
+            ),
+            "expected_value": "evidence_figure",
+            "production_status": "renderer_ready",
+            "production_path": "deterministic_renderer",
+            "renderer_archetype": renderer_archetype,
+        }
     preferred = {str(item).casefold() for item in requirement.get("preferred_structures", [])}
     if purpose == "mechanism":
         visual_type = MECHANISM_DIAGRAM
@@ -99,4 +135,5 @@ def recommend_paper_image(requirement: dict[str, Any], unit: dict[str, Any]) -> 
             "explain_method" if visual_type == ACADEMIC_FLOWCHART else "explain_structure"
         ),
         "production_status": "planned" if production_enabled else "suggested_only",
+        "production_path": "ai_image",
     }

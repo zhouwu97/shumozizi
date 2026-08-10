@@ -93,6 +93,10 @@
             "type": "array",
             "items": {"type": "string", "minLength": 1}
           },
+          "source_artifact_paths": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
           "preferred_archetypes": {
             "type": "array",
             "minItems": 1,
@@ -120,12 +124,21 @@
             ],
             "properties": {
               "recommended_visual_type": {
-                "enum": ["academic_flowchart", "mechanism_diagram", "timeline_diagram"]
+                "anyOf": [
+                  {"const": "academic_flowchart"},
+                  {"const": "mechanism_diagram"},
+                  {"const": "timeline_diagram"},
+                  {"type": "null"}
+                ]
               },
               "priority": {"enum": ["high", "medium", "low"]},
               "reason": {"type": "string", "minLength": 1},
-              "expected_value": {"enum": ["explain_method", "explain_structure"]},
-              "production_status": {"enum": ["planned", "suggested_only"]}
+              "expected_value": {
+                "enum": ["explain_method", "explain_structure", "evidence_figure"]
+              },
+              "production_status": {"enum": ["planned", "suggested_only", "renderer_ready"]},
+              "production_path": {"enum": ["deterministic_renderer", "ai_image"]},
+              "renderer_archetype": {"type": "string"}
             }
           },
           "covered_by_figure_ids": {"type": "array", "items": {"type": "string"}},

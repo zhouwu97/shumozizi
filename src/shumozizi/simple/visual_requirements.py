@@ -133,19 +133,19 @@ _OBJECT_GROUPS: dict[str, tuple[tuple[str, frozenset[str]], ...]] = {
     "probability_transition": (
         (
             "x_values",
-            frozenset({"x", "n", "points", "volume_fraction", "counts", "abscissa"}),
+            frozenset({"x", "n", "points", "volume_fraction", "counts", "abscissa", "f_pct", "n_media"}),
         ),
         (
             "successes",
-            frozenset({"successes", "success_count", "conductive_count", "success_counts"}),
+            frozenset({"successes", "success_count", "conductive_count", "success_counts", "n_conductive", "conductive"}),
         ),
         (
             "trials",
-            frozenset({"trials", "sample_size", "n_trials", "repeats", "total"}),
+            frozenset({"trials", "sample_size", "n_trials", "repeats", "total", "n_samples", "sample_count"}),
         ),
         (
             "interval",
-            frozenset({"wilson_interval", "wilson_low", "wilson_high", "interval", "confidence_interval", "ci"}),
+            frozenset({"wilson_interval", "wilson_low", "wilson_high", "interval", "confidence_interval", "ci", "ci_lower", "ci_upper", "ci_low", "ci_hi"}),
         ),
         (
             "threshold",
@@ -169,7 +169,7 @@ _OBJECT_GROUPS: dict[str, tuple[tuple[str, frozenset[str]], ...]] = {
     "integer_feasible_region": (
         (
             "lattice_points",
-            frozenset({"lattice_points", "grid", "points", "candidates", "lattice", "grid_points"}),
+            frozenset({"lattice_points", "grid", "points", "candidates", "lattice", "grid_points", "refinement_points"}),
         ),
         (
             "feasible_mask",
@@ -185,13 +185,13 @@ _OBJECT_GROUPS: dict[str, tuple[tuple[str, frozenset[str]], ...]] = {
         ),
         (
             "selected_point",
-            frozenset({"selected_point", "selected", "best", "answer", "optimal", "official"}),
+            frozenset({"selected_point", "selected", "best", "answer", "optimal", "official", "optimum"}),
         ),
     ),
     "pareto_cost_reliability": (
         (
             "candidate_points",
-            frozenset({"candidate_points", "candidates", "points", "frontier", "solutions"}),
+            frozenset({"candidate_points", "candidates", "points", "frontier", "solutions", "refinement_points", "frontier_points"}),
         ),
         (
             "dominance",
@@ -209,7 +209,7 @@ _OBJECT_GROUPS: dict[str, tuple[tuple[str, frozenset[str]], ...]] = {
     "search_stability": (
         (
             "seeds",
-            frozenset({"seeds", "seed", "random_streams", "streams", "stream_ids"}),
+            frozenset({"seeds", "seed", "random_streams", "streams", "stream_ids", "seed_base"}),
         ),
         (
             "budget_or_samples",
