@@ -17,6 +17,7 @@ allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, WebSearch, WebFetc
 - 本阶段负责：DrawIO 源文件、非数据图 PDF、图示生成记录。
 - 本阶段不负责：折线图、柱状图、散点图、热力图、箱线图、雷达图等数据图。这些由 `3coding-visual` 生成。
 - 本阶段不重跑模型、不修改 `code/`，不改写 `reports/RESULTS_REPORT.md` 的数值结论。
+- `mathmodel-paper-image` 两轮 Hard review 失败时，将其 `DROP_AI_IMAGE` 记录作为本阶段的 fallback 输入；必须从 current 结果重建可编辑 DrawIO 源图，不能复制 AI PNG 到 `figures/current`。
 
 ## 必须产出
 

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/visual_discovery_audit.schema.json",
+  "title": "Open-world paper visual discovery audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name", "schema_version", "run_id", "reviewer_context_id",
+    "blind_to_requirements", "input_scope", "inputs", "dimensions",
+    "findings", "recorded_at"
+  ],
+  "properties": {
+    "schema_name": {"const": "visual_discovery_audit"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "reviewer_context_id": {"type": "string", "minLength": 1},
+    "blind_to_requirements": {"const": true},
+    "input_scope": {"const": "frozen_pdf_only"},
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pdf_path", "pdf_sha256", "argument_revision"],
+      "properties": {
+        "pdf_path": {"type": "string", "pattern": "^paper/.+\\.pdf$"},
+        "pdf_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "argument_revision": {"type": "integer", "minimum": 0}
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_object_visibility", "decisive_evidence_visibility",
+        "mechanism_visibility", "boundary_uncertainty_visibility",
+        "paper_size_legibility", "whole_paper_visual_rhythm"
+      ],
+      "properties": {
+        "model_object_visibility": {"$ref": "#/$defs/dimension"},
+        "decisive_evidence_visibility": {"$ref": "#/$defs/dimension"},
+        "mechanism_visibility": {"$ref": "#/$defs/dimension"},
+        "boundary_uncertainty_visibility": {"$ref": "#/$defs/dimension"},
+        "paper_size_legibility": {"$ref": "#/$defs/dimension"},
+        "whole_paper_visual_rhythm": {"$ref": "#/$defs/dimension"}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {"$ref": "#/$defs/finding"}
+    },
+    "recorded_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "rationale"],
+      "properties": {
+        "status": {"enum": ["sufficient", "gap"]},
+        "rationale": {"type": "string", "minLength": 8}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id", "severity", "action", "title", "evidence",
+        "required_change", "question_id", "target_figure_ids"
+      ],
+      "properties": {
+        "finding_id": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["P0", "P1", "P2"]},
+        "action": {"enum": ["ADD_FIGURE", "REVISE_FIGURE", "REPLACE_FIGURE", "RELAYOUT"]},
+        "title": {"type": "string", "minLength": 4},
+        "evidence": {"type": "string", "minLength": 4},
+        "required_change": {"type": "string", "minLength": 4},
+        "question_id": {"type": ["string", "null"]},
+        "target_figure_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    }
+  }
+}

@@ -836,6 +836,9 @@ def _run_stage(
     for relative in stage["input_files"]:
         resolve_inside(run_dir, relative, must_exist=True)
     command = _controlled_command(stage["implementation_file"], stage["arguments"])
+    is_production_exact_candidate = (
+        stage_name == "exact_scorer" and read_simple_state(run_dir)["execution_mode"] == "production"
+    )
     result = execute_simple_experiment(
         run_dir,
         result_id=_stage_result_id(result_id, stage_name),
@@ -846,7 +849,9 @@ def _run_stage(
         input_files=stage["input_files"],
         metrics_from=stage["output_file"] if stage_name == "exact_scorer" else None,
         require_fresh_outputs=True,
-        provisional=True,
+        # 精评可在审计完成前成为受控候选，但不应成为 current；其余阶段始终诊断化。
+        provisional=not is_production_exact_candidate,
+        candidate_eligible=is_production_exact_candidate,
     )
     if not result["success"] or not isinstance(result["result"], dict):
         raise ContractError(f"adapter {stage_name} 执行失败: {result['error']}")

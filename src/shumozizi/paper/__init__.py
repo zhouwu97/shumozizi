@@ -61,6 +61,11 @@ from .sufficiency import (
     run_paper_structure_signal_check,
     verify_content_blueprint,
 )
+from .visual_discovery import (
+    build_visual_discovery_prompt,
+    record_visual_discovery,
+    validate_visual_discovery_closure,
+)
 from .visual_requirements import (
     build_visual_requirements_from_paper,
     derive_visual_requirements_from_paper,
@@ -115,4 +120,7 @@ __all__ = [
     "build_visual_requirements_from_paper",
     "derive_visual_requirements_from_paper",
     "validate_paper_visual_requirement_closure",
+    "build_visual_discovery_prompt",
+    "record_visual_discovery",
+    "validate_visual_discovery_closure",
 ]

@@ -541,12 +541,20 @@ def _promotion_record(
     receipt_figure_role = receipt.get("figure_role")
     receipt_presentation_role = receipt.get("presentation_role")
     receipt_version = receipt.get("schema_version")
-    validate_human_figure_review(
-        receipt.get("human_review"),
+    human_review = receipt.get("human_review") or {}
+    validated = validate_human_figure_review(
+        human_review,
         figure_role=receipt_figure_role,
         presentation_role=receipt_presentation_role,
         require_element_binding=receipt_version == "1.2",
     )
+    # 机械复核只能产生 mechanically_qualified，人工视觉门保持 pending；
+    # 不能在回执校验层把机械复核当作人工验收。
+    if validated.get("qualification") == "mechanically_qualified":
+        if human_review.get("reviewed") is True:
+            raise ContractError("机械复核 receipt 不得设置 reviewed=true")
+    elif human_review.get("reviewed") is not True:
+        raise ContractError("人工视觉门未通过：reviewed 必须为 true")
     manifest_valid = True
     if receipt_version == "1.2":
         manifest = receipt.get("visual_manifest")
@@ -572,9 +580,8 @@ def _promotion_record(
         or receipt_figure_role != role
         or receipt_presentation_role != presentation_role
         or receipt.get("qa", {}).get("success") is not True
-        or receipt.get("human_review", {}).get("reviewed") is not True
-        or receipt.get("human_review", {}).get("verdict") != "promote"
-        or receipt.get("human_review", {}).get("issues") != []
+        or human_review.get("verdict") != "promote"
+        or human_review.get("issues") != []
         or not manifest_valid
         or any(promoted_hashes.get(item["path"]) != item["sha256"] for item in output_records)
     ):
@@ -1011,6 +1018,22 @@ def register_presentation_figure(
             promotion_receipt=promotion_receipt,
         )
     )
+    # 人工视觉门：机械复核（receipt qualification=mechanically_qualified）只能
+    # 工程晋级；index 必须显式标记 human_vision_gate=pending，不得视为人工验收。
+    if promotion_receipt is not None:
+        try:
+            promotion_payload = load_json(
+                resolve_inside(run_dir, promotion_receipt, must_exist=True)
+            )
+        except ContractError:
+            promotion_payload = {}
+        human = promotion_payload.get("human_review") or {}
+        if human.get("qualification") == "mechanically_qualified":
+            entry["human_vision_gate"] = "pending"
+            entry["human_vision_performed"] = False
+        else:
+            entry["human_vision_gate"] = "passed"
+            entry["human_vision_performed"] = True
     index = read_figure_index(run_dir)
     index["schema_version"] = "1.3"
     for existing in index["figures"]:

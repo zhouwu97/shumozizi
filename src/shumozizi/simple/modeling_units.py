@@ -28,10 +28,19 @@ from shumozizi.knowledge.external_discussion import validate_external_discussion
 from shumozizi.simple.capabilities import TOOLING_PATH
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.review_tasks import validate_review_task_receipt
+from shumozizi.simple.risk_routing import (
+    validate_risk_assessment,
+    validate_risk_package,
+)
 from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
 from shumozizi.simple.visual_requirements import (
+    ARGUMENT_ROLES,
+    MATHEMATICAL_OBJECTS,
+    NON_WAIVABLE_OBJECTS,
+    declared_mathematical_objects,
     derive_visual_requirements,
     validate_declared_visual_data,
+    validate_object_visual_data,
     validate_visual_document,
 )
 
@@ -81,8 +90,11 @@ _INSIGHT_KINDS = frozenset(
     }
 )
 _VISUAL_OUTPUT_ROOT = Path("results/raw")
+# 数据丰富型单元必须在实验前冻结结构化绘图输出。exact_oracle 涉及空间、
+# 网络、集合、场、可行域或不确定性对象时同样纳入；只有纯标量 oracle 可以
+# 通过带具体理由的 visual_output_waiver 豁免（见 _require_experiment_visual_output_contracts）。
 _STRUCTURED_VISUAL_OUTPUT_UNIT_KINDS = frozenset(
-    {"optimization", "data_modeling", "simulation", "coordination"}
+    {"optimization", "data_modeling", "simulation", "coordination", "exact_oracle"}
 )
 UNIT_KINDS = frozenset(
     {
@@ -812,6 +824,13 @@ def _validate_unit_plan(
         delta = _validate_question_delta(
             unit.get("question_delta"), f"{unit_id}.question_delta"
         )
+    risk_package = validate_risk_package(
+        unit.get("risk_package"),
+        label=f"{unit_id}.risk_package",
+        core_question=core,
+        unit_kind=str(mode),
+        semantic_risk_signals=set(delta["semantic_risk_signals"]),
+    )
     answer_contract: dict[str, Any] = {}
     if require_decision_contract:
         answer_contract = _validate_answer_contract(
@@ -1113,11 +1132,17 @@ def _validate_unit_plan(
         "sensitivity_required": sensitivity_required,
         "robustness_required": robustness_required,
         "visual_outputs": visual_outputs,
+        "risk_package": risk_package,
     }
 
 
 def _validate_visual_outputs(value: object, label: str) -> list[dict[str, Any]]:
-    """校验实验阶段为论文图预留的结构化输出合同。"""
+    """校验实验阶段为论文图预留的结构化输出合同。
+
+    v3.4 合同在 1.4 基础上增加数学对象、论证角色、候选 archetype 与可见性
+    要求；旧运行缺省这些字段仍可读取，但对象级最低结构字段由
+    ``validate_object_visual_data`` 独立把关。
+    """
     if not isinstance(value, list):
         raise ContractError(f"{label} 必须是列表")
     outputs: list[dict[str, Any]] = []
@@ -1159,15 +1184,69 @@ def _validate_visual_outputs(value: object, label: str) -> list[dict[str, Any]]:
             raise ContractError(f"{label}.output_path 不得重复")
         argument_units.add(argument_unit_id)
         output_paths.add(output_path)
+        takeaway = str(item.get("takeaway", item.get("claim", ""))).strip()
+        if not takeaway:
+            takeaway = visual_question
+        mathematical_object = str(item.get("mathematical_object", "")).strip()
+        if mathematical_object and mathematical_object not in MATHEMATICAL_OBJECTS:
+            raise ContractError(
+                f"{item_label}.mathematical_object 未登记: {mathematical_object}；"
+                f"可选: {', '.join(sorted(MATHEMATICAL_OBJECTS))}"
+            )
+        argument_role = str(item.get("argument_role", "")).strip()
+        if argument_role and argument_role not in ARGUMENT_ROLES:
+            raise ContractError(
+                f"{item_label}.argument_role 未登记: {argument_role}；"
+                f"可选: {', '.join(sorted(ARGUMENT_ROLES))}"
+            )
+        candidate_archetypes = [
+            str(candidate).strip()
+            for candidate in item.get("candidate_archetypes", [])
+            if isinstance(candidate, str) and candidate.strip()
+        ]
+        required_visibility = [
+            str(visibility).strip()
+            for visibility in item.get("required_visibility", [])
+            if isinstance(visibility, str) and visibility.strip()
+        ]
         outputs.append(
             {
                 "visual_question": visual_question,
+                "takeaway": takeaway,
                 "argument_unit_id": argument_unit_id,
+                "argument_role": argument_role,
+                "mathematical_object": mathematical_object,
+                "candidate_archetypes": candidate_archetypes,
+                "required_visibility": required_visibility,
                 "required_data": required_data,
                 "output_path": output_path,
             }
         )
     return outputs
+
+
+def _visual_output_waiver_reason(unit: dict[str, Any]) -> str | None:
+    """纯标量 exact oracle 的结构化输出豁免；空间/网络对象不得豁免。
+
+    Args:
+        unit: 建模单元。
+
+    Returns:
+        有效豁免理由；不可豁免时返回 ``None``。
+    """
+    if str(unit.get("unit_kind", "")) != "exact_oracle":
+        return None
+    if unit.get("visual_outputs"):
+        return None
+    waiver = unit.get("visual_output_waiver")
+    if not isinstance(waiver, dict):
+        return None
+    reason = str(waiver.get("reason", "")).strip()
+    if not reason:
+        return None
+    if declared_mathematical_objects(unit) & NON_WAIVABLE_OBJECTS:
+        return None
+    return reason
 
 
 def validate_visual_output_sources(run_dir: Path) -> list[str]:
@@ -1271,12 +1350,13 @@ def _require_experiment_visual_output_contracts(payload: dict[str, Any]) -> None
     missing = [
         str(unit.get("question_id", unit.get("unit_id", "<unknown>")))
         for unit in structured_units
-        if not unit.get("visual_outputs")
+        if not unit.get("visual_outputs") and not _visual_output_waiver_reason(unit)
     ]
     if missing:
         raise ContractError(
             "进入实验前，数据丰富型建模单元必须声明 visual_outputs，"
-            "以冻结论证问题、所需结构字段和 results/raw 输出路径；缺失问题: "
+            "以冻结论证问题、所需结构字段和 results/raw 输出路径；"
+            "纯标量 exact oracle 可提供带具体理由的 visual_output_waiver。缺失问题: "
             + "、".join(missing)
         )
     semantic_errors = [
@@ -1288,6 +1368,16 @@ def _require_experiment_visual_output_contracts(payload: dict[str, Any]) -> None
         raise ContractError(
             "visual_outputs.required_data 未覆盖题型最低视觉证据结构: "
             + "；".join(semantic_errors)
+        )
+    object_errors = [
+        error
+        for unit in structured_units
+        for error in validate_object_visual_data(unit)
+    ]
+    if object_errors:
+        raise ContractError(
+            "visual_outputs 未覆盖数学对象的最低结构字段: "
+            + "；".join(object_errors)
         )
 
 
@@ -1583,6 +1673,14 @@ def derive_question_outcome(
         and guards["passed"]
         and feasible
     )
+    risk_boundary = validate_risk_assessment(
+        actual.get("risk_assessment"),
+        package=plan.get("risk_package"),
+        results=results,
+        question_id=plan["question_id"],
+        label=f"{plan['unit_id']}.actual.risk_assessment",
+        require_before_first_production=True,
+    )
     if comparison.get("optimality_certified") is True:
         claim_level = "optimal"
     elif upgrade["passed"]:
@@ -1598,6 +1696,10 @@ def derive_question_outcome(
         if objective_answer_available
         else None
     )
+    if objective_answer is not None and risk_boundary is not None:
+        # 一旦前置攻击发现补偿带、泄漏或分解失效，答案映射与 Author Pass
+        # 会继承这里的边界，不能把它降级成论文末尾的一句局限性。
+        objective_answer["claim_boundary"] = risk_boundary
 
     fallback_evidence = evidence.get("fallback")
     fallback_passed = False
@@ -1647,6 +1749,8 @@ def derive_question_outcome(
         warnings.append("结果未通过题面硬约束或可行性检查，不能形成题面答案。")
     if not exact_metric_available:
         warnings.append("正式结果缺少题面 exact 指标，不能形成题面答案。")
+    if risk_boundary is not None and risk_boundary["label"] != "unconditional":
+        warnings.append("前置风险攻击限制了主张边界；正式结果必须按条件或范围表达。")
 
     search_confidence = "strong"
     if comparison.get("optimality_certified") is not True:
@@ -2248,18 +2352,31 @@ def _derive_v14_non_search_outcome(
     if not hard_constraints_passed:
         warnings.append("正式结果缺少题面硬约束通过事实。")
     method_id = plan.get("primary_method") or plan["unit_kind"]
+    risk_boundary = validate_risk_assessment(
+        actual.get("risk_assessment"),
+        package=plan.get("risk_package"),
+        results=results,
+        question_id=plan["question_id"],
+        label=f"{plan['unit_id']}.actual.risk_assessment",
+        require_before_first_production=True,
+    )
+    objective_answer = (
+        {
+            "route_id": method_id,
+            "result_id": primary_result_id,
+            "claim_level": (
+                "verified" if plan["unit_kind"] == "exact_oracle" else "evaluated"
+            ),
+        }
+        if available
+        else None
+    )
+    if objective_answer is not None and risk_boundary is not None:
+        objective_answer["claim_boundary"] = risk_boundary
+    if risk_boundary is not None and risk_boundary["label"] != "unconditional":
+        warnings.append("前置风险攻击限制了主张边界；正式结果必须按条件或范围表达。")
     return {
-        "objective_answer": (
-            {
-                "route_id": method_id,
-                "result_id": primary_result_id,
-                "claim_level": (
-                    "verified" if plan["unit_kind"] == "exact_oracle" else "evaluated"
-                ),
-            }
-            if available
-            else None
-        ),
+        "objective_answer": objective_answer,
         "recommended_plan": None,
         "evidence_grade": {
             "feasible": feasible,
@@ -2697,14 +2814,20 @@ def validate_modeling_units(
             "MODELING_UNITS 必须至少标记一个核心问题；"
             "每问平均用力会让决定奖项上限的问题得不到足够搜索预算"
         )
+    risk_advisories = [
+        warning
+        for plan in plans
+        for warning in (plan.get("risk_package") or {}).get("advisories", [])
+        if isinstance(warning, str)
+    ]
     if require_actual:
         results = {item["result_id"]: item for item in read_result_index(run_dir)["results"]}
         budgets = [
             _validate_actual_unit(run_dir, plan, raw, results)
             for plan, raw in zip(plans, raw_units, strict=True)
         ]
-        return _core_budget_advisories(run_dir, budgets)
-    return []
+        return [*risk_advisories, *_core_budget_advisories(run_dir, budgets)]
+    return risk_advisories
 
 
 def _core_budget_advisories(
@@ -2821,6 +2944,82 @@ def require_v32_modeling_plan(run_dir: Path) -> None:
     validate_modeling_units(run_dir, payload, require_actual=False)
     # 只有进入真实实验才提升为硬门，允许分析阶段迭代保存尚未完成的合同。
     _require_experiment_visual_output_contracts(payload)
+
+
+def require_risk_adaptive_production_ready(run_dir: Path, question_id: str) -> None:
+    """在风险自适应运行启动 production 前复验本问前置攻击。
+
+    旧运行以及显式 legacy 策略不受影响。新策略下，核心问题必须声明风险包，
+    且风险证据只能先以 exploration 产生；已有 production 时还会复验攻击时序，
+    防止事后补填 ``completed_before_first_production`` 绕过门禁。
+
+    Args:
+        run_dir: 当前运行目录。
+        question_id: 即将执行 production 的问题 ID。
+
+    Raises:
+        ContractError: 建模合同、风险包或前置攻击事实尚未闭合。
+    """
+    state = read_simple_state(run_dir)
+    if state.get("execution_policy") != "risk-adaptive-v1":
+        return
+    if not is_competition_first_v32_state(state):
+        raise ContractError("risk-adaptive-v1 仅适用于 Competition-First v3.2")
+    path = run_dir / MODELING_UNITS_PATH
+    if not path.is_file():
+        raise ContractError("首次 production 前必须完成 analysis/MODELING_UNITS.json")
+    payload = load_json(path)
+    validate_modeling_units(run_dir, payload, require_actual=False)
+    raw_units = payload.get("units", [])
+    matching = [
+        unit
+        for unit in raw_units
+        if isinstance(unit, dict) and unit.get("question_id") == question_id
+    ]
+    if len(matching) != 1:
+        raise ContractError(f"MODELING_UNITS 必须恰好包含本问 {question_id} 的答案单元")
+    raw_unit = matching[0]
+    plan = _validate_unit_plan(
+        run_dir,
+        raw_unit,
+        question_ids=set(state["required_questions"]),
+        require_decision_contract=True,
+        schema_version=str(payload["schema_version"]),
+    )
+    package = plan.get("risk_package")
+    if plan["core_question"] and package is None:
+        raise ContractError(f"核心问题 {question_id} 首次 production 前必须声明 risk_package")
+    if package is None:
+        return
+    results = {item["result_id"]: item for item in read_result_index(run_dir)["results"]}
+    existing_production = any(
+        item.get("question_id") == question_id
+        and item.get("execution_mode") == "production"
+        and item.get("execution_valid") is True
+        for item in results.values()
+    )
+    actual = raw_unit.get("actual")
+    if not isinstance(actual, dict):
+        raise ContractError(f"{question_id} 首次 production 前必须填写 actual.risk_assessment")
+    boundary = validate_risk_assessment(
+        actual.get("risk_assessment"),
+        package=package,
+        results=results,
+        question_id=question_id,
+        label=f"{plan['unit_id']}.actual.risk_assessment",
+        require_before_first_production=existing_production,
+    )
+    if not existing_production and boundary is not None:
+        invalid_modes = [
+            result_id
+            for result_id in boundary["risk_result_ids"]
+            if results[result_id].get("execution_mode") != "exploration"
+        ]
+        if invalid_modes:
+            raise ContractError(
+                "首次 production 的风险证据必须来自 exploration: "
+                + "、".join(invalid_modes)
+            )
 
 
 def semantic_high_risk_questions(run_dir: Path) -> set[str]:

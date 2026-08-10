@@ -12,6 +12,7 @@
     "phase": {"enum": ["analysis", "capability_route", "experiment", "scientific_review", "visualization", "paper", "paper_review", "verify", "final_review", "complete", "blocked"]},
     "legacy_phase": {"type": "string"},
     "execution_mode": {"enum": ["production", "exploration"]},
+    "execution_policy": {"enum": ["legacy-production-v1", "risk-adaptive-v1"]},
     "revision": {"type": "integer", "minimum": 0},
     "paper_render_revision": {"type": "integer", "minimum": 0},
     "paper_reviewed_revision": {"type": "integer", "minimum": 0},

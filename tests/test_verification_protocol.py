@@ -8,12 +8,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shumozizi.core.io import ContractError, load_json
+from shumozizi.core.io import ContractError, atomic_json, load_json
 from shumozizi.simple.adapters import run_verification_protocol, validate_adapter_contract
 from shumozizi.simple.execution import execute_simple_experiment
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.quality import assess_result_quality, quality_allows_paper
 from shumozizi.simple.results import read_result_index
+from shumozizi.simple.selection import register_verified_candidate
 from tests.quality_protocol_helpers import (
     adapter_backed_assessment,
     record_passing_scientific_review,
@@ -207,7 +208,78 @@ class VerificationProtocolTests(unittest.TestCase):
             self.assertEqual("current", results["incumbent"]["status"])
             record_passing_scientific_review(run_dir)
             self.assertTrue(quality_allows_paper(run_dir, "incumbent"))
-            self.assertEqual("diagnostic", results["failed_candidate"]["status"])
+            self.assertEqual("candidate_eligible", results["failed_candidate"]["status"])
+
+    def test_provisional_production_result_cannot_be_promoted_after_verification(self) -> None:
+        """暂存的 production 精评不得借 verification 收据直接变成正式答案。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "provisional-promotion-rejected")
+            protocol = run_synthetic_verification_protocol(
+                run_dir,
+                result_id="provisional_exact",
+                question_id="Q1",
+                objective=1.0,
+            )
+
+            # 模拟 CLI 的 ``--provisional`` 结果：其文件和独立收据仍可验证，
+            # 但没有完成正式 production 重跑，不能被质量层提升。
+            index = read_result_index(run_dir)
+            for item in index["results"]:
+                if item["result_id"] == "provisional_exact":
+                    item["provisional"] = True
+                    item["status"] = "diagnostic"
+                    break
+            atomic_json(run_dir / "results" / "index.json", index)
+
+            with self.assertRaisesRegex(ContractError, "暂存|provisional|正式 production"):
+                assess_result_quality(
+                    run_dir,
+                    result_id="provisional_exact",
+                    assessment=adapter_backed_assessment(protocol),
+                )
+
+            result = next(
+                item
+                for item in read_result_index(run_dir)["results"]
+                if item["result_id"] == "provisional_exact"
+            )
+            self.assertEqual("diagnostic", result["status"])
+            self.assertTrue(result["provisional"])
+
+    def test_selection_rejects_provisional_or_diagnostic_candidate(self) -> None:
+        """选择层不能被直接调用来绕过质量层的正式重跑要求。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "selection-provisional-rejected")
+            run_synthetic_verification_protocol(
+                run_dir,
+                result_id="provisional_selection",
+                question_id="Q1",
+                objective=1.0,
+            )
+            index = read_result_index(run_dir)
+            for item in index["results"]:
+                if item["result_id"] == "provisional_selection":
+                    item["provisional"] = True
+                    item["status"] = "diagnostic"
+                    break
+            atomic_json(run_dir / "results" / "index.json", index)
+
+            with self.assertRaisesRegex(ContractError, "暂存|provisional|candidate"):
+                register_verified_candidate(
+                    run_dir,
+                    result_id="provisional_selection",
+                    selection_contract=load_json(
+                        run_dir / "results" / "verification" / "provisional_selection.adapter.json"
+                    )["selection_contract"],
+                )
+
+            result = next(
+                item
+                for item in read_result_index(run_dir)["results"]
+                if item["result_id"] == "provisional_selection"
+            )
+            self.assertEqual("diagnostic", result["status"])
+            self.assertTrue(result["provisional"])
 
     @staticmethod
     def _selection_contract(*, variables: list[str]) -> dict[str, object]:

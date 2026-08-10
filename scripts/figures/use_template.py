@@ -21,21 +21,239 @@ from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
 from shumozizi.simple.state import read_simple_state
 
-TEMPLATE_SCRIPTS = {
-    "active_constraint_map": "make_feasible_region_active_constraints.py",
-    "argument_evidence_map": "make_multi_panel_evidence_chain.py",
-    "constraint_margin_timeline": "make_interval_event_timeline.py",
-    "cv-roc-ci": "make_cv_roc_ci.py",
-    "feasible-region-active-constraints": "make_feasible_region_active_constraints.py",
-    "interval-event-timeline": "make_interval_event_timeline.py",
-    "model_evolution_schematic": "make_multi_panel_evidence_chain.py",
-    "multi-panel-evidence-chain": "make_multi_panel_evidence_chain.py",
-    "prediction-marginal-grid": "make_prediction_marginal_grid.py",
-    "paired-raincloud": "make_paired_raincloud.py",
-    "correlation-pairgrid": "make_correlation_pairgrid.py",
-    "uncertainty-fan-threshold": "make_uncertainty_fan_threshold.py",
-    "uncertainty_threshold_ribbon": "make_uncertainty_fan_threshold.py",
+_REFERENCE_TEMPLATE_BASE = {
+    "active_constraint_map": "feasible-region-active-constraints",
+    "argument_evidence_map": "multi-panel-evidence-chain",
+    "constraint_margin_timeline": "interval-event-timeline",
+    "model_evolution_schematic": "multi-panel-evidence-chain",
+    "uncertainty_threshold_ribbon": "uncertainty-fan-threshold",
 }
+
+# WHY：由真实 renderer 支持集派生参考脚本，避免新增模板时 CLI 映射静默落后。
+TEMPLATE_SCRIPTS = {
+    template_id: (
+        "make_"
+        + _REFERENCE_TEMPLATE_BASE.get(template_id, template_id).replace("-", "_")
+        + ".py"
+    )
+    for template_id in SUPPORTED_TEMPLATES
+}
+
+_TEMPLATE_PRESENTATION = {
+    "active_constraint_map": ("活跃约束图", "optimization"),
+    "argument_evidence_map": ("论证—证据关系图", "schematic"),
+    "constraint_margin_timeline": ("约束余量时间线", "optimization"),
+    "correlation-pairgrid": ("相关矩阵组合图", "correlation"),
+    "cv-roc-ci": ("交叉验证 ROC 与置信区间", "model_evaluation"),
+    "feasible-region-active-constraints": ("可行域与活跃约束", "optimization"),
+    "grouped-circular-heatmap": ("分组环形热图", "correlation"),
+    "grouped-corr-split-violin": ("相关矩阵与分组小提琴", "correlation"),
+    "interval-event-timeline": ("区间与关键事件时间线", "temporal"),
+    "model_evolution_schematic": ("模型演化示意图", "schematic"),
+    "multi-panel-evidence-chain": ("多面板联合证据链", "combination"),
+    "multiclass-shap-combo": ("多分类 SHAP 组合图", "machine_learning"),
+    "nature-chord-diagram": ("加权关系和弦图", "correlation"),
+    "paired-raincloud": ("配对云雨图", "distribution"),
+    "prediction-marginal-grid": ("预测—真实值边缘分布", "model_evaluation"),
+    "rf-tpe-surface": ("调参试验响应曲面", "machine_learning"),
+    "taylor-diagram": ("多模型泰勒图", "model_evaluation"),
+    "uncertainty-fan-threshold": ("不确定性扇形与阈值", "uncertainty"),
+    "uncertainty_threshold_ribbon": ("不确定性阈值带", "uncertainty"),
+    "urban-park-cooling-combo": ("组成与分组分布组合图", "combination"),
+}
+
+_CATEGORY_GUIDANCE = {
+    "classification": ("存在真实分类标签与留出预测时", "没有留出集或类别极不平衡却未说明时", ["decisive_evidence", "stability"]),
+    "combination": ("多个互补面板共同回答一个核心论点时", "只是为了增加面板数量或每问强行拼图时", ["decisive_evidence", "insight"]),
+    "correlation": ("关系矩阵、分组相关或加权连接结构真实存在时", "只有少量无结构标量或试图用相关证明因果时", ["model_understanding", "insight"]),
+    "distribution": ("需要比较完整分布、配对变化或样本异质性时", "只有单个汇总值或样本未配对时", ["decisive_evidence", "stability"]),
+    "machine_learning": ("模型实际产生调参试验或解释值时", "没有真实 trial、SHAP 或留出预测却想补造高级图时", ["insight", "stability"]),
+    "model_evaluation": ("多个模型按统一参考和同一留出协议比较时", "模型评价口径、参考标准或样本集合不一致时", ["decisive_evidence", "stability"]),
+    "optimization": ("可行域、活跃约束、余量或真实搜索点决定结论时", "只有收敛曲线且没有统一 exact 指标和可行性时", ["decisive_evidence", "insight"]),
+    "schematic": ("需要解释模型对象继承或论证关系时", "用示意图替代中央推导、真实结果或约束验证时", ["model_understanding"]),
+    "temporal": ("区间、事件、阶段或时间余量的顺序决定结果时", "数据没有时间顺序或事件只是装饰标注时", ["model_understanding", "insight"]),
+    "uncertainty": ("分位带、置信区间或阈值越界风险真实可得时", "只有点估计或把搜索波动冒充统计不确定性时", ["stability", "decisive_evidence"]),
+}
+
+_TEMPLATE_GUIDANCE_OVERRIDES = {
+    "multiclass-shap-combo": (
+        "模型已实际计算逐类别、逐特征、逐样本 SHAP 时",
+        "只有内置重要性、回归系数或代理解释而没有真实 SHAP 时",
+        ["model_understanding", "insight"],
+    ),
+    "nature-chord-diagram": (
+        "真实加权关系或流量需要同时表达节点分组与连接强度时",
+        "连接结构不存在、权重不可比较或只有无方向的装饰性关系时",
+        ["model_understanding", "insight"],
+    ),
+    "rf-tpe-surface": (
+        "真实调参 trials 覆盖二维参数空间且需解释响应结构时",
+        "试验点过少、近共线，或准备把插值曲面写成连续目标函数真值时",
+        ["insight", "stability"],
+    ),
+    "taylor-diagram": (
+        "多个模型相对同一参考序列比较标准差与相关性时",
+        "模型使用不同参考标准差、样本集合或评价时段时",
+        ["decisive_evidence", "stability"],
+    ),
+}
+
+_REQUIRED_DATA_SUMMARY = {
+    "active_constraint_map": "二维候选点、可行 mask、约束边界、活跃约束和选定点",
+    "argument_evidence_map": "带 kind 的论证节点和有向关系边",
+    "constraint_margin_timeline": "共享时间轴、逐约束余量序列和活跃容差",
+    "correlation-pairgrid": "至少三行同字段数值观测",
+    "cv-roc-ci": "同一留出协议下各模型各折的 FPR/TPR",
+    "feasible-region-active-constraints": "候选点、可行 mask、边界、活跃约束和最终点",
+    "grouped-circular-heatmap": "至少三个项目与至少两个同向可比指标环",
+    "grouped-corr-split-violin": "两个分组的同字段逐样本观测矩阵",
+    "interval-event-timeline": "实体区间、关键事件和最终有效区间",
+    "model_evolution_schematic": "带 stage 的模型对象节点和继承边",
+    "multi-panel-evidence-chain": "2--4 个共享论点、阅读顺序明确的真实数据面板",
+    "multiclass-shap-combo": "实际计算的分类 SHAP 聚合值与逐样本贡献/特征值",
+    "nature-chord-diagram": "至少三个节点、真实分组和正权重连接",
+    "paired-raincloud": "同一对象成对的 before/after 观测",
+    "prediction-marginal-grid": "同一样本的真实值与预测值",
+    "rf-tpe-surface": "至少覆盖两个 x 与两个 y 水平的真实调参 trials",
+    "taylor-diagram": "统一参考标准差及各模型标准差和相关系数",
+    "uncertainty-fan-threshold": "共享 x、中心估计、嵌套区间带和决策阈值",
+    "uncertainty_threshold_ribbon": "共享 x、中心估计、嵌套区间带和决策阈值",
+    "urban-park-cooling-combo": "类别组成矩阵与 1--3 个多分组逐样本指标",
+}
+
+_PREVIEW_FIDELITY = {
+    "active_constraint_map": ("preview_grade", "native"),
+    "argument_evidence_map": ("preview_grade", "native"),
+    "constraint_margin_timeline": ("preview_grade", "native"),
+    "correlation-pairgrid": ("safe_adapted", "safe_adaptation"),
+    "cv-roc-ci": ("safe_adapted", "safe_adaptation"),
+    "feasible-region-active-constraints": ("preview_grade", "native"),
+    "grouped-circular-heatmap": ("needs_visual_refinement", "refinement_queue"),
+    "grouped-corr-split-violin": ("needs_visual_refinement", "refinement_queue"),
+    "interval-event-timeline": ("preview_grade", "native"),
+    "model_evolution_schematic": ("preview_grade", "native"),
+    "multi-panel-evidence-chain": ("preview_grade", "native"),
+    "multiclass-shap-combo": ("needs_visual_refinement", "refinement_queue"),
+    "nature-chord-diagram": ("preview_grade", "preview_adaptation"),
+    "paired-raincloud": ("preview_grade", "preview_adaptation"),
+    "prediction-marginal-grid": ("needs_visual_refinement", "refinement_queue"),
+    "rf-tpe-surface": ("safe_adapted", "safe_adaptation"),
+    "taylor-diagram": ("safe_adapted", "safe_adaptation"),
+    "uncertainty-fan-threshold": ("preview_grade", "native"),
+    "uncertainty_threshold_ribbon": ("preview_grade", "native"),
+    "urban-park-cooling-combo": ("needs_visual_refinement", "refinement_queue"),
+}
+
+_GRAYSCALE_READABILITY = {
+    "grouped-circular-heatmap": "weak",
+    "multiclass-shap-combo": "conditional",
+    "nature-chord-diagram": "conditional",
+}
+
+_MIN_PAPER_WIDTH_CM = {
+    "correlation-pairgrid": 15.5,
+    "grouped-corr-split-violin": 15.5,
+    "multi-panel-evidence-chain": 15.5,
+    "multiclass-shap-combo": 15.5,
+    "prediction-marginal-grid": 15.5,
+    "urban-park-cooling-combo": 15.5,
+}
+
+_STRUCTURE_ROUTES = {
+    "classification": (
+        "cv-roc-ci",
+        "multiclass-shap-combo",
+        "prediction-marginal-grid",
+        "taylor-diagram",
+    ),
+    "distribution": (
+        "paired-raincloud",
+        "grouped-corr-split-violin",
+        "urban-park-cooling-combo",
+    ),
+    "flow": ("nature-chord-diagram", "argument_evidence_map"),
+    "network": ("nature-chord-diagram", "argument_evidence_map"),
+    "optimization": (
+        "feasible-region-active-constraints",
+        "active_constraint_map",
+        "constraint_margin_timeline",
+        "rf-tpe-surface",
+    ),
+    "temporal": ("interval-event-timeline", "constraint_margin_timeline"),
+    "uncertainty": ("uncertainty-fan-threshold", "uncertainty_threshold_ribbon"),
+}
+
+
+def template_catalog_payload() -> dict[str, object]:
+    """构造供 CLI、Agent 和图库前端共同消费的生产模板目录。"""
+    template_root = Path("skills/mathmodel-figure-templates/scripts/templates")
+    preview_root = Path("skills/mathmodel-figure-templates/assets/previews")
+    templates = []
+    for template_id in SUPPORTED_TEMPLATES:
+        script_name = TEMPLATE_SCRIPTS[template_id]
+        preview_name = f"{Path(script_name).stem.removeprefix('make_')}_replica.png"
+        preview = preview_root / preview_name
+        title, category = _TEMPLATE_PRESENTATION[template_id]
+        use_when, avoid_when, evidence_role = _TEMPLATE_GUIDANCE_OVERRIDES.get(
+            template_id,
+            _CATEGORY_GUIDANCE[category],
+        )
+        preview_fidelity, adaptation_level = _PREVIEW_FIDELITY[template_id]
+        templates.append(
+            {
+                "template_id": template_id,
+                "title": title,
+                "category": category,
+                "reference_script": (template_root / script_name).as_posix(),
+                "preview": preview.as_posix() if (REPO_ROOT / preview).is_file() else None,
+                "renderer_available": True,
+                "requires_current_result": True,
+                "demo_only": False,
+                "use_when": use_when,
+                "avoid_when": avoid_when,
+                "evidence_role": evidence_role,
+                "required_data_summary": _REQUIRED_DATA_SUMMARY[template_id],
+                "min_paper_width_cm": _MIN_PAPER_WIDTH_CM.get(template_id, 12.0),
+                "preview_fidelity": preview_fidelity,
+                "adaptation_level": adaptation_level,
+                "grayscale_readability": _GRAYSCALE_READABILITY.get(template_id, "good"),
+            }
+        )
+    return {
+        "schema_name": "production_figure_template_catalog",
+        "schema_version": "1.1",
+        "templates": templates,
+    }
+
+
+def recommend_template_candidates(structure: str) -> dict[str, object]:
+    """按建模数据结构返回高级图候选，不替代当前论点和数据合同判断。"""
+    normalized = structure.strip().lower().replace("/", "_").replace("-", "_")
+    aliases = {"network_flow": "flow", "time": "temporal"}
+    normalized = aliases.get(normalized, normalized)
+    template_ids = _STRUCTURE_ROUTES.get(normalized)
+    if template_ids is None:
+        raise ContractError(
+            f"未知图表结构: {structure}；可用: {', '.join(sorted(_STRUCTURE_ROUTES))}"
+        )
+    catalog = template_catalog_payload()
+    by_id = {item["template_id"]: item for item in catalog["templates"]}
+    candidates = [by_id[template_id] for template_id in template_ids]
+    ready = [
+        item for item in candidates
+        if item["preview_fidelity"] != "needs_visual_refinement"
+    ]
+    refinement_queue = [
+        item for item in candidates
+        if item["preview_fidelity"] == "needs_visual_refinement"
+    ]
+    return {
+        "structure": normalized,
+        "advisory_only": True,
+        "selection_rule": "按整篇论文主线、当前真实数据和论证角色选择，不按每问强行一张高级图。",
+        "candidates": ready,
+        "refinement_queue": refinement_queue,
+    }
 
 
 def _freeze_runtime_source(source: Path, target_dir: Path, *, prefix: str) -> Path:
@@ -233,12 +451,27 @@ def main() -> int:
     parser.add_argument("--expected-takeaway")
     parser.add_argument("--cannot-prove")
     parser.add_argument("--list", action="store_true", help="列出已接入真实数据接口的模板")
+    parser.add_argument("--catalog", action="store_true", help="输出机器可读的生产模板目录")
+    parser.add_argument("--recommend", help="按建模结构推荐高级图候选")
     args = parser.parse_args()
+    if args.recommend:
+        try:
+            recommendation = recommend_template_candidates(args.recommend)
+        except ContractError as exc:
+            print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False, indent=2))
+            return 1
+        print(json.dumps(recommendation, ensure_ascii=False, indent=2))
+        return 0
+    if args.catalog:
+        print(json.dumps(template_catalog_payload(), ensure_ascii=False, indent=2))
+        return 0
     if args.list:
         print("\n".join(SUPPORTED_TEMPLATES))
         return 0
     if not args.run_dir or not args.template or not args.result_id or not args.output_prefix:
-        parser.error("除 --list 外，必须提供 run_dir、--template、--result-id 和 --output-prefix")
+        parser.error(
+            "除 --list/--catalog/--recommend 外，必须提供 run_dir、--template、--result-id 和 --output-prefix"
+        )
     try:
         payload = generate_from_result(
             Path(args.run_dir),

@@ -11,6 +11,8 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 
 先运行 `python scripts/paper/prepare_longform_author.py <run_dir>`，把题面必答合同、current 正式自然语言答案、共享数学对象与必要假设、关键推导、机制、当前图、主张边界和文献压缩投影成 `paper/author-pass/RESEARCH_PACKAGE.md`。该入口只检查正式 objective answer、current production 绑定和 scientific P0/P1 已关闭，不检查素材池、故事板、蓝图或 Figure Plan 完整度。随后完成 Narrative Competition；选中的中心主线、阅读顺序、记忆点、风险和修订建议写回现有 `AUTHOR_BRIEF.md` 并刷新 manifest。Author 默认只读取最终这两份文件，后台素材池、故事板、蓝图、图计划、回执和哈希继续保留兼容与审计价值，但不得成为创作前置清单。
 
+Author Pass 的前五页合同是答案优先而非研究过程优先：第 1 页摘要直接给出逐问方法、关键数值、条件边界和模型判定；第 2 页给出逐问直接答案表与共享对象路线图；第 3 页解释原始数据与分析窗口；第 4–5 页提前放置至少一张绑定 current 数据的 Hero 图及其机制解释。`claim_boundary=conditional_on_assumption/sensitivity_only` 必须原样表达为条件结果或范围，不能在摘要或结论中升级为无条件唯一答案。
+
 从同一 Research Package 生成 2--3 个 Narrative Candidates，例如问题递进型、数学结构型或机制型；使用 fresh reviewer 选择最能让评委记住论文的一种，并说明风险与修订建议。不要让 `layout_optimizer.py` 的固定 block 顺序支配正文；旧布局输出只作 advisory 兼容。
 
 让 Author 独立撰写 `paper/longform-source.tex` 或 `paper/longform-source.typ`，并把无法支撑的推导、机制、反事实、视觉或研究证据写入 `paper/AUTHOR_GAPS.md`。随后运行 `python scripts/paper/compile_longform_draft.py <run_dir>` 生成 `paper/longform-draft.pdf`；该命令只编译 Author 源文件，拒绝把正式入口原样重编冒充 Author Pass。编译前会刷新 `paper/generated/VISUAL_REQUIREMENTS.json`，把未被 current 图覆盖的数学对象、决定性证据、机制和边界需求自动追加到 living visual opportunity pool；不得因已有 2--3 张主图而跳过这些 supporting requirements。`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。

@@ -22,6 +22,19 @@ VISUAL_SANDBOX_ROOT = Path("figures/sandbox")
 VISUAL_COMPETITION_ROOT = Path("figures/reviews/sandbox")
 _PENDING_PROMOTION_STATUS = "selected_pending_promotion"
 
+# 9.2 视觉竞争评审字段：只评价表达方案，不判断科学结论。
+VISUAL_COMPETITION_FIELDS = (
+    "model_object_visibility",
+    "domain_specificity",
+    "mechanism_or_path_visibility",
+    "constraint_or_boundary_visibility",
+    "uncertainty_visibility",
+    "paper_size_legibility",
+    "information_density",
+    "reading_order",
+    "known_risks",
+)
+
 
 def write_visual_ideas(run_dir: Path, ideas: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """原子写入轻量视觉想法，不要求结果、脚本或最终版式绑定。"""
@@ -69,6 +82,55 @@ def read_visual_ideas(run_dir: Path) -> dict[str, Any]:
     return payload
 
 
+def upsert_visual_idea(
+    run_dir: Path,
+    *,
+    idea_id: str,
+    question: str,
+    sources: Iterable[str] = (),
+    idea: str,
+    figure_tier: str = "supporting_figure",
+) -> dict[str, Any]:
+    """登记或更新一个候选设计想法，同时保留既有晋级状态。"""
+    root = run_dir.resolve()
+    path = root / VISUAL_IDEAS_PATH
+    if path.is_file():
+        payload = read_visual_ideas(root)
+    else:
+        payload = {
+            "schema_name": "visual_ideas",
+            "schema_version": "1.0",
+            "run_id": read_simple_state(root)["run_id"],
+            "ideas": [],
+            "updated_at": utc_now(),
+        }
+    existing = next((item for item in payload["ideas"] if item.get("id") == idea_id), None)
+    if existing is None:
+        payload["ideas"].append(
+            {
+                "id": idea_id,
+                "question": question.strip(),
+                "sources": sorted({str(item) for item in sources if str(item).strip()}),
+                "idea": idea.strip(),
+                "figure_tier": figure_tier,
+                "status": "sketch",
+            }
+        )
+    else:
+        existing.update(
+            {
+                "question": question.strip(),
+                "sources": sorted({str(item) for item in sources if str(item).strip()}),
+                "idea": idea.strip(),
+                "figure_tier": figure_tier,
+            }
+        )
+    payload["updated_at"] = utc_now()
+    require_valid(payload, "visual_ideas")
+    atomic_json(path, payload)
+    return payload
+
+
 def sandbox_candidates(run_dir: Path, idea_id: str) -> list[Path]:
     """列出某想法的草图文件；草图可只有 PNG、PDF 或其他静态图格式。"""
     root = run_dir.resolve()
@@ -91,8 +153,14 @@ def record_visual_competition(
     table_redundancy: str,
     rationale: str,
     candidate_structures: dict[str, str] | None = None,
+    **review_fields: object,
 ) -> dict[str, Any]:
-    """记录候选图竞争结论，不把草图误登记为 current 证据。"""
+    """记录候选图竞争结论，不把草图误登记为 current 证据。
+
+    hero_figure 必须同时给出 9.2 评审字段（对象可见性、领域特异性、机制/
+    路径、边界、不确定性、论文尺寸可读性、信息密度、阅读顺序与已知风险）；
+    supporting 图至少保留既有五项判断，评审字段可后续补充。
+    """
     root = run_dir.resolve()
     ideas = read_visual_ideas(root)
     target = next((item for item in ideas["ideas"] if item["id"] == idea_id), None)
@@ -112,6 +180,15 @@ def record_visual_competition(
             raise ContractError("hero_figure 必须为每个候选声明 visual_structure")
         if len({str(structures[path]).strip() for path in relative_candidates}) < 2:
             raise ContractError("hero_figure 候选必须包含至少两种不同 visual_structure")
+        missing_reviews = [
+            field
+            for field in VISUAL_COMPETITION_FIELDS
+            if not str(review_fields.get(field, "")).strip()
+        ]
+        if missing_reviews:
+            raise ContractError(
+                "hero_figure 评审必须填写 9.2 字段: " + "、".join(missing_reviews)
+            )
     records = [
         {
             "path": relative_inside(root, path).as_posix(),
@@ -126,7 +203,7 @@ def record_visual_competition(
     ]
     payload = {
         "schema_name": "visual_competition",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": ideas["run_id"],
         "idea_id": idea_id,
         "figure_tier": target.get("figure_tier", "supporting_figure"),
@@ -137,6 +214,11 @@ def record_visual_competition(
         "full_width_value": full_width_value,
         "table_redundancy": table_redundancy,
         "rationale": rationale,
+        **{
+            field: str(review_fields[field]).strip()
+            for field in VISUAL_COMPETITION_FIELDS
+            if str(review_fields.get(field, "")).strip()
+        },
         "recorded_at": utc_now(),
     }
     require_valid(payload, "visual_competition")

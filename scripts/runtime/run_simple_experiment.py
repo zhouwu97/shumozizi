@@ -56,6 +56,20 @@ def main() -> int:
         help="从 --metrics-from 提取的 KEY=JSON_PATH；省略时读取 metrics.*",
     )
     parser.add_argument("--timeout", type=float)
+    parser.add_argument(
+        "--execution-mode",
+        choices=("exploration", "production"),
+        default=None,
+        help=(
+            "本次执行的用途边界；省略时继承运行状态。exploration 默认只登记 diagnostic，"
+            "不会替换正式 production 结果"
+        ),
+    )
+    parser.add_argument(
+        "--provisional",
+        action="store_true",
+        help="即使生产命令成功也暂存为 diagnostic，等待后续质量协议提升",
+    )
     args = parser.parse_args()
     result_id = args.result_id or f"{args.question.lower()}_{args.kind}"
     try:
@@ -70,6 +84,10 @@ def main() -> int:
             metrics_from=args.metrics_from,
             metric_paths=dict(args.metric_path),
             timeout_seconds=args.timeout,
+            execution_mode=args.execution_mode,
+            # 传入 None 让底层按显式 mode 或运行状态推导暂存语义；这保持旧 CLI
+            # 在 exploration 状态下漏传参数时仍是探索执行，而非悄然写入 production。
+            provisional=True if args.provisional else None,
         )
     except (ContractError, OSError) as exc:
         payload = {"success": False, "error": str(exc), "result": None}

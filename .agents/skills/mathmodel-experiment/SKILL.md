@@ -5,11 +5,13 @@ description: 真实执行数学建模实验，比较路线、保存 current 结�
 
 # 高价值实验
 
-代码写入 `code/`，输出写入 `results/raw/`，影响路线或论文的实验必须使用执行器登记。探索结果标为 diagnostic，不能进入论文。
+代码写入 `code/`，输出写入 `results/raw/`，影响路线或论文的实验必须使用执行器登记。前置 probe 使用 `python scripts/runtime/run_simple_experiment.py ... --execution-mode exploration`，它默认 provisional/diagnostic，不能替换 current、正式图、answer-map 或论文。候选胜出后必须从源数据使用 `--execution-mode production` 重跑；没有“无重跑提升”的捷径。生产执行默认检查输出新鲜度，探索执行不以旧输出冒充正式证据。
 
 预算优先给搜索，不给复算。核心问题的搜索与深化耗时必须超过其验证与复算耗时，且核心搜索要占实际算力的 40% 以上——把复算跑成 exploration 不能稀释这条检查。建议分配：主路线深化与候选搜索 60%、竞争路线 15%、机制与敏感性 15%、独立复核 10%。
 
 优先 baseline、区分性 probe 与能推翻当前结论的实验。实验的价值来自改变路线、模型、主要结论、机制解释或贡献，不来自填满敏感性、多种子或收敛图清单。
+
+在首次 production 前，先执行 `MODELING_UNITS.risk_package` 的最低成本检查，并用 `python scripts/simple/manage_risk_route.py record <run_dir> --question <Q?> --input <risk-assessment.json>` 写回真实结果。所有检查 clear 才按 fast 路线结束普通问题；出现目标分歧、补偿带、留出反转、oracle/硬约束冲突或持续改善时进入 deepening。触发结构攻击后，`claim_boundary` 必须为 `conditional_on_assumption` 或 `sensitivity_only`，正式答案和 Author Pass 会自动继承该边界。
 
 比较必须真的判胜负：赢家由统一 exact scorer 的实测结果决定，核心问题的赢家还要相对 baseline 达到事前声明的显著改善阈值。达不到时继续搜索、换更强路线，或用 `baseline_near_bound` 加实际界证据说明已接近上限。深化后的最终结果不得比比较阶段的赢家更差。路线预期上限明显落空时登记 `upside_shortfall` 的原因与决定，不要继续按原声明叙述优势。
 

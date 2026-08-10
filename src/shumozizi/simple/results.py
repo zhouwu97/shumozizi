@@ -237,6 +237,7 @@ def register_result(
     duration_seconds: float,
     execution_mode: str = "production",
     provisional: bool = False,
+    candidate_eligible: bool = False,
     error: str | None = None,
     objective_semantics_sha256: str | None = None,
     dependency_scope: str = "question",
@@ -263,7 +264,8 @@ def register_result(
         finished_at: 执行结束时间。
         duration_seconds: 执行耗时。
         execution_mode: 产物用途边界；探索结果只能登记为 diagnostic。
-        provisional: 为真时保留成功执行的诊断状态，等待上层质量协议决定是否提升。
+        provisional: 为真时保留成功执行的诊断状态，不能被质量层提升。
+        candidate_eligible: 仅供正式 adapter 精评在独立审计完成前暂存；它不是 current。
         error: 失败原因。
         method_facts: 本次执行显式登记的方法事实；由审查前的联合推断读取。
 
@@ -274,6 +276,14 @@ def register_result(
         ContractError: 文件、指标来源、ID 或索引不满足协议。
     """
     identifier = safe_result_id(result_id)
+    if execution_mode not in {"production", "exploration"}:
+        raise ContractError("execution_mode 必须为 production 或 exploration")
+    if execution_mode == "production":
+        # 即使调用方绕过标准执行器直接登记，也不能把未经过前置攻击的结果
+        # 放进正式证据链；标准执行器仍会更早地在命令启动前阻断。
+        from shumozizi.simple.modeling_units import require_risk_adaptive_production_ready
+
+        require_risk_adaptive_production_ready(run_dir, question_id)
     index = read_result_index(run_dir)
     if any(item["result_id"] == identifier for item in index["results"]):
         raise ContractError(f"result_id 已存在: {identifier}")
@@ -296,21 +306,30 @@ def register_result(
         if metrics or metric_sources:
             raise ContractError("失败执行不能登记指标或指标来源")
         normalized_metric_sources = {}
-    if execution_mode not in {"production", "exploration"}:
-        raise ContractError("execution_mode 必须为 production 或 exploration")
     if not isinstance(provisional, bool):
         raise ContractError("provisional 必须为布尔值")
+    if not isinstance(candidate_eligible, bool):
+        raise ContractError("candidate_eligible 必须为布尔值")
+    if candidate_eligible and (
+        execution_mode != "production" or provisional or kind != "adapter-exact_scorer"
+    ):
+        raise ContractError(
+            "candidate_eligible 仅允许非暂存的 production adapter-exact_scorer 使用"
+        )
     if method_facts is not None and any(
         value not in {True, False, "unknown"} for value in method_facts.values()
     ):
         raise ContractError("method_facts 的值必须为 true、false 或 unknown")
-    status = (
-        "current"
-        if succeeded and execution_mode == "production" and not provisional
-        else "diagnostic"
-        if succeeded
-        else "failed"
-    )
+    if not succeeded:
+        status = "failed"
+    elif candidate_eligible:
+        # 精评的文件已真实执行但尚未完成 auditor；以独立状态避免抢占 incumbent，
+        # 同时禁止把任意 ``--provisional`` 诊断记录伪装成可提升候选。
+        status = "candidate_eligible"
+    elif execution_mode == "production" and not provisional:
+        status = "current"
+    else:
+        status = "diagnostic"
     entry: dict[str, Any] = {
         "result_id": identifier,
         "question_id": question_id,
@@ -326,6 +345,9 @@ def register_result(
         "metric_sources": normalized_metric_sources,
         "status": status,
         "execution_mode": execution_mode,
+        # 保留暂存语义，审计时可以确认正式结果确实来自 production 重跑，
+        # 而不是把探索或分段验证的旧输出提升为正式答案。
+        "provisional": provisional,
         "execution_valid": succeeded,
         "exit_code": exit_code,
         "stdout_path": stdout_path,
@@ -349,7 +371,7 @@ def register_result(
         entry["objective_semantics_sha256"] = objective_semantics_sha256
     entry["dependency_scope"] = dependency_scope
     entry["affected_question_ids"] = affected
-    if succeeded and execution_mode == "production" and not provisional:
+    if succeeded and execution_mode == "production" and not provisional and not candidate_eligible:
         for existing in index["results"]:
             if (
                 existing["question_id"] == question_id

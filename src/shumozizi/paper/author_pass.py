@@ -459,6 +459,24 @@ def _render_research_package(
                 "",
             ]
         )
+        objective = answer.get("objective_answer")
+        boundary = (
+            objective.get("claim_boundary")
+            if isinstance(objective, dict)
+            else None
+        )
+        if isinstance(boundary, dict):
+            label = str(boundary.get("label", "")).strip()
+            statement = str(boundary.get("statement", "")).strip()
+            if label and statement:
+                lines.append(f"主张边界（{label}）：{statement}")
+                assumptions = boundary.get("assumptions", [])
+                if isinstance(assumptions, list) and assumptions:
+                    lines.append("必要假设：" + "；".join(map(str, assumptions)))
+                range_ids = boundary.get("range_result_ids", [])
+                if isinstance(range_ids, list) and range_ids:
+                    lines.append("范围证据结果：" + "、".join(map(str, range_ids)))
+                lines.append("")
         metrics = result.get("metrics", {})
         if isinstance(metrics, dict) and metrics:
             visible = [
@@ -549,6 +567,8 @@ def _render_author_brief(
             "先写完整科学论文，不以当前页数、章节数或图数为目标。可以合并问题、重排章节、展开推导、改变图文节奏和叙事焦点。",
             "",
             "正式答案、数字、题意语义和主张边界不可擅自修改。若无法解释结果或缺少必要对照、机制、图或证据，应提出返工请求。",
+            "",
+            "前五页优先建立答案与证据链：第 1 页摘要直接报告各问方法、关键数值、条件边界和模型判定；第 2 页给出逐问直接答案表与共享对象路线图；第 3 页呈现原始数据直觉和分析窗口；第 4–5 页尽早放置至少一张决定性 Hero 图及其机制解释。不要等到后半篇才首次展示主要结论。",
             "",
             "不要把审核清单、内部结果编号、回执、哈希、工作流阶段或工具探测写入正文。",
             "",

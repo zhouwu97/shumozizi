@@ -19,6 +19,7 @@ from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import (
     first_feasible_checkpoint_prompt,
     question_outcome_selections,
+    require_risk_adaptive_production_ready,
     require_v32_experiment_evidence,
     require_v32_modeling_plan,
     semantic_reconstruction_input_bindings,
@@ -38,6 +39,7 @@ from shumozizi.simple.review_tasks import (
     create_review_task_receipt,
     persist_review_task_creation_event,
 )
+from shumozizi.simple.risk_routing import default_risk_package
 from shumozizi.simple.state import read_simple_state, update_simple_state, utc_now
 
 
@@ -171,8 +173,9 @@ def _register_result(
     objective: float = 1.0,
     duration_seconds: float = 10.0,
     extra_metrics: dict[str, float] | None = None,
+    execution_mode: str = "production",
 ) -> None:
-    """登记可用于 v3.2 比较、攻击、深化和目标后果比较的真实生产结果。"""
+    """登记可用于 v3.2 比较、攻击、深化和目标后果比较的真实结果。"""
     source = run_dir / "code" / f"{result_id}.py"
     output = run_dir / "results" / "raw" / f"{result_id}.json"
     source.write_text("print('ok')\n", encoding="utf-8")
@@ -207,6 +210,8 @@ def _register_result(
         started_at=now,
         finished_at=now,
         duration_seconds=duration_seconds,
+        execution_mode=execution_mode,
+        provisional=execution_mode == "exploration",
         objective_semantics_sha256="a" * 64,
     )
 
@@ -432,6 +437,60 @@ def _v14_optimization_plan(run_dir: Path) -> dict[str, object]:
         "instability_action": "若单次结果明显不稳定则增加独立随机种子并继续搜索。",
     }
     return plan
+
+
+def test_risk_adaptive_gate_accepts_completed_exploration_attack(tmp_path: Path) -> None:
+    """风险检查有真实探索证据并完成分流后，production 门禁应放行。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "risk-adaptive-ready",
+        workflow_version="3.2",
+        required_questions=["Q1"],
+        initial_execution_mode="exploration",
+        execution_policy="risk-adaptive-v1",
+    )
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    risk_package = default_risk_package(
+        question_id="Q1",
+        core_question=True,
+        unit_kind="optimization",
+        semantic_risk_signals=set(),
+    )
+    unit["risk_package"] = risk_package
+    _register_result(
+        run_dir,
+        "risk-scorer-preflight",
+        duration_seconds=1.0,
+        execution_mode="exploration",
+    )
+    checks = risk_package["checks"]
+    assert isinstance(checks, list)
+    unit["actual"] = {
+        "risk_assessment": {
+            "outcomes": [
+                {
+                    "check_id": check["check_id"],
+                    "outcome": "clear",
+                    "finding": "人工案例排序与题面成功事件、硬约束和统一 scorer 一致。",
+                    "result_ids": ["risk-scorer-preflight"],
+                }
+                for check in checks
+                if isinstance(check, dict)
+            ],
+            "completed_before_first_production": True,
+            "route": "fast",
+            "route_rationale": "最低成本结构攻击全部通过，可进入共同 scorer 下的正式比较。",
+            "claim_boundary": {
+                "label": "unconditional",
+                "statement": "当前题面口径与已检查范围内可按正式目标进行生产比较。",
+            },
+        }
+    }
+    write_modeling_units(run_dir, plan)
+
+    require_risk_adaptive_production_ready(run_dir, "Q1")
 
 
 def test_visual_outputs_reject_paths_outside_results_raw(tmp_path: Path) -> None:

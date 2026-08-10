@@ -93,8 +93,13 @@ def validate_human_figure_review(
 ) -> dict[str, Any]:
     """验证人工复核已检查图的论证内容，而不只是文件可读性。
 
+    机械复核（``mechanical_review=true``）与真实人工看图严格分离：机械复核
+    必须 ``reviewed=false``、``human_vision_performed=false``、
+    ``review_kind=mechanical``，只能产生 ``mechanically_qualified``，不得
+    伪装成已通过人工视觉门；``reviewer_note`` 不能作为人工验收 waiver。
+
     Args:
-        review: 人工检查结果。
+        review: 复核结果。
         figure_role: 科学叙事角色。
         presentation_role: 可选呈现角色。
         require_element_binding: 是否要求 v1.2 的元素、面板与阅读顺序字段。
@@ -103,7 +108,7 @@ def validate_human_figure_review(
         可直接写入晋级回执的复核对象副本。
 
     Raises:
-        ContractError: 角色无效、字段缺失或角色关键内容没有在图中兑现。
+        ContractError: 角色无效、字段缺失、机械/人工语义冲突或角色内容未兑现。
     """
     if not isinstance(review, dict):
         raise ContractError("human_review 必须是 JSON 对象")
@@ -113,6 +118,21 @@ def validate_human_figure_review(
         raise ContractError(
             "presentation_role 必须是 " + "、".join(sorted(_PRESENTATION_ROLES))
         )
+    mechanical = review.get("mechanical_review") is True
+    if mechanical:
+        # 机械复核不得声明已完成人工看图；reviewer_note 不是人工 waiver。
+        if review.get("reviewed") is True:
+            raise ContractError(
+                "机械复核不得设置 reviewed=true：机械 QA 不能伪装成人工视觉门"
+            )
+        if review.get("human_vision_performed") is not False:
+            raise ContractError(
+                "机械复核必须显式声明 human_vision_performed=false"
+            )
+        if review.get("review_kind") != "mechanical":
+            raise ContractError(
+                "机械复核必须声明 review_kind=mechanical"
+            )
     missing = sorted(_HUMAN_REVIEW_BOOLEAN_FIELDS - review.keys())
     if missing:
         raise ContractError("人工晋级复核缺少内容化字段: " + "、".join(missing))
@@ -174,6 +194,10 @@ def validate_human_figure_review(
     required_true.update(_ROLE_HUMAN_REVIEW_REQUIREMENTS[figure_role])
     if presentation_role is not None:
         required_true.update(_ROLE_HUMAN_REVIEW_REQUIREMENTS[presentation_role])
+    if mechanical:
+        # 机械复核只要求内容断言字段本身存在且为布尔（上面已校验），
+        # 不要求它们为 True：机器不能替人确认“可读、可见”的视觉判断。
+        required_true = frozenset()
     failed = sorted(key for key in required_true if review.get(key) is not True)
     if failed:
         roles = figure_role if presentation_role is None else f"{figure_role}/{presentation_role}"
@@ -182,7 +206,7 @@ def validate_human_figure_review(
         )
     if not require_element_binding:
         return dict(review)
-    return {
+    normalized = {
         **review,
         "focal_claim": focal_claim.strip(),
         "visible_elements": normalized_visible,
@@ -191,6 +215,15 @@ def validate_human_figure_review(
             str(key): str(value).strip() for key, value in panel_takeaways.items()
         },
     }
+    if mechanical:
+        normalized["qualification"] = "mechanically_qualified"
+        normalized["human_vision_performed"] = False
+        normalized["review_kind"] = "mechanical"
+    else:
+        normalized["qualification"] = "human_qualified"
+        normalized["human_vision_performed"] = True
+        normalized["review_kind"] = "human"
+    return normalized
 
 
 def validate_visual_manifest(
@@ -1057,3 +1090,108 @@ def promote_figure_candidate(
             "sha256": sha256_file(receipt_path),
         },
     }
+
+
+def verify_figure_promotion_closure(run_dir: Path, figure_id: str) -> list[str]:
+    """复验 promotion receipt、index、论文引用与磁盘 current 文件指向同一产物。
+
+    Args:
+        run_dir: 当前运行目录。
+        figure_id: 待复验的 current 图 ID。
+
+    Returns:
+        不闭合的错误列表；空列表表示四者一致。
+    """
+    root = run_dir.resolve()
+    index_path = root / "figures/index.json"
+    if not index_path.is_file():
+        return ["缺少 figures/index.json，无法复验晋级闭合"]
+    try:
+        index = load_json(index_path)
+    except ContractError as exc:
+        return [f"figures/index.json 无法读取: {exc}"]
+    entry = next(
+        (
+            item
+            for item in index.get("figures", [])
+            if isinstance(item, dict)
+            and item.get("figure_id") == figure_id
+            and item.get("status") == "current"
+        ),
+        None,
+    )
+    if entry is None:
+        return [f"index 中不存在 current 图: {figure_id}"]
+    errors: list[str] = []
+
+    def disk_hash(relative: str) -> tuple[str | None, str | None]:
+        try:
+            path = resolve_inside(root, relative, must_exist=True)
+        except ContractError:
+            return None, f"磁盘文件不存在: {relative}"
+        return sha256_file(path), None
+
+    index_outputs = entry.get("outputs", [])
+    if not isinstance(index_outputs, list):
+        return [f"{figure_id} 的 index outputs 必须是列表"]
+    receipt_record = entry.get("promotion_receipt")
+    receipt: dict[str, Any] = {}
+    if not isinstance(receipt_record, dict) or not isinstance(receipt_record.get("path"), str):
+        errors.append(f"{figure_id} 的 index 缺少 promotion_receipt 路径")
+    else:
+        try:
+            receipt = load_json(resolve_inside(root, receipt_record["path"], must_exist=True))
+        except ContractError as exc:
+            errors.append(f"promotion receipt 无法读取: {exc}")
+        else:
+            if sha256_file(resolve_inside(root, receipt_record["path"], must_exist=True)) != receipt_record.get("sha256"):
+                errors.append("index 记录的 promotion receipt 哈希与磁盘不一致")
+    receipt_outputs = receipt.get("promoted_outputs", []) if isinstance(receipt, dict) else []
+    for record in index_outputs:
+        if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+            errors.append(f"{figure_id} 的 index outputs 条目无效")
+            continue
+        relative = record["path"]
+        actual, missing = disk_hash(relative)
+        if missing:
+            errors.append(missing)
+            continue
+        if actual != record.get("sha256"):
+            errors.append(f"index 记录 {relative} 的哈希与磁盘不一致")
+        # receipt 与 index 必须声明同一产物且哈希一致。
+        receipt_match = next(
+            (item for item in receipt_outputs if isinstance(item, dict) and item.get("path") == relative),
+            None,
+        )
+        if receipt_match is None:
+            errors.append(f"promotion receipt 未声明已晋级产物: {relative}")
+        elif receipt_match.get("sha256") != record.get("sha256"):
+            errors.append(f"promotion receipt 与 index 对 {relative} 的哈希不一致")
+    for record in receipt_outputs:
+        if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+            continue
+        _, receipt_missing = disk_hash(record["path"])
+        if receipt_missing:
+            errors.append(f"promotion receipt 声称已晋级但磁盘不存在: {record['path']}")
+    # 论文必须实际引用该 current 图（按文件名锚点，兼容 .png/.pdf 双输出）。
+    anchors = {
+        str(Path(record["path"]).with_suffix("")).replace("\\", "/")
+        for record in index_outputs
+        if isinstance(record, dict) and isinstance(record.get("path"), str)
+    }
+    for relative in (
+        "paper/longform-source.tex",
+        "paper/longform-source.typ",
+        "paper/external-author/draft.tex",
+        "paper/main.tex",
+        "paper/main.typ",
+    ):
+        source = root / relative
+        if not source.is_file():
+            continue
+        text = source.read_text(encoding="utf-8", errors="replace").replace("\\", "/")
+        if any(anchor in text for anchor in anchors):
+            break
+    else:
+        errors.append(f"论文源未引用 {figure_id} 的 current 产物")
+    return errors

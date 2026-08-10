@@ -444,6 +444,15 @@ def test_hero_visual_competition_requires_distinct_structures(tmp_path: Path) ->
         table_redundancy="表格无法显示激活顺序。",
         rationale="两种数学结构完成了真实竞争。",
         candidate_structures=paths,
+        model_object_visibility="可行域与时间机制的对象均可见。",
+        domain_specificity="换题后约束时序含义完全改变。",
+        mechanism_or_path_visibility="激活时段与边界变化路径可见。",
+        constraint_or_boundary_visibility="约束边界直接标出。",
+        uncertainty_visibility="区间在候选 B 中以带显示。",
+        paper_size_legibility="正文整栏下最小字可读。",
+        information_density="两面板各承担一个对象。",
+        reading_order="A 到 B 按对象到结论顺序阅读。",
+        known_risks="三维面板可能遮挡关键路径。",
     )
 
     assert review["figure_tier"] == "hero_figure"

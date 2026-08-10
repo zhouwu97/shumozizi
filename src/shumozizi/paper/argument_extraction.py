@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import atomic_json, load_json, sha256_file
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.schema import require_valid
 from shumozizi.simple.state import read_simple_state, utc_now
 
@@ -67,6 +67,110 @@ def _question_id(value: str) -> str | None:
         return None
     token = match.group(1)
     return f"Q{token}" if token.isdigit() else _CHINESE_QUESTION.get(token)
+
+
+def _heading_title(raw: str) -> str | None:
+    """提取 LaTeX、Typst 或 Markdown 的真实标题文本。"""
+    stripped = raw.strip()
+    latex = re.match(
+        r"\\(?:section|subsection|subsubsection|paragraph)\*?(?:\[[^\]]*\])?\{([^{}]+)\}",
+        stripped,
+    )
+    if latex:
+        return _clean_markup(latex.group(1))
+    first_line = stripped.splitlines()[0].strip() if stripped else ""
+    if re.match(r"^(?:#{1,6}|={1,6})\s+", first_line):
+        return _clean_markup(re.sub(r"^(?:#{1,6}|={1,6})\s+", "", first_line))
+    return None
+
+
+def _question_profiles(root: Path) -> dict[str, str]:
+    """从正式问题合同构造语义标题匹配语料，避免依赖正文中的 Q 提及。"""
+    path = root / "analysis/MODELING_UNITS.json"
+    if not path.is_file():
+        return {}
+    try:
+        payload = load_json(path)
+    except ContractError:
+        return {}
+    profiles: dict[str, list[str]] = {}
+    story = payload.get("research_story", {})
+    for item in story.get("question_progression", []) if isinstance(story, dict) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("question_id"), str):
+            continue
+        profiles.setdefault(item["question_id"], []).extend(
+            str(item.get(key, ""))
+            for key in ("role", "upgrade", "new_difficulty", "new_mechanism", "answer_increment")
+        )
+    for unit in payload.get("units", []):
+        if not isinstance(unit, dict) or not isinstance(unit.get("question_id"), str):
+            continue
+        question_id = unit["question_id"]
+        answer = unit.get("answer_contract", {})
+        delta = unit.get("question_delta", {})
+        endpoint = answer.get("primary_endpoint", {}) if isinstance(answer, dict) else {}
+        profiles.setdefault(question_id, []).extend(
+            [
+                str(unit.get("unit_id", "")),
+                str(answer.get("required_output", "")) if isinstance(answer, dict) else "",
+                str(answer.get("decision_scope", "")) if isinstance(answer, dict) else "",
+                str(endpoint.get("name", "")) if isinstance(endpoint, dict) else "",
+                str(endpoint.get("definition", "")) if isinstance(endpoint, dict) else "",
+                str(delta.get("possible_objective_change", "")) if isinstance(delta, dict) else "",
+            ]
+        )
+    return {
+        question_id: re.sub(r"\s+", " ", " ".join(parts)).strip()
+        for question_id, parts in profiles.items()
+    }
+
+
+def _semantic_heading_question_id(title: str, profiles: dict[str, str]) -> str | None:
+    """以问题合同中的区分性字符片段识别未写 Q 编号的语义标题。"""
+    compact = re.sub(r"\s+", "", title)
+    chunks = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9]+", compact)
+    grams = {
+        chunk[start : start + width]
+        for chunk in chunks
+        for width in (2, 3, 4)
+        for start in range(max(0, len(chunk) - width + 1))
+        if len(chunk) >= width
+    }
+    if not grams or not profiles:
+        return None
+    frequencies = {
+        gram: sum(gram.casefold() in profile.casefold() for profile in profiles.values())
+        for gram in grams
+    }
+    scores = {
+        question_id: sum(
+            len(gram) ** 2 * (len(profiles) - frequencies[gram] + 1)
+            for gram in grams
+            if gram.casefold() in profile.casefold()
+        )
+        for question_id, profile in profiles.items()
+    }
+    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    if not ranked or ranked[0][1] < 24:
+        return None
+    runner_up = ranked[1][1] if len(ranked) > 1 else 0
+    return ranked[0][0] if ranked[0][1] >= runner_up * 1.35 else None
+
+
+def _heading_question_id(raw: str, profiles: dict[str, str]) -> str | None:
+    """只从真实标题或独立短标签更新当前问题，拒绝正文中的偶然 Q 提及。"""
+    stripped = raw.strip()
+    title = _heading_title(raw)
+    if title is not None:
+        return _question_id(title) or _semantic_heading_question_id(title, profiles)
+    cleaned = _clean_markup(stripped)
+    if len(cleaned) <= 24 and re.fullmatch(
+        r"(?:Q\s*[1-9]\d*|问题\s*[一二三四五六七八九十\d]+)\s*[:：.]?",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return _question_id(cleaned)
+    return None
 
 
 def _answer_result_ids(root: Path) -> dict[str, list[str]]:
@@ -163,6 +267,7 @@ def extract_paper_argument_units(run_dir: Path, *, write: bool = True) -> dict[s
         text = path.read_text(encoding="utf-8", errors="replace")
         result_ids = _answer_result_ids(root)
         existing_figures = _existing_figures(root)
+        question_profiles = _question_profiles(root)
         required = {str(item) for item in state.get("required_questions", [])}
         arguments: list[dict[str, Any]] = []
         question_counts: dict[str, int] = {}
@@ -174,12 +279,12 @@ def extract_paper_argument_units(run_dir: Path, *, write: bool = True) -> dict[s
             if not raw:
                 continue
             cleaned = _clean_markup(raw)
-            detected_question = _question_id(cleaned)
+            detected_question = _heading_question_id(raw, question_profiles)
             if detected_question:
                 current_question = detected_question
             if len(cleaned) < 24:
                 continue
-            question_id = detected_question or current_question
+            question_id = current_question
             if question_id not in required:
                 continue
             role, visualizability = _role_for_text(cleaned)
