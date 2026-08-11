@@ -68,6 +68,9 @@ def main() -> int:
             if args.workflow_version == "3.2"
             else "legacy-production-v1"
         ),
+        quality_policy=(
+            "competition-quality-v1" if args.workflow_version == "3.2" else "legacy"
+        ),
     )
     print(
         json.dumps(

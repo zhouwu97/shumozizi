@@ -654,6 +654,11 @@ def materialize_external_draft(run_dir: Path) -> dict[str, Any]:
     }
     require_valid(document, "imported_author_receipt")
     atomic_json(root / IMPORTED_AUTHOR_RECEIPT, document)
+    # 外部稿只有物化为并已登记的正式入口后，才允许它驱动候选稿视觉义务。
+    # 导入审计阶段仍是 draft_imported，不能让未发布草稿替正式 main 通过闭环。
+    from shumozizi.paper.visual_requirements import build_visual_requirements_from_paper
+
+    build_visual_requirements_from_paper(root, source_role="publication")
     return document
 
 
@@ -694,10 +699,8 @@ def import_external_draft(
         status = "needs_rebase"
     else:
         mark_authoring_status(root, "draft_imported")
-        # 外部 Author 稿与内部 longform 一样，导入成功后必须触发论文到视觉的回流。
-        from shumozizi.paper.visual_requirements import build_visual_requirements_from_paper
-
-        build_visual_requirements_from_paper(root)
+        # 此时外部稿仍是隔离 draft；视觉回流在 materialize_external_draft
+        # 写入正式入口和 receipt 后进行，避免草稿替候选稿提供闭环证据。
         status = "draft_imported"
     return {
         "status": status,

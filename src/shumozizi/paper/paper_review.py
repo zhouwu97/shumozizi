@@ -9,8 +9,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from shumozizi.core.io import ContractError, relative_inside, resolve_inside
+from shumozizi.core.io import ContractError, relative_inside, resolve_inside, sha256_file
 from shumozizi.core.schema import require_valid
+from shumozizi.paper.policy import workflow_quality_policy
+from shumozizi.paper.publication import (
+    PUBLICATION_SNAPSHOT_PATH,
+    publication_source_paths,
+)
+from shumozizi.simple.state import read_simple_state
 
 PAPER_REVIEW_PATH = Path("paper/PAPER_REVIEW.md")
 _BLOCK_START = "<!-- PAPER_REVIEW_FINDINGS:START -->"
@@ -28,6 +34,110 @@ _REPORT_STYLE_REPAIR_ONLY_CODES = frozenset(
         "NARRATIVE_SCARCITY_REVIEW",
     }
 )
+
+
+def build_paper_review_closure_artifacts(run_dir: Path) -> tuple[list[dict[str, str]], dict[str, int]]:
+    """生成 P0/P1 修复所需的当前正式稿、PDF 与修订绑定。
+
+    该函数只收集可复验的事实，不能替代独立复核或 ``evidence_of_closure`` 中的
+    修复说明。调用者必须在真正返修、重新编译后显式使用它。
+    """
+    root = run_dir.resolve()
+    final_pdf = root / "paper/final.pdf"
+    if not final_pdf.is_file() or final_pdf.stat().st_size == 0:
+        raise ContractError("关闭 P0/P1 前缺少当前 paper/final.pdf")
+    sources = publication_source_paths(root)
+    artifacts = [
+        {
+            "kind": "final_pdf",
+            "path": "paper/final.pdf",
+            "sha256": sha256_file(final_pdf),
+        },
+        *[
+            {
+                "kind": "publication_source",
+                "path": relative_inside(root, source).as_posix(),
+                "sha256": sha256_file(source),
+            }
+            for source in sources
+        ],
+    ]
+    snapshot = root / PUBLICATION_SNAPSHOT_PATH
+    if snapshot.is_file():
+        artifacts.append(
+            {
+                "kind": "publication_snapshot",
+                "path": PUBLICATION_SNAPSHOT_PATH.as_posix(),
+                "sha256": sha256_file(snapshot),
+            }
+        )
+    state = read_simple_state(root)
+    return artifacts, {
+        "argument_revision": int(state.get("argument_revision", 0)),
+        "render_revision": int(state.get("render_revision", state.get("paper_render_revision", 0))),
+    }
+
+
+def _closure_artifact_errors(item: Mapping[str, Any], root: Path) -> list[str]:
+    """验证高优先级修复确实绑定当前正式稿和重新渲染后的 PDF。"""
+    label = str(item.get("finding_id", "finding"))
+    artifacts = item.get("closure_artifacts")
+    revision = item.get("closure_revision")
+    if not isinstance(artifacts, list) or not artifacts:
+        return [f"{label} 修复缺少 closure_artifacts"]
+    if not isinstance(revision, Mapping):
+        return [f"{label} 修复缺少 closure_revision"]
+    state = read_simple_state(root)
+    expected_revision = {
+        "argument_revision": int(state.get("argument_revision", 0)),
+        "render_revision": int(state.get("render_revision", state.get("paper_render_revision", 0))),
+    }
+    if dict(revision) != expected_revision:
+        return [f"{label} 修复未绑定当前 argument/render revision"]
+    try:
+        sources = {
+            relative_inside(root, path).as_posix(): sha256_file(path)
+            for path in publication_source_paths(root)
+        }
+    except ContractError as exc:
+        return [f"{label} 修复无法读取正式稿闭包: {exc}"]
+    final_pdf = root / "paper/final.pdf"
+    errors: list[str] = []
+    matched_pdf = False
+    matched_source = False
+    snapshot_required = (
+        (root / PUBLICATION_SNAPSHOT_PATH).is_file()
+        or workflow_quality_policy(root) == "competition-quality-v1"
+    )
+    matched_snapshot = not snapshot_required
+    for artifact in artifacts:
+        if not isinstance(artifact, Mapping):
+            errors.append(f"{label} closure_artifacts 含非法条目")
+            continue
+        kind, path, digest = artifact.get("kind"), artifact.get("path"), artifact.get("sha256")
+        if kind == "final_pdf":
+            if path == "paper/final.pdf" and final_pdf.is_file() and digest == sha256_file(final_pdf):
+                matched_pdf = True
+            else:
+                errors.append(f"{label} 未绑定当前 paper/final.pdf")
+        elif kind == "publication_source":
+            if isinstance(path, str) and sources.get(path) == digest:
+                matched_source = True
+            else:
+                errors.append(f"{label} 引用了非当前正式稿源码")
+        elif kind == "publication_snapshot":
+            snapshot = root / PUBLICATION_SNAPSHOT_PATH
+            if path == PUBLICATION_SNAPSHOT_PATH.as_posix() and snapshot.is_file() and digest == sha256_file(snapshot):
+                matched_snapshot = True
+            else:
+                errors.append(f"{label} 未绑定当前正式论文发布快照")
+    if not matched_pdf:
+        errors.append(f"{label} 修复缺少当前 final_pdf 证据")
+    if not matched_source:
+        errors.append(f"{label} 修复缺少当前正式源码证据")
+    if not matched_snapshot:
+        errors.append(f"{label} 修复缺少当前发布快照证据")
+    return errors
 
 
 def _report_style_gate_code(item: Mapping[str, Any]) -> str | None:
@@ -126,6 +236,12 @@ def paper_review_errors(document: Mapping[str, Any], *, run_dir: Path | None = N
             errors.append(f"{label} 已处置但缺少 evidence_of_closure")
         if item.get("severity") in {"P0", "P1"} and status not in _HIGH_PRIORITY_CLOSED:
             errors.append(f"{label} 是未闭合的 {item.get('severity')} finding")
+        if (
+            root is not None
+            and item.get("severity") in {"P0", "P1"}
+            and status in _HIGH_PRIORITY_CLOSED
+        ):
+            errors.extend(_closure_artifact_errors(item, root))
         report_style_code = _report_style_gate_code(item)
         if (
             report_style_code is not None
@@ -258,8 +374,14 @@ def close_paper_review_finding(
     finding_id: str,
     status: str,
     evidence_of_closure: list[str],
+    closure_artifacts: list[dict[str, str]] | None = None,
+    closure_revision: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """登记 finding 处置结果并原子更新 PAPER_REVIEW。"""
+    """登记 finding 处置结果并原子更新 PAPER_REVIEW。
+
+    P0/P1 的 ``repaired`` 还必须显式绑定当前 PDF、正式源码和 render/argument
+    修订，避免“已在第 N 节修改”的散文说明直接放行。
+    """
     if status not in _DISPOSITIONED:
         raise ContractError(f"关闭 finding 时状态不合法: {status}")
     if not evidence_of_closure or not all(item.strip() for item in evidence_of_closure):
@@ -273,6 +395,10 @@ def close_paper_review_finding(
         if item["finding_id"] == finding_id:
             item["status"] = status
             item["evidence_of_closure"] = evidence_of_closure
+            if closure_artifacts is not None:
+                item["closure_artifacts"] = closure_artifacts
+            if closure_revision is not None:
+                item["closure_revision"] = closure_revision
             matched = True
             break
     if not matched:

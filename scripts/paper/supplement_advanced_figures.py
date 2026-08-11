@@ -3,8 +3,7 @@
 把"高级图补充"从 brief 提示词升级为可执行阶段：
 1. Agent 读首稿，按数据特征决定加哪些高级图，写一个 figure plan JSON；
 2. 本脚本按 plan 用 mathmodel-advanced-figures 的模板渲染（从 production 数据）、
-   把 figure 环境插入 longform-source.tex 对应位置、登记进 figures/index.json、
-   并重编译长篇首稿。
+   把 figure 环境插入正式发布入口、登记进 figures/index.json、并重编译候选稿。
 
 plan JSON 结构：:
 
@@ -28,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -40,7 +40,18 @@ SKILL_SCRIPTS = ROOT / ".agents" / "skills" / "mathmodel-advanced-figures" / "sc
 if str(SKILL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SKILL_SCRIPTS))
 
-from shumozizi.core.io import atomic_json, load_json, sha256_file  # noqa: E402
+from shumozizi.core.io import (  # noqa: E402
+    ContractError,
+    atomic_json,
+    load_json,
+    relative_inside,
+    resolve_inside,
+    sha256_file,
+)
+from shumozizi.paper.publication import (  # noqa: E402
+    freeze_publication_snapshot,
+    publication_entrypoint,
+)
 
 
 def _sha(path: Path) -> str:
@@ -103,7 +114,16 @@ def _insert_figure(tex: str, block: str, anchor: str) -> str:
     return tex[:pos] + block + tex[pos:]
 
 
-def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, template: str, provenance_type: str = "frozen_inputs", question_id: str = "") -> None:
+def _register_figure(
+    run_dir: Path,
+    figure_id: str,
+    stem: str,
+    source: str,
+    template: str,
+    provenance_type: str = "frozen_inputs",
+    question_id: str = "",
+    focal_claim: str = "",
+) -> None:
     """把新高级图登记进 figures/index.json（current + 来源）。"""
     index_path = run_dir / "figures" / "index.json"
     index = load_json(index_path) if index_path.is_file() else {
@@ -120,6 +140,9 @@ def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, temp
     ]
     entry = {
         "figure_id": figure_id,
+        "template_id": template,
+        "visual_archetype": template,
+        "advanced_template": template,
         "question_id": question_id or str(_question_id_of(index, figure_id) or ""),
         "status": "current",
         "paper_allowed": True,
@@ -140,6 +163,7 @@ def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, temp
             {"path": f"figures/current/{stem}.png", "sha256": _sha(run_dir / f"figures/current/{stem}.png")},
             {"path": f"figures/current/{stem}.pdf", "sha256": _sha(run_dir / f"figures/current/{stem}.pdf")},
         ],
+        "focal_claim": focal_claim.strip(),
         "takeaway": f"SECOND STEP {'结构图' if provenance_type == 'explanatory_structure' else '高级图'}（{template}）：{stem}",
     }
     index["figures"].append(entry)
@@ -165,8 +189,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="SECOND STEP 高级图补充")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--plan", required=True, help="高级图 plan JSON")
-    parser.add_argument("--compile", action="store_true", help="插入后重编译长篇首稿")
-    parser.add_argument("--target", default="paper/longform-source.tex", help="插入目标 tex（默认 longform-source.tex）")
+    parser.add_argument("--compile", action="store_true", help="插入后重编译当前目标；正式入口会生成候选稿")
+    parser.add_argument("--target", help="插入目标 tex；默认正式发布入口，长稿只能显式指定")
     parser.add_argument("--timeout-seconds", type=int, default=300)
     args = parser.parse_args()
 
@@ -174,9 +198,19 @@ def main() -> int:
     plan_path = Path(args.plan)
     plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.is_file() else json.loads(args.plan)
 
-    tex_path = run_dir / args.target
+    if args.target:
+        try:
+            tex_path = resolve_inside(run_dir, args.target, must_exist=True)
+        except ContractError as exc:
+            raise SystemExit(f"目标 tex 无效: {exc}") from exc
+    else:
+        try:
+            tex_path = publication_entrypoint(run_dir)
+        except ContractError as exc:
+            raise SystemExit(f"缺少正式发布入口，请先物化正式稿或显式指定 --target: {exc}") from exc
     if not tex_path.is_file():
-        raise SystemExit(f"缺少首稿 {tex_path}")
+        raise SystemExit(f"缺少插入目标 {tex_path}")
+    target_relative = relative_inside(run_dir, tex_path).as_posix()
     tex = tex_path.read_text(encoding="utf-8")
 
     for spec in plan:
@@ -190,7 +224,7 @@ def main() -> int:
             structure_spec.setdefault("argument_role", str(spec.get("argument_role", "model_understanding")))
             _render_structure_figure(structure_spec, out_stem)
             # 结构图来源是论文正文本身（解释论证结构），默认用插入目标 tex。
-            source = str(spec.get("source", args.target))
+            source = str(spec.get("source", target_relative))
             provenance = "explanatory_structure"
         else:
             source = str(spec["input"])
@@ -199,7 +233,9 @@ def main() -> int:
             document = load_json(run_dir / source)
             _render_figure(template, document, out_stem)
             provenance = "frozen_inputs"
-        include_pdf = f"../{stem}.pdf"
+        include_pdf = os.path.relpath(
+            run_dir / f"{stem}.pdf", tex_path.parent
+        ).replace("\\", "/")
         block = _figure_block(
             figure_id, include_pdf,
             str(spec.get("caption", "")), str(spec.get("interpretation", "")),
@@ -209,15 +245,24 @@ def main() -> int:
             run_dir, figure_id, Path(stem).name, source, template,
             provenance_type=provenance,
             question_id=str(spec.get("question_id", "whole_paper" if provenance == "explanatory_structure" else "")),
+            focal_claim=str(spec.get("claim", spec.get("interpretation", ""))),
         )
         print(f"插入 {figure_id} ({template}，{provenance}) <- {source}")
 
     tex_path.write_text(tex, encoding="utf-8")
-    print(f"longform-source.tex 更新，共 {tex.count('includegraphics')} 张图")
+    print(f"{target_relative} 更新，共 {tex.count('includegraphics')} 张图")
 
     if args.compile:
-        from shumozizi.paper.compiler import compile_longform_draft
-        receipt = compile_longform_draft(run_dir, timeout_seconds=args.timeout_seconds or 300)
+        formal_entrypoint = publication_entrypoint(run_dir)
+        if tex_path.resolve() == formal_entrypoint.resolve():
+            from shumozizi.paper.compiler import compile_paper
+
+            freeze_publication_snapshot(run_dir)
+            receipt = compile_paper(run_dir, timeout_seconds=args.timeout_seconds or 300)
+        else:
+            from shumozizi.paper.compiler import compile_longform_draft
+
+            receipt = compile_longform_draft(run_dir, timeout_seconds=args.timeout_seconds or 300)
         print(json.dumps(receipt, ensure_ascii=False, indent=2)[:500])
     return 0
 

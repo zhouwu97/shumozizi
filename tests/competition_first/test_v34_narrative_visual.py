@@ -219,6 +219,9 @@ def test_short_report_has_scientific_layer_but_not_competition_layer(tmp_path: P
         "\\begin{figure}\\includegraphics{figures/q1.png}\\end{figure}\n",
         encoding="utf-8",
     )
+    (run_dir / "paper/main.tex").write_text(
+        "\\input{sections/q1}\n", encoding="utf-8"
+    )
     status = classify_paper_readiness(run_dir)
     assert status["scientific_ready"] is True
     assert status["narrative_ready"] is False

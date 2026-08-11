@@ -1,7 +1,7 @@
 {
   "schema_name": "paper_card_index",
   "schema_version": "1.0",
-  "paper_count": 24,
+  "paper_count": 25,
   "papers": [
     {
       "paper_id": "cumcm-2012-a-wine-evaluation",
@@ -506,6 +506,39 @@
       ],
       "source_sha256": "1b0fbd065535cb56dfdcc4daa0f8331eef29dafd9ab99119bf769514df0e278e",
       "card_path": "knowledge/cards/papers/cumcm-2023-e-e176-monitoring-knapsack.md"
+    },
+    {
+      "paper_id": "cumcm-2025-c-nipt-longitudinal-censoring",
+      "title": "基于区间删失生存分析与多因素模型的检测时点优化（仅作结构学习）",
+      "problem_type": "纵向生物统计、区间删失生存分析与风险决策",
+      "data_structure": "个体重复检测记录、首次阈值事件区间与记录级异常标签",
+      "task_types": [
+        "纵向非线性建模",
+        "区间删失生存分析",
+        "阈值时点决策",
+        "分组与个体化推荐",
+        "分组交叉验证",
+        "不确定性量化"
+      ],
+      "domain_terms": [
+        "重复测量",
+        "首次达标",
+        "区间删失",
+        "生存分析",
+        "风险权衡",
+        "分类判别"
+      ],
+      "structural_tags": [
+        "个体内相关",
+        "非线性协变量效应",
+        "阈值事件观测不完全",
+        "联合分组与时点优化",
+        "建议值不确定性",
+        "按主体分组验证",
+        "代理标签边界"
+      ],
+      "source_sha256": "431e984023d8ed1741cbcdd88521cbb808758a657787d1b439474de9ac16bf3a",
+      "card_path": "knowledge/cards/papers/cumcm-2025-c-nipt-longitudinal-censoring.md"
     },
     {
       "paper_id": "cumcm-main-2023-b-workspace-case",

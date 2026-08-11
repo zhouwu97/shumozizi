@@ -235,13 +235,28 @@
         "information_structure": {"type": "string", "minLength": 1},
         "visual_archetype": {"type": "string", "minLength": 1},
         "argument_roles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-        "panel_layout": {"type": "object", "additionalProperties": false, "properties": {"rows": {"type": "integer", "minimum": 1}, "columns": {"type": "integer", "minimum": 1}}},
+        "panel_layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rows": {"type": "integer", "minimum": 1},
+            "columns": {"type": "integer", "minimum": 1},
+            "arrangement": {"type": "string", "minLength": 1}
+          }
+        },
         "reading_order": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "visible_elements": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "required_data_fields": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "applicable_when": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 8}},
         "not_applicable_when": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 8}},
-        "transferable_principle": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 8}}
+        "transferable_principle": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 8}},
+        "conclusion_supported": {"type": "string", "minLength": 8},
+        "mathematical_object": {"type": "string", "minLength": 3},
+        "why_table_insufficient": {"type": "string", "minLength": 8},
+        "key_elements": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "decorative_elements": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "nontransferable_elements": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "renderer_feasibility": {"type": "string", "minLength": 8}
       },
       "additionalProperties": false
     }

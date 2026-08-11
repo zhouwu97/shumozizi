@@ -14,6 +14,13 @@ from jsonschema import Draft202012Validator, FormatChecker
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.paper.docx_qa import audit_docx
+from shumozizi.paper.publication import (
+    PUBLICATION_SNAPSHOT_PATH,
+    publication_entrypoint,
+    publication_snapshot_errors,
+    publication_source_digest,
+    require_publication_snapshot,
+)
 from shumozizi.paper.templates import MANIFEST_PATH, require_materialized_template
 from shumozizi.simple.state import read_simple_state, utc_now
 
@@ -464,14 +471,12 @@ def compile_longform_draft(
         "not_for_final_submission": True,
         "generated_at": utc_now(),
     }
-    from shumozizi.paper.policy import formal_result_digest, policy_fingerprint
+    from shumozizi.paper.policy import formal_result_digest, frozen_policy_fingerprints
 
     receipt["formal_result_digest"] = formal_result_digest(root)
-    from shumozizi.core.repo_root import resolve_repo_root
-
-    repo_root = resolve_repo_root(Path(__file__))
-    receipt["paper_policy_fingerprint"] = policy_fingerprint(repo_root, "paper")
-    receipt["visual_policy_fingerprint"] = policy_fingerprint(repo_root, "visual")
+    frozen_policies = frozen_policy_fingerprints(root)
+    receipt["paper_policy_fingerprint"] = frozen_policies["paper"]
+    receipt["visual_policy_fingerprint"] = frozen_policies["visual"]
     atomic_json(root / LONGFORM_DRAFT_RECEIPT_PATH, receipt)
     return receipt
 
@@ -842,6 +847,9 @@ def compile_paper(
 
         require_paper_readiness(run_dir)
         require_editorial_readiness(run_dir, require_record=strict_mode)
+    # 作者长稿是创作中间态，只有显式冻结正式入口后才能进入 candidate 编译。
+    # 这样不会让长稿中的图、论证或数字替正式 main.tex 通过质量门。
+    publication_snapshot = require_publication_snapshot(root)
     previous_render_revision = int(state.get("paper_render_revision", 0))
     previous_argument_revision = int(state.get("argument_revision", previous_render_revision))
     manifest = require_materialized_template(run_dir)
@@ -855,7 +863,10 @@ def compile_paper(
         entrypoint = paper_dir / manifest["question_layout"]["entrypoint_path"]
     if not entrypoint.is_file():
         raise ContractError("论文编译入口缺失，不能编译")
-    source_sha256 = _paper_source_sha256(compile_dir)
+    expected_publication_entrypoint = publication_entrypoint(root)
+    if entrypoint.resolve() != expected_publication_entrypoint.resolve():
+        raise ContractError("编译入口不是当前冻结的正式论文入口")
+    source_sha256 = publication_source_digest(root, entrypoint=entrypoint)
     resolved_impact = revision_impact
     if revision_impact == "auto":
         previous_receipt_path = root / COMPILE_RECEIPT_PATH
@@ -883,7 +894,7 @@ def compile_paper(
     if compiled_pdf != final_pdf:
         shutil.copy2(compiled_pdf, final_pdf)
     _require_pdf(final_pdf)
-    if _paper_source_sha256(compile_dir) != source_sha256:
+    if publication_source_digest(root, entrypoint=entrypoint) != source_sha256:
         raise ContractError("论文源文件在编译期间发生变化，拒绝冻结不稳定产物")
 
     page_budget: dict[str, Any] | None = None
@@ -958,12 +969,15 @@ def compile_paper(
         "strict_mode": strict_mode,
         "generated_at": utc_now(),
     }
-    from shumozizi.paper.policy import formal_result_digest, policy_fingerprint
+    if publication_snapshot is not None:
+        receipt["publication_snapshot_path"] = PUBLICATION_SNAPSHOT_PATH.as_posix()
+        receipt["publication_snapshot_sha256"] = sha256_file(root / PUBLICATION_SNAPSHOT_PATH)
+    from shumozizi.paper.policy import formal_result_digest, frozen_policy_fingerprints
 
     receipt["formal_result_digest"] = formal_result_digest(root)
-    repo_root = resolve_repo_root(Path(__file__))
-    receipt["paper_policy_fingerprint"] = policy_fingerprint(repo_root, "paper")
-    receipt["visual_policy_fingerprint"] = policy_fingerprint(repo_root, "visual")
+    frozen_policies = frozen_policy_fingerprints(root)
+    receipt["paper_policy_fingerprint"] = frozen_policies["paper"]
+    receipt["visual_policy_fingerprint"] = frozen_policies["visual"]
     if external_source is not None:
         from shumozizi.paper.import_audit import IMPORTED_AUTHOR_RECEIPT
 
@@ -1046,30 +1060,37 @@ def verify_paper_compile_receipt(run_dir: Path) -> dict[str, Any]:
         external_compile = receipt.get("external_author_compile") is True
         if external_compile:
             expected_entry = root / "paper/imported-author/main.tex"
-            source_dir = root / "paper/imported-author"
         else:
             expected_entry = root / "paper" / manifest["question_layout"]["entrypoint_path"]
-            source_dir = root / "paper"
         if entrypoint.resolve() != expected_entry.resolve() or not entrypoint.is_file():
             errors.append("编译回执入口与当前编译源不一致")
         elif receipt["entrypoint_sha256"] != sha256_file(entrypoint):
             errors.append("论文入口在编译后已变化")
-        if receipt["paper_source_sha256"] != _paper_source_sha256(source_dir):
+        if receipt["paper_source_sha256"] != publication_source_digest(
+            root, entrypoint=entrypoint
+        ):
             errors.append("论文源文件在编译后已变化")
-        from shumozizi.paper.policy import formal_result_digest, policy_fingerprint
+        snapshot_errors = publication_snapshot_errors(
+            root,
+            require_snapshot=(root / "paper/longform-source.tex").is_file()
+            or (root / "paper/longform-source.typ").is_file(),
+        )
+        errors.extend(snapshot_errors)
+        if "publication_snapshot_path" in receipt:
+            snapshot_path = root / receipt["publication_snapshot_path"]
+            if not snapshot_path.is_file() or receipt.get("publication_snapshot_sha256") != sha256_file(
+                snapshot_path
+            ):
+                errors.append("编译回执未绑定当前正式论文发布快照")
+        from shumozizi.paper.policy import formal_result_digest, frozen_policy_fingerprints
 
         expected_result_digest = formal_result_digest(root)
         if receipt.get("formal_result_digest") not in {None, expected_result_digest}:
             errors.append("编译回执未绑定当前正式生产结果")
-        if receipt.get("paper_policy_fingerprint") not in {
-            None,
-            policy_fingerprint(resolve_repo_root(Path(__file__)), "paper"),
-        }:
+        frozen_policies = frozen_policy_fingerprints(root)
+        if receipt.get("paper_policy_fingerprint") not in {None, frozen_policies["paper"]}:
             errors.append("编译回执未绑定当前论文政策")
-        if receipt.get("visual_policy_fingerprint") not in {
-            None,
-            policy_fingerprint(resolve_repo_root(Path(__file__)), "visual"),
-        }:
+        if receipt.get("visual_policy_fingerprint") not in {None, frozen_policies["visual"]}:
             errors.append("编译回执未绑定当前视觉政策")
         final_pdf = root / receipt["final_pdf_path"]
         try:

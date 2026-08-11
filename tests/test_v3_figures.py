@@ -245,6 +245,9 @@ class V3FigureTests(unittest.TestCase):
             all(not item["demo"] and item["paper_allowed"] for item in index["figures"])
         )
         self.assertTrue(all(item["figure_stage"] == "current" for item in index["figures"]))
+        self.assertTrue(
+            all(item["visual_archetype"] == item["template_id"] for item in index["figures"])
+        )
         verification = verify_current_figure_files(self.run_dir)
         self.assertTrue(verification["success"], verification["errors"])
 

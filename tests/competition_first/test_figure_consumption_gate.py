@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from shumozizi.core.io import atomic_json
@@ -41,6 +42,57 @@ def _run_with_current_figure(tmp_path: Path) -> Path:
     return run_dir
 
 
+def _run_with_advanced_figure_quota(tmp_path: Path) -> Path:
+    """构造满足高级图硬规格的四问正式稿。"""
+    question_ids = ["Q1", "Q2", "Q3", "Q4"]
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "advanced-figure-quota",
+        required_questions=question_ids,
+        workflow_version="3.2",
+        quality_policy="competition-quality-v1",
+    )
+    archetypes = ("probability_curve", "ci_forest", "group_violin")
+    figures: list[dict[str, object]] = []
+    tex_parts = ["\\documentclass{article}", "\\begin{document}"]
+    for question_index, question_id in enumerate(question_ids):
+        tex_parts.append(f"\\section{{{question_id}}}")
+        for figure_index in range(3):
+            figure_id = f"fig_{question_id.lower()}_{figure_index + 1}"
+            figures.append(
+                {
+                    "figure_id": figure_id,
+                    "question_id": question_id,
+                    "status": "current",
+                    "paper_allowed": True,
+                    "placement": "body",
+                    "visual_archetype": archetypes[(question_index + figure_index) % 3],
+                    "outputs": [
+                        {
+                            "path": f"figures/current/{figure_id}.pdf",
+                            "sha256": "0" * 64,
+                        }
+                    ],
+                }
+            )
+            tex_parts.append(
+                "\\includegraphics[width=0.9\\textwidth]"
+                f"{{../figures/current/{figure_id}.pdf}}"
+            )
+    tex_parts.append("\\end{document}")
+    atomic_json(
+        run_dir / "figures/index.json",
+        {
+            "schema_name": "simple_figure_index",
+            "schema_version": "1.3",
+            "run_id": run_dir.name,
+            "figures": figures,
+        },
+    )
+    (run_dir / "paper" / "main.tex").write_text("\n".join(tex_parts), encoding="utf-8")
+    return run_dir
+
+
 def test_figure_consumption_gate_blocks_text_only_paper(tmp_path: Path) -> None:
     """正文完全没有 includegraphics 时必须 RENDER_FORBIDDEN。"""
     run_dir = _run_with_current_figure(tmp_path)
@@ -64,6 +116,100 @@ def test_figure_consumption_gate_passes_when_current_figure_referenced(tmp_path:
     assert errors == []
 
 
+def test_advanced_figure_quota_accepts_formal_current_figure_coverage(tmp_path: Path) -> None:
+    """新质量合同只有满足每题、总量和图型配额才可放行。"""
+    run_dir = _run_with_advanced_figure_quota(tmp_path)
+
+    assert validate_required_figure_consumption(run_dir) == []
+
+
+def test_advanced_figure_quota_rejects_shortage_overflow_and_single_type(tmp_path: Path) -> None:
+    """硬规格须能定位逐题不足、逐题超额和图型单一三类绕过方式。"""
+    run_dir = _run_with_advanced_figure_quota(tmp_path)
+    main_path = run_dir / "paper" / "main.tex"
+    # Q1 少一张，同时总量从 12 降到 11；只删正文引用而不动登记，验证消费闭环。
+    text = main_path.read_text(encoding="utf-8")
+    text = text.replace(
+        "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_q1_3.pdf}\n",
+        "",
+    )
+    main_path.write_text(text, encoding="utf-8")
+    errors = validate_required_figure_consumption(run_dir)
+    assert not any("Q1 在正式稿只消费 2 张" in error for error in errors)
+    # Q1 此时仍有两张，逐题最低配额通过；全篇最低配额必须失败。
+    assert any("正式稿只消费 11 张" in error for error in errors)
+
+    # 再删一张，触发逐题最低配额。
+    text = main_path.read_text(encoding="utf-8")
+    text = text.replace(
+        "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_q1_2.pdf}\n",
+        "",
+    )
+    main_path.write_text(text, encoding="utf-8")
+    errors = validate_required_figure_consumption(run_dir)
+    assert any("Q1 在正式稿只消费 1 张" in error for error in errors)
+
+    # 恢复全部正文引用后，把全部图型伪装成同一种，硬门必须拒绝。
+    run_dir = _run_with_advanced_figure_quota(tmp_path / "single-type")
+    index_path = run_dir / "figures/index.json"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    for figure in payload["figures"]:
+        figure["visual_archetype"] = "probability_curve"
+    atomic_json(index_path, payload)
+    errors = validate_required_figure_consumption(run_dir)
+    assert any("只登记 1 种可审计图型" in error for error in errors)
+
+
+def test_advanced_figure_quota_rejects_more_than_three_body_figures_for_one_question(
+    tmp_path: Path,
+) -> None:
+    """同一问题第四张正文图不能用来挤压其他问题的论证空间。"""
+    run_dir = _run_with_advanced_figure_quota(tmp_path)
+    index_path = run_dir / "figures/index.json"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["figures"].append(
+        {
+            "figure_id": "fig_q1_4",
+            "question_id": "Q1",
+            "status": "current",
+            "paper_allowed": True,
+            "placement": "body",
+            "visual_archetype": "ci_forest",
+            "outputs": [
+                {"path": "figures/current/fig_q1_4.pdf", "sha256": "0" * 64}
+            ],
+        }
+    )
+    atomic_json(index_path, payload)
+    main_path = run_dir / "paper" / "main.tex"
+    main_path.write_text(
+        main_path.read_text(encoding="utf-8").replace(
+            "\\end{document}",
+            "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_q1_4.pdf}\n\\end{document}",
+        ),
+        encoding="utf-8",
+    )
+    errors = validate_required_figure_consumption(run_dir)
+    assert any("Q1 在正式稿消费 4 张" in error for error in errors)
+
+
+def test_advanced_figure_quota_does_not_count_appendix_figures(tmp_path: Path) -> None:
+    """附录稳定性图不能用来伪造正文十二图规格。"""
+    run_dir = _run_with_advanced_figure_quota(tmp_path)
+    index_path = run_dir / "figures/index.json"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    appendix_figure = next(
+        item for item in payload["figures"] if item["figure_id"] == "fig_q1_3"
+    )
+    appendix_figure["placement"] = "appendix"
+    atomic_json(index_path, payload)
+
+    errors = validate_required_figure_consumption(run_dir)
+
+    assert any("正式稿只消费 11 张 current 正文图" in error for error in errors)
+    assert not any("Q1 在正式稿只消费 2 张" in error for error in errors)
+
+
 def test_visual_requirement_brief_lists_ready_figures_with_paths(tmp_path: Path) -> None:
     """brief 必须列出已就绪 current 图的 includegraphics 路径，而不是"需要评估"。"""
     run_dir = _run_with_current_figure(tmp_path)
@@ -77,16 +223,19 @@ def test_visual_requirement_brief_lists_ready_figures_with_paths(tmp_path: Path)
     assert "需要视觉评估" not in text
 
 
-def test_author_brief_contains_cumcm_skeleton_and_second_step(tmp_path: Path) -> None:
-    """author brief 必须内建完整 CUMCM 范式骨架、篇幅与高级图硬要求、学术文风。"""
+def test_author_brief_contains_cumcm_skeleton_and_advanced_figure_quota(
+    tmp_path: Path,
+) -> None:
+    """author brief 必须给出国赛骨架与高级图硬规格。"""
     state = {"run_id": "x"}
     brief = _render_author_brief(state, {"cards": []}, None)
     for kw in [
         "问题重述", "问题分析", "模型假设", "符号说明",
         "模型建立与求解", "误差分析与检验", "模型评价与推广", "参考文献", "附录",
-        "20 页以上", "2--3 张支撑图", "12 张", "mathmodel-advanced-figures",
+        "决定性证据", "高级图配额是硬要求", "2--3 张 current 支撑图",
+        "至少 12 张", "至少 3 种可审计图型", "current 数据",
     ]:
         assert kw in brief, f"brief 缺少: {kw}"
-    assert "不以当前页数" not in brief, "不得保留'不以页数为目标'的旧授权"
+    assert "20 页以上" not in brief
     assert "第一人称" in brief
     assert "主题句" in brief

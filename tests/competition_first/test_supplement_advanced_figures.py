@@ -25,7 +25,7 @@ def _synthetic_run(tmp_path: Path) -> Path:
     (run_dir / "paper").mkdir(parents=True)
     (run_dir / "results/raw").mkdir(parents=True)
     (run_dir / "figures").mkdir(parents=True)
-    (run_dir / "paper/longform-source.tex").write_text(
+    (run_dir / "paper/main.tex").write_text(
         "\\section{问题 Q2：测试}\n\n只有文字。\n\n\\section{问题 Q3：测试}\n\n更多文字。\n",
         encoding="utf-8",
     )
@@ -48,7 +48,7 @@ def _synthetic_run(tmp_path: Path) -> Path:
 def test_insert_figure_after_section(tmp_path: Path) -> None:
     """figure 块必须插在对应 section 标题之后。"""
     run_dir = _synthetic_run(tmp_path)
-    tex = (run_dir / "paper/longform-source.tex").read_text(encoding="utf-8")
+    tex = (run_dir / "paper/main.tex").read_text(encoding="utf-8")
     block = _figure_block("fig_q2", "../figures/current/fig_q2.pdf", "图注", "展示了渗流转变")
     out = _insert_figure(tex, block, "问题 Q2")
     # 图块插在 Q2 section 后、Q3 section 前
@@ -64,6 +64,8 @@ def test_register_figure_writes_current_entry(tmp_path: Path) -> None:
     entry = next(item for item in index["figures"] if item["figure_id"] == "fig_q2_adv")
     assert entry["status"] == "current"
     assert entry["source_files"][0]["path"] == "results/raw/q2_probability_curve.json"
+    assert entry["visual_archetype"] == "probability_curve"
+    assert entry["advanced_template"] == "probability_curve"
     assert "probability_curve" in entry["takeaway"]
 
 
@@ -103,7 +105,7 @@ def test_supplement_script_end_to_end(tmp_path: Path) -> None:
     with contextlib.redirect_stdout(_io.StringIO()):
         exit_code = main()
     assert exit_code == 0
-    tex = (run_dir / "paper/longform-source.tex").read_text(encoding="utf-8")
+    tex = (run_dir / "paper/main.tex").read_text(encoding="utf-8")
     assert "fig_q2_curve_adv" in tex
     assert (run_dir / "figures/current/fig_q2_curve_adv.png").is_file()
     index = json.loads((run_dir / "figures/index.json").read_text(encoding="utf-8"))

@@ -71,6 +71,9 @@ def main() -> int:
                 if workflow_version == "3.2"
                 else "legacy-production-v1"
             ),
+            quality_policy=(
+                "competition-quality-v1" if workflow_version == "3.2" else "legacy"
+            ),
         )
         version = workflow_version
     else:

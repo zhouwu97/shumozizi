@@ -937,6 +937,7 @@ def _validate_unit_plan(
     fallback_route: str | None = None
     fallback_condition: str | None = None
     primary_method: str | None = None
+    methodology_audit: dict[str, Any] | None = None
     agreement: dict[str, Any] | None = None
     if search_kind:
         baseline = _require_mapping(unit.get("baseline"), f"{unit_id}.baseline")
@@ -1086,6 +1087,13 @@ def _validate_unit_plan(
                 _require_substantive_plan_text(
                     contract.get(field), f"{unit_id}.data_contract.{field}"
                 )
+            from shumozizi.paper.policy import workflow_quality_policy
+
+            if workflow_quality_policy(run_dir) == "competition-quality-v1":
+                methodology_audit = _validate_data_methodology_audit(
+                    contract.get("methodology_audit"),
+                    f"{unit_id}.data_contract.methodology_audit",
+                )
         elif mode == "simulation":
             contract = _require_mapping(
                 unit.get("simulation_contract"), f"{unit_id}.simulation_contract"
@@ -1133,6 +1141,64 @@ def _validate_unit_plan(
         "robustness_required": robustness_required,
         "visual_outputs": visual_outputs,
         "risk_package": risk_package,
+        "methodology_audit": methodology_audit,
+    }
+
+
+def _validate_data_methodology_audit(value: object, label: str) -> dict[str, Any]:
+    """验证数据建模的统计正确性审计，而非用“更简单基线”自证路线。"""
+    audit = _require_mapping(value, label)
+    for field in (
+        "data_generating_process",
+        "observation_process",
+        "time_or_censoring",
+        "dependency_structure",
+        "functional_form_risk",
+        "unused_fields_review",
+    ):
+        _require_substantive_plan_text(audit.get(field), f"{label}.{field}")
+    alternatives = audit.get("statistically_valid_alternatives")
+    if not isinstance(alternatives, list) or not alternatives:
+        raise ContractError(f"{label}.statistically_valid_alternatives 至少需要一条替代方案")
+    normalized_alternatives: list[dict[str, str]] = []
+    for index, raw in enumerate(alternatives):
+        alternative = _require_mapping(
+            raw, f"{label}.statistically_valid_alternatives[{index}]"
+        )
+        for field in ("method", "addresses_risk", "decision_reason", "discriminating_check"):
+            _require_substantive_plan_text(
+                alternative.get(field),
+                f"{label}.statistically_valid_alternatives[{index}].{field}",
+            )
+        decision = alternative.get("decision")
+        if decision not in {"adopt", "reject", "sensitivity"}:
+            raise ContractError(
+                f"{label}.statistically_valid_alternatives[{index}].decision "
+                "必须为 adopt、reject 或 sensitivity"
+            )
+        normalized_alternatives.append(
+            {
+                "method": str(alternative["method"]),
+                "addresses_risk": str(alternative["addresses_risk"]),
+                "decision": str(decision),
+            }
+        )
+    uncertainty = _require_mapping(audit.get("recommendation_uncertainty"), f"{label}.recommendation_uncertainty")
+    required = uncertainty.get("required")
+    if not isinstance(required, bool):
+        raise ContractError(f"{label}.recommendation_uncertainty.required 必须是布尔值")
+    _require_substantive_plan_text(
+        uncertainty.get("rationale"), f"{label}.recommendation_uncertainty.rationale"
+    )
+    method = uncertainty.get("method")
+    if required:
+        _require_substantive_plan_text(method, f"{label}.recommendation_uncertainty.method")
+    elif method is not None and not isinstance(method, str):
+        raise ContractError(f"{label}.recommendation_uncertainty.method 必须是文本或 null")
+    return {
+        "alternatives": normalized_alternatives,
+        "uncertainty_required": required,
+        "uncertainty_method": str(method).strip() if isinstance(method, str) else None,
     }
 
 
@@ -2491,6 +2557,25 @@ def _validate_actual_unit(
                         label=f"{plan['unit_id']}.actual.validation.{name}_result_ids",
                     )
                 )
+        methodology = plan.get("methodology_audit")
+        if isinstance(methodology, dict):
+            methodology_ids = _production_result_ids(
+                results,
+                value=validation.get("methodology_result_ids"),
+                question_id=plan["question_id"],
+                label=f"{plan['unit_id']}.actual.validation.methodology_result_ids",
+            )
+            verify_ids.update(methodology_ids)
+            if methodology.get("uncertainty_required") is True:
+                uncertainty_ids = _production_result_ids(
+                    results,
+                    value=validation.get("uncertainty_result_ids"),
+                    question_id=plan["question_id"],
+                    label=f"{plan['unit_id']}.actual.validation.uncertainty_result_ids",
+                )
+                verify_ids.update(uncertainty_ids)
+                outcome["evidence_grade"]["uncertainty_result_ids"] = uncertainty_ids
+            outcome["evidence_grade"]["methodology_result_ids"] = methodology_ids
         if plan["unit_kind"] == "exact_oracle":
             verify_ids.add(str(actual["oracle_result_id"]))
         _validate_insights(actual.get("insights"), plan, results)

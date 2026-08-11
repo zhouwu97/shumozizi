@@ -138,3 +138,58 @@ def test_domain_distant_statistical_match_is_not_high_confidence(tmp_path: Path)
     assert match["domain_similarity"] == 0.0
     assert match["overall_confidence"] == "medium"
     assert match["high_confidence"] is False
+
+
+def test_controlled_structure_concepts_match_long_fingerprint_to_compact_card(
+    tmp_path: Path,
+) -> None:
+    """长题面指纹可命中同构统计卡，但不依赖题名或领域词。"""
+    cards = tmp_path / "knowledge/cards/papers"
+    cards.mkdir(parents=True)
+    body = "\n\n".join(
+        f"## {index}. {name}\n\n测试内容。"
+        for index, name in enumerate(REQUIRED_CARD_SECTIONS, 1)
+    )
+    (cards / "longitudinal.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "paper_id: longitudinal",
+                "title: 设备检测案例",
+                "source_file: longitudinal.pdf",
+                f"source_sha256: {'d' * 64}",
+                "problem_type: 纵向统计、区间删失与风险决策",
+                "data_structure: 个体重复检测记录与首次阈值事件区间",
+                "task_types:",
+                "  - 纵向非线性建模",
+                "  - 区间删失生存分析",
+                "  - 阈值时点决策",
+                "  - 分组交叉验证",
+                "structural_tags:",
+                "  - 个体内相关",
+                "  - 阈值事件观测不完全",
+                "  - 建议值不确定性",
+                "---",
+                "",
+                body,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    index = tmp_path / "knowledge/indexes/papers.json"
+    build_paper_index(cards, index)
+
+    match = retrieve_papers(
+        index,
+        problem_type="多次采样下的非线性时间关系、首次达到阈值的删失事件与风险最小化",
+        data_structure="同一主体多次采样，首次阈值只知道位于相邻记录之间",
+        task_types=["重复测量回归建模", "时间阈值反演", "按主体分组验证"],
+        keywords=["完全不相干的领域词"],
+        structural_tags=["重复测量纵向回归", "时间阈值反演", "测量误差传播"],
+    )[0]
+
+    assert match["paper_id"] == "longitudinal"
+    assert match["structural_similarity"] >= 0.6
+    assert match["domain_similarity"] == 0.0
+    assert any("结构概念匹配" in reason for reason in match["match_reasons"])

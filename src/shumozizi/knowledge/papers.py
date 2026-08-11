@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,140 @@ REQUIRED_CARD_SECTIONS = (
     "复现风险",
     "来源页码",
 )
+
+# WHY: 题面指纹通常是长句，而知识卡刻意使用短的结构标签。仅按整句精确匹配
+# 会让“重复测量 + 区间删失 + 阈值决策”这类明显同构的问题检索为空；同时，不能
+# 用通用语义相似度把同领域但错结构的论文塞进候选池。因此这里只维护可审计、
+# 统计结构导向的受控概念表，并要求至少命中两个概念才给予语义结构分。
+_STRUCTURAL_CONCEPT_ALIASES: dict[str, tuple[str, ...]] = {
+    "longitudinal_repeated": (
+        "重复测量",
+        "重复检测",
+        "纵向",
+        "面板",
+        "多次检测",
+        "多次采血",
+        "个体内相关",
+        "主体内相关",
+        "混合效应",
+        "随机效应",
+        "gee",
+    ),
+    "censored_event_time": (
+        "区间删失",
+        "左删失",
+        "右删失",
+        "删失",
+        "生存分析",
+        "事件时间",
+        "aft",
+    ),
+    "threshold_timing": (
+        "首次达标",
+        "首次阈值",
+        "阈值事件",
+        "阈值反演",
+        "检测时点",
+        "推荐时点",
+        "时间反演",
+    ),
+    "nonlinear_effect": (
+        "非线性",
+        "平滑项",
+        "平滑",
+        "gamm",
+        "gam",
+        "样条",
+    ),
+    "grouped_decision": (
+        "分组决策",
+        "分层分组",
+        "分组",
+        "切点",
+        "分段",
+        "个性化推荐",
+    ),
+    "risk_tradeoff": (
+        "风险最小化",
+        "风险决策",
+        "风险权衡",
+        "风险",
+        "代价",
+        "权衡",
+        "效用",
+    ),
+    "uncertainty_sensitivity": (
+        "不确定性",
+        "灵敏度",
+        "敏感性",
+        "测量误差",
+        "bootstrap",
+        "重抽样",
+        "稳健性",
+    ),
+    "grouped_validation": (
+        "分组交叉验证",
+        "分组验证",
+        "按主体",
+        "按个体",
+        "主体级",
+        "个体级",
+        "数据泄漏",
+        "跨折泄漏",
+    ),
+    "classification_imbalance": (
+        "不平衡分类",
+        "类别不平衡",
+        "异常判定",
+        "分类判定",
+        "分类",
+        "判别",
+        "auc",
+    ),
+    "proxy_label": (
+        "代理标签",
+        "记录级标签",
+        "异常标签",
+        "标签可信",
+        "标签生成",
+        "金标准",
+    ),
+    "joint_optimization": (
+        "联合优化",
+        "动态规划",
+        "联合分组",
+        "联合求解",
+    ),
+}
+
+
+def _normalized_structure_text(value: str) -> str:
+    """规整结构字段，保留中文和字母以便受控概念匹配。"""
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", value.casefold())
+
+
+def _structural_concepts(values: list[str] | tuple[str, ...]) -> set[str]:
+    """从结构字段提取受控统计概念，不读取题名或领域词。"""
+    text = " ".join(_normalized_structure_text(value) for value in values if value).casefold()
+    return {
+        concept
+        for concept, aliases in _STRUCTURAL_CONCEPT_ALIASES.items()
+        if any(_normalized_structure_text(alias) in text for alias in aliases)
+    }
+
+
+def _semantic_structure_overlap(
+    left: list[str] | tuple[str, ...],
+    right: list[str] | tuple[str, ...],
+) -> tuple[float, list[str]]:
+    """计算受控结构概念交集，并拒绝只靠一个泛概念的偶然命中。"""
+    left_concepts = _structural_concepts(left)
+    right_concepts = _structural_concepts(right)
+    shared = sorted(left_concepts.intersection(right_concepts))
+    if len(shared) < 2:
+        return 0.0, []
+    denominator = max(min(len(left_concepts), len(right_concepts)), 1)
+    return len(shared) / denominator, shared
 
 
 def _sha256(path: Path) -> str:
@@ -187,7 +322,12 @@ def retrieve_papers(
     structural_tags: list[str] | None = None,
     limit: int = 6,
 ) -> list[dict[str, Any]]:
-    """分别计算结构与领域相似度，避免通用研究原则冒充高相关命中。"""
+    """分别计算结构与领域相似度，避免通用研究原则冒充高相关命中。
+
+    整句精确匹配仍优先；只有该字段不存在精确命中时，才退回到受控的统计结构
+    概念交集。这样长题面指纹可以命中简洁知识卡，而标题或单一领域词不能伪造
+    结构相关性。
+    """
     normalized_tasks = {item.casefold() for item in task_types}
     normalized_keywords = {item.casefold() for item in keywords}
     normalized_structures = {item.casefold() for item in structural_tags or []}
@@ -199,9 +339,27 @@ def retrieve_papers(
         if entry["problem_type"].casefold() == problem_type.casefold():
             structural_similarity += 0.35
             structural_reasons.append("problem_type 精确匹配")
+        else:
+            similarity, concepts = _semantic_structure_overlap(
+                [problem_type], [str(entry["problem_type"])]
+            )
+            if similarity:
+                structural_similarity += 0.35 * similarity
+                structural_reasons.append(
+                    "problem_type 结构概念匹配: " + ", ".join(concepts)
+                )
         if entry["data_structure"].casefold() == data_structure.casefold():
             structural_similarity += 0.20
             structural_reasons.append("data_structure 精确匹配")
+        else:
+            similarity, concepts = _semantic_structure_overlap(
+                [data_structure], [str(entry["data_structure"])]
+            )
+            if similarity:
+                structural_similarity += 0.20 * similarity
+                structural_reasons.append(
+                    "data_structure 结构概念匹配: " + ", ".join(concepts)
+                )
         matched_tasks = normalized_tasks.intersection(
             str(item).casefold() for item in entry["task_types"]
         )
@@ -209,6 +367,15 @@ def retrieve_papers(
             task_ratio = len(matched_tasks) / max(len(normalized_tasks), 1)
             structural_similarity += 0.30 * task_ratio
             structural_reasons.append("task_types 匹配: " + ", ".join(sorted(matched_tasks)))
+        else:
+            similarity, concepts = _semantic_structure_overlap(
+                task_types, [str(item) for item in entry["task_types"]]
+            )
+            if similarity:
+                structural_similarity += 0.30 * similarity
+                structural_reasons.append(
+                    "task_types 结构概念匹配: " + ", ".join(concepts)
+                )
         matched_structures = normalized_structures.intersection(
             str(item).casefold() for item in entry.get("structural_tags", [])
         )
@@ -218,6 +385,16 @@ def retrieve_papers(
             structural_reasons.append(
                 "structural_tags 匹配: " + ", ".join(sorted(matched_structures))
             )
+        elif structural_tags:
+            similarity, concepts = _semantic_structure_overlap(
+                structural_tags,
+                [str(item) for item in entry.get("structural_tags", [])],
+            )
+            if similarity:
+                structural_similarity += 0.15 * similarity
+                structural_reasons.append(
+                    "structural_tags 结构概念匹配: " + ", ".join(concepts)
+                )
 
         domain_searchable = " ".join(
             [entry["title"], *entry.get("domain_terms", [])]

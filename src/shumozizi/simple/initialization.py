@@ -219,6 +219,7 @@ def initialize_simple_run(
     paper_draft_mode: str | None = None,
     initial_execution_mode: str = "production",
     execution_policy: str = "legacy-production-v1",
+    quality_policy: str = "legacy",
 ) -> Path:
     """创建可独立恢复的 v3 运行目录。
 
@@ -237,6 +238,7 @@ def initialize_simple_run(
             reviewable fallback 兼容，新 CLI 默认显式传入长篇科学首稿。
         initial_execution_mode: 初始实验用途；旧 API 默认保持 production 兼容。
         execution_policy: 执行策略；新 v3.2 CLI 使用风险自适应策略。
+        quality_policy: 运行开始即冻结的论文质量合同；新 CLI 使用 competition-quality-v1。
 
     Returns:
         新建运行目录。
@@ -256,6 +258,10 @@ def initialize_simple_run(
         raise ContractError("execution_policy 必须为 legacy-production-v1 或 risk-adaptive-v1")
     if workflow_version != "3.2" and execution_policy == "risk-adaptive-v1":
         raise ContractError("risk-adaptive-v1 仅适用于 v3.2 运行")
+    if quality_policy not in {"legacy", "competition-quality-v1"}:
+        raise ContractError("quality_policy 必须为 legacy 或 competition-quality-v1")
+    if workflow_version != "3.2" and quality_policy != "legacy":
+        raise ContractError("competition-quality-v1 仅适用于 v3.2 运行")
     identifier = safe_simple_run_id(run_id)
     runs_root = (root / "runs").resolve()
     run_dir = (runs_root / identifier).resolve()
@@ -358,7 +364,7 @@ def initialize_simple_run(
         # v3.4 的作者输入先落成空素材池和问题故事板；空池不会伪造结果，
         # 但能让后续编排明确知道哪些科学内容仍未交接给论文层。
         from shumozizi.paper.materials import build_material_pool
-        from shumozizi.paper.policy import refresh_policy_state
+        from shumozizi.paper.policy import freeze_workflow_snapshot, refresh_policy_state
         from shumozizi.paper.storyboard import build_research_storyboard
 
         build_material_pool(run_dir)
@@ -367,6 +373,7 @@ def initialize_simple_run(
 
         build_visual_opportunity_pool(run_dir)
         refresh_policy_state(run_dir)
+        freeze_workflow_snapshot(run_dir, quality_policy=quality_policy)
         atomic_json(
             run_dir / "paper" / "draft-mode.json",
             {

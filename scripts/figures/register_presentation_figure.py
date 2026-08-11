@@ -38,6 +38,7 @@ def main() -> int:
     )
     parser.add_argument("--promotion-receipt", required=True)
     parser.add_argument("--template-id", default="custom")
+    parser.add_argument("--visual-archetype")
     args = parser.parse_args()
     try:
         entry = register_presentation_figure(
@@ -54,6 +55,7 @@ def main() -> int:
             role=args.role,
             promotion_receipt=args.promotion_receipt,
             template_id=args.template_id,
+            visual_archetype=args.visual_archetype,
         )
     except ContractError as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}, ensure_ascii=False))

@@ -23,6 +23,7 @@ from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.materials import material_pool_digest, read_material_pool
 from shumozizi.paper.policy import policy_fingerprint
+from shumozizi.paper.publication import publication_source_digest
 from shumozizi.simple.state import read_simple_state, utc_now
 
 VISUAL_OPPORTUNITY_POOL_PATH = Path("figures/visual-opportunities.json")
@@ -234,7 +235,39 @@ def _review_markdown(opportunity: dict[str, Any], review: dict[str, Any], verdic
         ("action", "下一步动作"),
     ):
         lines.extend([f"## {label}", "", str(review.get(key, "待填写。")), ""])
+    anchor = review.get("evidence_anchor")
+    if isinstance(anchor, dict):
+        lines.extend(
+            [
+                "## DROP 的正式稿替代证据",
+                "",
+                f"类型：{anchor.get('kind', '未填写')}",
+                f"位置：{anchor.get('source_span', '未填写')}",
+                f"可复述证据：{anchor.get('statement', '未填写')}",
+                "",
+            ]
+        )
     return "\n".join(lines)
+
+
+def _drop_evidence_anchor(review: dict[str, Any]) -> dict[str, str]:
+    """校验论文视觉义务 DROP 所需的替代证据最小结构。"""
+    anchor = review.get("evidence_anchor")
+    if not isinstance(anchor, dict):
+        raise ContractError("论文视觉义务的 DROP 必须提供 evidence_anchor")
+    required = ("kind", "source_path", "source_span", "statement")
+    missing = [key for key in required if not isinstance(anchor.get(key), str) or not anchor[key].strip()]
+    if missing:
+        raise ContractError("DROP evidence_anchor 缺少字段: " + "、".join(missing))
+    if anchor["kind"] not in {"figure", "table", "derivation"}:
+        raise ContractError("DROP evidence_anchor.kind 必须为 figure、table 或 derivation")
+    normalized = {key: str(anchor[key]).strip() for key in required}
+    figure_id = anchor.get("figure_id")
+    if normalized["kind"] == "figure":
+        if not isinstance(figure_id, str) or not figure_id.strip():
+            raise ContractError("figure 类型的 DROP evidence_anchor 必须提供 figure_id")
+        normalized["figure_id"] = figure_id.strip()
+    return normalized
 
 
 def record_visual_critic(
@@ -268,6 +301,18 @@ def record_visual_critic(
     )
     if target is None:
         raise ContractError(f"找不到视觉机会: {opportunity_id}")
+    drop_anchor: dict[str, str] | None = None
+    publication_digest: str | None = None
+    if verdict == "DROP" and target.get("origin") == "paper_visual_requirement":
+        # Author 阶段允许先记录编辑判断；但没有正式稿替代证据的记录永远不能
+        # 在 candidate 闭环中放行，验证器会明确报出缺失的 evidence_anchor。
+        if review.get("evidence_anchor") is not None:
+            drop_anchor = _drop_evidence_anchor(review)
+            try:
+                publication_digest = publication_source_digest(root)
+            except ContractError:
+                # Author Pass 可先记录候选放弃理由；最终闭环会要求它绑定正式入口。
+                publication_digest = None
     version = str(review.get("candidate_version", "v1"))
     candidate_png = candidate_png or (
         str(review.get("candidate_png_path")) if review.get("candidate_png_path") else None
@@ -321,6 +366,8 @@ def record_visual_critic(
         "fresh": fresh,
         "requirement_digest": target.get("requirement_digest"),
         "review": review,
+        "evidence_anchor": drop_anchor,
+        "publication_source_sha256": publication_digest,
         **artifact_binding,
         "recorded_at": utc_now(),
     }

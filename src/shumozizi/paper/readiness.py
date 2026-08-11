@@ -23,11 +23,18 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.schema import validate_document
+from shumozizi.paper.advanced_figure_policy import (
+    MAX_BODY_FIGURES_PER_QUESTION,
+    MIN_BODY_FIGURES_PER_QUESTION,
+    MIN_FORMAL_BODY_FIGURES,
+    MIN_FORMAL_VISUAL_ARCHETYPES,
+)
 from shumozizi.paper.citations import (
     build_citation_coverage,
     citation_coverage_errors,
     citation_coverage_warnings,
 )
+from shumozizi.paper.publication import publication_text_sources
 from shumozizi.paper.style_audit import audit_report_like_manuscript
 from shumozizi.simple.capabilities import ROUTE_PATH
 from shumozizi.simple.critical_claims import CRITICAL_CLAIMS_PATH, read_critical_claims
@@ -192,22 +199,13 @@ def _normalized_latex_path(value: str) -> str:
 
 
 def _paper_tex_text(run_dir: Path) -> str:
-    """拼接论文正文 tex（main + sections + longform 源）用于图引用扫描。"""
+    """拼接正式入口依赖的正文 tex，拒绝混入作者长稿和草稿。"""
     parts: list[str] = []
-    candidates = [
-        run_dir / "paper" / "main.tex",
-        run_dir / "paper" / "longform-source.tex",
-        run_dir / "paper" / "longform-draft.tex",
-    ]
-    sections_dir = run_dir / "paper" / "sections"
-    if sections_dir.is_dir():
-        candidates.extend(sorted(sections_dir.glob("*.tex")))
-    seen: set[str] = set()
+    try:
+        candidates = publication_text_sources(run_dir)
+    except ContractError:
+        return ""
     for path in candidates:
-        key = str(path)
-        if key in seen or not path.is_file():
-            continue
-        seen.add(key)
         try:
             parts.append(path.read_text(encoding="utf-8", errors="replace"))
         except OSError:
@@ -249,6 +247,128 @@ def _validate_paper_references_current_figure(run_dir: Path) -> list[str]:
     return []
 
 
+def _referenced_current_figures(run_dir: Path) -> list[dict[str, Any]]:
+    """返回被正式发布入口实际引用的 current 图表登记项。
+
+    只根据 ``publication_text_sources`` 解析正式稿依赖闭包；同一图在多个位置
+    被引用仍只计为一张，避免重复 ``includegraphics`` 虚增高级图配额。
+    """
+    tex = _paper_tex_text(run_dir)
+    if not tex.strip():
+        return []
+    included = {
+        _normalized_latex_path(item)
+        for item in re.findall(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}", tex)
+    }
+    try:
+        figures = load_json(run_dir / "figures" / "index.json").get("figures", [])
+    except (OSError, ValueError, TypeError):
+        return []
+    referenced: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for figure in figures:
+        if (
+            not isinstance(figure, dict)
+            or figure.get("status") != "current"
+            or figure.get("paper_allowed") is False
+        ):
+            continue
+        figure_id = str(figure.get("figure_id", "")).strip()
+        if not figure_id or figure_id in seen_ids:
+            continue
+        stems = {_normalized_latex_path(f"figures/current/{figure_id}")}
+        for output in figure.get("outputs", []):
+            if isinstance(output, dict):
+                path = str(output.get("path", ""))
+                if path.startswith("figures/current/"):
+                    stems.add(_normalized_latex_path(path))
+        if included.intersection(stems):
+            referenced.append(figure)
+            seen_ids.add(figure_id)
+    return referenced
+
+
+def _figure_archetype(figure: dict[str, Any]) -> str | None:
+    """提取可审计图型；通用 LaTeX 模板不能冒充图型多样性。"""
+    for field in ("visual_archetype", "advanced_template"):
+        value = figure.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    template_id = figure.get("template_id")
+    if isinstance(template_id, str) and template_id.strip() not in {"custom", "zh/cumcm-latex"}:
+        return template_id.strip()
+    return None
+
+
+def _advanced_figure_quota_errors(run_dir: Path) -> list[str]:
+    """校验新质量合同的高级图硬配额与正式稿消费闭环。
+
+    历史运行保持 legacy 兼容；从新 CLI 创建的 ``competition-quality-v1`` 运行
+    必须满足每个必答问题两到三张、全篇至少十二张且至少三种图型。
+    """
+    from shumozizi.paper.policy import workflow_quality_policy
+
+    if workflow_quality_policy(run_dir) != "competition-quality-v1":
+        return []
+    question_ids = _question_ids_from_state(run_dir)
+    figures = _referenced_current_figures(run_dir)
+    body_figures = [
+        figure
+        for figure in figures
+        if str(figure.get("placement", "body")).casefold() != "appendix"
+    ]
+    errors: list[str] = []
+    by_question: dict[str, list[dict[str, Any]]] = {
+        question_id: [] for question_id in question_ids
+    }
+    for figure in body_figures:
+        question_id = figure.get("question_id")
+        if isinstance(question_id, str) and question_id in by_question:
+            by_question[question_id].append(figure)
+    for question_id in question_ids:
+        count = len(by_question[question_id])
+        if count < MIN_BODY_FIGURES_PER_QUESTION:
+            errors.append(
+                "ADVANCED_FIGURE_QUOTA："
+                f"{question_id} 在正式稿只消费 {count} 张 current 正文图；"
+                f"硬要求为每题 {MIN_BODY_FIGURES_PER_QUESTION}--{MAX_BODY_FIGURES_PER_QUESTION} 张"
+            )
+        elif count > MAX_BODY_FIGURES_PER_QUESTION:
+            errors.append(
+                "ADVANCED_FIGURE_QUOTA："
+                f"{question_id} 在正式稿消费 {count} 张 current 正文图；"
+                f"硬上限为每题 {MAX_BODY_FIGURES_PER_QUESTION} 张，请合并重复论证图或移入附录"
+            )
+    if len(body_figures) < MIN_FORMAL_BODY_FIGURES:
+        errors.append(
+            "ADVANCED_FIGURE_QUOTA："
+            f"正式稿只消费 {len(body_figures)} 张 current 正文图；全篇硬要求不少于 {MIN_FORMAL_BODY_FIGURES} 张"
+        )
+    archetypes = {
+        archetype
+        for figure in body_figures
+        if (archetype := _figure_archetype(figure)) is not None
+    }
+    if len(archetypes) < MIN_FORMAL_VISUAL_ARCHETYPES:
+        missing_metadata = [
+            str(figure.get("figure_id"))
+            for figure in body_figures
+            if _figure_archetype(figure) is None
+        ]
+        detail = (
+            "；未声明 visual_archetype/advanced_template 的图："
+            + ", ".join(missing_metadata)
+            if missing_metadata
+            else ""
+        )
+        errors.append(
+            "ADVANCED_FIGURE_QUOTA："
+            f"正式稿只登记 {len(archetypes)} 种可审计图型；硬要求至少 {MIN_FORMAL_VISUAL_ARCHETYPES} 种"
+            + detail
+        )
+    return errors
+
+
 def validate_required_figure_consumption(run_dir: Path) -> list[str]:
     """复验 FIGURE_PLAN 2.1--2.4 的必需图已生成并在 LaTeX 正文中消费。
 
@@ -274,9 +394,10 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
     # FIGURE_PLAN 2.1 存在时才启用，fresh run 无 FIGURE_PLAN 时完全休眠。
     # 存在 FIGURE_PLAN 时走下方更完整的 2.1--2.4 逻辑，不在此短路。
     baseline_errors = _validate_paper_references_current_figure(run_dir)
+    quota_errors = _advanced_figure_quota_errors(run_dir)
     plan_path = run_dir / _FIGURE_PLAN_PATH
     if not plan_path.is_file():
-        return baseline_errors
+        return [*baseline_errors, *quota_errors]
     try:
         plan = load_json(plan_path)
         plan_version = plan.get("schema_version")
@@ -341,14 +462,17 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                         "但没有至少一张 required=true 的正文图或已登记视觉机会"
                     )
         if decision_errors:
-            return decision_errors
+            return [*decision_errors, *quota_errors]
         verification = verify_current_figure_files(run_dir, figure_stage="current")
         if not verification.get("success"):
             detail = "；".join(
                 str(item.get("message", item))
                 for item in verification.get("errors", [])
             )
-            return [f"FIGURE_PLAN {plan_version} 存在失效 current 图: " + detail]
+            return [
+                f"FIGURE_PLAN {plan_version} 存在失效 current 图: " + detail,
+                *quota_errors,
+            ]
         index = load_json(run_dir / "figures/index.json")
         current = {
             item.get("figure_id"): item
@@ -399,7 +523,7 @@ def validate_required_figure_consumption(run_dir: Path) -> list[str]:
                 errors.append(f"必需图 {figure_id} 缺少正文解释锚点")
             if item["role"] == "stability" and "appendix" not in item["paper_section"].casefold():
                 errors.append(f"稳定性图 {figure_id} 必须放入附录章节")
-        return errors
+        return [*errors, *quota_errors]
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         return ["FIGURE_PLAN 2.1--2.4 闭环校验失败: " + str(exc)]
 
@@ -1205,6 +1329,11 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
             evaluate_presentation_contract,
             require_cumcm_structure_map,
         )
+        from shumozizi.paper.evidence_contracts import (
+            publication_evidence_binding_errors,
+        )
+
+        errors.extend(publication_evidence_binding_errors(run_dir))
 
         try:
             knowledge = evaluate_paper_knowledge_consumption(run_dir)
@@ -1635,26 +1764,13 @@ def check_paper_readiness(run_dir: Path) -> dict[str, Any]:
 
 
 def _manuscript_text_for_layers(run_dir: Path) -> str:
-    """读取论文正文源文件的可见文本，避开控制文档和生成目录。"""
-    paper_dir = run_dir / "paper"
-    if not paper_dir.is_dir():
-        return ""
-    excluded = {"generated", "submission", "source_appendix", "archive", "work"}
+    """读取正式发布入口的可见正文，不能由长稿替候选稿提供论证。"""
     chunks: list[str] = []
-    for path in sorted(paper_dir.rglob("*")):
-        if (
-            not path.is_file()
-            or path.suffix.casefold() not in {".tex", ".typ", ".md"}
-            or any(part.casefold() in excluded for part in path.parts)
-            or path.name.startswith("PAPER_")
-            or path.name in {
-                "ARGUMENT_PLAN.md",
-                "STORYBOARD.md",
-                "RESEARCH_STORYBOARD.md",
-                "CITATION_PLAN.md",
-            }
-        ):
-            continue
+    try:
+        sources = publication_text_sources(run_dir)
+    except ContractError:
+        return ""
+    for path in sources:
         try:
             chunks.append(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError):

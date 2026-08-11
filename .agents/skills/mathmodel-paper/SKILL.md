@@ -5,7 +5,7 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 
 # 论证驱动论文
 
-论文不是结果汇总报告，也不是把复杂四问压到约 13 页的摘要。正文应由共享模型和少量关键数学判断贯穿，同时保留清楚的逐问章节、直接答案和问题间继承关系；不能只按 Q1/Q2/Q3/Q4 罗列方法名、参数和结果表。v3.4 先形成完整的长篇科学首稿，再由独立冷读和编辑判断删减；篇幅和图数是复核信号，不是科学充分性的替代物。
+论文不是结果汇总报告，也不是把复杂四问压到约 13 页的摘要。正文应由共享模型和少量关键数学判断贯穿，同时保留清楚的逐问章节、直接答案和问题间继承关系；不能只按 Q1/Q2/Q3/Q4 罗列方法名、参数和结果表。v3.4 先形成完整的长篇科学首稿，再由独立冷读和编辑判断删减；篇幅不是科学充分性的替代物，高级图的每题 2--3 张、全篇至少 12 张正文图、至少 3 种图型则是单独的候选稿硬规格。
 
 ## v3.4 首稿默认链
 
@@ -15,13 +15,15 @@ Author Pass 的前五页合同是答案优先而非研究过程优先：第 1 �
 
 从同一 Research Package 生成 2--3 个 Narrative Candidates，例如问题递进型、数学结构型或机制型；使用 fresh reviewer 选择最能让评委记住论文的一种，并说明风险与修订建议。不要让 `layout_optimizer.py` 的固定 block 顺序支配正文；旧布局输出只作 advisory 兼容。
 
-让 Author 独立撰写 `paper/longform-source.tex` 或 `paper/longform-source.typ`，并把无法支撑的推导、机制、反事实、视觉或研究证据写入 `paper/AUTHOR_GAPS.md`。随后运行 `python scripts/paper/compile_longform_draft.py <run_dir>` 生成 `paper/longform-draft.pdf`；该命令只编译 Author 源文件，拒绝把正式入口原样重编冒充 Author Pass。编译前会刷新 `paper/generated/VISUAL_REQUIREMENTS.json`，把未被 current 图覆盖的数学对象、决定性证据、机制和边界需求自动追加到 living visual opportunity pool；不得因已有 2--3 张主图而跳过这些 supporting requirements。`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。
+让 Author 独立撰写 `paper/longform-source.tex` 或 `paper/longform-source.typ`，并把无法支撑的推导、机制、反事实、视觉或研究证据写入 `paper/AUTHOR_GAPS.md`。随后运行 `python scripts/paper/compile_longform_draft.py <run_dir>` 生成 `paper/longform-draft.pdf`；该命令只编译 Author 源文件，拒绝把正式入口原样重编冒充 Author Pass。编译前会刷新 `paper/generated/VISUAL_REQUIREMENTS.json`，把未被 current 图覆盖的数学对象、决定性证据、机制和边界需求自动追加到 living visual opportunity pool；不得因已有若干主图而跳过真实未覆盖的 supporting requirements。`compile_reviewable_draft.py` 仍保留为时间截止或内容未齐时的披露式 fallback。
 
 独立 PDF 冷读只记录少量最高价值动作。普通扩写、压缩、重排、补机制或加图动作保持 advisory；只有 Reviewer 明确标记 `blocking=true` 的 P0/P1 且未关闭时阻断 `compile_paper.py`。`ADD_FIGURE` 与 `ADD_COMPANION_FIGURE` 都必须携带结构化 figure 描述并自动进入 living visual opportunity pool，不能停在冷读清单。冷读器不能直接修改正式结果；Author 也不能擅自修改科学层，但可请求 `writing_fix`、`visual_exploration`、`experiment` 或 `analysis` 返工。
 
 ## 第零步：确认可以写论文
 
 逐问读取 `MODELING_UNITS.json` 1.4 的三层结果。`objective_answer` 是题面原目标下的正式答案，`recommended_plan` 是附加风险偏好或稳健条件下的建议，`evidence_grade` 说明证书、搜索与稳定性边界；后两者不得替换前者。`answer_map.primary_result_id` 必须等于 `objective_answer.result_id`。任一必答问题没有有效 objective answer 时，不得编译正式候选版，但可以形成带披露的可审阅草稿。
+
+若数据建模单元启用了统计正确性审计，正文必须把方法选择和推荐数值的不确定性写入结论主干，而非只留在“误差分析”散文：用 `paper/EVIDENCE_BINDINGS.json` 精确绑定对应的 production `methodology_result_ids` / `uncertainty_result_ids`、正式源码行和可复述断言。先执行 `python scripts/paper/freeze_publication_snapshot.py <run_dir>` 冻结真正的发布入口，再执行 `python scripts/paper/build_evidence_bindings.py <run_dir> --write-template`；填写完成后用 `--from-json` 校验写入。作者长稿只用于创作与冷读，不能代替 `paper/main.tex` 通过候选稿验收。
 
 科学挑战中的发现必须绑定 `action_type`、`rollback_target`、`invalidates`、`required_action` 和关闭证据。未关闭的 `MODEL_REPAIR`、`OBJECTIVE_REDESIGN`、`ANSWER_REJECTION` 阻断论文；只有 `WRITING_FIX` 和已说明不可修复原因的 `DATA_LIMITATION` 可留在 paper 阶段。正式论文检查自然论证内容，不要求出现 `result_id`、实验收据、证明义务或“问题继承”等内部工作流术语。
 
@@ -209,7 +211,7 @@ python scripts/paper/audit_report_style.py <run_dir>
 
 视觉想法先用 `write_visual_ideas.py` 写入轻量列表，并在 `figures/sandbox/<idea-id>/` 生成多个草图。草图不要求结果绑定、最终 caption、LaTeX label、manifest、panel mapping 或 design contract。fresh reviewer 选出最快说明机制且最不重复表格的候选后，`visual_sandbox.py graduate` 只记录 design reference、其哈希和目标 work 目录；必须再用 current 数据与正式 renderer 重新生成 work 候选，此时才进入来源绑定、图形 QA 和正文消费闭环。
 
-Author Pass 和长篇首稿会自动维护 `paper/generated/VISUAL_REQUIREMENTS.json`。也可手动运行 `python scripts/paper/build_visual_requirements.py <run_dir>` 刷新并路由；`--no-sync` 仅用于只读审计准备。需求按 `hero_figure` 与 `supporting_figure` 分层：前者追求少数可记忆主图，后者按真实论证需要生成且不设数量上限。候选稿必须逐项由 current 正式图覆盖，或由视觉评阅者给出实质 `DROP` 记录；缺少旧 `FIGURE_PLAN` 本身不阻断 Author 开稿。
+Author Pass 和长篇首稿会自动维护 `paper/generated/VISUAL_REQUIREMENTS.json`。也可手动运行 `python scripts/paper/build_visual_requirements.py <run_dir>` 刷新并路由；`--no-sync` 仅用于只读审计准备。需求按 `hero_figure` 与 `supporting_figure` 分层：前者追求少数可记忆主图，后者补足每题 2--3 张和全篇至少 12 张的正式稿配额。候选稿必须逐项由 current 正式图覆盖，或由视觉评阅者给出实质 `DROP` 记录；缺少旧 `FIGURE_PLAN` 本身不阻断 Author 开稿。
 
 v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM semantic/classic 外壳。`design_only` 只提供当前题的结构启发，只有明确标记 `renderer_available` 的模板才可进入渲染计划；注册表不携带其他题目的数据、公式或结论。
 
@@ -219,7 +221,9 @@ v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM se
 
 ## SECOND STEP：首稿后独立补充高级图（可执行阶段，不是提示词）
 
-首稿 `longform-source.tex` 编译后，必须执行独立的 SECOND STEP——**不要再只靠 AUTHOR_BRIEF 的文字让同一个 LLM 回去补图**。本步骤是两个动作：
+首稿 `longform-source.tex` 编译后，必须执行独立的 SECOND STEP，直到正式发布入口达到：每个必答问题
+2--3 张 current 正文图、全篇不少于 12 张 current 正文图、至少 3 种可审计图型。`VISUAL_REQUIREMENTS`、冷读
+和正式稿审计决定每张图承担什么论证角色；数量门只规定最低交付规格，不能用重复插图凑数。
 
 1. **Agent 决定补哪些高级图**：读首稿 + `mathmodel-advanced-figures/references/figure-catalog.md`，按每个结果的**数据特征**（分布/概率/优化/关系/网络/分类）从可用的 production 结果挑图种，写一个 plan JSON（模板、数据源、输出 stem、图注、一句"展示了什么"、插入锚点 = 章节标题或 \\label）。
 2. **脚本执行**：
@@ -230,16 +234,17 @@ python scripts/paper/supplement_advanced_figures.py <run_dir> --plan <plan.json>
 
 脚本会：用 `mathmodel-advanced-figures/scripts/render_advanced.py` 从 production 数据渲染
 （probability_curve / feasible_region / pareto_frontier / ci_forest / group_violin 等模板，
-统一样式 DPI≥300 / SimSun），把 figure 环境插入 `longform-source.tex` 对应章节，
-登记进 `figures/index.json`（绑定 production 来源，供图消费门验证），再重编译。
+统一样式 DPI≥300 / SimSun），默认把 figure 环境插入**正式发布入口**，登记进
+`figures/index.json`（绑定 production 来源，供图消费门验证），再重编译。只想在长稿试验时
+必须显式传入 `--target paper/longform-source.tex`；该试验不能关闭候选稿义务。
 
 plan 条目带 `"spec": {...}` 字段时走**结构图 renderer**（`render_structure.py`，
 spec 契约见 `structure-spec.md`）：共享模型路线图 / 问题递进 / 机制判定三个 TikZ 模板，
 AI 决定语义（中心/关系/强调/公式）、程序决定几何；`decisive_evidence` 被拒（结构图不碰证据层）。
 
-目标：每个问题 2--3 张支撑图、全篇不同类型图不少于 12 张、优先高级图
-（小提琴/森林/帕累托/肘图/灵敏度/混淆矩阵/PR-ROC/校准/误差带/收敛 + 结构路线图），
-而不是只有折线图和柱状图。SECOND STEP 只增强可视化，不改数据、模型与结论。
+目标：在满足硬配额的同时，每张图都补足一个可解释的证据、机制或边界角色。可选用小提琴、
+森林、帕累托、肘图、灵敏度、混淆矩阵、PR-ROC、校准、误差带、收敛或结构路线图；普通
+折线/柱状图在确实最清楚时同样可用。SECOND STEP 只增强可视化，不改数据、模型与结论。
 
 ---
 

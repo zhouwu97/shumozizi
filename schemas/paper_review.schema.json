@@ -50,6 +50,28 @@
           "evidence_of_closure": {
             "type": "array",
             "items": {"type": "string", "minLength": 2}
+          },
+          "closure_artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "path", "sha256"],
+              "properties": {
+                "kind": {"enum": ["final_pdf", "publication_source", "publication_snapshot", "review" ]},
+                "path": {"type": "string", "minLength": 1},
+                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+              }
+            }
+          },
+          "closure_revision": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["argument_revision", "render_revision"],
+            "properties": {
+              "argument_revision": {"type": "integer", "minimum": 0},
+              "render_revision": {"type": "integer", "minimum": 0}
+            }
           }
         }
       }

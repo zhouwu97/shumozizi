@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError, load_json, relative_inside
+from shumozizi.paper.publication import publication_text_sources
 
 _SOURCE_SUFFIXES = frozenset({".tex", ".typ", ".md"})
 _EXCLUDED_PARTS = frozenset(
-    {"generated", "submission", "source_appendix", "archive", "work"}
+    {"generated", "submission", "source_appendix", "archive", "work", "author-pass"}
 )
 _HEADING_PATTERN = re.compile(
     r"\\(?P<latex_level>section|subsection|subsubsection)\*?\{(?P<latex_title>[^{}]+)\}"
@@ -115,36 +116,42 @@ _CN_DIGITS = {character: value for value, character in enumerate("零一二三�
 
 
 def _manuscript_sources(run_dir: Path) -> list[Path]:
-    """收集真实正文源文件，排除控制文档、生成物和源码附件。"""
-    paper_dir = run_dir / "paper"
-    if not paper_dir.is_dir():
-        return []
-
-    # 外部作者模式下 draft.tex 是唯一待审正文；交接说明与隔离编译副本不是论文。
-    # 优先返回这一文件，避免同一正文被重复计数，也避免内部交接字段触发正文泄漏误报。
-    external_draft = paper_dir / "external-author" / "draft.tex"
-    if external_draft.is_file():
-        return [external_draft]
-
-    sources: list[Path] = []
-    for path in sorted(paper_dir.rglob("*")):
-        if (
-            not path.is_file()
-            or path.suffix.casefold() not in _SOURCE_SUFFIXES
-            or any(part.casefold() in _EXCLUDED_PARTS for part in path.parts)
-            or "appendix" in path.stem.casefold()
-            or "附录" in path.stem
-            or path.name.startswith("PAPER_")
-            or path.name in {
-                "ARGUMENT_PLAN.md",
-                "STORYBOARD.md",
-                "RESEARCH_STORYBOARD.md",
-                "CITATION_PLAN.md",
-            }
-        ):
-            continue
-        sources.append(path)
-    return sources
+    """返回正式正文；无入口时才为写作期提供 advisory 的预发布审计。"""
+    try:
+        return publication_text_sources(run_dir)
+    except ContractError:
+        # WHY: 尚未物化正式入口时，作者仍需要在章节草稿上获得文风反馈。
+        # 这条回退绝不发生在有 main/imported-author 入口的候选稿上，故不能让
+        # longform 或松散 sections 替正式 PDF 通过任何发布质量门。
+        paper = run_dir.resolve() / "paper"
+        if not paper.is_dir():
+            return []
+        external_draft = paper / "external-author" / "draft.tex"
+        if external_draft.is_file():
+            return [external_draft]
+        return sorted(
+            (
+                path
+                for path in paper.rglob("*")
+                if path.is_file()
+                and path.suffix.casefold() in _SOURCE_SUFFIXES
+                and not any(
+                    part.casefold() in _EXCLUDED_PARTS
+                    for part in path.relative_to(paper).parts
+                )
+                and "appendix" not in path.stem.casefold()
+                and "附录" not in path.stem
+                and not path.name.startswith("PAPER_")
+                and path.name
+                not in {
+                    "ARGUMENT_PLAN.md",
+                    "STORYBOARD.md",
+                    "RESEARCH_STORYBOARD.md",
+                    "CITATION_PLAN.md",
+                }
+            ),
+            key=lambda path: path.relative_to(paper).as_posix(),
+        )
 
 
 def _formal_body_text(text: str) -> str:

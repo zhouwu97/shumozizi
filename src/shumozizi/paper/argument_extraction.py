@@ -15,6 +15,11 @@ from typing import Any
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.core.schema import require_valid
+from shumozizi.paper.publication import (
+    publication_entrypoint,
+    publication_source_digest,
+    publication_text_sources,
+)
 from shumozizi.simple.state import read_simple_state, utc_now
 
 PAPER_ARGUMENT_UNITS_PATH = Path("paper/generated/PAPER_ARGUMENT_UNITS.json")
@@ -34,17 +39,22 @@ _CHINESE_QUESTION = {
 }
 
 
-def _source_path(root: Path) -> tuple[Path, str] | None:
-    """选择当前实际论文源文件，优先内部稿，兼容外部交接稿。"""
-    for relative in (
-        "paper/longform-source.tex",
-        "paper/longform-source.typ",
-        "paper/external-author/draft.tex",
-    ):
-        path = root / relative
-        if path.is_file() and path.stat().st_size > 0:
-            return path, relative
-    return None
+def _source_paths(root: Path, source_role: str) -> list[tuple[Path, str]]:
+    """按创作或发布语义选择源码，避免长稿冒充最终提交稿。"""
+    if source_role == "author_draft":
+        for relative in ("paper/longform-source.tex", "paper/longform-source.typ"):
+            path = root / relative
+            if path.is_file() and path.stat().st_size > 0:
+                return [(path, relative)]
+    if source_role not in {"author_draft", "publication"}:
+        raise ContractError("source_role 必须为 author_draft 或 publication")
+    try:
+        return [
+            (path, path.relative_to(root).as_posix())
+            for path in publication_text_sources(root)
+        ]
+    except ContractError:
+        return []
 
 
 def _clean_markup(value: str) -> str:
@@ -246,12 +256,23 @@ def _digest(argument: dict[str, Any]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def extract_paper_argument_units(run_dir: Path, *, write: bool = True) -> dict[str, Any]:
-    """从当前论文源提取候选论证单元并绑定源码摘要。"""
+def extract_paper_argument_units(
+    run_dir: Path,
+    *,
+    write: bool = True,
+    source_role: str = "author_draft",
+) -> dict[str, Any]:
+    """从作者长稿或正式发布稿提取候选论证单元并绑定源码摘要。
+
+    Args:
+        run_dir: 当前运行目录。
+        write: 是否写入兼容的论证单元产物。
+        source_role: ``author_draft`` 用于 Author Pass，``publication`` 只读取最终入口闭包。
+    """
     root = run_dir.resolve()
     state = read_simple_state(root)
-    source = _source_path(root)
-    if source is None:
+    sources = _source_paths(root, source_role)
+    if not sources:
         payload = {
             "schema_name": "paper_argument_units",
             "schema_version": "1.0",
@@ -263,60 +284,71 @@ def extract_paper_argument_units(run_dir: Path, *, write: bool = True) -> dict[s
             "generated_at": utc_now(),
         }
     else:
-        path, relative = source
-        text = path.read_text(encoding="utf-8", errors="replace")
         result_ids = _answer_result_ids(root)
         existing_figures = _existing_figures(root)
         question_profiles = _question_profiles(root)
         required = {str(item) for item in state.get("required_questions", [])}
         arguments: list[dict[str, Any]] = []
         question_counts: dict[str, int] = {}
-        current_question: str | None = None
-        for raw_match in re.finditer(
-            r"(?s)(?:^|\n\s*\n)(.*?)(?=\n\s*\n|$)", text
-        ):
-            raw = raw_match.group(0).strip()
-            if not raw:
-                continue
-            cleaned = _clean_markup(raw)
-            detected_question = _heading_question_id(raw, question_profiles)
-            if detected_question:
-                current_question = detected_question
-            if len(cleaned) < 24:
-                continue
-            question_id = current_question
-            if question_id not in required:
-                continue
-            role, visualizability = _role_for_text(cleaned)
-            explicit_id = re.search(r"(?:label|argument[_-]?id)\s*[:=]?[{(]?([A-Za-z0-9_.:-]+)", raw, re.IGNORECASE)
-            if role is None and not explicit_id:
-                continue
-            start_line = text.count("\n", 0, raw_match.start()) + 1
-            end_line = text.count("\n", 0, raw_match.end()) + 1
-            question_counts[question_id] = question_counts.get(question_id, 0) + 1
-            argument_id = (
-                str(explicit_id.group(1))
-                if explicit_id
-                else f"PA-{question_id}-{question_counts[question_id]:02d}"
+        for path, relative in sources:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            current_question: str | None = None
+            for raw_match in re.finditer(
+                r"(?s)(?:^|\n\s*\n)(.*?)(?=\n\s*\n|$)", text
+            ):
+                raw = raw_match.group(0).strip()
+                if not raw:
+                    continue
+                cleaned = _clean_markup(raw)
+                detected_question = _heading_question_id(raw, question_profiles)
+                if detected_question:
+                    current_question = detected_question
+                if len(cleaned) < 24:
+                    continue
+                question_id = current_question
+                if question_id not in required:
+                    continue
+                role, visualizability = _role_for_text(cleaned)
+                explicit_id = re.search(r"(?:label|argument[_-]?id)\s*[:=]?[{(]?([A-Za-z0-9_.:-]+)", raw, re.IGNORECASE)
+                if role is None and not explicit_id:
+                    continue
+                start_line = text.count("\n", 0, raw_match.start()) + 1
+                end_line = text.count("\n", 0, raw_match.end()) + 1
+                question_counts[question_id] = question_counts.get(question_id, 0) + 1
+                argument_id = (
+                    str(explicit_id.group(1))
+                    if explicit_id
+                    else f"PA-{question_id}-{question_counts[question_id]:02d}"
+                )
+                item = {
+                    "argument_id": argument_id,
+                    "question_id": question_id,
+                    "claim": cleaned[:1000],
+                    "role": role or "claim",
+                    "source_span": f"{relative}:{start_line}-{end_line}",
+                    "source_result_ids": result_ids.get(question_id, []),
+                    "visualizability": visualizability,
+                    "existing_figure_ids": existing_figures.get(question_id, []),
+                }
+                item["argument_digest"] = _digest(item)
+                arguments.append(item)
+        try:
+            primary_path = publication_entrypoint(root) if source_role == "publication" else sources[0][0]
+            source_path = primary_path.relative_to(root).as_posix()
+            source_sha256 = (
+                publication_source_digest(root, entrypoint=primary_path)
+                if source_role == "publication"
+                else sha256_file(primary_path)
             )
-            item = {
-                "argument_id": argument_id,
-                "question_id": question_id,
-                "claim": cleaned[:1000],
-                "role": role or "claim",
-                "source_span": f"{relative}:{start_line}-{end_line}",
-                "source_result_ids": result_ids.get(question_id, []),
-                "visualizability": visualizability,
-                "existing_figure_ids": existing_figures.get(question_id, []),
-            }
-            item["argument_digest"] = _digest(item)
-            arguments.append(item)
+        except ContractError:
+            source_path = sources[0][1]
+            source_sha256 = sha256_file(sources[0][0])
         payload = {
             "schema_name": "paper_argument_units",
             "schema_version": "1.0",
             "run_id": state["run_id"],
-            "source_path": relative,
-            "source_sha256": sha256_file(path),
+            "source_path": source_path,
+            "source_sha256": source_sha256,
             "extraction_method": "structured_text_heuristic",
             "arguments": arguments,
             "generated_at": utc_now(),

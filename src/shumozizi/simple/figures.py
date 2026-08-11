@@ -39,6 +39,7 @@ FIGURE_PLACEMENTS = frozenset({"body", "appendix"})
 PRESENTATION_ROLES = frozenset({"data_portrait", "question_hero", "supporting", "appendix"})
 _APPENDIX_ONLY_ROLES = frozenset({"stability"})
 _PRESENTATION_SOURCE_PREFIXES = ("problem/", "analysis/", "results/raw/")
+_NON_AUDITABLE_ARCHETYPE_TEMPLATES = frozenset({"", "custom", "zh/cumcm-latex"})
 
 # 分数表达图形原型通常能承载的信息，而非对渲染质量作伪证明。实际图仍需人工
 # 查看对象、边界、标注和视觉层级是否真的落地。
@@ -133,6 +134,19 @@ _STRUCTURE_AWARE_ARCHETYPES = {
     ),
 }
 _GENERIC_CHART_ARCHETYPES = frozenset({"route_score_comparison"})
+
+
+def _auditable_visual_archetype(
+    template_id: str,
+    visual_archetype: str | None = None,
+) -> str | None:
+    """返回可计入高级图型配额的真实图型标识。
+
+    支持的 renderer 模板本身就是可审计图型；手写/通用 LaTeX 模板则必须由
+    调用方显式说明 ``visual_archetype``，否则不能用来凑“至少三种图型”。
+    """
+    candidate = (visual_archetype or template_id).strip()
+    return candidate if candidate not in _NON_AUDITABLE_ARCHETYPE_TEMPLATES else None
 
 
 def _schema() -> dict[str, Any]:
@@ -645,6 +659,7 @@ def _register_competition_figure(
     selected_version: str | None = None,
     paper_location: str | None = None,
     critic_verdict: str | None = None,
+    visual_archetype: str | None = None,
 ) -> dict[str, Any]:
     """登记由问题和 takeaway 驱动的 v3.1 图表。"""
     if figure_stage not in {"current", "evidence", "publication"}:
@@ -726,6 +741,8 @@ def _register_competition_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    if archetype := _auditable_visual_archetype(template_id, visual_archetype):
+        entry["visual_archetype"] = archetype
     if visual_opportunity_id is not None:
         from shumozizi.paper.policy import policy_fingerprint
 
@@ -789,6 +806,7 @@ def register_insight_figure(
     selected_version: str | None = None,
     paper_location: str | None = None,
     critic_verdict: str | None = None,
+    visual_archetype: str | None = None,
 ) -> dict[str, Any]:
     """登记仅包含来源、问题和 takeaway 的 v3.1 图表。
 
@@ -811,6 +829,7 @@ def register_insight_figure(
         selected_version: 进入 current 的候选版本。
         paper_location: 正文或附录中的实际消费位置。
         critic_verdict: 新鲜视觉批评结论，进入 current 时必须为 PROMOTE。
+        visual_archetype: 可计入高级图配额的图型；通用模板必须显式提供。
 
     Returns:
         当前图表索引条目。
@@ -838,6 +857,7 @@ def register_insight_figure(
         selected_version=selected_version,
         paper_location=paper_location,
         critic_verdict=critic_verdict,
+        visual_archetype=visual_archetype,
     )
 
 
@@ -860,6 +880,7 @@ def register_presentation_figure(
     selected_version: str | None = None,
     paper_location: str | None = None,
     critic_verdict: str | None = None,
+    visual_archetype: str | None = None,
 ) -> dict[str, Any]:
     """登记不创造实验结果的竞赛呈现图。
 
@@ -885,6 +906,7 @@ def register_presentation_figure(
         selected_version: 进入 current 的候选版本。
         paper_location: 正文或附录中的实际消费位置。
         critic_verdict: 新鲜视觉批评结论，进入 current 时必须为 PROMOTE。
+        visual_archetype: 可计入高级图配额的图型；通用模板必须显式提供。
 
     Returns:
         已写入 ``figures/index.json`` 的当前图条目。
@@ -957,6 +979,8 @@ def register_presentation_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    if archetype := _auditable_visual_archetype(template_id, visual_archetype):
+        entry["visual_archetype"] = archetype
     opportunity: dict[str, Any] | None = None
     if visual_opportunity_id is not None:
         from shumozizi.paper.policy import policy_fingerprint
@@ -1188,6 +1212,7 @@ def register_figure(
     expected_takeaway: str | None = None,
     cannot_prove: str | None = None,
     promotion_receipt: str | None = None,
+    visual_archetype: str | None = None,
 ) -> dict[str, Any]:
     """登记一次真实图表生成并替代同 ID 的旧 current 图。
 
@@ -1201,6 +1226,7 @@ def register_figure(
         renderer_script: 本仓 v3 渲染器副本。
         outputs: PNG、PDF、SVG 三种输出。
         text_boxes: 绘图 artist 文字边界输出。
+        visual_archetype: 可计入高级图配额的图型；未指定时使用非通用模板 ID。
 
     Returns:
         新图表索引条目。
@@ -1224,6 +1250,7 @@ def register_figure(
             expected_takeaway=expected_takeaway,
             cannot_prove=cannot_prove,
             promotion_receipt=promotion_receipt,
+            visual_archetype=visual_archetype,
         )
     if not figure_id.replace("-", "").replace("_", "").replace(".", "").isalnum():
         raise ContractError(f"figure_id 不合法: {figure_id}")
@@ -1277,6 +1304,8 @@ def register_figure(
         "demo": False,
         "created_at": utc_now(),
     }
+    if archetype := _auditable_visual_archetype(template_id, visual_archetype):
+        entry["visual_archetype"] = archetype
     for existing in index["figures"]:
         if existing["figure_id"] == figure_id and existing["status"] == "current":
             existing["status"] = "superseded"

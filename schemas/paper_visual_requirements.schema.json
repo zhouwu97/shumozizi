@@ -17,9 +17,14 @@
   ],
   "properties": {
     "schema_name": {"const": "paper_visual_requirements"},
-    "schema_version": {"enum": ["1.0", "1.1", "1.2"]},
+    "schema_version": {"enum": ["1.0", "1.1", "1.2", "1.3"]},
     "run_id": {"type": "string", "minLength": 1},
-    "generation_policy": {"const": "argument_driven_no_figure_count_target"},
+    "generation_policy": {
+      "enum": [
+        "argument_driven_no_figure_count_target",
+        "argument_driven_with_advanced_figure_quota"
+      ]
+    },
     "figure_tiers": {
       "type": "object",
       "additionalProperties": false,
@@ -156,12 +161,45 @@
         "open": {"type": "integer", "minimum": 0}
       }
     },
+    "advanced_figure_quota": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "per_required_question",
+        "minimum_formal_current_figures",
+        "minimum_visual_archetypes",
+        "count_scope"
+      ],
+      "properties": {
+        "per_required_question": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimum", "maximum"],
+          "properties": {
+            "minimum": {"const": 2},
+            "maximum": {"const": 3}
+          }
+        },
+        "minimum_formal_current_figures": {"const": 12},
+        "minimum_visual_archetypes": {"const": 3},
+        "count_scope": {"type": "string", "minLength": 1}
+      }
+    },
     "generated_at": {"type": "string", "format": "date-time"}
   },
   "allOf": [
     {
-      "if": {"properties": {"schema_version": {"const": "1.2"}}},
+      "if": {"properties": {"schema_version": {"enum": ["1.2", "1.3"]}}},
       "then": {"required": ["review_policy"]}
+    },
+    {
+      "if": {"properties": {"schema_version": {"const": "1.3"}}},
+      "then": {
+        "required": ["advanced_figure_quota"],
+        "properties": {
+          "generation_policy": {"const": "argument_driven_with_advanced_figure_quota"}
+        }
+      }
     }
   ]
 }

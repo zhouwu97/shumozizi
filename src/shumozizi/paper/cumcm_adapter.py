@@ -1029,8 +1029,13 @@ def _review_blockers(run_dir: Path, document: dict[str, Any]) -> list[str]:
     if progression["status"] != "pass" or progression["interchangeable_questions"] is True:
         blockers.append("各问缺少不可任意交换的继承关系")
     for risk in document["narrative_risks"]:
-        if risk["severity"] in {"P0", "P1"} and risk["status"] == "open":
-            blockers.append(f"未解决 {risk['severity']} 叙事风险: {risk['location']}")
+        if risk["severity"] in {"P0", "P1"}:
+            # 盲评记录中的 resolved 只是评阅者的描述，不能替代返修后的新 PDF
+            # 复核或 PAPER_REVIEW 的来源/PDF 绑定。高风险必须在后续版本中消失。
+            blockers.append(
+                f"独立盲评发现 {risk['severity']} 叙事风险，不能以同轮 resolved 放行: "
+                f"{risk['location']}"
+            )
     if document.get("schema_version") in {"1.1", "1.2", "1.3"}:
         blockers.extend(document["adjudication"]["blocking_findings"])
     return blockers

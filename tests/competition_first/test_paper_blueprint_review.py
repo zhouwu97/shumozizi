@@ -20,6 +20,7 @@ from shumozizi.paper.checkpoints import (
     validate_first_draft_cold_read_checkpoint,
 )
 from shumozizi.paper.paper_review import (
+    build_paper_review_closure_artifacts,
     close_paper_review_finding,
     first_draft_cold_read_prompt,
     merge_paper_review_findings,
@@ -311,11 +312,25 @@ def test_paper_review_p0_p1_needs_strong_closure(tmp_path: Path) -> None:
     )
     assert unclosed_high_priority_findings(accepted) == ["FD-001"]
 
+    with pytest.raises(ContractError, match="closure_artifacts"):
+        close_paper_review_finding(
+            run_dir,
+            finding_id="FD-001",
+            status="repaired",
+            evidence_of_closure=["paper/main.tex 第 4 章已增加结构图与解释段。"],
+        )
+    (run_dir / "paper/main.tex").write_text(
+        "\\section{问题 Q2}\n共享模型的解释段。\n", encoding="utf-8"
+    )
+    (run_dir / "paper/final.pdf").write_bytes(b"%PDF-1.4\nrepaired")
+    artifacts, revision = build_paper_review_closure_artifacts(run_dir)
     repaired = close_paper_review_finding(
         run_dir,
         finding_id="FD-001",
         status="repaired",
         evidence_of_closure=["paper/main.tex 第 4 章已增加结构图与解释段。"],
+        closure_artifacts=artifacts,
+        closure_revision=revision,
     )
     assert unclosed_high_priority_findings(repaired) == []
     assert paper_review_status(run_dir)["candidate_allowed"] is True

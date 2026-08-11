@@ -16,6 +16,7 @@ from shumozizi.simple.state import read_simple_state, utc_now
 
 POLICY_STATE_PATH = Path("state/policy-fingerprints.json")
 STALE_STATE_PATH = Path("state/staleness.json")
+WORKFLOW_SNAPSHOT_PATH = Path("state/workflow-snapshot.json")
 
 
 def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
@@ -27,12 +28,23 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
     if kind == "paper":
         return common + (
             root / ".agents/skills/mathmodel-paper/SKILL.md",
+            root / ".agents/skills/mathmodel-advanced-figures/SKILL.md",
+            root / ".agents/skills/mathmodel-solve/SKILL.md",
+            root / ".agents/skills/mathmodel-experiment/SKILL.md",
+            root / ".agents/skills/mathmodel-workflow/SKILL.md",
             root / "src/shumozizi/paper/style_audit.py",
             root / "src/shumozizi/paper/templates.py",
             root / "src/shumozizi/paper/editorial.py",
             root / "src/shumozizi/paper/materials.py",
             root / "src/shumozizi/paper/storyboard.py",
             root / "src/shumozizi/paper/compiler.py",
+            root / "src/shumozizi/paper/advanced_figure_policy.py",
+            root / "src/shumozizi/paper/publication.py",
+            root / "src/shumozizi/paper/readiness.py",
+            root / "src/shumozizi/paper/evidence_contracts.py",
+            root / "src/shumozizi/paper/paper_review.py",
+            root / "src/shumozizi/paper/visual_requirements.py",
+            root / "src/shumozizi/simple/modeling_units.py",
             root / "src/shumozizi/paper/page_budget.py",
             root / "src/shumozizi/paper/docx_qa.py",
             root / "src/shumozizi/simple/authoring.py",
@@ -58,6 +70,10 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "schemas/imported_author_receipt.schema.json",
             root / "src/shumozizi/paper/layout_optimizer.py",
             root / "schemas/paper_layout_optimization.schema.json",
+            root / "schemas/paper_review.schema.json",
+            root / "schemas/simple_paper_compile_receipt.schema.json",
+            root / "schemas/paper_visual_requirements.schema.json",
+            root / "schemas/simple_figure_index.schema.json",
         )
     if kind == "visual":
         return common + (
@@ -65,11 +81,17 @@ def _policy_files(root: Path, kind: str) -> tuple[Path, ...]:
             root / "src/shumozizi/simple/figures.py",
             root / "src/shumozizi/simple/figure_design.py",
             root / "src/shumozizi/simple/visual_opportunities.py",
+            root / "src/shumozizi/paper/advanced_figure_policy.py",
+            root / "src/shumozizi/paper/publication.py",
+            root / "src/shumozizi/paper/readiness.py",
+            root / "src/shumozizi/paper/visual_requirements.py",
             root / "src/shumozizi/knowledge/usage.py",
             root / "schemas/figure_plan.schema.json",
             root / "schemas/visual_opportunity_pool.schema.json",
             root / "schemas/figure_design_contract.schema.json",
             root / "schemas/figure_template_registry.schema.json",
+            root / "schemas/paper_visual_requirements.schema.json",
+            root / "schemas/simple_figure_index.schema.json",
         )
     raise ContractError(f"未知政策域: {kind}")
 
@@ -94,6 +116,85 @@ def current_policy_fingerprints(root: Path) -> dict[str, str]:
     return {
         "paper": policy_fingerprint(root, "paper"),
         "visual": policy_fingerprint(root, "visual"),
+    }
+
+
+def freeze_workflow_snapshot(
+    run_dir: Path,
+    *,
+    quality_policy: str = "legacy",
+) -> dict[str, Any]:
+    """冻结一次运行开始时的工作流与质量政策。
+
+    该快照不让代码变更反向否定真实实验；它只保证同一运行的候选稿不会在
+    中途悄悄换用另一套论文/视觉规则，并明确新质量合同是否已启用。
+    """
+    if quality_policy not in {"legacy", "competition-quality-v1"}:
+        raise ContractError("quality_policy 必须为 legacy 或 competition-quality-v1")
+    root = run_dir.resolve()
+    repo_root = resolve_repo_root(Path(__file__))
+    state = read_simple_state(root)
+    payload = {
+        "schema_name": "workflow_snapshot",
+        "schema_version": "1.0",
+        "run_id": state["run_id"],
+        "workflow_version": state["schema_version"],
+        "execution_policy": state.get("execution_policy", "legacy-production-v1"),
+        "quality_policy": quality_policy,
+        "policy_fingerprints": current_policy_fingerprints(repo_root),
+        "frozen_at": utc_now(),
+    }
+    atomic_json(root / WORKFLOW_SNAPSHOT_PATH, payload)
+    return payload
+
+
+def workflow_snapshot(run_dir: Path) -> dict[str, Any] | None:
+    """读取当前运行的冻结工作流快照；历史运行缺失时保持兼容。"""
+    path = run_dir.resolve() / WORKFLOW_SNAPSHOT_PATH
+    if not path.is_file():
+        return None
+    payload = load_json(path)
+    if payload.get("schema_name") != "workflow_snapshot" or payload.get("schema_version") != "1.0":
+        raise ContractError("工作流快照协议无效")
+    if payload.get("run_id") != read_simple_state(run_dir)["run_id"]:
+        raise ContractError("工作流快照 run_id 与当前运行不一致")
+    return payload
+
+
+def frozen_policy_fingerprints(run_dir: Path) -> dict[str, str]:
+    """返回本运行应使用的冻结政策指纹，历史运行回退到当前政策。"""
+    snapshot = workflow_snapshot(run_dir)
+    if snapshot is not None:
+        fingerprints = snapshot.get("policy_fingerprints")
+        if (
+            isinstance(fingerprints, dict)
+            and isinstance(fingerprints.get("paper"), str)
+            and isinstance(fingerprints.get("visual"), str)
+        ):
+            return {"paper": fingerprints["paper"], "visual": fingerprints["visual"]}
+        raise ContractError("工作流快照缺少论文/视觉政策指纹")
+    return current_policy_fingerprints(resolve_repo_root(Path(__file__)))
+
+
+def workflow_quality_policy(run_dir: Path) -> str:
+    """返回运行开始时冻结的质量合同版本。"""
+    snapshot = workflow_snapshot(run_dir)
+    return str(snapshot.get("quality_policy", "legacy")) if snapshot else "legacy"
+
+
+def workflow_snapshot_status(run_dir: Path) -> dict[str, Any]:
+    """报告当前代码与运行冻结政策是否漂移，供人工决定是否迁移/重开运行。"""
+    root = run_dir.resolve()
+    snapshot = workflow_snapshot(root)
+    if snapshot is None:
+        return {"status": "legacy_unfrozen", "changed_domains": [], "snapshot_path": None}
+    current = current_policy_fingerprints(resolve_repo_root(Path(__file__)))
+    frozen = frozen_policy_fingerprints(root)
+    changed = [name for name in ("paper", "visual") if frozen[name] != current[name]]
+    return {
+        "status": "workflow_drift" if changed else "current",
+        "changed_domains": changed,
+        "snapshot_path": WORKFLOW_SNAPSHOT_PATH.as_posix(),
     }
 
 
@@ -128,7 +229,7 @@ def refresh_policy_state(run_dir: Path) -> dict[str, Any]:
         "schema_version": "1.0",
         "run_id": read_simple_state(root)["run_id"],
         "updated_at": utc_now(),
-        "fingerprints": current_policy_fingerprints(resolve_repo_root(Path(__file__))),
+        "fingerprints": frozen_policy_fingerprints(root),
         "formal_result_digest": formal_result_digest(root),
     }
     old: dict[str, Any] = {}
@@ -161,8 +262,7 @@ def evaluate_staleness(
         results_digest: 可选的测试/迁移用正式结果摘要。
     """
     root = run_dir.resolve()
-    repo_root = resolve_repo_root(Path(__file__))
-    policies = current_policy_fingerprints(repo_root)
+    policies = frozen_policy_fingerprints(root)
     policies["paper"] = paper_policy or policies["paper"]
     policies["visual"] = visual_policy or policies["visual"]
     current_results = results_digest or formal_result_digest(root)

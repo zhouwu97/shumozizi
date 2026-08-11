@@ -24,7 +24,9 @@ from shumozizi.core.io import (
     sha256_file,
 )
 from shumozizi.core.schema import require_valid
+from shumozizi.paper.advanced_figure_policy import advanced_figure_quota_payload
 from shumozizi.paper.argument_extraction import extract_paper_argument_units
+from shumozizi.paper.publication import publication_source_digest, publication_text_sources
 from shumozizi.simple.data_availability import availability_for_requirement
 from shumozizi.simple.paper_image_types import recommend_paper_image
 from shumozizi.simple.state import read_simple_state, utc_now
@@ -458,6 +460,7 @@ def _figure_covers(
     *,
     requirement_id: str,
     requirement_digest: str,
+    source_paths: Iterable[Path],
 ) -> bool:
     """只接受精确绑定且已被实际论文源消费的正文 current 图。"""
     if requirement_id not in _strings(figure.get("covered_requirement_ids")):
@@ -479,14 +482,7 @@ def _figure_covers(
         path = output["path"].replace("\\", "/")
         anchors.update({path, Path(path).name, str(Path(path).with_suffix("")), Path(path).stem})
     anchors.discard("")
-    for relative in (
-        "paper/longform-source.tex",
-        "paper/longform-source.typ",
-        "paper/external-author/draft.tex",
-        "paper/main.tex",
-        "paper/main.typ",
-    ):
-        source = root / relative
+    for source in source_paths:
         if not source.is_file():
             continue
         text = source.read_text(encoding="utf-8", errors="replace").replace("\\", "/")
@@ -704,6 +700,7 @@ def _question_requirements(
     insight_ids: set[str],
     paper_arguments: list[dict[str, Any]],
     figures: list[dict[str, Any]],
+    source_paths: Iterable[Path],
 ) -> list[dict[str, Any]]:
     """生成一问的视觉需求；事前合同优先，正文抽取只补充遗漏。"""
     explicit = _visual_output_requirements(unit)
@@ -850,6 +847,7 @@ def _question_requirements(
                 figure,
                 requirement_id=requirement["requirement_id"],
                 requirement_digest=digest,
+                source_paths=source_paths,
             )
         ]
         requirement["covered_by_figure_ids"] = covered
@@ -858,8 +856,26 @@ def _question_requirements(
     return requirements
 
 
-def derive_visual_requirements_from_paper(run_dir: Path) -> dict[str, Any]:
-    """只读推导当前论文视觉需求，不写文件或改变阶段状态。"""
+def _visual_source_paths(root: Path, source_role: str) -> list[Path]:
+    """按创作/发布阶段选择图消费文本，禁止最终门混用长稿。"""
+    if source_role == "author_draft":
+        for relative in ("paper/longform-source.tex", "paper/longform-source.typ"):
+            path = root / relative
+            if path.is_file():
+                return [path]
+        # Author 尚未落稿时，需求只能来自建模合同和素材，不能提前借正式模板正文。
+        return []
+    if source_role not in {"author_draft", "publication"}:
+        raise ContractError("source_role 必须为 author_draft 或 publication")
+    return publication_text_sources(root)
+
+
+def derive_visual_requirements_from_paper(
+    run_dir: Path,
+    *,
+    source_role: str = "author_draft",
+) -> dict[str, Any]:
+    """只读推导论文视觉需求；最终候选稿须显式使用 ``publication``。"""
     root = run_dir.resolve()
     state = read_simple_state(root)
     modeling = _optional_json(root, "analysis/MODELING_UNITS.json")
@@ -868,7 +884,10 @@ def derive_visual_requirements_from_paper(run_dir: Path) -> dict[str, Any]:
     grouped_materials = _materials_by_question(materials)
     results = _answer_result_ids(root)
     figures = _current_figures(root)
-    paper_arguments = extract_paper_argument_units(root, write=True).get("arguments", [])
+    source_paths = _visual_source_paths(root, source_role)
+    paper_arguments = extract_paper_argument_units(
+        root, write=True, source_role=source_role
+    ).get("arguments", [])
     requirements = [
         requirement
         for question_id in state.get("required_questions", [])
@@ -885,16 +904,31 @@ def derive_visual_requirements_from_paper(run_dir: Path) -> dict[str, Any]:
                 if isinstance(item, dict) and item.get("question_id") == str(question_id)
             ],
             figures=figures,
+            source_paths=source_paths,
         )
     ]
-    payload = {
+    from shumozizi.paper.policy import workflow_quality_policy
+
+    quota_enabled = workflow_quality_policy(root) == "competition-quality-v1"
+    payload: dict[str, Any] = {
         "schema_name": "paper_visual_requirements",
-        "schema_version": "1.2",
+        "schema_version": "1.3" if quota_enabled else "1.2",
         "run_id": state["run_id"],
-        "generation_policy": "argument_driven_no_figure_count_target",
+        "generation_policy": (
+            "argument_driven_with_advanced_figure_quota"
+            if quota_enabled
+            else "argument_driven_no_figure_count_target"
+        ),
         "figure_tiers": {
-            "hero_figure": "仅用于最关键、最值得记忆的视觉论证；建议数量不是硬门。",
-            "supporting_figure": "按推导、机制、比较与边界的实际论证需要生成，不设数量上限。",
+            "hero_figure": (
+                "仅用于最关键、最值得记忆的视觉论证；仍须由正式 current 图实际消费。"
+            ),
+            "supporting_figure": (
+                "按推导、机制、比较与边界分配；新质量合同要求每个必答问题 2--3 张，"
+                "全篇至少 12 张且至少 3 种图型。"
+                if quota_enabled
+                else "按推导、机制、比较与边界的实际论证需要生成，不设数量上限。"
+            ),
         },
         "review_policy": {
             "mode": "open_world_discovery_then_requirement_reconciliation",
@@ -910,6 +944,8 @@ def derive_visual_requirements_from_paper(run_dir: Path) -> dict[str, Any]:
         },
         "generated_at": utc_now(),
     }
+    if quota_enabled:
+        payload["advanced_figure_quota"] = advanced_figure_quota_payload()
     require_valid(payload, "paper_visual_requirements")
     return payload
 
@@ -1008,15 +1044,84 @@ def build_visual_requirements_from_paper(
     *,
     write: bool = True,
     sync_opportunities: bool = True,
+    source_role: str = "author_draft",
 ) -> dict[str, Any]:
     """生成论文驱动视觉需求，并可把未覆盖需求自动路由到 Visual Sandbox。"""
     root = run_dir.resolve()
-    payload = derive_visual_requirements_from_paper(root)
+    payload = derive_visual_requirements_from_paper(root, source_role=source_role)
     if write:
         atomic_json(root / VISUAL_REQUIREMENTS_PATH, payload)
     if sync_opportunities:
         _sync_open_requirements(root, payload)
     return payload
+
+
+def _drop_evidence_error(root: Path, record: dict[str, Any]) -> str | None:
+    """验证 DROP 是否由当前正式稿中的替代证据闭合。"""
+    anchor = record.get("evidence_anchor")
+    if not isinstance(anchor, dict):
+        return "DROP 未绑定正式稿中的替代证据"
+    required = ("kind", "source_path", "source_span", "statement")
+    if any(not isinstance(anchor.get(key), str) or not anchor[key].strip() for key in required):
+        return "DROP 替代证据字段不完整"
+    kind = str(anchor["kind"])
+    if kind not in {"figure", "table", "derivation"}:
+        return "DROP 替代证据类型无效"
+    try:
+        current_digest = publication_source_digest(root)
+        sources = {path.relative_to(root).as_posix(): path for path in publication_text_sources(root)}
+    except ContractError as exc:
+        return f"无法读取正式稿: {exc}"
+    if record.get("publication_source_sha256") != current_digest:
+        return "DROP 未绑定当前正式稿依赖摘要"
+    source_path = str(anchor["source_path"])
+    source = sources.get(source_path)
+    if source is None:
+        return "DROP 引用的证据不在正式稿依赖闭包中"
+    match = re.fullmatch(r"(.+):(\d+)-(\d+)", str(anchor["source_span"]).strip())
+    if match is None or match.group(1) != source_path:
+        return "DROP source_span 未绑定声明的正式稿文件"
+    start, end = int(match.group(2)), int(match.group(3))
+    if start < 1 or end < start:
+        return "DROP source_span 行号无效"
+    lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
+    if end > len(lines):
+        return "DROP source_span 超出正式稿范围"
+    excerpt = "\n".join(lines[start - 1 : end])
+    statement = re.sub(r"\s+", "", str(anchor["statement"]))
+    if statement not in re.sub(r"\s+", "", excerpt):
+        return "DROP 的可复述替代证据不在声明源码位置"
+    if kind == "table" and not re.search(r"\\begin\{(?:tabular|table)|表", excerpt):
+        return "DROP 声称表格替代证据，但声明位置没有表格"
+    if kind == "derivation" and not re.search(
+        r"\\begin\{(?:equation|align)|\\\[|\$|推导|公式|判据", excerpt
+    ):
+        return "DROP 声称推导替代证据，但声明位置没有推导或公式"
+    if kind == "figure":
+        figure_id = anchor.get("figure_id")
+        if not isinstance(figure_id, str) or not figure_id.strip():
+            return "DROP 声称图替代证据，但缺少 figure_id"
+        figures = _optional_json(root, "figures/index.json").get("figures", [])
+        figure = next(
+            (
+                item
+                for item in figures
+                if isinstance(item, dict)
+                and item.get("figure_id") == figure_id
+                and item.get("status") == "current"
+            ),
+            None,
+        )
+        if figure is None:
+            return "DROP 引用的替代图不是 current 正式图"
+        anchors = {figure_id}
+        for output in figure.get("outputs", []):
+            if isinstance(output, dict) and isinstance(output.get("path"), str):
+                output_path = str(output["path"]).replace("\\", "/")
+                anchors.update({output_path, Path(output_path).name, Path(output_path).stem})
+        if not any(value in excerpt.replace("\\", "/") for value in anchors):
+            return "DROP 的替代图未在声明正式稿位置被实际引用"
+    return None
 
 
 def validate_paper_visual_requirement_closure(run_dir: Path) -> list[str]:
@@ -1033,7 +1138,8 @@ def validate_paper_visual_requirement_closure(run_dir: Path) -> list[str]:
         recorded = load_json(path)
         if recorded.get("run_id") != read_simple_state(root)["run_id"]:
             return ["VISUAL_REQUIREMENT_OPEN：视觉需求 run_id 与当前运行不一致"]
-        current = derive_visual_requirements_from_paper(root)
+        # 候选稿闭环只能读取正式入口，Author 长稿中的图或替代解释不能代为放行。
+        current = derive_visual_requirements_from_paper(root, source_role="publication")
         from shumozizi.simple.visual_opportunities import read_visual_opportunity_pool
 
         pool = read_visual_opportunity_pool(root)
@@ -1074,6 +1180,12 @@ def validate_paper_visual_requirement_closure(run_dir: Path) -> list[str]:
                         and record.get("requirement_digest")
                         == requirement["requirement_digest"]
                     ):
+                        evidence_error = _drop_evidence_error(root, record)
+                        if evidence_error is None:
+                            continue
+                        errors.append(
+                            f"VISUAL_REQUIREMENT_OPEN：{requirement_id} 的 DROP 无效：{evidence_error}"
+                        )
                         continue
         errors.append(
             f"VISUAL_REQUIREMENT_OPEN：{requirement_id} 尚未由 current 图覆盖或经实质评阅放弃"

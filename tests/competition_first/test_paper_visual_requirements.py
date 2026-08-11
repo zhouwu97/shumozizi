@@ -1,4 +1,4 @@
-"""验证论文论证能够自动产生视觉需求，而不恢复固定图数门。"""
+"""验证论文论证能够自动产生视觉需求，并向新质量合同暴露高级图规格。"""
 
 from __future__ import annotations
 
@@ -19,13 +19,14 @@ from shumozizi.simple.visual_opportunities import (
 )
 
 
-def _visual_run(tmp_path: Path) -> Path:
+def _visual_run(tmp_path: Path, *, quality_policy: str = "legacy") -> Path:
     """构造具有五个独立视觉论证义务的最小运行。"""
     run_dir = initialize_simple_run(
         tmp_path,
         "paper-visual-loop",
         required_questions=["Q1"],
         workflow_version="3.2",
+        quality_policy=quality_policy,
     )
     atomic_json(
         run_dir / "analysis/MODELING_UNITS.json",
@@ -82,6 +83,24 @@ def test_argument_driven_requirements_have_no_three_figure_cap(tmp_path: Path) -
     )
 
 
+def test_competition_quality_visual_requirements_expose_advanced_figure_quota(
+    tmp_path: Path,
+) -> None:
+    """新质量合同必须把硬规格交给视觉路由，而非只在最终失败时提示。"""
+    run_dir = _visual_run(tmp_path, quality_policy="competition-quality-v1")
+
+    payload = build_visual_requirements_from_paper(run_dir)
+
+    assert payload["schema_version"] == "1.3"
+    assert payload["generation_policy"] == "argument_driven_with_advanced_figure_quota"
+    quota = payload["advanced_figure_quota"]
+    assert quota["per_required_question"] == {"minimum": 2, "maximum": 3}
+    assert quota["minimum_formal_current_figures"] == 12
+    assert quota["minimum_visual_archetypes"] == 3
+    assert "正式发布入口" in quota["count_scope"]
+    assert "每个必答问题 2--3 张" in payload["figure_tiers"]["supporting_figure"]
+
+
 def test_current_figure_covers_matching_argument_requirement(tmp_path: Path) -> None:
     """绑定同一论证单元的 current 图应关闭对应需求，而不是继续重复补图。"""
     run_dir = _visual_run(tmp_path)
@@ -117,6 +136,99 @@ def test_current_figure_covers_matching_argument_requirement(tmp_path: Path) -> 
     assert [item["requirement_id"] for item in covered] == [requirement["requirement_id"]]
     assert covered[0]["covered_by_figure_ids"] == ["current-argument-1"]
     assert payload["summary"] == {"total": 5, "covered": 1, "open": 4}
+
+
+def test_longform_only_figure_cannot_close_publication_requirement(tmp_path: Path) -> None:
+    """作者长稿插图不能替正式入口关闭候选稿的视觉义务。"""
+    run_dir = _visual_run(tmp_path)
+    (run_dir / "paper/main.tex").write_text(
+        "\\section{问题 Q1}\n正式候选稿没有插图。\n", encoding="utf-8"
+    )
+    requirement = derive_visual_requirements_from_paper(
+        run_dir, source_role="publication"
+    )["requirements"][0]
+    figure_path = run_dir / "figures/current/longform-only.png"
+    figure_path.parent.mkdir(parents=True, exist_ok=True)
+    figure_path.write_bytes(b"figure")
+    (run_dir / "paper/longform-source.tex").write_text(
+        "\\includegraphics{figures/current/longform-only.png}\n", encoding="utf-8"
+    )
+    index = load_json(run_dir / "figures/index.json")
+    index["figures"].append(
+        {
+            "figure_id": "longform-only",
+            "question_id": "Q1",
+            "role": "model_understanding",
+            "covered_requirement_ids": [requirement["requirement_id"]],
+            "covered_requirement_digests": [requirement["requirement_digest"]],
+            "focal_claim": requirement["claim"],
+            "outputs": [{"path": "figures/current/longform-only.png"}],
+            "placement": "body",
+            "status": "current",
+            "paper_allowed": True,
+        }
+    )
+    atomic_json(run_dir / "figures/index.json", index)
+
+    payload = build_visual_requirements_from_paper(run_dir, source_role="publication")
+
+    assert payload["requirements"][0]["status"] == "open"
+    assert any(
+        requirement["requirement_id"] in error
+        for error in validate_paper_visual_requirement_closure(run_dir)
+    )
+
+
+def test_drop_requires_current_publication_evidence_anchor(tmp_path: Path) -> None:
+    """散文 DROP 不能关闭候选稿；当前正式稿中的替代推导可以。"""
+    run_dir = _visual_run(tmp_path)
+    (run_dir / "paper/main.tex").write_text(
+        "\\section{问题 Q1}\n"
+        "\\begin{equation}\n"
+        "p=1-q\n"
+        "\\end{equation}\n"
+        "该推导直接给出正式答案的单调边界。\n",
+        encoding="utf-8",
+    )
+    first = build_visual_requirements_from_paper(run_dir, source_role="publication")
+    requirement = first["requirements"][0]
+    generic_review = {
+        "observed": "作者认为文字已经足够。",
+        "mechanism": "没有给出可定位的替代证据。",
+        "boundary": "该判断不绑定正式入口。",
+        "action": "DROP",
+    }
+    record_visual_critic(
+        run_dir,
+        requirement["requirement_id"],
+        verdict="DROP",
+        reviewer_context_id="fresh-generic-drop",
+        review=generic_review,
+    )
+    assert any(
+        requirement["requirement_id"] in error and "DROP 无效" in error
+        for error in validate_paper_visual_requirement_closure(run_dir)
+    )
+
+    record_visual_critic(
+        run_dir,
+        requirement["requirement_id"],
+        verdict="DROP",
+        reviewer_context_id="fresh-anchored-drop",
+        review={
+            **generic_review,
+            "evidence_anchor": {
+                "kind": "derivation",
+                "source_path": "paper/main.tex",
+                "source_span": "paper/main.tex:2-5",
+                "statement": "该推导直接给出正式答案的单调边界。",
+            },
+        },
+    )
+    assert not any(
+        requirement["requirement_id"] in error
+        for error in validate_paper_visual_requirement_closure(run_dir)
+    )
 
 
 def test_longform_mechanism_paragraph_creates_argument_and_requirement(tmp_path: Path) -> None:
@@ -282,10 +394,8 @@ def test_changed_paper_claim_invalidates_old_drop_review(tmp_path: Path) -> None
         item for item in pool["opportunities"] if item["requirement_id"] == replacement["requirement_id"]
     )
     assert opportunity["status"] == "candidate"
-    assert any(
-        replacement["requirement_id"] in error
-        for error in validate_paper_visual_requirement_closure(run_dir)
-    )
+    # 长稿仍是 Author Pass 产物；没有正式入口时，候选稿闭环不能借它来判断。
+    assert any("缺少正式论文入口" in error for error in validate_paper_visual_requirement_closure(run_dir))
 
 
 def test_open_paper_requirement_blocks_candidate_closure(tmp_path: Path) -> None:
@@ -295,8 +405,10 @@ def test_open_paper_requirement_blocks_candidate_closure(tmp_path: Path) -> None
 
     errors = validate_paper_visual_requirement_closure(run_dir)
 
-    assert len(errors) == 5
-    assert all(error.startswith("VISUAL_REQUIREMENT_OPEN") for error in errors)
+    assert errors == [
+        "VISUAL_REQUIREMENT_OPEN：视觉需求或机会池无法复验："
+        "缺少正式论文入口 paper/main.tex、paper/main.typ 或已接受的外部稿"
+    ]
 
 
 def test_cold_reader_add_figure_routes_to_living_opportunity_pool(tmp_path: Path) -> None:
