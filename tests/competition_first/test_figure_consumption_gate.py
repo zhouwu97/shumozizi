@@ -78,15 +78,15 @@ def test_visual_requirement_brief_lists_ready_figures_with_paths(tmp_path: Path)
 
 
 def test_author_brief_contains_cumcm_skeleton_and_second_step(tmp_path: Path) -> None:
-    """author brief 必须内建 CUMCM 范式骨架、学术文风与 SECOND STEP 高级图。"""
+    """author brief 必须内建完整 CUMCM 范式骨架、篇幅与高级图硬要求、学术文风。"""
     state = {"run_id": "x"}
     brief = _render_author_brief(state, {"cards": []}, None)
-    assert "问题重述" in brief
-    assert "模型假设" in brief
-    assert "符号说明" in brief
-    assert "模型检验与分析" in brief
-    assert "模型评价与推广" in brief
-    assert "SECOND STEP" in brief
-    assert "高级图" in brief
-    assert "禁止" in brief and "第一人称" in brief
+    for kw in [
+        "问题重述", "问题分析", "模型假设", "符号说明",
+        "模型建立与求解", "误差分析与检验", "模型评价与推广", "参考文献", "附录",
+        "20 页以上", "2--3 张支撑图", "12 张", "mathmodel-advanced-figures",
+    ]:
+        assert kw in brief, f"brief 缺少: {kw}"
+    assert "不以当前页数" not in brief, "不得保留'不以页数为目标'的旧授权"
+    assert "第一人称" in brief
     assert "主题句" in brief

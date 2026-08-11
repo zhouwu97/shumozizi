@@ -291,8 +291,8 @@ def test_handoff_files_are_writer_facing_not_control_layer(
     author_brief = (run_dir / "paper/writer-handoff/AUTHOR_BRIEF.md").read_text(
         encoding="utf-8"
     )
-    assert "完整科学论文" in author_brief
-    assert "可以合并问题、重排章节" in author_brief
+    assert "完整数学建模竞赛论文" in author_brief
+    assert "国奖级完整竞赛论文" in author_brief
     assert "应提出返工请求" in author_brief
     manifest = load_json(run_dir / "paper/writer-handoff/manifest.json")
     assert sorted(manifest["writer_files"]) == [
