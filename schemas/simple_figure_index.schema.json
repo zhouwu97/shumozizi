@@ -126,7 +126,8 @@
           "provenance_type": {
             "enum": [
               "result",
-              "frozen_inputs"
+              "frozen_inputs",
+              "explanatory_structure"
             ]
           },
           "source_files": {
@@ -433,6 +434,42 @@
                       {
                         "required": [
                           "objective_semantics_sha256"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "figure_id",
+                    "provenance_type",
+                    "source_files",
+                    "renderer_script",
+                    "outputs",
+                    "question_id",
+                    "figure_stage",
+                    "takeaway"
+                  ],
+                  "properties": {
+                    "provenance_type": {
+                      "const": "explanatory_structure"
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "result_id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "input_result"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "source_result_ids"
                         ]
                       }
                     ]

@@ -62,6 +62,11 @@ _ALIASES["x_values"] |= {"n_media", "f_pct"}
 _ALIASES["lattice_points"] |= {"grid_points"}
 _ALIASES["candidate_points"] |= {"frontier_points", "solutions"}
 _ALIASES["seeds"] |= {"seed", "seed_base"}
+# 光谱/相位类生产字段（SiC 型题目）：身份核对与模型选择、折皱收敛带。
+_ALIASES["classifications"] |= {"identities", "cases", "candidate_comparison", "harmonic_probe", "model_verdicts"}
+_ALIASES["differences"] |= {"max_identity_error", "identity_error", "disagreements", "residual"}
+_ALIASES["budget_or_samples"] |= {"folds", "n_folds", "repetitions"}
+_ALIASES["quantile_bands"] |= {"bootstrap_thickness_um", "bootstrap_band", "quantile_rows"}
 
 # 每个确定性 renderer 真正需要的语义组（与 figures/renderers.py 的读取一致）。
 # 可选组（renderer 提供默认值或只增强表现，如 threshold=0.90、interval 回落点估计）

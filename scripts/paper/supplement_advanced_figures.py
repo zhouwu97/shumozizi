@@ -103,13 +103,15 @@ def _insert_figure(tex: str, block: str, anchor: str) -> str:
     return tex[:pos] + block + tex[pos:]
 
 
-def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, template: str, provenance_type: str = "frozen_inputs") -> None:
+def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, template: str, provenance_type: str = "frozen_inputs", question_id: str = "") -> None:
     """把新高级图登记进 figures/index.json（current + 来源）。"""
     index_path = run_dir / "figures" / "index.json"
     index = load_json(index_path) if index_path.is_file() else {
         "schema_name": "simple_figure_index", "schema_version": "1.3",
         "run_id": run_dir.name, "figures": [],
     }
+    index.setdefault("schema_version", "1.3")
+    index.setdefault("run_id", run_dir.name)
     index.setdefault("figures", [])
     # 移除同 id 旧 current 条目，避免重复。
     index["figures"] = [
@@ -118,9 +120,12 @@ def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, temp
     ]
     entry = {
         "figure_id": figure_id,
-        "question_id": "",
+        "question_id": question_id or str(_question_id_of(index, figure_id) or ""),
         "status": "current",
         "paper_allowed": True,
+        "demo": False,
+        "figure_stage": "current",
+        "created_at": _utc_now_iso(),
         "provenance_type": provenance_type,
         "source_files": [{"path": source, "sha256": _sha(run_dir / source)}],
         "renderer_script": {
@@ -141,11 +146,27 @@ def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, temp
     atomic_json(index_path, index)
 
 
+def _question_id_of(index: dict[str, Any], figure_id: str) -> str | None:
+    """从既有登记条目继承 question_id（结构图常为 whole_paper）。"""
+    for item in index.get("figures", []):
+        if isinstance(item, dict) and item.get("figure_id") == figure_id and item.get("question_id"):
+            return str(item["question_id"])
+    return None
+
+
+def _utc_now_iso() -> str:
+    """返回 UTC ISO 时间戳，与运行登记一致。"""
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="SECOND STEP 高级图补充")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--plan", required=True, help="高级图 plan JSON")
     parser.add_argument("--compile", action="store_true", help="插入后重编译长篇首稿")
+    parser.add_argument("--target", default="paper/longform-source.tex", help="插入目标 tex（默认 longform-source.tex）")
     parser.add_argument("--timeout-seconds", type=int, default=300)
     args = parser.parse_args()
 
@@ -153,7 +174,7 @@ def main() -> int:
     plan_path = Path(args.plan)
     plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.is_file() else json.loads(args.plan)
 
-    tex_path = run_dir / "paper" / "longform-source.tex"
+    tex_path = run_dir / args.target
     if not tex_path.is_file():
         raise SystemExit(f"缺少首稿 {tex_path}")
     tex = tex_path.read_text(encoding="utf-8")
@@ -168,7 +189,8 @@ def main() -> int:
             structure_spec = spec["spec"] if isinstance(spec.get("spec"), dict) else spec
             structure_spec.setdefault("argument_role", str(spec.get("argument_role", "model_understanding")))
             _render_structure_figure(structure_spec, out_stem)
-            source = str(spec.get("source", "paper/longform-source.tex"))
+            # 结构图来源是论文正文本身（解释论证结构），默认用插入目标 tex。
+            source = str(spec.get("source", args.target))
             provenance = "explanatory_structure"
         else:
             source = str(spec["input"])
@@ -183,7 +205,11 @@ def main() -> int:
             str(spec.get("caption", "")), str(spec.get("interpretation", "")),
         )
         tex = _insert_figure(tex, block, str(spec["insert_after"]))
-        _register_figure(run_dir, figure_id, Path(stem).name, source, template, provenance_type=provenance)
+        _register_figure(
+            run_dir, figure_id, Path(stem).name, source, template,
+            provenance_type=provenance,
+            question_id=str(spec.get("question_id", "whole_paper" if provenance == "explanatory_structure" else "")),
+        )
         print(f"插入 {figure_id} ({template}，{provenance}) <- {source}")
 
     tex_path.write_text(tex, encoding="utf-8")

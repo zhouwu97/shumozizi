@@ -85,7 +85,20 @@ def _compile(tex_path: Path, out_stem: Path, timeout: int) -> list[Path]:
         out_stem.with_suffix(suffix)
         for suffix in (".pdf", ".aux", ".log")
     ]
-    return [p for p in produced if p.exists()]
+    produced = [p for p in produced if p.exists()]
+    pdf = out_stem.with_suffix(".pdf")
+    if pdf.is_file():
+        try:
+            import fitz  # pymupdf
+
+            page = fitz.open(str(pdf))[0]
+            pix = page.get_pixmap(dpi=200)
+            png = out_stem.with_suffix(".png")
+            pix.save(str(png))
+            produced.append(png)
+        except (ImportError, OSError, ValueError):
+            pass  # PNG 转换失败不阻断 PDF（图消费门以 PDF 引用为准）。
+    return produced
 
 
 def main() -> int:
