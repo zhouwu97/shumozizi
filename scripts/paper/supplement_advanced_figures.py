@@ -59,6 +59,20 @@ def _render_figure(template: str, document: dict[str, Any], out_stem: Path) -> l
     return result["outputs"]
 
 
+def _render_structure_figure(spec: dict[str, Any], out_stem: Path) -> list[dict[str, str]]:
+    """structure spec -> TikZ -> PDF（SECOND STEP 结构图 renderer）。
+
+    复用 render_structure 的确定性布局与边界硬门（decisive_evidence 拒绝）。
+    """
+    from render_structure import _compile, render_standalone_tex
+
+    out_stem.parent.mkdir(parents=True, exist_ok=True)
+    tex_path = out_stem.parent / f"{out_stem.stem}_src.tex"
+    tex_path.write_text(render_standalone_tex(spec), encoding="utf-8")
+    _compile(tex_path, out_stem, timeout=120)
+    return [{"path": str(out_stem.with_suffix(".pdf")), "kind": "pdf"}]
+
+
 def _figure_block(figure_id: str, include_pdf: str, caption: str, interpretation: str) -> str:
     """构造可插入正文的 LaTeX figure 环境（图注 + 一句'展示了什么'）。"""
     return (
@@ -89,8 +103,8 @@ def _insert_figure(tex: str, block: str, anchor: str) -> str:
     return tex[:pos] + block + tex[pos:]
 
 
-def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, template: str) -> None:
-    """把新高级图登记进 figures/index.json（current + production 来源）。"""
+def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, template: str, provenance_type: str = "frozen_inputs") -> None:
+    """把新高级图登记进 figures/index.json（current + 来源）。"""
     index_path = run_dir / "figures" / "index.json"
     index = load_json(index_path) if index_path.is_file() else {
         "schema_name": "simple_figure_index", "schema_version": "1.3",
@@ -107,17 +121,21 @@ def _register_figure(run_dir: Path, figure_id: str, stem: str, source: str, temp
         "question_id": "",
         "status": "current",
         "paper_allowed": True,
-        "provenance_type": "frozen_inputs",
+        "provenance_type": provenance_type,
         "source_files": [{"path": source, "sha256": _sha(run_dir / source)}],
         "renderer_script": {
-            "path": ".agents/skills/mathmodel-advanced-figures/scripts/render_advanced.py",
-            "sha256": _sha(SKILL_SCRIPTS / "render_advanced.py"),
+            "path": ".agents/skills/mathmodel-advanced-figures/scripts/render_structure.py"
+            if provenance_type == "explanatory_structure"
+            else ".agents/skills/mathmodel-advanced-figures/scripts/render_advanced.py",
+            "sha256": _sha(SKILL_SCRIPTS / "render_structure.py")
+            if provenance_type == "explanatory_structure"
+            else _sha(SKILL_SCRIPTS / "render_advanced.py"),
         },
         "outputs": [
             {"path": f"figures/current/{stem}.png", "sha256": _sha(run_dir / f"figures/current/{stem}.png")},
             {"path": f"figures/current/{stem}.pdf", "sha256": _sha(run_dir / f"figures/current/{stem}.pdf")},
         ],
-        "takeaway": f"SECOND STEP 高级图（{template}）：{stem}",
+        "takeaway": f"SECOND STEP {'结构图' if provenance_type == 'explanatory_structure' else '高级图'}（{template}）：{stem}",
     }
     index["figures"].append(entry)
     atomic_json(index_path, index)
@@ -142,22 +160,31 @@ def main() -> int:
 
     for spec in plan:
         template = str(spec["template"])
-        source = str(spec["input"])
         stem = str(spec["output"])
         figure_id = Path(stem).name
         out_stem = run_dir / stem
-        if not (run_dir / source).is_file():
-            raise SystemExit(f"缺少生产数据源: {source}")
-        document = load_json(run_dir / source)
-        _render_figure(template, document, out_stem)
+        is_structure = isinstance(spec.get("spec"), dict) or str(spec.get("kind", "")) == "structure"
+        if is_structure:
+            structure_spec = spec["spec"] if isinstance(spec.get("spec"), dict) else spec
+            structure_spec.setdefault("argument_role", str(spec.get("argument_role", "model_understanding")))
+            _render_structure_figure(structure_spec, out_stem)
+            source = str(spec.get("source", "paper/longform-source.tex"))
+            provenance = "explanatory_structure"
+        else:
+            source = str(spec["input"])
+            if not (run_dir / source).is_file():
+                raise SystemExit(f"缺少生产数据源: {source}")
+            document = load_json(run_dir / source)
+            _render_figure(template, document, out_stem)
+            provenance = "frozen_inputs"
         include_pdf = f"../{stem}.pdf"
         block = _figure_block(
             figure_id, include_pdf,
             str(spec.get("caption", "")), str(spec.get("interpretation", "")),
         )
         tex = _insert_figure(tex, block, str(spec["insert_after"]))
-        _register_figure(run_dir, figure_id, Path(stem).name, source, template)
-        print(f"插入 {figure_id} ({template}) <- {source}")
+        _register_figure(run_dir, figure_id, Path(stem).name, source, template, provenance_type=provenance)
+        print(f"插入 {figure_id} ({template}，{provenance}) <- {source}")
 
     tex_path.write_text(tex, encoding="utf-8")
     print(f"longform-source.tex 更新，共 {tex.count('includegraphics')} 张图")

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """竞赛论文统一视觉样式（借鉴 MathModel 的全局样式基线，不复制其数据/结论）。
 
 全篇所有正式图复用同一套 seaborn 主题、调色板、字体与 DPI，保证"风格统一、
@@ -10,7 +9,6 @@
 from __future__ import annotations
 
 import matplotlib as mpl
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 # 与 figures/renderers.py 一致的语义色，保证新旧图全篇同语义。

@@ -233,8 +233,12 @@ python scripts/paper/supplement_advanced_figures.py <run_dir> --plan <plan.json>
 统一样式 DPI≥300 / SimSun），把 figure 环境插入 `longform-source.tex` 对应章节，
 登记进 `figures/index.json`（绑定 production 来源，供图消费门验证），再重编译。
 
+plan 条目带 `"spec": {...}` 字段时走**结构图 renderer**（`render_structure.py`，
+spec 契约见 `structure-spec.md`）：共享模型路线图 / 问题递进 / 机制判定三个 TikZ 模板，
+AI 决定语义（中心/关系/强调/公式）、程序决定几何；`decisive_evidence` 被拒（结构图不碰证据层）。
+
 目标：每个问题 2--3 张支撑图、全篇不同类型图不少于 12 张、优先高级图
-（小提琴/森林/帕累托/肘图/灵敏度/混淆矩阵/PR-ROC/校准/误差带/收敛），
+（小提琴/森林/帕累托/肘图/灵敏度/混淆矩阵/PR-ROC/校准/误差带/收敛 + 结构路线图），
 而不是只有折线图和柱状图。SECOND STEP 只增强可视化，不改数据、模型与结论。
 
 ---

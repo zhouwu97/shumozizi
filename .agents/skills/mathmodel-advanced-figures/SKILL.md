@@ -35,6 +35,20 @@ python "<skill-directory>/scripts/render_advanced.py" \
 （桑基、和弦、泰勒图等），按 [plot-recipes.md](references/plot-recipes.md) 的统一样式
 手写，**数据从结果文件读**，不得硬编码。
 
+### 2b. 结构解释图（TikZ，不碰数据证据）
+
+共享模型路线图、问题递进、机制判定这类**结构解释图**走
+[structure-spec.md](references/structure-spec.md)：写一个薄 structure spec
+（template/nodes/edges/emphasis/math），用确定性 TikZ renderer 渲染：
+
+```bash
+python "<skill-directory>/scripts/render_structure.py" --spec <spec.json> --output figures/current/<fig>
+```
+
+模板：`shared_model_map`、`problem_progression`、`mechanism_decision`。
+**边界**：`argument_role=decisive_evidence` 会被拒绝——结构图不承担数值证据，
+证据图必须走数据 renderer。AI 决定语义（中心/关系/强调/公式），程序决定几何。
+
 ### 3. 全篇统一样式
 
 所有图必须先 `apply_competition_style()`（`scripts/style.py`）：

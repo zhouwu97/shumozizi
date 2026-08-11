@@ -151,6 +151,10 @@ def answer_consistency_gate(run_dir: Path) -> dict[str, Any]:
     for figure in figures:
         if not isinstance(figure, dict) or figure.get("status") != "current":
             continue
+        # 结构解释图（explanatory_structure）没有 production 数据源：它解释论证结构，
+        # 不承担数值证据，来源是论文正文本身，不强制绑定生产工件。
+        if str(figure.get("provenance_type", "")) == "explanatory_structure":
+            continue
         for source in figure.get("source_files", []):
             path = str(source.get("path", source)) if isinstance(source, dict) else str(source)
             if not path:

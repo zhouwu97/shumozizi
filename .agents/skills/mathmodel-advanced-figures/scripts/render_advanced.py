@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """竞赛高级图渲染：从 current production JSON 生成 seaborn 高级图。
 
 这是 "SECOND STEP 高级图补充" 的实现层：初稿完成后，通读论文，按数据特征
@@ -25,7 +24,7 @@ import numpy as np
 import seaborn as sns
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from style import TEAL, GOLD, GRAY, CORAL, BLUE, PALE_GOLD, apply_competition_style, clean_axes
+from style import BLUE, CORAL, GOLD, GRAY, PALE_GOLD, TEAL, apply_competition_style, clean_axes
 
 apply_competition_style()
 
@@ -145,7 +144,7 @@ def _pareto_frontier(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
 
     fig, ax = plt.subplots(figsize=(7.6, 4.8))
     ax.errorbar(cost, prob, yerr=[prob - low, high - prob], fmt="none", ecolor=GRAY, capsize=3, zorder=1)
-    for i, (d, c, pr) in enumerate(zip(domains, cost, prob)):
+    for i, (d, c, pr) in enumerate(zip(domains, cost, prob, strict=True)):
         sensitivity = "sens" in d or "zero" in d or "out" in d
         ax.scatter([c], [pr], marker="X" if sensitivity else "o", s=110 if not sensitivity else 60,
                    color=GRAY if sensitivity else TEAL, edgecolor="white", linewidth=0.6, zorder=3,
@@ -183,8 +182,8 @@ def _ci_forest(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
 
     fig, ax = plt.subplots(figsize=(6.6, max(3.2, 0.55 * len(rows))))
     ypos = np.arange(len(rows))[::-1]
-    for i, (yp, e, l, h) in enumerate(zip(ypos, est, lo, hi)):
-        ax.plot([l, h], [yp, yp], color=TEAL if l >= threshold else GRAY, linewidth=2.2, marker="|", markersize=10, zorder=2)
+    for _i, (yp, e, lo_v, hi_v) in enumerate(zip(ypos, est, lo, hi, strict=True)):
+        ax.plot([lo_v, hi_v], [yp, yp], color=TEAL if lo_v >= threshold else GRAY, linewidth=2.2, marker="|", markersize=10, zorder=2)
         ax.scatter([e], [yp], color=BLUE, s=40, zorder=3)
     ax.axvline(threshold, color=GOLD, linewidth=1.6, linestyle="--", label=f"{threshold:.0%} 阈值")
     ax.set_yticks(ypos)
