@@ -151,9 +151,20 @@ def answer_consistency_gate(run_dir: Path) -> dict[str, Any]:
     for figure in figures:
         if not isinstance(figure, dict) or figure.get("status") != "current":
             continue
-        # 结构解释图（explanatory_structure）没有 production 数据源：它解释论证结构，
-        # 不承担数值证据，来源是论文正文本身，不强制绑定生产工件。
-        if str(figure.get("provenance_type", "")) == "explanatory_structure":
+        is_structure = str(figure.get("provenance_type", "")) == "explanatory_structure"
+        if is_structure:
+            # 结构解释图只豁免 production 数据源检查（它解释论证结构，无数据源）；
+            # 工件仍须真实存在，不能被豁免成"登记了但文件缺失"的占位。
+            for output in figure.get("outputs", []):
+                if isinstance(output, dict) and str(output.get("path", "")).startswith("figures/current/"):
+                    if not (root / str(output["path"])).is_file():
+                        violations.append(
+                            {
+                                "question_id": str(figure.get("question_id", "")),
+                                "code": "structure_figure_artifact_missing",
+                                "detail": f"结构图 {figure.get('figure_id')} 的输出 {output['path']} 在磁盘缺失",
+                            }
+                        )
             continue
         for source in figure.get("source_files", []):
             path = str(source.get("path", source)) if isinstance(source, dict) else str(source)

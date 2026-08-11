@@ -124,6 +124,40 @@ def test_gate_blocks_empty_metrics_placeholder_registration(tmp_path: Path) -> N
     assert "registered_result_empty_metrics" in codes
 
 
+def test_structure_figure_exempt_from_source_but_requires_artifact(tmp_path: Path) -> None:
+    """结构图免生产源检查，但工件缺失仍必须 RENDER_FORBIDDEN。"""
+    run_dir = _consistent_run(tmp_path)
+    atomic_json(
+        run_dir / "figures/index.json",
+        {
+            "schema_name": "simple_figure_index",
+            "schema_version": "1.3",
+            "run_id": run_dir.name,
+            "figures": [
+                {
+                    "figure_id": "fig_route",
+                    "question_id": "Q1",
+                    "status": "current",
+                    "paper_allowed": True,
+                    "provenance_type": "explanatory_structure",
+                    "source_files": [{"path": "paper/longform-source.tex", "sha256": "0" * 64}],
+                    "outputs": [{"path": "figures/current/fig_route.pdf", "sha256": "0" * 64}],
+                }
+            ],
+        },
+    )
+    # 无 production 来源不报；但工件缺失必须报。
+    verdict = answer_consistency_gate(run_dir)
+    codes = {item["code"] for item in verdict["violations"]}
+    assert "figure_source_not_production" not in codes
+    assert "structure_figure_artifact_missing" in codes
+    # 补上工件后通过。
+    (run_dir / "figures/current").mkdir(parents=True, exist_ok=True)
+    (run_dir / "figures/current/fig_route.pdf").write_bytes(b"pdf")
+    verdict = answer_consistency_gate(run_dir)
+    assert verdict["status"] == "pass"
+
+
 def test_gate_blocks_paper_not_aligned(tmp_path: Path) -> None:
     """论文 answer-map 未引用冻结答案 primary 必须 RENDER_FORBIDDEN。"""
     run_dir = _consistent_run(tmp_path)
