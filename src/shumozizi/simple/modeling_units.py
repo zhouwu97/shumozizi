@@ -1090,9 +1090,15 @@ def _validate_unit_plan(
             from shumozizi.paper.policy import workflow_quality_policy
 
             if workflow_quality_policy(run_dir) == "competition-quality-v1":
+                outcome_kind = contract.get("outcome_kind")
+                if outcome_kind not in {"recommendation", "descriptive"}:
+                    raise ContractError(
+                        f"{unit_id}.data_contract.outcome_kind 必须为 recommendation 或 descriptive"
+                    )
                 methodology_audit = _validate_data_methodology_audit(
                     contract.get("methodology_audit"),
                     f"{unit_id}.data_contract.methodology_audit",
+                    outcome_kind=str(outcome_kind),
                 )
         elif mode == "simulation":
             contract = _require_mapping(
@@ -1145,7 +1151,12 @@ def _validate_unit_plan(
     }
 
 
-def _validate_data_methodology_audit(value: object, label: str) -> dict[str, Any]:
+def _validate_data_methodology_audit(
+    value: object,
+    label: str,
+    *,
+    outcome_kind: str,
+) -> dict[str, Any]:
     """验证数据建模的统计正确性审计，而非用“更简单基线”自证路线。"""
     audit = _require_mapping(value, label)
     for field in (
@@ -1183,7 +1194,9 @@ def _validate_data_methodology_audit(value: object, label: str) -> dict[str, Any
                 "decision": str(decision),
             }
         )
-    uncertainty = _require_mapping(audit.get("recommendation_uncertainty"), f"{label}.recommendation_uncertainty")
+    uncertainty = _require_mapping(
+        audit.get("recommendation_uncertainty"), f"{label}.recommendation_uncertainty"
+    )
     required = uncertainty.get("required")
     if not isinstance(required, bool):
         raise ContractError(f"{label}.recommendation_uncertainty.required 必须是布尔值")
@@ -1191,12 +1204,18 @@ def _validate_data_methodology_audit(value: object, label: str) -> dict[str, Any
         uncertainty.get("rationale"), f"{label}.recommendation_uncertainty.rationale"
     )
     method = uncertainty.get("method")
+    if outcome_kind == "recommendation" and required is not True:
+        raise ContractError(
+            f"{label}.recommendation_uncertainty 对 outcome_kind=recommendation "
+            "必须声明 required=true"
+        )
     if required:
         _require_substantive_plan_text(method, f"{label}.recommendation_uncertainty.method")
     elif method is not None and not isinstance(method, str):
         raise ContractError(f"{label}.recommendation_uncertainty.method 必须是文本或 null")
     return {
         "alternatives": normalized_alternatives,
+        "outcome_kind": outcome_kind,
         "uncertainty_required": required,
         "uncertainty_method": str(method).strip() if isinstance(method, str) else None,
     }

@@ -14,6 +14,12 @@ description: 按需为数学建模论文规划并记录双语文献检索、机�
 - 用户在浏览器页面中亲自完成首次认证；随后只在已认证会话中执行少量、明确选择的检索或下载。
 - 禁止并发抓取、批量下载、绕过访问控制和自动重试登录。全文只作为本地工作材料，不进入提交包或引用证据链，除非用户另有明确授权且符合数据库许可。
 
+## 联网国赛的最小早期链
+
+用户确认赛事可联网时，在主路线和实际采用方法已经稳定、Author 生成 `RESEARCH_PACKAGE.md` 之前，必须执行**一次**紧凑的 `literature → Research Package → citation ledger` 链。它只服务正文中实际采用的方法、验证、不确定性和必要背景；不是为数量凑参考文献，也不在每次改稿重复检索。没有匹配来源也要留下已检索范围、候选数和不采用理由，然后把该事实交给 Research Package。
+
+非联网或用户未要求文献的局部任务仍按需使用本 Skill。
+
 ## 工作流
 
 1. 读取题面、`PAPER_BLUEPRINT.md` 和当前 `CITATION_PLAN.md`，按 `background`、`core_method`、`validation`、`uncertainty`、`extension` 生成中文和英文查询式。

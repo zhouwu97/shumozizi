@@ -33,6 +33,11 @@ def main() -> int:
         help="Word 样式参考模板；CUMCM 候选稿会绑定其摘要",
     )
     parser.add_argument(
+        "--include-docx",
+        action="store_true",
+        help="赛事未要求 Word 时仍显式生成并审计 DOCX 交付物。",
+    )
+    parser.add_argument(
         "--strict-competition",
         action="store_true",
         help="启用独立冷读和低于 18 页硬门",
@@ -44,6 +49,7 @@ def main() -> int:
             timeout_seconds=args.timeout,
             revision_impact=args.revision_impact,
             reference_docx=args.reference_docx,
+            include_docx=True if args.include_docx else None,
             strict_editorial=args.strict_competition,
             enforce_page_budget=args.strict_competition,
         )

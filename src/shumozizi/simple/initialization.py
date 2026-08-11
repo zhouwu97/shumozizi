@@ -10,6 +10,11 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json
 from shumozizi.simple.state import require_simple_state, utc_now
 
+# WHY: 两个用户可见 CLI 都应从同一默认值读取，避免 README 主入口与轻量入口
+# 再次分叉到不同的 Author 链。
+PAPER_DRAFT_MODES = ("longform_scientific_draft", "reviewable_draft")
+DEFAULT_COMPETITION_PAPER_DRAFT_MODE = "longform_scientific_draft"
+
 SIMPLE_DIRECTORIES = (
     "problem/attachments",
     "state",
@@ -250,7 +255,7 @@ def initialize_simple_run(
     root = repo_root.resolve()
     if workflow_version not in {"3.1", "3.2"}:
         raise ContractError("workflow_version 必须为 3.1 或 3.2")
-    if paper_draft_mode not in {None, "longform_scientific_draft", "reviewable_draft"}:
+    if paper_draft_mode not in {None, *PAPER_DRAFT_MODES}:
         raise ContractError("paper_draft_mode 必须为 longform_scientific_draft 或 reviewable_draft")
     if initial_execution_mode not in {"production", "exploration"}:
         raise ContractError("initial_execution_mode 必须为 production 或 exploration")

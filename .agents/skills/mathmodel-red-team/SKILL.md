@@ -93,6 +93,8 @@ PDF 盲评需要独立上下文，**不能新开浏览器页面**，平台区分
 
 无论哪种平台，新上下文只读取冻结 PDF，提示词由 `scripts/review/show_paper_blind_prompt.py` 生成并原样传入；不读取题面、源码、历史 run、求解上下文、作者说明或前序审核结论。最终提示词还固定记录用户人工干预：按国赛标准对照优秀论文，审查图表缺口、报告/论文形态、笔法文风、排版、论证主线、篇幅不足原因和具体修改优先级；不得把它缩减成只看建模思路。盲评写 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须完成三分钟冷读，并在同一报告末尾按固定提示嵌入 `## 结构化盲评结果` JSON：逐问记录直接答案、论证缺失角色、实际页码、具体 finding、问题继承和叙事风险。导入器把该块写入现有 `review/paper-blind-review.json`，并将人工干预来源、PDF-only 边界和覆盖维度写入回执，绑定报告哈希、任务/对话 ID、固定提示词和当前 `paper_render_revision`；不得另交一份作者填写的冷读 JSON。
 
+每个科学版本至少做一次独立盲评；默认上限为两轮。同一轮的措辞、图注、章节组织和证据边界修改必须批量合并，不能为小改连开第三轮。只有新的 P0/P1、中心论证重构或科学事实变化才有第二轮必要性；纯渲染变化沿用仍有效的盲评，只重做版式和机械 QA。
+
 不得创建 coverage declaration、逐风险 follow-up、final audit 或仅以 pass/fail 代替自由判断。已执行反例、独立复算冲突、不可行和性质失败始终阻断。
 
 对 CUMCM v3.2，`paper/CUMCM_LAYOUT_AUDIT.json` 1.3 直接读取当前 `review/paper-blind-review.json`，把同一轮独立盲评的冷读、结构、逐问缺失角色与页码、问题继承和叙事风险作为唯一评审事实源；`paper-review --input` 禁止再次传入 `cold_read`、`argument_depth`、`question_progression` 或 verdict。系统只在本地追加 `presentation_contract` 兑现、PDF 页面节奏探针和 `learning_checks`；每项 `learning_checks` 只填写 `pattern_id`、`pdf_realization=pass|partial|fail` 和具体 `finding`，并始终 advisory。核心问题只要盲评 `missing_roles` 非空就阻断，不能用四十多个全 true 布尔值覆盖。使用 `python scripts/paper/cumcm_adapter.py <run_dir> paper-review --input <json>` 写入，其中 JSON 只含可选的 `learning_checks`。

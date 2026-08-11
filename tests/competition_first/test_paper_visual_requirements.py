@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from shumozizi.core.io import atomic_json, load_json
+from shumozizi.core.schema import require_valid
 from shumozizi.paper.editorial import record_paper_cold_reader_actions
 from shumozizi.paper.external_author import decide_author_request
 from shumozizi.paper.visual_requirements import (
@@ -19,12 +20,17 @@ from shumozizi.simple.visual_opportunities import (
 )
 
 
-def _visual_run(tmp_path: Path, *, quality_policy: str = "legacy") -> Path:
+def _visual_run(
+    tmp_path: Path,
+    *,
+    quality_policy: str = "legacy",
+    question_count: int = 1,
+) -> Path:
     """构造具有五个独立视觉论证义务的最小运行。"""
     run_dir = initialize_simple_run(
         tmp_path,
         "paper-visual-loop",
-        required_questions=["Q1"],
+        required_questions=[f"Q{index}" for index in range(1, question_count + 1)],
         workflow_version="3.2",
         quality_policy=quality_policy,
     )
@@ -83,22 +89,58 @@ def test_argument_driven_requirements_have_no_three_figure_cap(tmp_path: Path) -
     )
 
 
-def test_competition_quality_visual_requirements_expose_advanced_figure_quota(
+def test_competition_quality_visual_requirements_expose_adaptive_figure_quota(
     tmp_path: Path,
 ) -> None:
-    """新质量合同必须把硬规格交给视觉路由，而非只在最终失败时提示。"""
+    """少题质量合同把图总量降为论证角色目标，而非只在最终失败时提示。"""
     run_dir = _visual_run(tmp_path, quality_policy="competition-quality-v1")
 
     payload = build_visual_requirements_from_paper(run_dir)
 
-    assert payload["schema_version"] == "1.3"
-    assert payload["generation_policy"] == "argument_driven_with_advanced_figure_quota"
+    assert payload["schema_version"] == "1.4"
+    assert payload["generation_policy"] == "argument_driven_with_adaptive_figure_quota"
     quota = payload["advanced_figure_quota"]
     assert quota["per_required_question"] == {"minimum": 2, "maximum": 3}
+    assert quota["overall_enforcement"] == "coverage_driven_editorial_target"
+    assert quota["minimum_formal_current_figures"] is None
+    assert quota["minimum_visual_archetypes"] is None
+    assert "正式发布入口" in quota["count_scope"]
+    assert "论证角色" in payload["figure_tiers"]["supporting_figure"]
+
+
+def test_four_question_visual_contract_keeps_global_quality_minima(tmp_path: Path) -> None:
+    """四问及以上仍把全篇图量和图型多样性作为候选稿硬规格。"""
+    run_dir = _visual_run(
+        tmp_path,
+        quality_policy="competition-quality-v1",
+        question_count=4,
+    )
+
+    payload = build_visual_requirements_from_paper(run_dir)
+    quota = payload["advanced_figure_quota"]
+
+    assert quota["overall_enforcement"] == "hard_minimum"
     assert quota["minimum_formal_current_figures"] == 12
     assert quota["minimum_visual_archetypes"] == 3
-    assert "正式发布入口" in quota["count_scope"]
-    assert "每个必答问题 2--3 张" in payload["figure_tiers"]["supporting_figure"]
+
+
+def test_legacy_v13_figure_quota_remains_schema_compatible(tmp_path: Path) -> None:
+    """新增自适应条件不能让缺少新字段的 v1.3 合同互相矛盾。"""
+    run_dir = _visual_run(
+        tmp_path,
+        quality_policy="competition-quality-v1",
+        question_count=4,
+    )
+    legacy = derive_visual_requirements_from_paper(run_dir)
+    legacy["schema_version"] = "1.3"
+    legacy["generation_policy"] = "argument_driven_with_advanced_figure_quota"
+    quota = legacy["advanced_figure_quota"]
+    assert isinstance(quota, dict)
+    quota.pop("required_question_count")
+    quota.pop("overall_enforcement")
+    quota.pop("editorial_target")
+
+    require_valid(legacy, "paper_visual_requirements")
 
 
 def test_current_figure_covers_matching_argument_requirement(tmp_path: Path) -> None:

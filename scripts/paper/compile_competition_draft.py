@@ -29,12 +29,18 @@ def main() -> int:
         type=Path,
         help="CUMCM Word 样式参考模板，例如 E:/AI/Shumocg/国赛word论文模版.docx",
     )
+    parser.add_argument(
+        "--include-docx",
+        action="store_true",
+        help="赛事未要求 Word 时仍显式生成并审计 DOCX 交付物。",
+    )
     args = parser.parse_args()
     payload = compile_paper(
         args.run_dir,
         timeout_seconds=args.timeout_seconds,
         revision_impact=args.revision_impact,
         reference_docx=args.reference_docx,
+        include_docx=True if args.include_docx else None,
         strict_editorial=True,
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))

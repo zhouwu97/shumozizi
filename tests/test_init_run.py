@@ -12,6 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INITIALIZER = REPO_ROOT / "scripts" / "codex" / "init_run.py"
+SIMPLE_INITIALIZER = REPO_ROOT / "scripts" / "codex" / "init_simple_run.py"
 VALIDATOR = REPO_ROOT / "scripts" / "codex" / "validate_state.py"
 
 
@@ -66,6 +67,78 @@ class InitRunCliTests(unittest.TestCase):
             self.assertEqual(0, validated.returncode, payload["errors"])
             self.assertEqual("NEW", payload["status"])
             self.assertTrue(payload["valid"])
+
+    def test_competition_v32_defaults_to_longform_scientific_draft(self) -> None:
+        """README 主入口创建 v3.2 运行时必须默认走长篇 Author 路径。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            repo_root = Path(temporary)
+            environment = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+            initialized = subprocess.run(
+                [
+                    sys.executable,
+                    str(INITIALIZER),
+                    "--workflow",
+                    "competition-first-v3.2",
+                    "--run-id",
+                    "competition-001",
+                    "--question",
+                    "Q1",
+                    "--repo-root",
+                    str(repo_root),
+                ],
+                cwd=REPO_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=environment,
+            )
+
+            self.assertEqual(0, initialized.returncode, initialized.stderr)
+            draft_mode = json.loads(
+                (repo_root / "runs" / "competition-001" / "paper" / "draft-mode.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual("longform_scientific_draft", draft_mode["default_mode"])
+
+    def test_simple_initializer_uses_the_same_longform_default(self) -> None:
+        """轻量入口必须复用主入口的 Author 首稿默认值。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            repo_root = Path(temporary)
+            environment = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+            initialized = subprocess.run(
+                [
+                    sys.executable,
+                    str(SIMPLE_INITIALIZER),
+                    "--run-id",
+                    "simple-competition-001",
+                    "--question",
+                    "Q1",
+                    "--repo-root",
+                    str(repo_root),
+                ],
+                cwd=REPO_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=environment,
+            )
+
+            self.assertEqual(0, initialized.returncode, initialized.stderr)
+            draft_mode = json.loads(
+                (
+                    repo_root
+                    / "runs"
+                    / "simple-competition-001"
+                    / "paper"
+                    / "draft-mode.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual("longform_scientific_draft", draft_mode["default_mode"])
 
 
 if __name__ == "__main__":

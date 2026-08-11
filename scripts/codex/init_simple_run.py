@@ -10,7 +10,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from shumozizi.core.repo_root import resolve_repo_root
-from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.initialization import (
+    DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
+    PAPER_DRAFT_MODES,
+    initialize_simple_run,
+)
 
 
 def main() -> int:
@@ -40,8 +44,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--paper-draft-mode",
-        choices=("longform_scientific_draft", "reviewable_draft"),
-        default="longform_scientific_draft",
+        choices=PAPER_DRAFT_MODES,
+        default=DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
         help="默认先展开长篇科学首稿；reviewable_draft 仅作披露式 fallback。",
     )
     parser.add_argument("--repo-root")

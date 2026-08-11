@@ -910,12 +910,29 @@ def derive_visual_requirements_from_paper(
     from shumozizi.paper.policy import workflow_quality_policy
 
     quota_enabled = workflow_quality_policy(root) == "competition-quality-v1"
+    quota = (
+        advanced_figure_quota_payload(len(state.get("required_questions", [])))
+        if quota_enabled
+        else None
+    )
+    supporting_figure_guidance = "按推导、机制、比较与边界的实际论证需要生成，不设数量上限。"
+    if quota is not None:
+        if quota["overall_enforcement"] == "hard_minimum":
+            supporting_figure_guidance = (
+                "按推导、机制、比较与边界分配；逐题覆盖和全篇图结构由候选稿合同复核，"
+                "每张图必须承担可区分的论证角色。"
+            )
+        else:
+            supporting_figure_guidance = (
+                "按推导、机制、比较与边界分配；少题运行以未覆盖的论证角色为编辑目标，"
+                "不得为了总图数或图型数拆分、换色或重复插图。"
+            )
     payload: dict[str, Any] = {
         "schema_name": "paper_visual_requirements",
-        "schema_version": "1.3" if quota_enabled else "1.2",
+        "schema_version": "1.4" if quota_enabled else "1.2",
         "run_id": state["run_id"],
         "generation_policy": (
-            "argument_driven_with_advanced_figure_quota"
+            "argument_driven_with_adaptive_figure_quota"
             if quota_enabled
             else "argument_driven_no_figure_count_target"
         ),
@@ -923,12 +940,7 @@ def derive_visual_requirements_from_paper(
             "hero_figure": (
                 "仅用于最关键、最值得记忆的视觉论证；仍须由正式 current 图实际消费。"
             ),
-            "supporting_figure": (
-                "按推导、机制、比较与边界分配；新质量合同要求每个必答问题 2--3 张，"
-                "全篇至少 12 张且至少 3 种图型。"
-                if quota_enabled
-                else "按推导、机制、比较与边界的实际论证需要生成，不设数量上限。"
-            ),
+            "supporting_figure": supporting_figure_guidance,
         },
         "review_policy": {
             "mode": "open_world_discovery_then_requirement_reconciliation",
@@ -944,8 +956,8 @@ def derive_visual_requirements_from_paper(
         },
         "generated_at": utc_now(),
     }
-    if quota_enabled:
-        payload["advanced_figure_quota"] = advanced_figure_quota_payload()
+    if quota is not None:
+        payload["advanced_figure_quota"] = quota
     require_valid(payload, "paper_visual_requirements")
     return payload
 

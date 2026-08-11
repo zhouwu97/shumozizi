@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +45,13 @@ def _required_roles(run_dir: Path) -> dict[str, dict[str, list[str]]]:
             ]
         }
         uncertainty = audit.get("recommendation_uncertainty")
-        if isinstance(uncertainty, dict) and uncertainty.get("required") is True:
+        # WHY: 即使有人绕过建模单元写入路径，推荐型输出也不能靠
+        # ``required=false`` 使正文不确定性义务消失。
+        requires_uncertainty = (
+            contract.get("outcome_kind") == "recommendation"
+            or (isinstance(uncertainty, dict) and uncertainty.get("required") is True)
+        )
+        if requires_uncertainty:
             roles["uncertainty"] = [
                 str(item)
                 for item in validation.get("uncertainty_result_ids", [])
@@ -58,28 +65,136 @@ def evidence_binding_template(run_dir: Path) -> dict[str, Any]:
     """生成不含正文断言的证据绑定骨架，供作者补写正式源码位置。"""
     root = run_dir.resolve()
     requirements = _required_roles(root)
-    bindings = [
-        {
-            "unit_id": unit_id,
-            "question_id": roles["question_id"],
-            "role": role,
-            "result_ids": result_ids,
-            "source_path": "待填写：正式发布入口中的文件",
-            "source_span": "待填写：paper/main.tex:行号-行号",
-            "statement": "待填写：正文中可复述的方法或区间结论",
-        }
-        for unit_id, roles in requirements.items()
-        for role, result_ids in roles.items()
-        if role != "question_id"
-    ]
+    bindings: list[dict[str, Any]] = []
+    for unit_id, roles in requirements.items():
+        for role, result_ids in roles.items():
+            if role == "question_id":
+                continue
+            binding: dict[str, Any] = {
+                "unit_id": unit_id,
+                "question_id": roles["question_id"],
+                "role": role,
+                "result_ids": result_ids,
+                "source_path": "待填写：正式发布入口中的文件",
+                "source_span": "待填写：paper/main.tex:行号-行号",
+                "statement": "待填写：正文中可复述的方法或区间结论",
+            }
+            if role == "uncertainty":
+                binding["metric_assertions"] = [
+                    {
+                        "result_id": result_id,
+                        "metric": "待填写：生产结果中的区间端点或不确定性指标",
+                        "value_text": "待填写：正式稿中出现的数值",
+                    }
+                    for result_id in result_ids
+                ]
+            bindings.append(binding)
     return {
         "schema_name": "publication_evidence_bindings",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": read_simple_state(root)["run_id"],
         "publication_source_sha256": publication_source_digest(root),
         "bindings": bindings,
         "generated_at": utc_now(),
     }
+
+
+def _normalise_text(value: str) -> str:
+    """归一化正式稿断言，保留数值 token 的可辨识边界。"""
+    return re.sub(r"\s+", "", value).replace("−", "-")
+
+
+def _metric_value_matches_text(metric_value: Any, value_text: str) -> bool:
+    """判断绑定文本是否准确复述生产结果的数值。
+
+    Args:
+        metric_value: 已由结果索引和输出文件双重校验过的指标值。
+        value_text: 作者声称写入正式稿的数值文本。
+
+    Returns:
+        文本可无损表示该数值时为真。
+    """
+    if isinstance(metric_value, bool) or not isinstance(metric_value, (int, float)):
+        return False
+    try:
+        return Decimal(value_text.replace(",", "")) == Decimal(str(metric_value))
+    except (InvalidOperation, ValueError):
+        return False
+
+
+def _statement_contains_value(statement: str, value_text: str) -> bool:
+    """验证数值以完整 token 出现在可复述正式稿断言中。"""
+    normalized_statement = _normalise_text(statement)
+    normalized_value = _normalise_text(value_text)
+    if not normalized_value:
+        return False
+    if re.fullmatch(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", normalized_value):
+        return re.search(
+            rf"(?<![\d.]){re.escape(normalized_value)}(?![\d.])",
+            normalized_statement,
+        ) is not None
+    return normalized_value in normalized_statement
+
+
+def _metric_assertion_errors(
+    raw: dict[str, Any],
+    *,
+    unit_id: str,
+    role: str,
+    expected_result_ids: list[str],
+    result_records: dict[str, dict[str, Any]],
+    statement: str,
+) -> list[str]:
+    """验证不确定性结论逐项复述了当前生产结果中的数值。
+
+    Args:
+        raw: 单条证据绑定。
+        unit_id: 当前建模单元标识。
+        role: 证据角色。
+        expected_result_ids: 本角色必须绑定的生产结果。
+        result_records: 当前可用生产结果索引。
+        statement: 已验证出现在正式稿中的可复述断言。
+
+    Returns:
+        不满足数值绑定合同的错误列表。
+    """
+    if role != "uncertainty":
+        return []
+    assertions = raw.get("metric_assertions")
+    if not isinstance(assertions, list) or not assertions:
+        return [f"{unit_id}/{role} 必须声明非空 metric_assertions 以绑定区间或不确定性数值"]
+    errors: list[str] = []
+    asserted_result_ids: set[str] = set()
+    for index, assertion in enumerate(assertions):
+        label = f"{unit_id}/{role}.metric_assertions[{index}]"
+        if not isinstance(assertion, dict):
+            errors.append(f"{label} 必须是对象")
+            continue
+        result_id = assertion.get("result_id")
+        metric = assertion.get("metric")
+        value_text = assertion.get("value_text")
+        if not all(isinstance(item, str) and item.strip() for item in (result_id, metric, value_text)):
+            errors.append(f"{label} 必须包含 result_id、metric 与 value_text")
+            continue
+        if result_id not in expected_result_ids:
+            errors.append(f"{label} 绑定了本角色之外的 result_id")
+            continue
+        record = result_records.get(result_id)
+        metrics = record.get("metrics") if isinstance(record, dict) else None
+        if not isinstance(metrics, dict) or metric not in metrics:
+            errors.append(f"{label} 指向的生产结果不含指标 {metric}")
+            continue
+        if not _metric_value_matches_text(metrics[metric], value_text):
+            errors.append(f"{label} 的 value_text 与生产结果指标不一致")
+            continue
+        if not _statement_contains_value(statement, value_text):
+            errors.append(f"{label} 的数值未出现在可复述正式稿结论中")
+            continue
+        asserted_result_ids.add(result_id)
+    missing = sorted(set(expected_result_ids) - asserted_result_ids)
+    if missing:
+        errors.append(f"{unit_id}/{role} 缺少生产结果数值断言: {', '.join(missing)}")
+    return errors
 
 
 def write_publication_evidence_bindings(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
@@ -106,7 +221,7 @@ def publication_evidence_binding_errors(
         if not path.is_file():
             return ["缺少 paper/EVIDENCE_BINDINGS.json：方法学与不确定性证据尚未进入正式稿"]
         payload = load_json(path)
-    if payload.get("schema_name") != "publication_evidence_bindings" or payload.get("schema_version") != "1.0":
+    if payload.get("schema_name") != "publication_evidence_bindings" or payload.get("schema_version") != "1.1":
         return ["EVIDENCE_BINDINGS 协议无效"]
     if payload.get("run_id") != read_simple_state(root)["run_id"]:
         return ["EVIDENCE_BINDINGS.run_id 与当前运行不一致"]
@@ -121,7 +236,12 @@ def publication_evidence_binding_errors(
     records = payload.get("bindings")
     if not isinstance(records, list):
         return [*errors, "EVIDENCE_BINDINGS.bindings 必须是数组"]
-    results = {str(item.get("result_id")) for item in read_result_index(root).get("results", []) if item.get("execution_mode") == "production" and item.get("execution_valid") is True}
+    result_records = {
+        str(item.get("result_id")): item
+        for item in read_result_index(root).get("results", [])
+        if item.get("execution_mode") == "production" and item.get("execution_valid") is True
+    }
+    results = set(result_records)
     seen: set[tuple[str, str]] = set()
     for raw in records:
         if not isinstance(raw, dict):
@@ -136,6 +256,8 @@ def publication_evidence_binding_errors(
             errors.append(f"{unit_id}/{role} 不是当前要求的证据角色")
             continue
         seen.add((unit_id, role))
+        if role == "uncertainty" and not expected:
+            errors.append(f"{unit_id}/{role} 缺少当前生产的不确定性结果")
         if raw.get("question_id") != requirements[unit_id]["question_id"]:
             errors.append(f"{unit_id}/{role} 绑定了错误问题")
         bound_ids = raw.get("result_ids")
@@ -160,8 +282,19 @@ def publication_evidence_binding_errors(
             errors.append(f"{unit_id}/{role} source_span 超出正式稿行范围")
             continue
         excerpt = "\n".join(lines[start - 1 : end])
-        if re.sub(r"\s+", "", statement) not in re.sub(r"\s+", "", excerpt):
+        if _normalise_text(statement) not in _normalise_text(excerpt):
             errors.append(f"{unit_id}/{role} 的可复述结论不在声明正式稿位置")
+            continue
+        errors.extend(
+            _metric_assertion_errors(
+                raw,
+                unit_id=unit_id,
+                role=role,
+                expected_result_ids=expected,
+                result_records=result_records,
+                statement=statement,
+            )
+        )
     for unit_id, roles in requirements.items():
         for role in roles:
             if role != "question_id" and (unit_id, role) not in seen:

@@ -11,7 +11,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from shumozizi.core.repo_root import resolve_repo_root
-from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.initialization import (
+    DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
+    PAPER_DRAFT_MODES,
+    initialize_simple_run,
+)
 from shumozizi.workflow.initialization import initialize_run, safe_run_id
 
 
@@ -38,6 +42,12 @@ def main() -> int:
     parser.add_argument("--question", dest="questions", action="append", default=[])
     parser.add_argument("--total-hours", type=float)
     parser.add_argument("--token-soft-cap", type=int)
+    parser.add_argument(
+        "--paper-draft-mode",
+        choices=PAPER_DRAFT_MODES,
+        default=DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
+        help="v3.2 默认先生成长篇科学首稿；reviewable_draft 仅作显式披露 fallback。",
+    )
     parser.add_argument("--repo-root")
     args = parser.parse_args()
     repo_root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
@@ -63,6 +73,7 @@ def main() -> int:
             total_hours=args.total_hours,
             token_soft_cap=args.token_soft_cap,
             workflow_version=workflow_version,
+            paper_draft_mode=args.paper_draft_mode,
             initial_execution_mode=(
                 "exploration" if workflow_version == "3.2" else "production"
             ),

@@ -30,6 +30,16 @@
     "final_pdf_path": {"const": "paper/final.pdf"},
     "final_pdf_sha256": {"$ref": "#/$defs/sha"},
     "strict_mode": {"type": "boolean"},
+    "delivery_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pdf_required", "docx_required"],
+      "properties": {
+        "pdf_required": {"type": "boolean"},
+        "docx_required": {"type": "boolean"}
+      }
+    },
+    "docx_requested": {"type": "boolean"},
     "reference_docx_path": {"type": "string", "minLength": 1},
     "reference_docx_sha256": {"$ref": "#/$defs/sha"},
     "page_budget_path": {"const": "qa/paper-page-budget.json"},

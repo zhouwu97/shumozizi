@@ -24,10 +24,7 @@ from shumozizi.core.io import (
 )
 from shumozizi.core.schema import validate_document
 from shumozizi.paper.advanced_figure_policy import (
-    MAX_BODY_FIGURES_PER_QUESTION,
-    MIN_BODY_FIGURES_PER_QUESTION,
-    MIN_FORMAL_BODY_FIGURES,
-    MIN_FORMAL_VISUAL_ARCHETYPES,
+    advanced_figure_quota_payload,
 )
 from shumozizi.paper.citations import (
     build_citation_coverage,
@@ -304,13 +301,18 @@ def _advanced_figure_quota_errors(run_dir: Path) -> list[str]:
     """校验新质量合同的高级图硬配额与正式稿消费闭环。
 
     历史运行保持 legacy 兼容；从新 CLI 创建的 ``competition-quality-v1`` 运行
-    必须满足每个必答问题两到三张、全篇至少十二张且至少三种图型。
+    必须满足每个必答问题两到三张；全篇十二张和三种图型只在至少四问时
+    作为硬门，少题稿按论证角色做编辑复核，不能被不可满足的数量合同阻断。
     """
     from shumozizi.paper.policy import workflow_quality_policy
 
     if workflow_quality_policy(run_dir) != "competition-quality-v1":
         return []
     question_ids = _question_ids_from_state(run_dir)
+    quota = advanced_figure_quota_payload(len(question_ids))
+    per_question = quota["per_required_question"]
+    minimum_per_question = int(per_question["minimum"])
+    maximum_per_question = int(per_question["maximum"])
     figures = _referenced_current_figures(run_dir)
     body_figures = [
         figure
@@ -327,29 +329,31 @@ def _advanced_figure_quota_errors(run_dir: Path) -> list[str]:
             by_question[question_id].append(figure)
     for question_id in question_ids:
         count = len(by_question[question_id])
-        if count < MIN_BODY_FIGURES_PER_QUESTION:
+        if count < minimum_per_question:
             errors.append(
                 "ADVANCED_FIGURE_QUOTA："
                 f"{question_id} 在正式稿只消费 {count} 张 current 正文图；"
-                f"硬要求为每题 {MIN_BODY_FIGURES_PER_QUESTION}--{MAX_BODY_FIGURES_PER_QUESTION} 张"
+                f"硬要求为每题 {minimum_per_question}--{maximum_per_question} 张"
             )
-        elif count > MAX_BODY_FIGURES_PER_QUESTION:
+        elif count > maximum_per_question:
             errors.append(
                 "ADVANCED_FIGURE_QUOTA："
                 f"{question_id} 在正式稿消费 {count} 张 current 正文图；"
-                f"硬上限为每题 {MAX_BODY_FIGURES_PER_QUESTION} 张，请合并重复论证图或移入附录"
+                f"硬上限为每题 {maximum_per_question} 张，请合并重复论证图或移入附录"
             )
-    if len(body_figures) < MIN_FORMAL_BODY_FIGURES:
+    total_minimum = quota["minimum_formal_current_figures"]
+    if isinstance(total_minimum, int) and len(body_figures) < total_minimum:
         errors.append(
             "ADVANCED_FIGURE_QUOTA："
-            f"正式稿只消费 {len(body_figures)} 张 current 正文图；全篇硬要求不少于 {MIN_FORMAL_BODY_FIGURES} 张"
+            f"正式稿只消费 {len(body_figures)} 张 current 正文图；全篇硬要求不少于 {total_minimum} 张"
         )
     archetypes = {
         archetype
         for figure in body_figures
         if (archetype := _figure_archetype(figure)) is not None
     }
-    if len(archetypes) < MIN_FORMAL_VISUAL_ARCHETYPES:
+    minimum_archetypes = quota["minimum_visual_archetypes"]
+    if isinstance(minimum_archetypes, int) and len(archetypes) < minimum_archetypes:
         missing_metadata = [
             str(figure.get("figure_id"))
             for figure in body_figures
@@ -363,7 +367,7 @@ def _advanced_figure_quota_errors(run_dir: Path) -> list[str]:
         )
         errors.append(
             "ADVANCED_FIGURE_QUOTA："
-            f"正式稿只登记 {len(archetypes)} 种可审计图型；硬要求至少 {MIN_FORMAL_VISUAL_ARCHETYPES} 种"
+            f"正式稿只登记 {len(archetypes)} 种可审计图型；硬要求至少 {minimum_archetypes} 种"
             + detail
         )
     return errors

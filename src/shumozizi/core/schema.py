@@ -60,6 +60,7 @@ def validate_document(document: dict[str, Any], expected_name: str | None = None
         ("paper_visual_requirements", "1.1"),
         ("paper_visual_requirements", "1.2"),
         ("paper_visual_requirements", "1.3"),
+        ("paper_visual_requirements", "1.4"),
         ("paper_argument_units", "1.0"),
         ("visual_discovery_audit", "1.0"),
         ("visual_ideas", "1.0"),

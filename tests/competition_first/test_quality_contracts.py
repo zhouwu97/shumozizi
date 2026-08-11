@@ -57,11 +57,17 @@ def _methodology_audit() -> dict[str, object]:
     }
 
 
-def _data_modeling_plan(run_dir: Path, *, include_audit: bool) -> dict[str, object]:
+def _data_modeling_plan(
+    run_dir: Path,
+    *,
+    include_audit: bool,
+    outcome_kind: str = "recommendation",
+) -> dict[str, object]:
     """构造低语义风险的数据建模单元，以测试质量合同而非路线赛马。"""
     report = run_dir / "review" / "FAITHFUL_RECONSTRUCTION.md"
     report.write_text("# 忠实重建\n\n按题面定义统计对象、达标事件和推荐输出。\n", encoding="utf-8")
     data_contract: dict[str, object] = {
+        "outcome_kind": outcome_kind,
         "observational_unit": "以受试对象为统计单位，并保留其重复随访记录。",
         "split_or_validation": "按对象分组切分，防止同一对象的观测同时出现在训练和验证。",
         "diagnostic_plan": "检查校准、残差、删失处理和关键协变量缺失对结论的影响。",
@@ -153,12 +159,17 @@ def _data_modeling_plan(run_dir: Path, *, include_audit: bool) -> dict[str, obje
     }
 
 
-def _register_result(run_dir: Path, result_id: str) -> None:
+def _register_result(
+    run_dir: Path,
+    result_id: str,
+    *,
+    metrics: dict[str, object] | None = None,
+) -> None:
     """登记可被数据模型实际验证与正文绑定的最小 production 结果。"""
     source = run_dir / "code" / f"{result_id}.py"
     output = run_dir / "results" / "raw" / f"{result_id}.json"
     source.write_text("print('ok')\n", encoding="utf-8")
-    metrics = {
+    metrics = metrics or {
         "objective": 12.0,
         "feasible": True,
         "hard_constraints_passed": True,
@@ -216,6 +227,64 @@ def test_data_modeling_requires_statistics_first_audit(tmp_path: Path) -> None:
     assert audit["recommendation_uncertainty"]["required"] is True
 
 
+def test_recommendation_outcome_cannot_disable_uncertainty_binding(tmp_path: Path) -> None:
+    """推荐型数据建模不能靠 required=false 跳过不确定性结果和正式稿绑定。"""
+    run_dir = _quality_run(tmp_path, "quality-recommendation-uncertainty")
+    plan = _data_modeling_plan(run_dir, include_audit=True)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    contract = unit["data_contract"]
+    assert isinstance(contract, dict)
+    audit = contract["methodology_audit"]
+    assert isinstance(audit, dict)
+    uncertainty = audit["recommendation_uncertainty"]
+    assert isinstance(uncertainty, dict)
+    uncertainty.update({"required": False, "method": None})
+
+    with pytest.raises(ContractError, match="outcome_kind=recommendation"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_data_modeling_must_declare_outcome_kind_in_quality_runs(tmp_path: Path) -> None:
+    """新合同不能从题目文本猜测推荐语义，必须显式声明输出类型。"""
+    run_dir = _quality_run(tmp_path, "quality-outcome-kind")
+    plan = _data_modeling_plan(run_dir, include_audit=True)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    contract = unit["data_contract"]
+    assert isinstance(contract, dict)
+    contract.pop("outcome_kind")
+
+    with pytest.raises(ContractError, match="outcome_kind"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_descriptive_outcome_may_document_no_recommendation_uncertainty(
+    tmp_path: Path,
+) -> None:
+    """纯关系刻画可声明不产出推荐值，但仍须解释为什么没有不确定性对象。"""
+    run_dir = _quality_run(tmp_path, "quality-descriptive-uncertainty")
+    plan = _data_modeling_plan(
+        run_dir,
+        include_audit=True,
+        outcome_kind="descriptive",
+    )
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    contract = unit["data_contract"]
+    assert isinstance(contract, dict)
+    audit = contract["methodology_audit"]
+    assert isinstance(audit, dict)
+    uncertainty = audit["recommendation_uncertainty"]
+    assert isinstance(uncertainty, dict)
+    uncertainty.update({"required": False, "method": None})
+
+    document = write_modeling_units(run_dir, plan)
+    stored_unit = document["units"][0]
+    assert isinstance(stored_unit, dict)
+    assert stored_unit["data_contract"]["outcome_kind"] == "descriptive"
+
+
 def test_data_modeling_requires_real_methodology_and_uncertainty_results(tmp_path: Path) -> None:
     """审计字段必须落实到 production 结果，不能只写一段稳健性措辞。"""
     run_dir = _quality_run(tmp_path, "quality-results")
@@ -254,8 +323,13 @@ def test_evidence_bindings_require_current_publication_statement(tmp_path: Path)
     """方法和区间结果须有正式稿行号与断言，长稿或散文不能替代。"""
     run_dir = _quality_run(tmp_path, "quality-bindings")
     plan = _data_modeling_plan(run_dir, include_audit=True)
-    for result_id in ("primary", "methodology", "uncertainty"):
-        _register_result(run_dir, result_id)
+    _register_result(run_dir, "primary")
+    _register_result(run_dir, "methodology")
+    _register_result(
+        run_dir,
+        "uncertainty",
+        metrics={"ci_lower_week": 10.0, "ci_upper_week": 14.0},
+    )
     unit = plan["units"][0]
     assert isinstance(unit, dict)
     unit["actual"] = {
@@ -280,6 +354,10 @@ def test_evidence_bindings_require_current_publication_statement(tmp_path: Path)
 
     template = evidence_binding_template(run_dir)
     assert any("待填写" in item["statement"] for item in template["bindings"])
+    assert any(
+        item["role"] == "uncertainty" and "metric_assertions" in item
+        for item in template["bindings"]
+    )
     assert publication_evidence_binding_errors(run_dir, payload=template)
     bindings = template["bindings"]
     assert isinstance(bindings, list)
@@ -299,10 +377,52 @@ def test_evidence_bindings_require_current_publication_statement(tmp_path: Path)
                     "source_path": "paper/main.tex",
                     "source_span": "paper/main.tex:4-4",
                     "statement": "推荐时点的 Bootstrap 95% 区间为 10--14 周。",
+                    "metric_assertions": [
+                        {
+                            "result_id": "uncertainty",
+                            "metric": "ci_lower_week",
+                            "value_text": "10",
+                        },
+                        {
+                            "result_id": "uncertainty",
+                            "metric": "ci_upper_week",
+                            "value_text": "14",
+                        },
+                    ],
                 }
             )
     write_publication_evidence_bindings(run_dir, template)
     assert publication_evidence_binding_errors(run_dir) == []
+
+    missing_value_assertions = json.loads(json.dumps(template))
+    uncertainty_binding = next(
+        item
+        for item in missing_value_assertions["bindings"]
+        if item["role"] == "uncertainty"
+    )
+    uncertainty_binding.pop("metric_assertions")
+    assert any(
+        "metric_assertions" in error
+        for error in publication_evidence_binding_errors(
+            run_dir,
+            payload=missing_value_assertions,
+        )
+    )
+
+    wrong_value_assertion = json.loads(json.dumps(template))
+    uncertainty_binding = next(
+        item
+        for item in wrong_value_assertion["bindings"]
+        if item["role"] == "uncertainty"
+    )
+    uncertainty_binding["metric_assertions"][0]["value_text"] = "11"
+    assert any(
+        "与生产结果指标不一致" in error
+        for error in publication_evidence_binding_errors(
+            run_dir,
+            payload=wrong_value_assertion,
+        )
+    )
 
     (run_dir / "paper/main.tex").write_text(
         "\\documentclass{article}\n\\begin{document}\n改写后的正文。\\end{document}\n",

@@ -88,6 +88,8 @@ python scripts/codex/init_run.py problems/2026-A `
   --competition cumcm --question Q1 --question Q2 --question Q3
 ```
 
+该入口默认创建 `longform_scientific_draft`：先由 Author 生成长篇科学首稿，再冷读和压缩；只有明确需要带披露的时间 fallback 时，才传入 `--paper-draft-mode reviewable_draft`。
+
 每个影响路线或论文的实验都必须使用执行器登记：
 
 ```powershell
@@ -190,7 +192,7 @@ runs/<run-id>/
 
 `ROUTE_COMPETITION.md` 记录 baseline、竞争路线、区分性 probe、主路线、fallback 和切换条件；`NEXT_EXPERIMENTS.md` 只保留能改变决定的实验；`INSIGHTS.md` 区分观察、证据、机制、验证和边界，允许诚实写出尚未发现稳定规律。
 
-论文只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 与 `PAPER_REVIEW.md` 四个主要控制文件。知识应用、argument map、版式审计等由系统派生或作为 advisory；零匹配时使用通用结构模式。可检索实际使用的方法文献，禁止同题答案和现成结论。
+论文只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 与 `PAPER_REVIEW.md` 四个主要控制文件。知识应用、argument map、版式审计等由系统派生或作为 advisory；零匹配时使用通用结构模式。联网国赛在生成 Research Package 前执行一次紧凑的双语文献检索、候选核验和 citation ledger；只检索实际使用的方法文献，禁止同题答案和现成结论。
 
 CUMCM v3.3 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.4 把图绑定到论证单元与义务，结构性 waived 需要独立复核，图表晋级按角色检查实际信息价值。`PAPER_BLUEPRINT` 自动派生逐问论证覆盖矩阵，写作前蓝图审核和首稿 PDF 冷读把最多五项高价值修改批量导入 `PAPER_REVIEW`。`CUMCM_STRUCTURE_MAP` 1.2 继续选择 `classic` 或“经典外壳 + 语义内核”的 `semantic`；旧 FIGURE_PLAN 2.1--2.3 保持兼容。
 

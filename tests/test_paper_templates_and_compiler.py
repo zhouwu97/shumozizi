@@ -11,6 +11,7 @@ import pytest
 import shumozizi.paper.compiler as paper_compiler
 import shumozizi.paper.readiness as paper_readiness
 import shumozizi.paper.templates as paper_templates
+import shumozizi.profiles.delivery as delivery_profiles
 import shumozizi.simple.review as simple_review
 from scripts.qa.check_placeholders import check_placeholders
 from shumozizi.core.io import ContractError, atomic_json, load_json
@@ -745,11 +746,58 @@ def test_compile_receipt_binds_manifest_and_pdf(
     assert verify_paper_compile_receipt(run_dir)["valid"] is False
 
 
-def test_compile_skips_docx_and_records_reason_when_pandoc_absent(
+def test_compile_skips_optional_docx_without_invoking_converter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """pandoc 缺失时编译不应整体失败；回执记录跳过原因，不记录 docx 路径。"""
+    """PDF-only 赛事不应为了可选 Word 转换调用 Pandoc。"""
+    _set_engines(monkeypatch, latex=True, typst=True)
+    monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
+    monkeypatch.setattr(paper_readiness, "require_paper_readiness", lambda _run: None)
+
+    def _unexpected_docx(*_args: object, **_kwargs: object) -> Path:
+        raise AssertionError("PDF-only 交付不应调用 DOCX 转换器")
+
+    monkeypatch.setattr(paper_compiler, "compile_docx", _unexpected_docx)
+    run_dir = _new_run(tmp_path, "optional-docx", questions=["Q1"])
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="latex",
+        selection_reason="验证 PDF-only 赛事不触发可选 Word 转换。",
+    )
+    materialize_selected_template(run_dir)
+
+    fake_compiler = tmp_path / "fake_xelatex_optional_docx.py"
+    fake_compiler.write_text(
+        "from pathlib import Path\n"
+        "Path('main.log').write_text('generated log', encoding='utf-8')\n"
+        "Path('main.pdf').write_bytes(b'%PDF-1.4\\noptional docx test')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        paper_compiler,
+        "_compiler_steps",
+        lambda engine: (
+            "xelatex",
+            [[sys.executable, str(fake_compiler), "main.tex"]] if engine == "latex" else [],
+        ),
+    )
+
+    receipt = compile_paper(run_dir)
+
+    assert receipt["delivery_requirements"] == {"pdf_required": True, "docx_required": False}
+    assert receipt["docx_requested"] is False
+    assert receipt["docx_skipped_reason"].startswith("delivery_format_optional:")
+    assert "final_docx_path" not in receipt
+    assert verify_paper_compile_receipt(run_dir)["valid"] is True
+
+
+def test_compile_records_reason_when_profile_requires_docx_pandoc_is_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """赛事 Profile 要求 DOCX 而 pandoc 缺失时，跳过原因必须可审计。"""
     _set_engines(monkeypatch, latex=True, typst=True)
     monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
     monkeypatch.setattr(paper_readiness, "require_paper_readiness", lambda _run: None)
@@ -761,6 +809,11 @@ def test_compile_skips_docx_and_records_reason_when_pandoc_absent(
         )
 
     monkeypatch.setattr(paper_compiler, "compile_docx", _no_pandoc)
+    monkeypatch.setattr(
+        delivery_profiles,
+        "delivery_requirements_for_competition",
+        lambda _competition: {"pdf_required": True, "docx_required": True},
+    )
 
     run_dir = _new_run(tmp_path, "no-pandoc", questions=["Q1"])
     select_paper_template(
@@ -793,9 +846,28 @@ def test_compile_skips_docx_and_records_reason_when_pandoc_absent(
     assert receipt["final_pdf_path"] == "paper/final.pdf"
     assert "final_docx_path" not in receipt
     assert "final_docx_sha256" not in receipt
+    assert receipt["docx_requested"] is True
+    assert receipt["delivery_requirements"]["docx_required"] is True
     assert "docx_skipped_reason" in receipt
     assert "pandoc" in receipt["docx_skipped_reason"]
     assert verify_paper_compile_receipt(run_dir)["valid"] is True
+
+
+def test_docx_required_profile_cannot_be_explicitly_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """赛事必交 Word 不能被可选格式开关绕过。"""
+    monkeypatch.setattr(simple_review, "require_paper_generation_allowed", lambda _run: None)
+    monkeypatch.setattr(
+        delivery_profiles,
+        "delivery_requirements_for_competition",
+        lambda _competition: {"pdf_required": True, "docx_required": True},
+    )
+    run_dir = _new_run(tmp_path, "required-docx-cannot-disable", questions=["Q1"])
+
+    with pytest.raises(ContractError, match="要求 DOCX"):
+        compile_paper(run_dir, include_docx=False)
 
 
 def test_latex_compile_failure_surfaces_log_errors(

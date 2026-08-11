@@ -801,6 +801,7 @@ def compile_paper(
     timeout_seconds: int = 300,
     revision_impact: str = "auto",
     reference_docx: Path | None = None,
+    include_docx: bool | None = None,
     strict_editorial: bool = False,
     enforce_page_budget: bool = False,
 ) -> dict[str, Any]:
@@ -810,6 +811,9 @@ def compile_paper(
         run_dir: 当前 v3 运行目录。
         timeout_seconds: 单次编译命令允许的最长秒数。
         reference_docx: 可选的 CUMCM Word 样式参考模板。
+        include_docx: 是否为可选交付显式要求生成 Word。``None`` 时仅在赛事
+            交付 Profile 要求 Word 时生成；传入参考 Word 模板也视为显式请求，
+            且不能用 ``false`` 覆盖赛事的必交 Word 要求。
         strict_editorial: 是否要求当前长篇首稿已有独立冷读记录。
         enforce_page_budget: 已弃用的兼容参数；页数只生成编辑信号。
 
@@ -833,6 +837,21 @@ def compile_paper(
 
     require_paper_generation_allowed(run_dir)
     state = read_simple_state(run_dir)
+    if include_docx is not None and not isinstance(include_docx, bool):
+        raise ContractError("include_docx 必须为 true、false 或 null")
+    if reference_docx is not None and include_docx is False:
+        raise ContractError("提供 reference_docx 时不能显式禁用 DOCX 交付")
+    from shumozizi.profiles.delivery import delivery_requirements_for_competition
+
+    delivery_requirements = delivery_requirements_for_competition(state.get("competition", ""))
+    if delivery_requirements["docx_required"] and include_docx is False:
+        raise ContractError("当前赛事要求 DOCX 交付，不能通过 include_docx=false 禁用")
+    should_compile_docx = (
+        delivery_requirements["docx_required"] if include_docx is None else include_docx
+    )
+    # 显式给出 Word 样式模板说明调用方确实需要 Word 成品，不能被赛事默认配置吞掉。
+    if reference_docx is not None:
+        should_compile_docx = True
     external_source = _external_compile_source(root, state)
     if external_source is not None:
         from shumozizi.paper.adjudication import require_paper_editorial_adjudication
@@ -903,15 +922,14 @@ def compile_paper(
 
         page_budget = audit_page_budget(root, final_pdf, enforce_minimum=False)
 
-    # PDF 已冻结，尝试生成同步交付的 Word 版本。
-    # pandoc 缺失时不阻断 PDF 交付——记录跳过原因供后续补生成，而非让整个
-    # 编译失败。竞赛要求同时提交 .docx 的场合，补生成后需重新运行本函数或
-    # 单独调用 compile_docx。
+    # PDF 是默认交付物；DOCX 只作为由赛事 Profile 或调用方显式选择的
+    # DeliveryFormat Adapter。这样既不让可选格式拖慢每次候选编译，也不会在
+    # 必交格式场景静默漏交。
     docx_skipped_reason: str | None = None
     final_docx: Path | None = None
     docx_qa: dict[str, Any] | None = None
     selected_reference_docx: Path | None = None
-    if external_source is None:
+    if external_source is None and should_compile_docx:
         from shumozizi.paper.cumcm_adapter import (
             require_cumcm_structure_map,
             resolve_cumcm_reference_docx,
@@ -945,9 +963,16 @@ def compile_paper(
                 docx_skipped_reason = str(exc)
             else:
                 raise
-    else:
+    elif external_source is not None and should_compile_docx:
+        raise ContractError(
+            "当前外部 Author 导入路径尚不能生成 DOCX；请先导入经审计的 Word 成品，"
+            "或在赛事交付要求允许时只提交 PDF"
+        )
+    elif external_source is not None:
         # 外部稿正文与内部模板无关：Word 由外部稿单独生成，本路径只交付 PDF。
         docx_skipped_reason = "external_author_compile: Word 由外部稿单独生成"
+    else:
+        docx_skipped_reason = "delivery_format_optional: 当前赛事仅要求 PDF，未请求 Word 转换"
 
     manifest_path = root / MANIFEST_PATH
     receipt: dict[str, Any] = {
@@ -967,6 +992,8 @@ def compile_paper(
         "final_pdf_sha256": sha256_file(final_pdf),
         "executions": executions,
         "strict_mode": strict_mode,
+        "delivery_requirements": delivery_requirements,
+        "docx_requested": should_compile_docx,
         "generated_at": utc_now(),
     }
     if publication_snapshot is not None:

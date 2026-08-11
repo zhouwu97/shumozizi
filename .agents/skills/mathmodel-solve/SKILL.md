@@ -28,7 +28,7 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 
 先按任务类型分流：`evaluation`、`data_modeling` 和 `simulation` 使用主方法、自然核对与题型验证，不伪造路线赛马；`exact_oracle` 核对正式指标容差与区间/集合结构；只有 `optimization`、`coordination` 默认提出自然 baseline 和一条数学结构不同的 challenger。不要把只更换求解器的 GA、PSO、DE 当成不同数学路线，但 MATLAB 的结构优化器可以作为同一路线内的异构实现、独立 challenger 或 oracle。每条真实竞争路线说明结构差异、最低成本 probe、潜在上限、失败方式和切换条件，写入 `analysis/ROUTE_COMPETITION.md`。
 
-对 `data_modeling`，先做“统计正确性审计”，再选主方法：在 `data_contract.methodology_audit` 写清数据生成过程、观测过程、时间/删失、重复测量或层级依赖、函数形式风险及未使用字段的处理。`statistically_valid_alternatives` 中的每条候选都必须说明它处理的风险、采用/拒绝/仅作敏感性的理由，以及可实际运行的区分检查；不能拿更简单的 OLS、固定阈值或单因素模型充当必然落败的 challenger。推荐数值若受抽样、删失、阈值反解或分组切点影响，还须预登记 `recommendation_uncertainty`，明确区间/重抽样/重估方法。
+对 `data_modeling`，先做“统计正确性审计”，再选主方法：在 `data_contract.methodology_audit` 写清数据生成过程、观测过程、时间/删失、重复测量或层级依赖、函数形式风险及未使用字段的处理。并在 `data_contract.outcome_kind` 显式写 `recommendation` 或 `descriptive`，不得从题目文字猜测。`statistically_valid_alternatives` 中的每条候选都必须说明它处理的风险、采用/拒绝/仅作敏感性的理由，以及可实际运行的区分检查；不能拿更简单的 OLS、固定阈值或单因素模型充当必然落败的 challenger。`outcome_kind=recommendation` 一律预登记 `recommendation_uncertainty.required=true`、具体区间/重抽样/重估方法；只有纯关系刻画的 `descriptive` 才可声明 `false`，并说明没有推荐对象的理由。
 
 对 `optimization`、`simulation`、`exact_oracle` 和 `coordination`，必须先使用 `mathmodel-matlab` 完成能力选择。默认运行 `python scripts/capabilities/detect_tools.py <run_dir>`，在单元中写 `capability_decision`：`python_considered`、`matlab_considered`、`matlab_availability`、`tooling_sha256`、`selected_engine`、`matlab_role`、`probe_waiver`、`reason` 和 `expected_gain`。不接受 `not_probed`；真实探测可用或不可用时绑定当前 tooling 哈希，只有解析解、小规模精确枚举、外部引擎被环境禁止或不能形成异构科学增益时才允许 waiver。MATLAB 可以不入选，但必须说明它为什么不能改善当前路线或证据。
 

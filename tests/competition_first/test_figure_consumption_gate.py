@@ -7,7 +7,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from shumozizi.core.io import atomic_json
+from shumozizi.paper.advanced_figure_policy import advanced_figure_quota_payload
 from shumozizi.paper.author_pass import _render_author_brief, _visual_requirement_brief
 from shumozizi.paper.readiness import validate_required_figure_consumption
 from shumozizi.simple.initialization import initialize_simple_run
@@ -42,9 +45,16 @@ def _run_with_current_figure(tmp_path: Path) -> Path:
     return run_dir
 
 
-def _run_with_advanced_figure_quota(tmp_path: Path) -> Path:
-    """构造满足高级图硬规格的四问正式稿。"""
-    question_ids = ["Q1", "Q2", "Q3", "Q4"]
+def _run_with_advanced_figure_quota(
+    tmp_path: Path,
+    *,
+    question_count: int = 4,
+    figures_per_question: int | None = None,
+) -> Path:
+    """构造满足按题数自适应视觉合同的正式稿。"""
+    question_ids = [f"Q{index}" for index in range(1, question_count + 1)]
+    if figures_per_question is None:
+        figures_per_question = 2 if question_count < 4 else 3
     run_dir = initialize_simple_run(
         tmp_path,
         "advanced-figure-quota",
@@ -57,7 +67,7 @@ def _run_with_advanced_figure_quota(tmp_path: Path) -> Path:
     tex_parts = ["\\documentclass{article}", "\\begin{document}"]
     for question_index, question_id in enumerate(question_ids):
         tex_parts.append(f"\\section{{{question_id}}}")
-        for figure_index in range(3):
+        for figure_index in range(figures_per_question):
             figure_id = f"fig_{question_id.lower()}_{figure_index + 1}"
             figures.append(
                 {
@@ -116,11 +126,41 @@ def test_figure_consumption_gate_passes_when_current_figure_referenced(tmp_path:
     assert errors == []
 
 
-def test_advanced_figure_quota_accepts_formal_current_figure_coverage(tmp_path: Path) -> None:
-    """新质量合同只有满足每题、总量和图型配额才可放行。"""
-    run_dir = _run_with_advanced_figure_quota(tmp_path)
+@pytest.mark.parametrize("question_count", range(1, 7))
+def test_adaptive_figure_quota_has_a_feasible_formal_paper_for_every_question_count(
+    tmp_path: Path,
+    question_count: int,
+) -> None:
+    """每种合法题数都存在不靠凑图的可通过正式稿。"""
+    run_dir = _run_with_advanced_figure_quota(
+        tmp_path,
+        question_count=question_count,
+    )
 
     assert validate_required_figure_consumption(run_dir) == []
+
+
+def test_adaptive_figure_quota_only_enforces_global_targets_from_four_questions(
+    tmp_path: Path,
+) -> None:
+    """少题运行保留逐题覆盖，但不被十二图或三图型反向强迫凑图。"""
+    short = advanced_figure_quota_payload(3)
+    long = advanced_figure_quota_payload(4)
+
+    assert short["overall_enforcement"] == "coverage_driven_editorial_target"
+    assert short["minimum_formal_current_figures"] is None
+    assert short["minimum_visual_archetypes"] is None
+    assert long["overall_enforcement"] == "hard_minimum"
+    assert long["minimum_formal_current_figures"] == 12
+    assert long["minimum_visual_archetypes"] == 3
+
+    run_dir = _run_with_advanced_figure_quota(
+        tmp_path / "shortage",
+        question_count=1,
+        figures_per_question=1,
+    )
+    errors = validate_required_figure_consumption(run_dir)
+    assert any("Q1 在正式稿只消费 1 张" in error for error in errors)
 
 
 def test_advanced_figure_quota_rejects_shortage_overflow_and_single_type(tmp_path: Path) -> None:
@@ -223,19 +263,19 @@ def test_visual_requirement_brief_lists_ready_figures_with_paths(tmp_path: Path)
     assert "需要视觉评估" not in text
 
 
-def test_author_brief_contains_cumcm_skeleton_and_advanced_figure_quota(
+def test_author_brief_prioritizes_claim_first_visuals_and_semantic_structure(
     tmp_path: Path,
 ) -> None:
-    """author brief 必须给出国赛骨架与高级图硬规格。"""
-    state = {"run_id": "x"}
+    """Author 只接收叙事与论证视觉义务，不接收逐问报账或全篇凑图命令。"""
+    state = {"run_id": "x", "required_questions": ["Q1", "Q2", "Q3"]}
     brief = _render_author_brief(state, {"cards": []}, None)
     for kw in [
-        "问题重述", "问题分析", "模型假设", "符号说明",
-        "模型建立与求解", "误差分析与检验", "模型评价与推广", "参考文献", "附录",
-        "决定性证据", "高级图配额是硬要求", "2--3 张 current 支撑图",
-        "至少 12 张", "至少 3 种可审计图型", "current 数据",
+        "共享数学对象", "允许合并相邻问题", "先回答每张图要证明什么",
+        "数据直觉", "决定性证据", "current 数据",
     ]:
         assert kw in brief, f"brief 缺少: {kw}"
+    for forbidden in ("不得混写", "每个问题单独成节", "至少 12 张", "至少 3 种可审计图型"):
+        assert forbidden not in brief, f"brief 不应再强制: {forbidden}"
     assert "20 页以上" not in brief
     assert "第一人称" in brief
     assert "主题句" in brief
