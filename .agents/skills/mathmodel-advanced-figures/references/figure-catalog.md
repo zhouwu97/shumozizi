@@ -52,3 +52,24 @@
 
 所有图复用 `scripts/style.py` 的 `apply_competition_style()`：seaborn 主题 + 统一调色板 +
 SimSun 中文字体 + DPI≥300。颜色语义：正式答案深青、阈值金色虚线、敏感性灰、不可行暖红、骨架蓝。
+
+## 即用模板索引（`render_advanced.py --template`）
+
+先完成 [contract.md](contract.md) 五点合同，再按下表选模板。每个模板读
+current production 结果 JSON 的字段（见下），**不模拟、不硬编码**。
+
+| 模板 id | 论证角色 | 读入字段 | 典型来源 |
+|---|---|---|---|
+| `survival_curve` | 机制/决定性证据 | `groups[].points[]{x,probability,ci_lower,ci_upper}` + `threshold` | 区间删失 AFT 达标曲线（Q2/Q3） |
+| `ci_forest` | 边界/稳健性 | `rows[]{label,estimate,low,high}` + `threshold` | Bootstrap/扰动后的推荐时点区间 |
+| `probability_curve` | 机制/边界 | `points[]{x,probability,ci_lo,ci_hi}` + `threshold` | 单组达标比例与阈值带 |
+| `group_violin` | 数据直觉 | `groups[]{group,values[]}` 或 `{group,estimate,ci_lo,ci_hi}` | 组间分布对比 |
+| `paired_raincloud` | 数据直觉/边界 | `groups[]{label,values[]}` | 正常/异常样本特征分布 |
+| `correlation_heatmap` | 数据直觉 | `matrix[[]]` + `labels[]` | 关键变量相关矩阵（EDA） |
+| `cv_roc_ci` | 决定性证据 | `fpr[],tpr[],ci_lower[],ci_upper[]` + `auc` + `operating_point` | 分类器留出/交叉验证 ROC |
+| `shap_combo` | 机制/解释 | `shap_values[[]]` + `feature_names[]` + `feature_values[[]]` | Elastic-Net/树模型 SHAP |
+| `feasible_region` | 边界/决策 | `lattice_points[]{x,y,feasible,cost}` | 优化可行域 |
+| `pareto_frontier` | 权衡/决策 | `candidate_points[]{cost,probability,ci_lo,ci_hi,label}` | 成本—可靠性前沿 |
+
+结构解释图（路线图/问题递进/机制判定）走 `render_structure.py`，见 structure-spec.md；
+`argument_role=decisive_evidence` 不接受结构图。

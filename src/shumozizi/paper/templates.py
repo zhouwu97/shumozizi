@@ -138,7 +138,12 @@ def _section_stem(reference: str) -> str:
 
 def _is_non_body_section(reference: str) -> bool:
     """判断章节是否为附录或摘要等非正文入口。"""
-    return _section_stem(reference) in _NON_BODY_SECTION_STEMS
+    lowered = reference.casefold()
+    return (
+        _section_stem(reference) in _NON_BODY_SECTION_STEMS
+        or lowered.startswith("appendices/")
+        or lowered == "appendices"
+    )
 
 
 def _body_section_reference(line: str, engine: str) -> str | None:

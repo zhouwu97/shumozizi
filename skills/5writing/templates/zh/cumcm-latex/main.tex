@@ -273,13 +273,28 @@
   \fi
 }
 
-% \appendixcn：默认附录（核心代码）。sections/A_code.tex 不存在时不产生任何附录页。
+% \appendixcn：默认附录（五节）。按国赛惯例展开为：
+%   A 附件与数据说明 / B 运行环境与可复现性 / C 关键结果表 /
+%   D 模型关键公式 / E 核心源代码。
+% 每节对应 sections/appendices/*.tex 与 sections/A_code.tex；对应文件不存在
+% 时该节不产生空白页（写作阶段选择不写某节即删文件）。
 \newcommand{\appendixcn}{%
   \FloatBarrier
+  \clearpage
+  \IfFileExists{sections/appendices/attachments.tex}{%
+    \appendixsection{附件与数据说明}\input{sections/appendices/attachments}%
+  }{}%
+  \IfFileExists{sections/appendices/reproducibility.tex}{%
+    \appendixsection{运行环境与可复现性}\input{sections/appendices/reproducibility}%
+  }{}%
+  \IfFileExists{sections/appendices/key_results.tex}{%
+    \appendixsection{关键结果表}\input{sections/appendices/key_results}%
+  }{}%
+  \IfFileExists{sections/appendices/key_formulas.tex}{%
+    \appendixsection{模型关键公式}\input{sections/appendices/key_formulas}%
+  }{}%
   \IfFileExists{sections/A_code.tex}{%
-    \clearpage
-    \appendixsection{核心代码}%
-    \input{sections/A_code}%
+    \appendixsection{核心源代码}\input{sections/A_code}%
   }{}%
 }
 

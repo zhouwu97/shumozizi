@@ -285,7 +285,15 @@ def write_analysis_knowledge_retrieval(
             )
             repo_root = index_path.resolve().parents[2]
             for item in matches:
-                if float(item["structural_similarity"]) < _MIN_STRUCTURAL_SIMILARITY:
+                # 混合四字段分低于阈值时，若 structural_tags 上的受控结构概念重叠
+                # 足够强（>=3 个共享概念且重叠率 >=0.5），仍视为结构命中。这修复
+                # “强统计结构匹配被 0.15 权重稀释到 0.30 混合阈值以下”的漏召回。
+                blended_ok = float(item["structural_similarity"]) >= _MIN_STRUCTURAL_SIMILARITY
+                concept_ok = (
+                    float(item.get("structural_tag_concepts_overlap", 0.0)) >= 0.5
+                    and int(item.get("structural_tag_shared_concepts", 0)) >= 3
+                )
+                if not (blended_ok or concept_ok):
                     continue
                 indexed_card_path = Path(str(item["card_path"]))
                 if indexed_card_path.is_absolute():

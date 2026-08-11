@@ -193,3 +193,70 @@ def test_controlled_structure_concepts_match_long_fingerprint_to_compact_card(
     assert match["structural_similarity"] >= 0.6
     assert match["domain_similarity"] == 0.0
     assert any("结构概念匹配" in reason for reason in match["match_reasons"])
+
+
+def test_strong_structural_overlap_survives_low_blended_score(tmp_path: Path) -> None:
+    """structural_tags 强概念重叠不被四字段加权稀释到 0.30 混合阈值以下。"""
+    cards = tmp_path / "knowledge/cards/papers"
+    cards.mkdir(parents=True)
+    body = "\n\n".join(
+        f"## {index}. {name}\n\n"
+        + (
+            "首次阈值事件按区间删失建模，并按主体分组验证。"
+            if name == "可迁移模式"
+            else "测试内容。"
+        )
+        for index, name in enumerate(REQUIRED_CARD_SECTIONS, 1)
+    )
+    (cards / "longitudinal.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "paper_id: longitudinal",
+                "title: 无关领域标题",
+                "source_file: longitudinal.pdf",
+                f"source_sha256: {'e' * 64}",
+                "problem_type: 完全无关的物理机理",
+                "data_structure: 无任何统计结构的文本",
+                "task_types:",
+                "  - 物理模拟",
+                "structural_tags:",
+                "  - 个体内相关",
+                "  - 阈值事件观测不完全",
+                "  - 建议值不确定性",
+                "  - 按主体分组验证",
+                "---",
+                "",
+                body,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    index = tmp_path / "knowledge/indexes/papers.json"
+    build_paper_index(cards, index)
+
+    run_dir = tmp_path / "runs/strong-overlap"
+    from shumozizi.knowledge.retrieval import write_analysis_knowledge_retrieval
+
+    out = write_analysis_knowledge_retrieval(
+        run_dir,
+        index,
+        {
+            "problem_type": "多次采样下的非线性时间关系、首次达到阈值的删失事件与风险最小化",
+            "data_structure": "同一主体多次采样，首次阈值只知道位于相邻记录之间",
+            "task_types": ["重复测量回归建模", "时间阈值反演", "按主体分组验证"],
+            "keywords": ["完全不相干的领域词"],
+            "statistical_units": [],
+            "mathematical_difficulties": [],
+            "objective_structures": [],
+            "constraint_types": [],
+            "validation_risks": [],
+            "structural_tags": ["个体内相关", "阈值事件观测不完全", "建议值不确定性"],
+        },
+    )
+    artifact = json.loads(out.read_text(encoding="utf-8"))
+    assert artifact["status"] == "matched"
+    assert any(
+        card["paper_id"] == "longitudinal" for card in artifact["matched_cards"]
+    )

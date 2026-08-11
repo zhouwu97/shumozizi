@@ -336,6 +336,8 @@ def retrieve_papers(
         structural_reasons: list[str] = []
         domain_reasons: list[str] = []
         structural_similarity = 0.0
+        structural_tag_concepts_overlap = 0.0
+        structural_tag_shared_concepts = 0
         if entry["problem_type"].casefold() == problem_type.casefold():
             structural_similarity += 0.35
             structural_reasons.append("problem_type 精确匹配")
@@ -379,22 +381,28 @@ def retrieve_papers(
         matched_structures = normalized_structures.intersection(
             str(item).casefold() for item in entry.get("structural_tags", [])
         )
+        structure_concept_similarity, structure_concepts = (
+            _semantic_structure_overlap(
+                structural_tags,
+                [str(item) for item in entry.get("structural_tags", [])],
+            )
+            if structural_tags
+            else (0.0, [])
+        )
+        # 概念重叠始终记录，避免精确命中时把强结构信号丢失给混合阈值。
+        structural_tag_concepts_overlap = float(structure_concept_similarity or 0.0)
+        structural_tag_shared_concepts = len(structure_concepts)
         if matched_structures:
             structure_ratio = len(matched_structures) / max(len(normalized_structures), 1)
             structural_similarity += 0.15 * structure_ratio
             structural_reasons.append(
                 "structural_tags 匹配: " + ", ".join(sorted(matched_structures))
             )
-        elif structural_tags:
-            similarity, concepts = _semantic_structure_overlap(
-                structural_tags,
-                [str(item) for item in entry.get("structural_tags", [])],
+        elif structure_concept_similarity:
+            structural_similarity += 0.15 * structure_concept_similarity
+            structural_reasons.append(
+                "structural_tags 结构概念匹配: " + ", ".join(structure_concepts)
             )
-            if similarity:
-                structural_similarity += 0.15 * similarity
-                structural_reasons.append(
-                    "structural_tags 结构概念匹配: " + ", ".join(concepts)
-                )
 
         domain_searchable = " ".join(
             [entry["title"], *entry.get("domain_terms", [])]
@@ -429,6 +437,8 @@ def retrieve_papers(
                         "overall_confidence": overall_confidence,
                         "match_reasons": reasons,
                         "high_confidence": overall_confidence == "high",
+                        "structural_tag_concepts_overlap": structural_tag_concepts_overlap,
+                        "structural_tag_shared_concepts": structural_tag_shared_concepts,
                     },
                 )
             )

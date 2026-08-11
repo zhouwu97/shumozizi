@@ -235,12 +235,202 @@ def _group_violin(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
     return _save(fig, out_stem)
 
 
+# ---------------------------------------------------------------------------
+# 模板：生存/达标曲线（区间删失 AFT 的分组达标概率，CI 带 + 阈值）
+# ---------------------------------------------------------------------------
+def _survival_curve(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
+    groups = _rows(_pick(doc, "groups", "by_group", "curves", default=[]), "groups")
+    if not groups:
+        raise ValueError("survival_curve 需要 groups[]")
+    threshold = float(_pick(doc, "threshold", "target", default=0.90))
+    x_label = str(_pick(doc, "x_label", default="孕周"))
+    y_label = str(_pick(doc, "y_label", default="达标比例"))
+    fig, ax = plt.subplots(figsize=(7.8, 4.8))
+    for i, g in enumerate(groups):
+        label = str(g.get("label", g.get("name", f"组{i + 1}")))
+        pts = _rows(g.get("points", []), "points")
+        if not pts:
+            continue
+        x = np.array([float(p.get("x", p.get("week", p.get("t", i)))) for i, p in enumerate(pts)])
+        prob = np.array([float(p.get("probability", p.get("p", p.get("p_estimate", 0.0)))) for p in pts])
+        low = np.array([float(p.get("ci_lower", p.get("low", p.get("ci_lo", prob[j])))) for j, p in enumerate(pts)])
+        high = np.array([float(p.get("ci_upper", p.get("high", p.get("ci_hi", prob[j])))) for j, p in enumerate(pts)])
+        color = [TEAL, BLUE, GOLD, CORAL, GRAY][i % 5]
+        ax.fill_between(x, low, high, color=color, alpha=0.12)
+        ax.plot(x, prob, color=color, linewidth=2.0, label=label)
+    ax.axhline(threshold, color=GOLD, linewidth=1.6, linestyle="--", label=f"{threshold:.0%} 达标阈值")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(str(_pick(doc, "title", default="各组达标比例曲线与推荐时点")))
+    ax.legend(frameon=False, loc="best", fontsize=8)
+    clean_axes(ax)
+    return _save(fig, out_stem)
+
+
+# ---------------------------------------------------------------------------
+# 模板：SHAP 组合图（特征重要性条形 + 蜂群贡献度）
+# ---------------------------------------------------------------------------
+def _shap_combo(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
+    shap_matrix = _pick(doc, "shap_values", "shap", default=None)
+    feature_names = [str(f) for f in _pick(doc, "feature_names", "features", default=[])]
+    feature_values = _pick(doc, "feature_values", "X", default=None)
+    if not isinstance(shap_matrix, list) or not feature_names:
+        raise ValueError("shap_combo 需要 shap_values[[]] 与 feature_names[]")
+    arr = np.asarray([[float(v) for v in row] for row in shap_matrix], dtype=float)
+    n_feat = arr.shape[1]
+    if len(feature_names) != n_feat:
+        feature_names = [f"特征{i + 1}" for i in range(n_feat)]
+    mean_abs = np.abs(arr).mean(axis=0)
+    order = np.argsort(mean_abs)[::-1]
+    fig, (ax_bar, ax_swarm) = plt.subplots(1, 2, figsize=(10.6, 4.8),
+                                           gridspec_kw={"width_ratios": [1, 2.2]})
+    ax_bar.barh(np.arange(n_feat), mean_abs[order], color=TEAL, edgecolor="white")
+    ax_bar.set_yticks(np.arange(n_feat))
+    ax_bar.set_yticklabels([feature_names[i] for i in order], fontsize=8)
+    ax_bar.invert_yaxis()
+    ax_bar.set_xlabel("平均 |SHAP|")
+    ax_bar.set_title("特征重要性")
+    # 蜂群：行内按特征值着色（feature_values 提供颜色），x 为 SHAP 贡献
+    colors = None
+    if isinstance(feature_values, list) and len(feature_values) == arr.shape[0]:
+        fv = np.asarray([[float(v) for v in row] for row in feature_values], dtype=float)
+        colors = fv
+    for rank, fi in enumerate(order):
+        xvals = arr[:, fi]
+        yvals = np.full(xvals.size, n_feat - rank) + np.random.default_rng(fi).uniform(-0.28, 0.28, xvals.size)
+        if colors is not None:
+            c = colors[:, fi]
+            sc = ax_swarm.scatter(xvals, yvals, c=c, cmap="viridis", s=7, alpha=0.55, edgecolor="none")
+        else:
+            ax_swarm.scatter(xvals, yvals, color=TEAL, s=7, alpha=0.5, edgecolor="none")
+    ax_swarm.axvline(0, color=GRAY, linewidth=1.2, linestyle="--")
+    ax_swarm.set_yticks(np.arange(n_feat))
+    ax_swarm.set_yticklabels([feature_names[i] for i in order], fontsize=8)
+    ax_swarm.invert_yaxis()
+    ax_swarm.set_xlabel("SHAP 值（贡献方向）")
+    ax_swarm.set_title("蜂群贡献度")
+    if colors is not None:
+        fig.colorbar(sc, ax=ax_swarm, fraction=0.04, label="特征值")
+    fig.suptitle(str(_pick(doc, "title", default="SHAP 特征贡献")), y=1.0, fontsize=12)
+    clean_axes(ax_bar)
+    clean_axes(ax_swarm)
+    return _save(fig, out_stem)
+
+
+# ---------------------------------------------------------------------------
+# 模板：相关矩阵热力图（EDA）
+# ---------------------------------------------------------------------------
+def _correlation_heatmap(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
+    matrix = _pick(doc, "matrix", "corr", "correlation", default=None)
+    labels = [str(f) for f in _pick(doc, "labels", "feature_names", "columns", default=[])]
+    if not isinstance(matrix, list) or not matrix:
+        raise ValueError("correlation_heatmap 需要 matrix[[]]")
+    data = np.asarray([[float(v) for v in row] for row in matrix], dtype=float)
+    n = data.shape[0]
+    if len(labels) != n:
+        labels = [f"变量{i + 1}" for i in range(n)]
+    fig, ax = plt.subplots(figsize=(max(5.6, 0.42 * n), max(4.6, 0.38 * n)))
+    sns.heatmap(data, annot=True, fmt=".2f", cmap="RdBu_r", center=0,
+                xticklabels=labels, yticklabels=labels, ax=ax,
+                cbar_kws={"shrink": 0.8}, square=True)
+    ax.set_title(str(_pick(doc, "title", default="关键变量相关矩阵")))
+    ax.tick_params(axis="x", rotation=45, labelsize=8)
+    ax.tick_params(axis="y", rotation=0, labelsize=8)
+    return _save(fig, out_stem)
+
+
+# ---------------------------------------------------------------------------
+# 模板：配对雨云图（半小提琴 + 箱线 + 抖动点）
+# ---------------------------------------------------------------------------
+def _paired_raincloud(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
+    groups = _rows(_pick(doc, "groups", "items", "rows", default=[]), "groups")
+    if not groups:
+        raise ValueError("paired_raincloud 需要 groups[]")
+    records = []
+    for i, g in enumerate(groups):
+        label = str(g.get("label", g.get("name", f"组{i + 1}")))
+        vals = g.get("values", g.get("data", []))
+        if isinstance(vals, list):
+            records.extend(
+                {"group": label, "value": float(v)}
+                for v in vals
+                if isinstance(v, (int, float))
+            )
+    if not any(r["value"] for r in records):
+        raise ValueError("paired_raincloud 需要每组的 values[]")
+    import pandas as pd
+    df = pd.DataFrame(records)
+    fig, ax = plt.subplots(figsize=(7.6, 4.8))
+    # 半小提琴 + 箱线 + 抖动点
+    violin_parts = ax.violinplot(
+        [df[df["group"] == g]["value"].to_numpy() for g in df["group"].unique()],
+        positions=np.arange(len(df["group"].unique())), showmedians=False, showextrema=False,
+    )
+    for part, color in zip(violin_parts["bodies"], [TEAL, BLUE, GOLD, CORAL, GRAY], strict=False):
+        part.set_facecolor(color)
+        part.set_alpha(0.35)
+        part.set_edgecolor(color)
+        part.set_linewidth(1.0)
+    order = list(df["group"].unique())
+    sns.boxplot(data=df, x="group", y="value", order=order, ax=ax, width=0.16,
+                boxprops=dict(facecolor="white", edgecolor="black", linewidth=1.0),
+                whiskerprops=dict(color="black"), capprops=dict(color="black"),
+                medianprops=dict(color="black", linewidth=1.4))
+    sns.stripplot(data=df, x="group", y="value", order=order, ax=ax, color="black",
+                  size=2.6, alpha=0.55, jitter=0.18)
+    ax.set_xlabel(str(_pick(doc, "x_label", default="分组")))
+    ax.set_ylabel(str(_pick(doc, "y_label", default="取值")))
+    ax.set_title(str(_pick(doc, "title", default="分组分布雨云图")))
+    clean_axes(ax)
+    return _save(fig, out_stem)
+
+
+# ---------------------------------------------------------------------------
+# 模板：CV-ROC 曲线（置信带 + 操作点 + 随机基线）
+# ---------------------------------------------------------------------------
+def _cv_roc_ci(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
+    fpr = _pick(doc, "fpr", "fpr_mean", default=None)
+    tpr = _pick(doc, "tpr", "tpr_mean", default=None)
+    if not isinstance(fpr, list) or not isinstance(tpr, list) or len(fpr) != len(tpr):
+        raise ValueError("cv_roc_ci 需要 fpr[] 与 tpr[] 等长")
+    fpr = np.asarray([float(v) for v in fpr])
+    tpr = np.asarray([float(v) for v in tpr])
+    auc = float(_pick(doc, "auc", default=0.0))
+    fig, ax = plt.subplots(figsize=(6.4, 5.2))
+    lo = _pick(doc, "ci_lower", "tpr_low", default=None)
+    hi = _pick(doc, "ci_upper", "tpr_high", default=None)
+    if isinstance(lo, list) and isinstance(hi, list) and len(lo) == len(tpr):
+        ax.fill_between(fpr, [float(v) for v in lo], [float(v) for v in hi],
+                        color=TEAL, alpha=0.15, label="95% 置信带")
+    ax.plot(fpr, tpr, color=TEAL, linewidth=2.2, label=f"AUC = {auc:.3f}")
+    ax.plot([0, 1], [0, 1], color=GRAY, linewidth=1.2, linestyle="--", label="随机基线")
+    op = _pick(doc, "operating_point", "operating", default=None)
+    if isinstance(op, dict):
+        op_fpr = float(op.get("fpr", op.get("x", 0.0)))
+        op_tpr = float(op.get("tpr", op.get("sensitivity", op.get("y", 0.0))))
+        ax.scatter([op_fpr], [op_tpr], marker="*", s=300, color=GOLD, edgecolor="black",
+                   linewidth=0.7, zorder=5, label="操作点（特异性约束）")
+    ax.set_xlabel("假阳性率（1 - 特异性）")
+    ax.set_ylabel("真阳性率（敏感性）")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_title(str(_pick(doc, "title", default="分类器 ROC 曲线")))
+    ax.legend(frameon=False, loc="lower right", fontsize=8)
+    clean_axes(ax)
+    return _save(fig, out_stem)
+
+
 _TEMPLATES = {
     "probability_curve": _probability_curve,
     "feasible_region": _feasible_region,
     "pareto_frontier": _pareto_frontier,
     "ci_forest": _ci_forest,
     "group_violin": _group_violin,
+    "survival_curve": _survival_curve,
+    "shap_combo": _shap_combo,
+    "correlation_heatmap": _correlation_heatmap,
+    "paired_raincloud": _paired_raincloud,
+    "cv_roc_ci": _cv_roc_ci,
 }
 
 
@@ -258,16 +448,16 @@ def _save(fig, out_stem: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="竞赛高级图渲染")
-    parser.add_argument("--template", required=True, help="模板 id，--list 查看")
-    parser.add_argument("--input", required=True, help="production 结果 JSON")
-    parser.add_argument("--output", required=True, help="输出 stem（不含扩展名）")
+    parser.add_argument("--template", help="模板 id，--list 查看")
+    parser.add_argument("--input", help="production 结果 JSON")
+    parser.add_argument("--output", help="输出 stem（不含扩展名）")
     parser.add_argument("--list", action="store_true", help="列出模板")
     args = parser.parse_args()
     if args.list:
         for name in _TEMPLATES:
             print(name)
         return 0
-    if args.template not in _TEMPLATES:
+    if args.template is None or args.template not in _TEMPLATES:
         print(f"未知模板: {args.template}；可用: {', '.join(_TEMPLATES)}", file=sys.stderr)
         return 2
     document = json.loads(Path(args.input).read_text(encoding="utf-8"))

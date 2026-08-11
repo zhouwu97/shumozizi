@@ -1,18 +1,16 @@
-% 附录：核心代码 / 支撑材料清单
+% 附录 E：核心源代码
 % ---------------------------------------------------------------------------
-% 本文件由写作阶段填写。此处只放论文正文引用到的“核心”代码片段或关键伪代码，
-% 完整可复现代码建议作为支撑材料另附，不要把整个工程粘贴进正文附录。
+% 写作阶段填写。按国赛要求附录需含建模所用到的完整、可运行源程序代码。
+% 用 lstinputlisting 从 code/ 目录逐脚本引入（与 code/ 逐行一致，可直接运行），
+% 不要手工粘贴，避免正文与源码漂移。行号、黑白、可断行已由模板配置。
+% ---------------------------------------------------------------------------
 %
-% 说明：
-%   - 模板入口通过 \appendixcn 引入本文件；若本文件不存在，则完全不产生附录页。
-%   - 代码用 lstlisting 环境排版（已配置为黑白、带行号、可断行）。
-%   - 需要多个附录小节时，在 main.tex 正文调用 \appendixsection{标题} 生成
-%     “附录 A / 附录 B / …”，本文件对应第一个附录小节“核心代码”。
-
-\begin{lstlisting}[language=Python]
-import numpy as np
-
-# 写作阶段替换为本题核心求解代码或关键算法。
-def solve():
-    raise NotImplementedError
-\end{lstlisting}
+% 示例：\lstinputlisting[language=Python]{code/load_data.py}
+% 按本题实际脚本补齐，例如：
+%
+% \lstinputlisting[language=Python]{code/load_data.py}
+% \lstinputlisting[language=Python]{code/q1_model.py}
+% \lstinputlisting[language=Python]{code/q2_timing.py}
+% \lstinputlisting[language=Python]{code/q3_timing.py}
+% \lstinputlisting[language=Python]{code/q4_classifier.py}
+% \lstinputlisting[language=Python]{code/sensitivity_error.py}
