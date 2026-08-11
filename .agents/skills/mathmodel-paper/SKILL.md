@@ -217,6 +217,28 @@ v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM se
 
 ---
 
+## SECOND STEP：首稿后独立补充高级图（可执行阶段，不是提示词）
+
+首稿 `longform-source.tex` 编译后，必须执行独立的 SECOND STEP——**不要再只靠 AUTHOR_BRIEF 的文字让同一个 LLM 回去补图**。本步骤是两个动作：
+
+1. **Agent 决定补哪些高级图**：读首稿 + `mathmodel-advanced-figures/references/figure-catalog.md`，按每个结果的**数据特征**（分布/概率/优化/关系/网络/分类）从可用的 production 结果挑图种，写一个 plan JSON（模板、数据源、输出 stem、图注、一句"展示了什么"、插入锚点 = 章节标题或 \\label）。
+2. **脚本执行**：
+
+```text
+python scripts/paper/supplement_advanced_figures.py <run_dir> --plan <plan.json> [--compile]
+```
+
+脚本会：用 `mathmodel-advanced-figures/scripts/render_advanced.py` 从 production 数据渲染
+（probability_curve / feasible_region / pareto_frontier / ci_forest / group_violin 等模板，
+统一样式 DPI≥300 / SimSun），把 figure 环境插入 `longform-source.tex` 对应章节，
+登记进 `figures/index.json`（绑定 production 来源，供图消费门验证），再重编译。
+
+目标：每个问题 2--3 张支撑图、全篇不同类型图不少于 12 张、优先高级图
+（小提琴/森林/帕累托/肘图/灵敏度/混淆矩阵/PR-ROC/校准/误差带/收敛），
+而不是只有折线图和柱状图。SECOND STEP 只增强可视化，不改数据、模型与结论。
+
+---
+
 ## answer map 硬性要求
 
 - 每个必答问题在 `analysis/answer_map.json` 或 `paper/answer-map.json` 有当前 `result_id` 和直接答案位置
