@@ -1,10 +1,13 @@
 % !TEX program = xelatex
 % =============================================================================
-%  全国大学生数学建模竞赛（CUMCM）LaTeX 论文模板
+%  全国大学生数学建模竞赛（CUMCM）LaTeX 论文模板 —— 官方 cumcmthesis 类
 %
-%  设计目标：可靠、干净、可复用的 XeLaTeX 数学建模论文模板。
-%    - A4、四边 2.5 cm、摘要即第 1 页、正文无目录、黑白学术排版。
-%    - 跨平台字体自动回退（Windows / macOS / Linux），最终兜底 Fandol。
+%  设计目标：采用官方《全国大学生数学建模竞赛论文格式规范》对应的 cumcmthesis
+%  LaTeX 类，可靠、干净、可复用。
+%    - 官方类提供承诺书/编号页（\maketitle）、摘要环境（abstract + \keywords）、
+%      中文节编号（一、二、三、），默认 A4 2.5cm 边距、1.38 行距。
+%    - 本模板覆盖其默认字体 STSong/STKaiti 为 SimSun/SimHei/KaiTi/FangSong，
+%      缺失时回退 Fandol（TeX 发行版自带）。
 %    - 缺少正文 sections/questions.tex 时明确报错，不静默产出空白论文。
 %    - 缺少可选内容（参考文献 / 附录）时不产生空白页或伪造内容。
 %
@@ -15,13 +18,17 @@
 %    模板实例化时会自动生成 sections/questions.tex 文件（题目数决定的正文骨架），
 %    因此本目录的 sections/ 不应预置 questions.tex。
 % =============================================================================
-\documentclass[UTF8,fontset=none,12pt,a4paper]{ctexart}
+\documentclass[withoutpreface,bwprint,12pt]{cumcmthesis}
 
 % =========================================================================
 %  论文配置块（写作阶段按本题填写 / 切换开关）
 % =========================================================================
-% 标题占位符：写作阶段替换为本题标题（占位符会被终检当作必填项检测）。
+% 标题：\title 供给 \maketitle 的标题页；题号/队号/学校/成员等在提交时填写。
 \newcommand{\PaperTitle}{论文标题}
+\title{\PaperTitle}
+\tihao{}                    % 题号（如 C）
+\baominghao{}               % 队号（提交时填写）
+% \schoolname{}{} \yearinput{} \monthinput{} \dayinput{} 等按需填写。
 % 是否包含参考文献。为真时缺 references.tex 会明确报错，而非静默留空。
 \newif\ifpaperhasreferences   \paperhasreferencestrue
 % 参考文献标题是否参与章节编号（true → “六、参考文献”；false → 无编号）。
@@ -30,36 +37,32 @@
 \newif\ifshowappendix         \showappendixtrue
 
 % =========================================================================
-%  字体：Windows / macOS / Linux 自动回退，最终兜底 Fandol（TeX 发行版自带）
+%  字体：cumcmthesis 默认 STSong/STKaiti；按平台覆盖为 SimSun 系，兜底 Fandol。
 % =========================================================================
-\usepackage{fontspec}
-\usepackage{xeCJK}
-
-% 逐字体探测：优先级从低到高依次覆盖，最后被赋值的（存在的最高优先级）胜出。
-% Fandol 作为跨平台宋体风格兜底；Windows 通过字体文件存在性切换到 SimSun。
-% 不使用 \IfFontExistsTF 探测缺失的 CJK 字体，因为 MiKTeX 会误触发 maketfm。
-\def\zhSong{FandolSong-Regular.otf}\def\zhHei{FandolHei-Regular.otf}
-\def\zhKai{FandolKai-Regular.otf}\def\zhFang{FandolFang-Regular.otf}
-\IfFileExists{C:/Windows/Fonts/simsun.ttc}{\def\zhSong{SimSun}}{}
-\IfFileExists{C:/Windows/Fonts/simhei.ttf}{\def\zhHei{SimHei}}{}
-\IfFileExists{C:/Windows/Fonts/simkai.ttf}{\def\zhKai{KaiTi}}{}
-\IfFileExists{C:/Windows/Fonts/simfang.ttf}{\def\zhFang{FangSong}}{}
-
-% 默认中文字体（正文宋体、无衬线黑体、等宽仿宋）与四个具名字族。
-\setCJKmainfont{\zhSong}
-\setCJKsansfont{\zhHei}
-\setCJKmonofont{\zhFang}
-\newCJKfontfamily\paperSong{\zhSong}
-\newCJKfontfamily\paperHei{\zhHei}
-\newCJKfontfamily\paperKai{\zhKai}
-\newCJKfontfamily\paperFang{\zhFang}
-
-% 兼容命令：fontset=none 下 ctex 不保证 \heiti/\kaishu 等可用，这里显式绑定，
-% 使标题格式（\ctexset 用 \heiti）与旧正文（\kaishu 等）在任何平台都成立。
-\let\songti\paperSong
-\let\heiti\paperHei
-\let\kaishu\paperKai
-\let\fangsong\paperFang
+\IfFileExists{C:/Windows/Fonts/simsun.ttc}{%
+  \setCJKmainfont[AutoFakeBold]{SimSun}%
+  \setCJKfamilyfont{song}[AutoFakeBold]{SimSun}%
+}{%
+  \setCJKmainfont[AutoFakeBold]{FandolSong-Regular.otf}%
+  \setCJKfamilyfont{song}[AutoFakeBold]{FandolSong-Regular.otf}%
+}
+\IfFileExists{C:/Windows/Fonts/simhei.ttf}{%
+  \setCJKfamilyfont{hei}[AutoFakeBold]{SimHei}%
+}{%
+  \setCJKfamilyfont{hei}[AutoFakeBold]{FandolHei-Regular.otf}%
+}
+\IfFileExists{C:/Windows/Fonts/simkai.ttf}{%
+  \setCJKfamilyfont{kai}[AutoFakeBold]{KaiTi}%
+}{%
+  \setCJKfamilyfont{kai}[AutoFakeBold]{FandolKai-Regular.otf}%
+}
+\IfFileExists{C:/Windows/Fonts/simfang.ttf}{%
+  \setCJKfamilyfont{fs}[AutoFakeBold]{FangSong}%
+}{%
+  \setCJKfamilyfont{fs}[AutoFakeBold]{FandolFang-Regular.otf}%
+}
+% \fangsong 兼容：cumcmthesis 未定义，这里补上。
+\providecommand*{\fangsong}{\CJKfamily{fs}}
 
 % 西文正文与等宽字体：存在则用，缺失回退，最终回退到 fontspec 默认（不报错）。
 \IfFontExistsTF{Times New Roman}{\setmainfont{Times New Roman}}{%
@@ -70,27 +73,20 @@
 }
 
 % =========================================================================
-%  页面与正文
+%  正文排版
 % =========================================================================
-\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm, footskip=1.2cm]{geometry}
+% 国赛正文按宋体小四（12pt）排版；cumcmthesis 已设 2.5cm 边距与 1.38 行距。
+% 显式锁定 12pt/18pt（小四、1.5 倍行距）以满足官方排版契约。
 \usepackage{setspace}
-\setstretch{1.40}
-% 国赛正文按宋体小四（12pt）排版；数学公式由上面的 Times 数学字体处理。
 \fontsize{12pt}{18pt}\selectfont
 \setlength{\parindent}{2em}
 \setlength{\parskip}{0pt}
 \raggedbottom
 
-% ---------- 页码：摘要首页即第 1 页；无页眉，底部居中 ----------
-\usepackage{fancyhdr}
-\pagestyle{fancy}
-\fancyhf{}
-\fancyfoot[C]{\fontsize{10.5pt}{12pt}\selectfont\thepage}
-\renewcommand{\headrulewidth}{0pt}
-\renewcommand{\footrulewidth}{0pt}
+% ---------- 页码：摘要首页即第 1 页；无页眉，底部居中（article plain 默认）----------
+% cumcmthesis \maketitle 会把页码重置为 1，摘要页用 \thispagestyle{plain} 显示页码。
 
 % ---------- 数学：变量使用 Times 系斜体 ----------
-\usepackage{amsmath,mathtools,bm}
 \IfFileExists{newtxmath.sty}{\usepackage{newtxmath}}{\usepackage{amssymb,mathptmx}}
 \allowdisplaybreaks[2]
 
@@ -121,39 +117,7 @@
 \setlist{nosep,leftmargin=2em}
 \setlist[enumerate,1]{label=\arabic*、}
 
-% ---------- 标题：一级居中，二三级左对齐 ----------
-\ctexset{
-  section = {
-    name    = {,、},
-    number  = \chinese{section},
-    format  = \centering\heiti\fontsize{15pt}{20pt}\selectfont,
-    aftername   = \hspace{0.5em},
-    beforeskip  = 18pt,
-    afterskip   = 10pt,
-    afterindent = false
-  },
-  subsection = {
-    name    = {,},
-    number  = \arabic{section}.\arabic{subsection},
-    format  = \heiti\fontsize{12pt}{18pt}\selectfont,
-    aftername   = \hspace{0.5em},
-    beforeskip  = 10pt,
-    afterskip   = 2pt,
-    afterindent = false
-  },
-  subsubsection = {
-    name    = {,},
-    number  = \arabic{section}.\arabic{subsection}.\arabic{subsubsection},
-    format  = \heiti\fontsize{12pt}{18pt}\selectfont,
-    aftername   = \hspace{0.5em},
-    beforeskip  = 8pt,
-    afterskip   = 2pt,
-    afterindent = false
-  }
-}
-
 % ---------- 代码：只用黑白，避免彩色编辑器截图式排版 ----------
-\usepackage{xcolor}
 \usepackage{listings}
 \lstset{
   basicstyle=\ttfamily\fontsize{9pt}{11pt}\selectfont,
@@ -182,7 +146,6 @@
 % ---------- 参考文献标题：单一来源，避免双标题 ----------
 % thebibliography 默认自行输出 \section*{参考文献}（不编号）。
 % 若 \ifnumberedreferences 为真，则把它就地改成编号的 \section{参考文献}。
-% 无论哪种情形，“参考文献”标题都只此一处，\referencescn 不再另行输出标题。
 \usepackage{etoolbox}
 \AtBeginDocument{%
   \ifnumberedreferences
@@ -195,38 +158,27 @@
 % =========================================================================
 %  自定义命令
 % =========================================================================
-% \papertitle{标题}：首页居中大标题（首页不是独立封面）。
-\newcommand{\papertitle}[1]{%
-  \vspace*{0.55cm}%
-  \begin{center}
-    {\heiti\fontsize{18pt}{24pt}\selectfont #1\par}
-  \end{center}
-  \vspace{0.65cm}%
-}
+% 数学宏（正文使用）。
+\newcommand{\logit}[1]{\mathrm{logit}\left(#1\right)}
+\newcommand{\R}{\mathbb{R}}
 
-% \abstractcn{摘要正文}{关键词}：居中“摘要”标题 + 正文 + 加粗“关键词：” + 换页。
-% 摘要建议按叙述逻辑组织（背景与困难 → 建模结构 → 主方法 → 关键数值结果 →
-% 规律与决策含义 → 可信边界），不要机械按“问题一/二/三”逐句点名。
+% 直接答案框：正文用 \begin{answerbox}...\end{answerbox} 展示直接答案。
+\newenvironment{answerbox}{%
+  \begin{center}\begin{minipage}{0.96\textwidth}\noindent\rule{\linewidth}{0.5pt}\\[2pt]
+  \noindent{\heiti\fontsize{14pt}{18pt}\selectfont 直接答案：}}%
+  {\par\vspace{2pt}\noindent\rule{\linewidth}{0.5pt}\end{minipage}\end{center}}
+
+% \abstractcn{摘要正文}{关键词}：使用 cumcmthesis 官方摘要环境。
+% 标题页 \maketitle 已在文档开头调用；本命令在摘要页显示页码 1 并输出摘要与关键词。
 \newcommand{\abstractcn}[2]{%
-  \begin{center}
-    {\heiti\fontsize{15pt}{20pt}\selectfont 摘要\par}
-  \end{center}
-  \vspace{0.35em}%
-  \begingroup
-    \setstretch{1.32}%
-    \fontsize{12pt}{18pt}\selectfont
+  \thispagestyle{plain}%
+  \begin{abstract}%
     #1\par
-    \vspace{0.65em}%
-    \noindent{\heiti 关键词：}#2\par
-  \endgroup
-  \clearpage
+    \keywords{#2}%
+  \end{abstract}%
 }
 
 % \threelinetable{表题}{列定义}{表头}{表体}：三线表。
-% 表题只写内容，不要手写“表 1”；需要交叉引用时优先直接用 table 环境并加 \label。
-% 使用 [htbp] 让浮动体正常参与排版，避免 [H] 造成的大片空白与越界。
-% 可选参数为交叉引用标签：\threelinetable[tab:key]{标题}{列格式}{表头}{表体}。
-% 省略 [tab:key] 时不产生标签，向后兼容旧调用。
 \newcommand{\threelinetable}[5][]{%
   \begin{table}[htbp]
     \centering
@@ -243,7 +195,6 @@
 }
 
 % \appendixsection{标题}：附录小节，自动编号“附录 A / 附录 B / …”。
-% 支持单附录与多附录：单附录调用一次，多附录多次调用即可。不自动 \appendix。
 \newcounter{paperappendix}
 \newcommand{\appendixsection}[1]{%
   \stepcounter{paperappendix}%
@@ -252,10 +203,6 @@
 }
 
 % \referencescn：参考文献节。references.tex 用 thebibliography 环境放条目。
-% 关键：标题“参考文献”只由 thebibliography 自动输出一次，本命令**不再手写标题**，
-% 否则会与 thebibliography 的内置标题叠加出现两个“参考文献”。
-% 是否编号由 \ifnumberedreferences 控制（见下方 \AtBeginDocument 补丁）。
-% 缺 references.tex 且 \ifpaperhasreferences 为真时明确报错（不伪造条目）。
 \newcommand{\referencescn}{%
   \ifpaperhasreferences
     \FloatBarrier
@@ -276,8 +223,6 @@
 % \appendixcn：默认附录（五节）。按国赛惯例展开为：
 %   A 附件与数据说明 / B 运行环境与可复现性 / C 关键结果表 /
 %   D 模型关键公式 / E 核心源代码。
-% 每节对应 sections/appendices/*.tex 与 sections/A_code.tex；对应文件不存在
-% 时该节不产生空白页（写作阶段选择不写某节即删文件）。
 \newcommand{\appendixcn}{%
   \FloatBarrier
   \clearpage
@@ -299,11 +244,10 @@
 }
 
 \begin{document}
-\setcounter{page}{1}
+% cumcmthesis \maketitle（withoutpreface）：标题页 + 页码重置为 1。
+\maketitle
 
-% 首页不是独立封面：标题、摘要、关键词均位于第 1 页。
-\papertitle{\PaperTitle}
-
+% 摘要即第 1 页（含页码），随后正文。
 \abstractcn{%
   [背景：核心困难是什么，使这道题非显然]。本文将[问题的核心困难]定义为[建模结构]，
   以[主方法]求解。得到[最重要数值结果，含具体数字，如：最优策略总收益为 X，
