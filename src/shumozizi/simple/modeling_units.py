@@ -13,6 +13,7 @@ v3.2 另外约束两件直接决定建模上限的事：
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,35 @@ STOP_REASON_WHITELIST = frozenset(
     }
 )
 _OBJECTIVE_DIRECTIONS = frozenset({"minimize", "maximize"})
+# 形式化转换的类型。silent_replacement 是本次故障（把"风险最小"静默换成
+# "可靠性达标后最早"）的根因：目标在数学化时被替换，却从未被单独审查。
+_FORMALIZATION_TRANSFORMATIONS = frozenset(
+    {
+        "equivalent",
+        "surrogate",
+        "relaxation",
+        "assumption",
+        "silent_replacement",
+    }
+)
+_ELIGIBLE_FORMALIZATION_TRANSFORMATIONS = frozenset(
+    {"equivalent", "surrogate", "relaxation", "assumption"}
+)
+_THRESHOLD_PROVENANCE = frozenset(
+    {
+        "prompt_defined",
+        "domain_sourced",
+        "data_estimated",
+        "utility_optimized",
+        "engineering_heuristic",
+    }
+)
+# 与 objective_consequences 保持一致的目标支持等级；FORMALIZATION_DIFF 复用它
+# 判定 surrogate/relaxation/assumption 是否够格作为正式目标。
+_SUPPORT_LEVELS = frozenset(
+    {"direct", "assumption_supported", "sensitivity_only", "incompatible"}
+)
+_ELIGIBLE_SUPPORT_LEVELS = frozenset({"direct", "assumption_supported"})
 _EXPECTATION_STATUSES = frozenset({"confirmed", "revised", "contradicted"})
 _ENDPOINT_RESOLUTION_STATUSES = frozenset({"determined", "comparison_planned"})
 _PROMOTION_STATUSES = frozenset({"promoted", "fallback_selected", "redesign_required"})
@@ -682,6 +712,176 @@ def _route_definition(
     )
 
 
+def _validate_formalization_diff(
+    value: object,
+    label: str,
+) -> dict[str, str]:
+    """验证"题面原句 → 正式目标"的转换审计（FORMALIZATION_DIFF）。
+
+    每个正式目标必须说明它相对题面原句发生了什么数学化转换，以及新增/丢失了
+    什么语义。``silent_replacement`` 直接阻断——这正是"把潜在风险最小静默换成
+    可靠性达标后最早"这类目标漂移被下游严格审核放行的根因：下游只审查
+    surrogate 有没有算对，从不审查 surrogate 有没有替换原题目标。
+
+    Args:
+        value: 转换审计对象。
+        label: 用于错误定位的字段名。
+
+    Returns:
+        规范化后的转换审计。
+
+    Raises:
+        ContractError: 缺字段、转换类型不合法或出现静默替换。
+    """
+    item = _require_mapping(value, label)
+    source = _require_text(item.get("source"), f"{label}.source")
+    formalized = _require_text(item.get("formalized_as"), f"{label}.formalized_as")
+    transformation = item.get("transformation")
+    if transformation not in _FORMALIZATION_TRANSFORMATIONS:
+        raise ContractError(
+            f"{label}.transformation 必须为 "
+            + "、".join(sorted(_FORMALIZATION_TRANSFORMATIONS))
+        )
+    if transformation == "silent_replacement":
+        raise ContractError(
+            f"{label}.transformation=silent_replacement：正式目标静默替换了题面"
+            f"目标（{source} → {formalized}）。请先显式声明原题目标，再决定是"
+            "等价形式化、代理、松弛还是假设补全；不允许无标记替换。"
+        )
+    added = _require_text(item.get("added_semantics"), f"{label}.added_semantics")
+    removed = _require_text(item.get("removed_semantics"), f"{label}.removed_semantics")
+    evidence = _require_text(
+        item.get("equivalence_evidence"), f"{label}.equivalence_evidence"
+    )
+    if transformation in {"surrogate", "relaxation", "assumption"}:
+        support = item.get("support_level")
+        if support not in _SUPPORT_LEVELS:
+            raise ContractError(
+                f"{label}.support_level 必须为 direct、assumption_supported、"
+                "sensitivity_only 或 incompatible"
+            )
+        if support not in _ELIGIBLE_SUPPORT_LEVELS:
+            raise ContractError(
+                f"{label} 转换类型={transformation} 但 support_level={support}："
+                "只有题面直接支持或合理假设支持的目标才能作为正式目标；"
+                "sensitivity_only/incompatible 不能成为结论依据"
+            )
+    return {
+        "source": source,
+        "formalized_as": formalized,
+        "transformation": transformation,
+        "added_semantics": added,
+        "removed_semantics": removed,
+        "equivalence_evidence": evidence,
+    }
+
+
+def _validate_infeasible_policy(
+    value: object,
+    label: str,
+) -> dict[str, str]:
+    """验证无可行解时的决策闭环（仅 actionable_decision 单元强制）。
+
+    纯可行性判断题回答"无解"就完整；但决策题（优化/协同）问的是"怎么办"，
+    只回"无解"等于把决策责任甩回给评委。因此必须同时给出：严格答案、不可行
+    集合内的备用决策、以及可靠度敏感性——既不硬塞伪造可行解，也不止步于无解。
+    """
+    item = _require_mapping(value, label)
+    strict = _require_text(item.get("strict_result"), f"{label}.strict_result")
+    fallback = _require_text(item.get("fallback_decision"), f"{label}.fallback_decision")
+    fallback_attained = _require_text(
+        item.get("fallback_attained_reliability"), f"{label}.fallback_attained_reliability"
+    )
+    retest = _require_text(item.get("retest_strategy"), f"{label}.retest_strategy")
+    sensitivity = _require_text(
+        item.get("reliability_sensitivity"), f"{label}.reliability_sensitivity"
+    )
+    return {
+        "strict_result": strict,
+        "fallback_decision": fallback,
+        "fallback_attained_reliability": fallback_attained,
+        "retest_strategy": retest,
+        "reliability_sensitivity": sensitivity,
+    }
+
+
+def _validate_data_quality_contract(
+    value: object,
+    label: str,
+    *,
+    decision_unit: bool,
+) -> dict[str, Any]:
+    """验证 v1.4 数据质量合同：Bootstrap 次数、风险权重、分组、未来信息。
+
+    审计发现的高水平论文硬伤集中在数据层，而非模型层：Bootstrap 只有 30 次却
+    报 95% 区间、风险权重取人为常数 4 却当作唯一依据、BMI 分组用分位数启发式
+    而非优化目标、测序质量用整个随访期的 median（未来信息泄漏）。这些若不设
+    合同约束，求解引擎会再次产出"正文很严谨、数据层经不起查"的论文。
+    """
+    if value is None:
+        # 数据质量合同可选；未声明时返回空契约，不强制具体约束。
+        return {
+            "uncertainty": {},
+            "decision_weights": {},
+            "weight_sensitivity": "",
+            "partition_optimization": "",
+            "future_information_bound": "",
+        }
+    item = _require_mapping(value, label)
+    # 1) Bootstrap/重抽样次数：报 95% 区间时至少 500 次，优先 1000+。
+    uncertainty = item.get("uncertainty")
+    if isinstance(uncertainty, dict):
+        replications = uncertainty.get("replications")
+        if replications is not None:
+            if (
+                not isinstance(replications, int)
+                or isinstance(replications, bool)
+                or replications < 500
+            ):
+                raise ContractError(
+                    f"{label}.uncertainty.replications 必须 >= 500（当前 "
+                    f"{replications}）；报 95% Bootstrap 区间用 30 次会在极值样本"
+                    "之间插值，形成伪稳定结论"
+                )
+    # 2) 风险/损失权重：必须是可调参数并给出区间敏感性，禁止单一人为常数作唯一依据。
+    decision_weights = item.get("decision_weights")
+    if isinstance(decision_weights, dict):
+        for name, weight in decision_weights.items():
+            if isinstance(weight, (int, float)) and not isinstance(weight, bool):
+                _require_text(
+                    item.get("weight_sensitivity"),
+                    f"{label}.weight_sensitivity",
+                )
+                if not re.search(
+                    rf"{re.escape(str(name))}\s*[=:]|区间|敏感性|λ|lambda",
+                    str(item.get("weight_sensitivity", "")),
+                ):
+                    raise ContractError(
+                        f"{label}.decision_weights.{name} 是单一常数权重，但 "
+                        f"weight_sensitivity 未说明该权重的区间变化；风险/损失权重"
+                        "必须作为参数给出敏感性，不能只取一个数字当结论依据"
+                    )
+    # 3) 决策单元的分组/切分必须有优化依据，禁止纯启发式分位数。
+    if decision_unit and item.get("partitioning"):
+        _require_text(
+            item.get("partition_optimization"),
+            f"{label}.partition_optimization",
+        )
+    # 4) 时点/前瞻推荐只使用决策当时可得信息，禁止未来信息。
+    if item.get("recommendation_contract"):
+        _require_text(
+            item.get("future_information_bound"),
+            f"{label}.future_information_bound",
+        )
+    return {
+        "uncertainty": uncertainty if isinstance(uncertainty, dict) else {},
+        "decision_weights": decision_weights if isinstance(decision_weights, dict) else {},
+        "weight_sensitivity": item.get("weight_sensitivity", ""),
+        "partition_optimization": item.get("partition_optimization", ""),
+        "future_information_bound": item.get("future_information_bound", ""),
+    }
+
+
 def _validate_answer_contract(
     value: object,
     label: str,
@@ -690,6 +890,8 @@ def _validate_answer_contract(
     require_semantic_contract: bool,
     semantic_high_risk: bool,
     core_question: bool,
+    decision_unit: bool = False,
+    schema_version: str = "1.0",
 ) -> dict[str, Any]:
     """验证实验前逐问直接答案合同，避免先跑模型再倒推回答口径。"""
     contract = _require_mapping(value, label)
@@ -712,6 +914,31 @@ def _validate_answer_contract(
         endpoint.get("exact_metric_alignment"),
         f"{label}.primary_endpoint.exact_metric_alignment",
     )
+    # ESTIMAND-METRIC 同构：当正式目标量是"首次达标/事件时刻"这类时点（而非
+    # 单条记录的分类概率）时，用来判定主模型与 challenger 的指标必须直接评价
+    # 该时点量——时间依赖 Brier、landmark calibration、区间删失似然等，而不是
+    # 记录级 Brier。否则会出现"估的是时点、比的却是单记录概率"的指标错位。
+    estimand_kind = endpoint.get("estimand_kind")
+    if schema_version == "1.4" and estimand_kind == "event_time":
+        alignment = str(endpoint.get("exact_metric_alignment", "")).casefold()
+        if not any(
+            token in alignment
+            for token in (
+                "时间依赖",
+                "landmark",
+                "区间删失",
+                "时点",
+                "首次达标",
+                "生存",
+                "事件时间",
+            )
+        ):
+            raise ContractError(
+                f"{label}.primary_endpoint：正式目标是首次达标/事件时点（estimand_kind="
+                "event_time），但 exact_metric_alignment 只描述记录级指标。必须用"
+                "时间依赖 Brier、landmark calibration 或区间删失似然等直接评价时点"
+                "量的指标，否则主模型与 challenger 的比较会偏离正式目标。"
+            )
     _require_text(contract.get("primary_criterion"), f"{label}.primary_criterion")
     resolution = _require_mapping(
         contract.get("endpoint_resolution"), f"{label}.endpoint_resolution"
@@ -769,12 +996,18 @@ def _validate_answer_contract(
             contract.get("semantic_scorer_preflight"),
             f"{label}.semantic_scorer_preflight",
         )
+    infeasible_policy: dict[str, str] = {}
+    if decision_unit:
+        infeasible_policy = _validate_infeasible_policy(
+            contract.get("infeasible_policy"), f"{label}.infeasible_policy"
+        )
     return {
         "primary_endpoint_id": endpoint_id,
         "endpoint_candidate_ids": candidate_ids,
         "endpoint_resolution_status": status,
         "counterexample_rankings": counterexample_rankings,
         "scorer_cases": scorer_cases,
+        "infeasible_policy": infeasible_policy,
         "semantic_high_risk_from_endpoint": semantic_high_risk,
     }
 
@@ -840,12 +1073,41 @@ def _validate_unit_plan(
             require_semantic_contract=require_semantic_contract,
             semantic_high_risk=bool(delta["semantic_high_risk"]),
             core_question=core,
+            # 决策闭环只对 v1.4 决策单元（优化/协同）强制，旧版本不加约束。
+            decision_unit=schema_version == "1.4" and search_kind,
+            schema_version=str(schema_version),
+        )
+    # FORMALIZATION_DIFF：v1.4 每个建模单元必须说明"题面原句 → 正式目标"的
+    # 数学化转换。silent_replacement 直接阻断；surrogate/relaxation/assumption
+    # 必须声明支持等级，防止把题面目标静默换成作者自定义约束。
+    formalization_diff: dict[str, str] = {}
+    data_quality_contract: dict[str, Any] = {}
+    if schema_version == "1.4":
+        formalization_diff = _validate_formalization_diff(
+            unit.get("formalization_diff"), f"{unit_id}.formalization_diff"
+        )
+        data_quality_contract = _validate_data_quality_contract(
+            unit.get("data_quality_contract"),
+            f"{unit_id}.data_quality_contract",
+            decision_unit=search_kind,
         )
     objective = _require_mapping(unit.get("objective"), f"{unit_id}.objective")
     _require_text(objective.get("exact_metric"), f"{unit_id}.objective.exact_metric")
     if objective.get("direction") not in _OBJECTIVE_DIRECTIONS:
         raise ContractError(f"{unit_id}.objective.direction 必须为 minimize 或 maximize")
     threshold = objective.get("significant_improvement_ratio")
+    threshold_provenance = objective.get("threshold_provenance")
+    if schema_version == "1.4" and threshold is not None:
+        if threshold_provenance not in _THRESHOLD_PROVENANCE:
+            raise ContractError(
+                f"{unit_id}.objective.threshold_provenance 必须为 "
+                + "、".join(sorted(_THRESHOLD_PROVENANCE))
+            )
+        if threshold_provenance == "engineering_heuristic":
+            _require_text(
+                objective.get("threshold_provenance_rationale"),
+                f"{unit_id}.objective.threshold_provenance_rationale",
+            )
     if threshold is None:
         # 核心问题必须事前声明"多大改善才算真的更强"，避免事后把任意结果解释为成功。
         if core and search_kind and schema_version != "1.4":
@@ -1124,12 +1386,15 @@ def _validate_unit_plan(
         "exact_metric": objective["exact_metric"],
         "direction": objective["direction"],
         "improvement_threshold": improvement_threshold,
+        "threshold_provenance": threshold_provenance,
         "budget_tolerance_ratio": float(tolerance),
         "route_ids": route_ids,
         "fallback_route": fallback_route,
         "fallback_condition": fallback_condition,
         "require_decision_contract": require_decision_contract,
         "derive_qualification": schema_version in {"1.2", "1.3", "1.4"},
+        "formalization_diff": formalization_diff,
+        "data_quality_contract": data_quality_contract,
         "semantic_high_risk": bool(
             delta["semantic_high_risk"]
             or answer_contract.get("semantic_high_risk_from_endpoint")

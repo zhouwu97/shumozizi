@@ -24,7 +24,21 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 
 目标候选使用 `OBJECTIVE_CANDIDATES` 1.1，顺序固定为“题面合法性 -> 同源反例区分 -> 仍合理候选的策略后果”。每个候选先声明题面原句、保留/改变的量词、引入的价值偏好、是否只为方便求解，并分为直接支持、合理假设支持、仅敏感性或与题意不符；只有前两类能成为正式目标。仅剩一个合法候选时不强迫跑多目标实验；仍有两个及以上时，才用共同的效率与公平/瓶颈/安全指标跑低成本后果 probe。高风险问题不能靠一句 `determined_basis` 跳过：必须明确正式目标、一个被拒绝替代及拒绝理由，并由 `MODELING_UNITS` 中的反例区分。
 
-标出决定奖项上限的核心问题（`core_question=true`）。核心问题必须事前声明 `significant_improvement_ratio`，其竞争路线还要写清结构利用方式和可量化的 `expected_improvement_ratio`——纯文字的"高上限"事后无法与实测对照。
+标出决定奖项上限的核心问题（`core_question=true`）。核心问题必须事前声明 `significant_improvement_ratio`，其竞争路线还要写清结构利用方式和可量化的 `expected_improvement_ratio`——纯文字的"高上限"事后无法与实测对照。`significant_improvement_ratio` 必须同时声明 `threshold_provenance`（prompt_defined/domain_sourced/data_estimated/utility_optimized/engineering_heuristic）：工程启发式阈值必须给理由并做敏感性，不得作为强结论唯一依据。
+
+**每个 v1.4 单元必须填写 `formalization_diff`，把"题面原句 → 正式目标"的转换显式化。** 转换类型只能是 equivalent / surrogate / relaxation / assumption；`silent_replacement`（把"风险最小化"静默换成"可靠性达标后最早"这类题面目标替换）直接阻断。surrogate/relaxation/assumption 必须同时声明 `support_level`（direct/assumption_supported 才够格作正式目标）与 `added_semantics`/`removed_semantics`/`equivalence_evidence`。下游 GEE/AFT/Logistic/敏感性再严谨，也不能补回在形式化阶段被替换掉的原题目标——这是最危险的故障点。
+
+**正式路线比较前先跑冷启动目标忠实度门**：用 `python scripts/review/show_formalization_fidelity_prompt.py <run_dir>` 生成提示，交给完全隔离、未参与建模的新上下文 reviewer，只读原题 + 合同投影，逐项核验题面要求的决策变量、目标量、输出是否仍在正式目标里。返回 `silent_replacement` 时必须回到 analysis 重定义目标，禁止带着漂移目标进入 experiment。
+
+**决策单元（optimization/coordination）的 `answer_contract` 必须声明 `infeasible_policy`**（无可行解的决策闭环）：严格结果、不可行集合内备用决策、备用时点可达可靠度、复检策略、可靠性敏感性（如 q=0.85/0.90/0.95）。只回答"窗口内无解"等于把决策责任甩回评委；也不许硬塞伪造可行解。
+
+**当正式目标是首次达标/事件时点（`estimand_kind=event_time`）时**，用来判定主模型与 challenger 的指标必须与目标同构——时间依赖 Brier、landmark calibration、区间删失似然，而不是记录级 Brier。避免"估的是时点、比的却是单记录概率"的指标错位。
+
+**v1.4 数据质量合同 `data_quality_contract` 强制四类硬约束**：
+- `uncertainty.replications` 报 95% 区间时必须 >= 500（优先 1000+）；30 次会在极值样本间插值形成伪稳定。
+- `decision_weights` 中的风险/损失权重必须是可调参数并给出 `weight_sensitivity` 区间敏感性，禁止单一常数（如漏检=4）作唯一结论依据。
+- 决策单元若做分组/切分（如 BMI 分组），必须声明 `partition_optimization`（动态规划/贪心分段/优化目标决定组数），禁止纯分位数启发式。
+- 前瞻推荐必须声明 `future_information_bound`：只使用决策当时可得变量，测序质量等事后才知的信息不得用于推荐时点。
 
 先按任务类型分流：`evaluation`、`data_modeling` 和 `simulation` 使用主方法、自然核对与题型验证，不伪造路线赛马；`exact_oracle` 核对正式指标容差与区间/集合结构；只有 `optimization`、`coordination` 默认提出自然 baseline 和一条数学结构不同的 challenger。不要把只更换求解器的 GA、PSO、DE 当成不同数学路线，但 MATLAB 的结构优化器可以作为同一路线内的异构实现、独立 challenger 或 oracle。每条真实竞争路线说明结构差异、最低成本 probe、潜在上限、失败方式和切换条件，写入 `analysis/ROUTE_COMPETITION.md`。
 
