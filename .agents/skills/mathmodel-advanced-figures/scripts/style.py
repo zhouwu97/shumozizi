@@ -24,13 +24,17 @@ PALE_GOLD = "#F5E3B3" # 阈值带浅色
 CJK_FONTS = ("SimSun", "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial")
 
 
-def apply_competition_style(rc_text_size: int = 11) -> None:
-    """设置全篇统一样式：seaborn 主题 + 语义调色板 + 中文字体 + DPI>=300。
+def apply_competition_style(rc_text_size: int = 11, *, grid: bool = False) -> None:
+    """设置全篇统一样式：seaborn 白底 + 语义调色板 + 中文字体 + DPI>=300。
+
+    默认关闭网格（参考国奖/高影响力论文的干净白底学术风格）；需要参考网格的
+    折线/散点图显式传 ``grid=True``。
 
     Args:
         rc_text_size: 正文源字号。按 0.85--0.98 页宽缩放后仍应不低于 8pt。
+        grid: 是否显示浅色网格；默认 False（匹配参考版干净观感）。
     """
-    sns.set_theme(style="whitegrid", palette="deep")
+    sns.set_theme(style="white", palette="deep")
     mpl.rcParams.update(
         {
             "font.family": "sans-serif",
@@ -46,7 +50,7 @@ def apply_competition_style(rc_text_size: int = 11) -> None:
             "savefig.facecolor": "white",
             "savefig.dpi": 300,
             "pdf.fonttype": 42,
-            "axes.grid": True,
+            "axes.grid": grid,
             "grid.color": LIGHT,
             "grid.linewidth": 0.7,
             "figure.autolayout": True,

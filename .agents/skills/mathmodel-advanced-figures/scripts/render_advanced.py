@@ -332,7 +332,7 @@ def _correlation_heatmap(doc: dict[str, Any], out_stem: Path) -> dict[str, Any]:
     fig, ax = plt.subplots(figsize=(max(5.6, 0.42 * n), max(4.6, 0.38 * n)))
     sns.heatmap(data, annot=True, fmt=".2f", cmap="RdBu_r", center=0,
                 xticklabels=labels, yticklabels=labels, ax=ax,
-                cbar_kws={"shrink": 0.8}, square=True)
+                cbar_kws={"shrink": 0.8}, square=True, linewidth=0)
     ax.set_title(str(_pick(doc, "title", default="关键变量相关矩阵")))
     ax.tick_params(axis="x", rotation=45, labelsize=8)
     ax.tick_params(axis="y", rotation=0, labelsize=8)
