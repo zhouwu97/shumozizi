@@ -373,6 +373,33 @@ def check_figures(draft_text: str, run_dir: Path) -> list[dict[str, Any]]:
     return findings
 
 
+def _evidence_chain_findings(root: Path) -> list[dict[str, Any]]:
+    """并入证据链审计：图必须绑定 production 结果，方法名不得漂移。
+
+    图 26/27 类故障（写作工具自写 refit 生成图，结果与正文正式答案冲突）由
+    ``audit_evidence_chain`` 抓出；这里把它的客观失败并入 import audit，使外部
+    稿接回时与 wrong_number/unknown_figure 等一样可阻断。
+    """
+    try:
+        from shumozizi.paper.evidence_chain_audit import audit_evidence_chain
+
+        result = audit_evidence_chain(root)
+    except (ContractError, OSError, ValueError):
+        return []
+    return [
+        {
+            "finding_id": item.get("finding_id", f"EC-{index}"),
+            "class": item.get("class", "EVIDENCE_CHAIN_BROKEN"),
+            "location": item.get("location", ""),
+            "observation": item.get("observation", ""),
+            "verdict": item.get("verdict", "objective_failure"),
+            "can_continue_without_it": item.get("can_continue_without_it", False),
+            "evidence": item.get("evidence", ""),
+        }
+        for index, item in enumerate(result.get("findings", []))
+    ]
+
+
 def check_citations(draft_text: str, run_dir: Path) -> list[dict[str, Any]]:
     """草稿中的引用键必须属于已登记参考文献。"""
     root = run_dir.resolve()
@@ -527,6 +554,7 @@ def audit_external_draft(run_dir: Path, *, compile_draft: bool = True) -> dict[s
     findings.extend(check_citations(draft_text, root))
     findings.extend(check_formulas(draft_text))
     findings.extend(check_cross_references(draft_text))
+    findings.extend(_evidence_chain_findings(root))
 
     objective_failures = [
         str(item["finding_id"]) for item in findings if item["verdict"] == "objective_failure"
