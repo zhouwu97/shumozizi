@@ -388,6 +388,47 @@ def _current_result_essential_numbers(root: Path) -> dict[str, list[int | float]
     return numbers
 
 
+def _estimator_contracts(root: Path) -> dict[str, dict[str, str]]:
+    """从 MODELING_UNITS 提取每问"正式方法名 + 数学结构 + 形式化转换"。
+
+    这是论文与代码一致性的 ground truth：正文用什么方法名、代码实际拟合什么
+    模型、形式化如何转换，都必须与这里声明的正式 estimator 对齐。写作工具
+    若把"聚类稳健 OLS + Ridge 样条"改写成"GEE 样条"，或把 LCB 换成
+    mean-1.645SE，就构成对该契约的违反。
+    """
+    payload_path = root / "analysis/MODELING_UNITS.json"
+    if not payload_path.is_file():
+        return {}
+    try:
+        payload = load_json(payload_path)
+    except ContractError:
+        return {}
+    contracts: dict[str, dict[str, str]] = {}
+    for unit in payload.get("units", []):
+        if not isinstance(unit, dict):
+            continue
+        question_id = str(unit.get("question_id", ""))
+        if not question_id:
+            continue
+        method = unit.get("primary_method")
+        if not isinstance(method, dict):
+            continue
+        method_id = str(method.get("method_id", "")).strip()
+        structure = str(method.get("mathematical_structure", "")).strip()
+        if not method_id and not structure:
+            continue
+        formalization = unit.get("formalization_diff")
+        transformation = ""
+        if isinstance(formalization, dict):
+            transformation = str(formalization.get("transformation", "")).strip()
+        contracts[question_id] = {
+            "formal_method": method_id,
+            "mathematical_structure": structure,
+            "formalization_transformation": transformation,
+        }
+    return contracts
+
+
 def _build_answer_and_claims(root: Path) -> dict[str, Any]:
     """从正式结果与主张门禁生成逐问答案与边界文档。"""
     state = read_simple_state(root)
@@ -396,6 +437,7 @@ def _build_answer_and_claims(root: Path) -> dict[str, Any]:
     except ContractError:
         # 结果登记可能不完整；此时退回结果索引兜底，不让交接构建失败。
         outcomes = {}
+    estimator_contracts = _estimator_contracts(root)
     result_answers = _current_result_answers(root)
     essential_numbers = _current_result_essential_numbers(root)
     gate: dict[str, Any] = {}
@@ -456,6 +498,7 @@ def _build_answer_and_claims(root: Path) -> dict[str, Any]:
                 "key_boundaries": key_boundaries,
                 "source_result_ids": list(dict.fromkeys(source_result_ids)),
                 "claim_ids": list(dict.fromkeys(filter(None, claim_ids))),
+                "estimator_contract": estimator_contracts.get(question_id, {}),
             }
         )
     return {
@@ -506,6 +549,23 @@ def _render_answer_and_claims_markdown(document: dict[str, Any]) -> str:
                 lines.append(f"- {item}")
         else:
             lines.append("- 无")
+        lines.append("")
+        estimator = question.get("estimator_contract") or {}
+        lines.append("### 正式方法与实现契约")
+        lines.append("")
+        if estimator:
+            lines.append(f"- 正式方法名：{estimator.get('formal_method', '未声明')}")
+            lines.append(f"- 数学结构：{estimator.get('mathematical_structure', '未声明')}")
+            transformation = estimator.get("formalization_transformation", "")
+            lines.append(f"- 形式化转换：{transformation or '未声明'}")
+            lines.append(
+                "- 约束：正文方法名、代码实际拟合的模型、公式推导必须与上面"
+                "正式 estimator 一致；不得用其它名字重命名方法（如把聚类稳健"
+                "OLS+Ridge 样条写成 GEE 样条），不得用不同公式重算正式数字"
+                "（如把 Bootstrap 下界换成 mean-1.645*SE）。"
+            )
+        else:
+            lines.append("- （该问未声明正式方法契约，写作时禁止凭空指定方法名）")
         lines.append("")
     return "\n".join(lines)
 

@@ -4,11 +4,24 @@
   "title": "Per-question answers and claim boundaries for external author",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_name", "schema_version", "run_id", "questions", "generated_at"],
+  "required": [
+    "schema_name",
+    "schema_version",
+    "run_id",
+    "questions",
+    "generated_at"
+  ],
   "properties": {
-    "schema_name": {"const": "answer_and_claims"},
-    "schema_version": {"const": "1.0"},
-    "run_id": {"type": "string", "minLength": 1},
+    "schema_name": {
+      "const": "answer_and_claims"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "questions": {
       "type": "array",
       "minItems": 1,
@@ -16,26 +29,81 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "question_id", "must_answer", "safe_claims", "forbidden_upgrades",
-          "key_boundaries", "source_result_ids", "claim_ids"
+          "question_id",
+          "must_answer",
+          "safe_claims",
+          "forbidden_upgrades",
+          "key_boundaries",
+          "source_result_ids",
+          "claim_ids"
         ],
         "properties": {
-          "question_id": {"type": "string", "minLength": 1},
-          "must_answer": {"type": "string", "minLength": 1},
+          "question_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "must_answer": {
+            "type": "string",
+            "minLength": 1
+          },
           "essential_numbers": {
             "type": "array",
             "uniqueItems": true,
-            "items": {"type": "number"},
+            "items": {
+              "type": "number"
+            },
             "description": "正文必须出现且必须正确的核心答案数字；其他正式数字仅在正文实际使用时核验。"
           },
-          "safe_claims": {"type": "array", "items": {"type": "string", "minLength": 1}},
-          "forbidden_upgrades": {"type": "array", "items": {"type": "string", "minLength": 1}},
-          "key_boundaries": {"type": "array", "items": {"type": "string", "minLength": 1}},
-          "source_result_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-          "claim_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          "safe_claims": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "forbidden_upgrades": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "key_boundaries": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "source_result_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "claim_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "estimator_contract": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {}
+          }
         }
       }
     },
-    "generated_at": {"type": "string", "format": "date-time"}
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
   }
 }
