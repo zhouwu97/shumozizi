@@ -11,6 +11,13 @@ description: 真实执行数学建模实验，比较路线、保存 current 结�
 
 优先 baseline、区分性 probe 与能推翻当前结论的实验。实验的价值来自改变路线、模型、主要结论、机制解释或贡献，不来自填满敏感性、多种子或收敛图清单。
 
+**图表资产是实验的一级交付物，不是 SECOND STEP 的事后装饰。** 每个核心问题除了数值结果，还必须产出**可画高级图的结果数据**与**正式图本身**：
+
+- **可画图数据（data side）**：按问题特征至少产出两类可支撑高级图型的数据——例如 SHAP 值（分类/回归解释）、区间删失生存/达标曲线（阈值事件时间）、相关矩阵（EDA）、Bootstrap/重抽样分布（不确定性）、校准/PR/ROC 曲线（判别验证）、灵敏度矩阵（决策稳健）。这些数据随 production 结果写入 `results/raw/`，供正式稿直接消费。
+- **正式图（figure side）**：用统一风格（seaborn 主题 + 语义调色板 + SimSun/中文字体 + DPI≥300）渲染，优先复用 `.agents/skills/mathmodel-advanced-figures/scripts/render_advanced.py` 的现成模板（`survival_curve` / `shap_combo` / `correlation_heatmap` / `paired_raincloud` / `cv_roc_ci` / `ci_forest` / `group_violin`）；数据支撑多面板时画组合图，不用单面板草率了事。图必须承担数据直觉、机制、决定性证据或边界中的论证角色，不能为了凑图数画装饰图。
+
+**不是配额驱动**：目标是"图种多样、可论证、好看"，不是"凑到 N 张"。实验阶段的图画得越好，SECOND STEP 越不需要重画；实验只画基础折线/柱状而把高级图全部推给 SECOND STEP，等于把最该在数据新鲜时完成的事拖到最后。
+
 在首次 production 前，先执行 `MODELING_UNITS.risk_package` 的最低成本检查，并用 `python scripts/simple/manage_risk_route.py record <run_dir> --question <Q?> --input <risk-assessment.json>` 写回真实结果。所有检查 clear 才按 fast 路线结束普通问题；出现目标分歧、补偿带、留出反转、oracle/硬约束冲突或持续改善时进入 deepening。触发结构攻击后，`claim_boundary` 必须为 `conditional_on_assumption` 或 `sensitivity_only`，正式答案和 Author Pass 会自动继承该边界。
 
 比较必须真的判胜负：赢家由统一 exact scorer 的实测结果决定，核心问题的赢家还要相对 baseline 达到事前声明的显著改善阈值。达不到时继续搜索、换更强路线，或用 `baseline_near_bound` 加实际界证据说明已接近上限。深化后的最终结果不得比比较阶段的赢家更差。路线预期上限明显落空时登记 `upside_shortfall` 的原因与决定，不要继续按原声明叙述优势。

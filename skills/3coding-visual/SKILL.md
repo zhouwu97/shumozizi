@@ -109,6 +109,14 @@ plt.ylabel("反射率 (%)")
 - 不在图内写大标题，标题交给论文 caption（Typst 的 `caption:` 或 LaTeX 的 `\caption{}`）。
 - **中文论文图表的坐标轴、图例、图内注释一律中文**；英文论文才用英文。
 - 不生成流程图/架构图/路线图。
+- **图种必须多样，不能只画折线/柱状。** 每个核心问题至少产出两类不同论证角色的高级图，
+  例如小提琴/箱线/雨云（数据直觉）、带置信带的平滑/生存/达标曲线（机制）、SHAP/特征重要性
+  （解释）、校准/PR/ROC/混淆矩阵（判别验证）、Bootstrap/森林图（不确定性）、灵敏度矩阵
+  （决策稳健）。优先复用 `.agents/skills/mathmodel-advanced-figures/scripts/render_advanced.py`
+  的现成模板（`survival_curve`/`shap_combo`/`correlation_heatmap`/`paired_raincloud`/`cv_roc_ci`/
+  `ci_forest`/`group_violin`）或同一风格手写；数据支撑时画组合图（多个关联面板拼一张），
+  不用单面板草率了事。目标是用图承担数据直觉、机制、决定性证据、边界等真实论证角色，
+  不是凑到某个数量；第二阶段的图补充只应覆盖实验阶段遗漏的角色，不能替代实验阶段本身的丰富度。
 
 流程、方法和机理解释图不得把 AI 生成的数字或公式当作正式结果；需要数据绑定时必须回到确定性 renderer。
 
