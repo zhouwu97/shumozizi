@@ -37,6 +37,7 @@ from shumozizi.simple.capabilities import ROUTE_PATH
 from shumozizi.simple.critical_claims import CRITICAL_CLAIMS_PATH, read_critical_claims
 from shumozizi.simple.figures import verify_current_figure_files
 from shumozizi.simple.method_profile import METHOD_PROFILE_PATH
+from shumozizi.simple.modeling_units import _SUBSTANTIVE_INSIGHT_KINDS
 from shumozizi.simple.objective_semantics import objective_semantics_digest
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
@@ -801,6 +802,76 @@ def _reference_count_warnings(run_dir: Path) -> list[str]:
     return citation_coverage_warnings(build_citation_coverage(run_dir))
 
 
+def _argument_warrants_for_question(root: Path, question_id: str) -> list[str]:
+    """从建模单元提取某问的 warrant 候选（机制类 insight 优先）。
+
+    后台 argument_map 不再只是 claim→result 的机械注册表：机制类 insight 的
+    mechanism 字段就是"为什么证据支持结论"的种子，Author 据此判断与改写。
+    """
+    payload_path = root / "analysis/MODELING_UNITS.json"
+    if not payload_path.is_file():
+        return []
+    try:
+        payload = load_json(payload_path)
+    except (ContractError, OSError, ValueError):
+        return []
+    for raw in payload.get("units", []):
+        if not isinstance(raw, dict) or str(raw.get("question_id", "")) != question_id:
+            continue
+        actual = raw.get("actual")
+        insights = (
+            actual.get("insights")
+            if isinstance(actual, dict) and isinstance(actual.get("insights"), list)
+            else []
+        )
+        substantive: list[str] = []
+        others: list[str] = []
+        for insight in insights:
+            if not isinstance(insight, dict):
+                continue
+            mechanism = str(insight.get("mechanism", "")).strip()
+            if not mechanism:
+                continue
+            if str(insight.get("kind", "")) in _SUBSTANTIVE_INSIGHT_KINDS:
+                substantive.append(mechanism)
+            else:
+                others.append(mechanism)
+        return list(dict.fromkeys([*substantive, *others]))
+    return []
+
+
+def _decision_advice_for_question(root: Path, question_id: str) -> dict[str, str] | None:
+    """提取决策单元的不可行域决策合同，供后台论证地图登记。"""
+    payload_path = root / "analysis/MODELING_UNITS.json"
+    if not payload_path.is_file():
+        return None
+    try:
+        payload = load_json(payload_path)
+    except (ContractError, OSError, ValueError):
+        return None
+    for raw in payload.get("units", []):
+        if not isinstance(raw, dict) or str(raw.get("question_id", "")) != question_id:
+            continue
+        contract = raw.get("answer_contract")
+        if not isinstance(contract, dict):
+            return None
+        policy = contract.get("infeasible_policy")
+        if not isinstance(policy, dict) or not policy:
+            return None
+        advice = {
+            key: str(policy.get(key, "")).strip()
+            for key in (
+                "strict_result",
+                "fallback_decision",
+                "fallback_attained_reliability",
+                "retest_strategy",
+                "reliability_sensitivity",
+            )
+        }
+        return advice if any(advice.values()) else None
+    return None
+
+
 def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
     """从当前答案、结果和图表自动生成后台论证映射。
 
@@ -838,6 +909,8 @@ def build_argument_map_from_current_artifacts(run_dir: Path) -> dict[str, Any]:
                 "result_ids": result_ids,
                 "direct_answer_location": location,
                 "figure_ids": list(item.get("figure_ids", [])),
+                "warrant_candidates": _argument_warrants_for_question(run_dir, question_id),
+                "decision_advice": _decision_advice_for_question(run_dir, question_id),
             }
         )
     document = {

@@ -9,6 +9,7 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.paper.policy import formal_result_digest
 from shumozizi.paper.templates import require_materialized_template
+from shumozizi.simple.modeling_units import _SUBSTANTIVE_INSIGHT_KINDS
 from shumozizi.simple.state import read_simple_state, utc_now
 
 AUTHOR_PASS_DIR = Path("paper/author-pass")
@@ -290,6 +291,151 @@ def _formal_answer_text(
     return "当前正式结果未提供可直接引用的自然语言答案；Author 必须提出返工请求。"
 
 
+# 机制类 insight 才是"为什么答案是这个结构"的论证来源；与
+# shumozizi.simple.modeling_units 的核心问题实质规律要求保持一致。
+# （_SUBSTANTIVE_INSIGHT_KINDS 从 modeling_units 导入，保持单一事实来源）
+
+
+def _warrant_sources(unit: dict[str, Any]) -> list[str]:
+    """从建模单元的结构化 insight 提取 warrant 候选（机制类优先）。
+
+    warrant = 为什么这些 evidence 能推出这个 claim。核心问题在进入论文前
+    已被 modeling_units 校验强制拥有机制/边际收益/活跃约束/权衡类 insight，
+    其 mechanism 字段正是论证桥梁的现成种子；这里只做提取与排序，让 Author
+    判断与改写，而不是从零写。
+
+    Args:
+        unit: 单个建模单元（含 ``actual.insights``）。
+
+    Returns:
+        去重后的 mechanism 文本列表，机制类优先；无 insight 时为空列表。
+    """
+    actual = unit.get("actual")
+    if not isinstance(actual, dict):
+        return []
+    insights = actual.get("insights")
+    if not isinstance(insights, list):
+        return []
+    substantive: list[str] = []
+    others: list[str] = []
+    for insight in insights:
+        if not isinstance(insight, dict):
+            continue
+        mechanism = str(insight.get("mechanism", "")).strip()
+        if not mechanism:
+            continue
+        if str(insight.get("kind", "")) in _SUBSTANTIVE_INSIGHT_KINDS:
+            substantive.append(mechanism)
+        else:
+            others.append(mechanism)
+    return list(dict.fromkeys([*substantive, *others]))
+
+
+def _support_strength(answer: dict[str, Any]) -> str:
+    """把 objective_answer 的 claim_level 翻译成 Author 可读的支持强度。
+
+    Args:
+        answer: 逐问答案映射（含 ``objective_answer.claim_level``）。
+
+    Returns:
+        支持强度一句话；缺少 claim_level（如旧运行）时返回空串。
+    """
+    objective = answer.get("objective_answer")
+    if not isinstance(objective, dict):
+        return ""
+    level = str(objective.get("claim_level", "")).strip()
+    if not level:
+        return ""
+    label = {
+        "optimal": "已确认全局最优证书（optimal）。",
+        "best_found": "当前最优（best_found，无全局证书，不得写成全局最优）。",
+        "feasible": "当前可行解（feasible，相对 baseline 改善不足）。",
+    }.get(level)
+    return label or level
+
+
+def _decision_advice(unit: dict[str, Any]) -> dict[str, str] | None:
+    """提取决策单元的不可行域决策合同。
+
+    决策题（优化/协同）问的是"怎么办"：严格结果之外还必须给出备用决策、
+    可达可靠度、复检策略与可靠性敏感性，否则等于把决策责任甩回给评委。
+    只有声明了 ``infeasible_policy`` 的单元才渲染决策建议，避免普通问套模板。
+
+    Args:
+        unit: 单个建模单元（含 ``answer_contract.infeasible_policy``）。
+
+    Returns:
+        非空决策字段字典；非决策单元返回 ``None``。
+    """
+    contract = unit.get("answer_contract")
+    if not isinstance(contract, dict):
+        return None
+    policy = contract.get("infeasible_policy")
+    if not isinstance(policy, dict) or not policy:
+        return None
+    advice = {
+        key: str(policy.get(key, "")).strip()
+        for key in (
+            "strict_result",
+            "fallback_decision",
+            "fallback_attained_reliability",
+            "retest_strategy",
+            "reliability_sensitivity",
+        )
+    }
+    return advice if any(advice.values()) else None
+
+
+def _decision_advice_lines(advice: dict[str, str]) -> list[str]:
+    """把决策合同渲染成逐行决策建议。"""
+    lines = ["- 决策建议（该问为决策题）：", ""]
+    strict = advice.get("strict_result")
+    fallback = advice.get("fallback_decision")
+    attained = advice.get("fallback_attained_reliability")
+    retest = advice.get("retest_strategy")
+    sensitivity = advice.get("reliability_sensitivity")
+    if strict:
+        lines.append(f"  - 严格答案：{strict}")
+    if fallback:
+        suffix = f"（可达可靠度：{attained}）" if attained else ""
+        lines.append(f"  - 严格目标不可行时的备用决策：{fallback}{suffix}")
+    if retest:
+        lines.append(f"  - 复检策略：{retest}")
+    if sensitivity:
+        lines.append(f"  - 敏感性边界（何时不适用当前推荐）：{sensitivity}")
+    lines.append("")
+    return lines
+
+
+def _argument_chain_lines(
+    question_id: str,
+    unit: dict[str, Any],
+    answer: dict[str, Any],
+) -> list[str]:
+    """渲染单问论证链：warrant + 支持强度 + 决策建议。
+
+    主要主张已经在"逐问正式答案"中给出，这里不重复主张文本，只补上
+    "为什么证据支持结论"与"推荐什么"，避免上下文膨胀。
+    """
+    warrants = _warrant_sources(unit)
+    support = _support_strength(answer)
+    decision = _decision_advice(unit)
+    if not warrants and not support and not decision:
+        return []
+    lines = [f"### {question_id}", ""]
+    if warrants:
+        lines.append(f"- 论证理由（为什么这些证据支持上述正式答案）：{warrants[0]}")
+        for extra in warrants[1:3]:
+            lines.append(f"  - {extra}")
+    if support:
+        lines.append(f"- 支持强度：{support}")
+    if decision:
+        lines.extend(_decision_advice_lines(decision))
+    lines.append("")
+    return lines
+
+
+
 def _citation_brief(root: Path) -> list[str]:
     """把已核验引用及用途边界压缩为 Research Package 小节。"""
     coverage = _optional_json(root, "paper/generated/citation_coverage.json")
@@ -406,7 +552,9 @@ def _render_research_package(
     lines = [
         "# RESEARCH PACKAGE",
         "",
-        "本文件只包含可用于写作的当前研究事实。运行状态、哈希、回执、工具探测和完整搜索轨迹不进入作者上下文。",
+        "本文件只包含可用于写作的当前研究事实。运行状态、哈希、回执、工具探测和完整搜索轨迹不进入作者上下文。"
+        "论证结构、章节组织、图文方案与叙事焦点由你自由形成，但不得创造不存在的证据、"
+        "不得超出主张边界，也不得用结果报账替代论证。",
         "",
         "## 题面与必答合同",
         "",
@@ -511,6 +659,23 @@ def _render_research_package(
             if visible:
                 lines.extend(["核心数字：" + "；".join(visible[:8]), ""])
 
+    # 逐问论证链与决策建议：把 insight.mechanism 投影为 warrant（为什么证据
+    # 支持结论），把决策单元合同投影为决策建议（推荐什么、何时不推荐）。
+    # 主张文本已在"逐问正式答案"给出，此处不重复；非决策问且无 insight 时
+    # 整节省略，避免为凑节而生成空壳。
+    chain_lines: list[str] = []
+    for question_id in state.get("required_questions", []):
+        chain_lines.extend(
+            _argument_chain_lines(
+                question_id,
+                units.get(question_id, {}),
+                answers[question_id],
+            )
+        )
+    if chain_lines:
+        lines.extend(["## 逐问论证链与决策建议", ""])
+        lines.extend(chain_lines)
+
     lines.extend(["## 关键推导、机制与边界", ""])
     substantive = False
     for question_id in state.get("required_questions", []):
@@ -592,7 +757,12 @@ def _render_author_brief(
             "模型建立、求解、结果解读以及必要证据；不得用空泛压缩或堆砌页数、图数规避论证。"
             "附录可含核心代码与稳定性图。",
             "",
-            "正式答案、数字、题意语义和主张边界不可擅自修改。若无法解释结果或缺少必要对照、机制、图或证据，应提出返工请求。",
+            "正式答案、数字、题意语义和主张边界不可擅自修改。若无法解释结果或缺少必要对照、机制、图或证据，应提出返工请求。"
+            "每个主要结论都必须能回答'为什么这些证据支持这个结论'；"
+            "Research Package 的'逐问论证链与决策建议'已给出机制级论证候选，"
+            "你的工作是判断、改写与补全，而不是照抄。"
+            "决策类问题必须给出推荐，或明确说明严格目标不可行时的备用决策与适用条件，"
+            "不能把'无可行时点'写成推荐一个不满足可靠性的时点。",
             "",
             "前五页优先建立答案与证据链：摘要应给出关键数值与条件边界；读者应尽早找到逐问直接答案、"
             "共享数学对象、原始数据直觉和至少一张决定性 Hero 图及其机制解释。具体页码与段落顺序由中心主线决定，"
