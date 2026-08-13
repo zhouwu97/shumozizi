@@ -69,6 +69,26 @@ PDF 盲评需要一个与当前运行完全隔离的独立上下文：
 
 **网页版 GPT 补充审核为可选环节**，只在论文主模型和结果已稳定、需要专项编辑审查时使用，不是每次 PDF 编译后的默认流程。使用时：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核聚焦写作风格（AI 句式 / 分点堆砌 / 空话）、可读性和论证表达，找出最高价值的修改建议；无法由 PDF 验证的内容标为”需要本地复算/对照题面”。发现需要重写章节、替换主图或回到实验的问题时，直接说明，不要降级为局部修补。将审核结果写入 `WEB_PAPER_AUDIT.json`；如有修复，重新编译并复核。最多使用一轮；确需再次审核时生成新提示。网页评价不能证明省一或任何奖项，只能降低已识别的质量风险。
 
+## Gate 治理（Repair-Driven）
+
+新增 hard gate（阻断门）必须同时满足四条，缺任意一条只能作为 advisory、
+finding 或 projection，不能成为阻断门：
+
+1. 缺它真的会让正式科学答案失真；
+2. 上游没有同类 canonical gate——同一科学事实只有一个 hard-gate owner，
+   下游模块只消费上游公开状态，不重复实现判据，也不 import 私有常量；
+3. 失败后存在可执行 repair route（RepairDirective：owner_stage、repair_action、
+   acceptance_test 缺一不可）；
+4. 存在确定性的 acceptance test，验收不过不能 close。
+
+问题空间 open-world：`finding_class` 允许 `unclassified` + `novelty_reason`，
+新问题必须能进入系统而不能被 schema 拒绝。动作空间 closed-world：`route`
+只允许 `author/visual/experiment/analysis/render`，不允许发明未知执行动作。
+修复指令由 `paper/repair-directives.json` 台账承载：`route=experiment/analysis`
+的 fulfill 必须真正把顶层 phase 沿合法迁移图切回对应阶段并登记可执行任务
+（`apply_repair_route`），不能只把 authoring_status 标成 `rework_requested`
+就宣称"已路由返修"；未关闭的修复指令阻断交接与交付。
+
 ## 图表与论文
 
 - Author 默认只接收三个概念：`paper/author-pass/RESEARCH_PACKAGE.md`、`paper/author-pass/AUTHOR_BRIEF.md` 和冷读后的高价值编辑反馈；`PAPER_BLUEPRINT.md`、`paper/answer-map.json`、素材池、故事板、`FIGURE_PLAN`、claim gate 与 generated JSON 只作后台兼容、事实投影和最终审计，不得成为创作前置清单。Research Package 必须压缩投影题面必答合同、正式自然语言答案、共享数学对象/必要假设、关键推导、当前图、主张边界和可用文献；联网国赛在此之前须完成一次双语检索、候选核验与 citation ledger，零命中也如实记录。Author Pass 只以正式 objective answer、current production 绑定和已关闭 scientific P0/P1 为科学硬门。知识检索零匹配时自动给出通用结构模式；可检索实际使用的方法文献，但禁止同题答案、题解和现成结论，约 6–12 篇参考文献只作紧凑性建议。

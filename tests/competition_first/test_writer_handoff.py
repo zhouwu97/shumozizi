@@ -401,28 +401,54 @@ def _write_modeling_units_with_insights(
     )
 
 
-def test_argument_layer_blocks_core_question_without_warrant(
+def test_handoff_readiness_does_not_duplicate_warrant_gate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """核心问题缺少机制级 insight（warrant 种子）时必须阻断交接。"""
-    run_dir = _ready_run(tmp_path, "arg-blocked", monkeypatch)
+    """核心问题的 warrant 只能由上游 modeling-units 门禁把关。
+
+    进入论文前 ``require_v32_experiment_evidence`` 已强制核心问题拥有机制类
+    insight；handoff readiness 不再重复判定同一事实，否则同一科学事实会同时
+    被两个模块硬判，上游改集合后下游规则漂移。这里把科学层 monkeypatch 为空，
+    验证 readiness 自身不会因核心问题缺 insight 而阻断。
+    """
+    run_dir = _ready_run(tmp_path, "arg-upstream-only", monkeypatch)
     _write_modeling_units_with_insights(run_dir, with_warrant=False)
 
     readiness = writer_handoff_readiness(run_dir)
 
-    assert readiness["ready"] is False
-    assert readiness["layers"]["argument"] == "blocked"
-    assert any("argument" in reason and "Q1" in reason for reason in readiness["reasons"])
+    assert readiness["layers"]["argument"] == "upstream"
+    assert readiness["ready"] is True, readiness["reasons"]
 
 
-def test_argument_layer_passes_with_mechanism_warrant(
+def test_handoff_blocked_by_open_repair_directive_until_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """核心问题带机制类 insight 时 argument 层通过，整体可交接。"""
-    run_dir = _ready_run(tmp_path, "arg-ok", monkeypatch)
-    _write_modeling_units_with_insights(run_dir, with_warrant=True)
+    """未关闭的修复指令阻断交接；验收通过后放行。"""
+    from shumozizi.paper.repair_loop import (
+        close_repair_directive,
+        open_repair_directive,
+    )
+
+    run_dir = _ready_run(tmp_path, "repair-block", monkeypatch)
+    open_repair_directive(
+        run_dir,
+        directive_id="fix-handoff-1",
+        source="reviewer finding F-1",
+        finding_class="argument",
+        route="experiment",
+        owner_stage="experiment",
+        repair_action="补充 Q1 机制解释。",
+        acceptance_test="Q1 存在绑定 current production 的机制级 insight。",
+    )
 
     readiness = writer_handoff_readiness(run_dir)
+    assert readiness["ready"] is False
+    assert readiness["layers"]["repair"] == "blocked"
+    assert any("repair" in reason for reason in readiness["reasons"])
 
-    assert readiness["layers"]["argument"] == "ok"
-    assert readiness["ready"] is True, readiness["reasons"]
+    close_repair_directive(
+        run_dir,
+        "fix-handoff-1",
+        acceptance_evidence="Q1 机制级 insight 已补齐并通过上游 modeling-units 校验。",
+    )
+    assert writer_handoff_readiness(run_dir)["ready"] is True
