@@ -29,6 +29,50 @@ from tests.quality_protocol_helpers import (
 class SimpleQualityTests(unittest.TestCase):
     """覆盖高风险优化的最小质量放行边界。"""
 
+    def test_executor_records_route_fallback_instead_of_hiding_it(self) -> None:
+        """执行器必须显式保留计划路线与实际路线的差异。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = initialize_simple_run(Path(temporary), "route-fallback")
+            script = run_dir / "code" / "route.py"
+            script.write_text(
+                "from pathlib import Path\n"
+                "import json\n"
+                "Path('results/raw/route.json').write_text(json.dumps({'metrics': {'objective': 1.0}}), encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+
+            missing_reason = execute_simple_experiment(
+                run_dir,
+                result_id="route-without-reason",
+                question_id="Q1",
+                kind="route",
+                command=f'"{sys.executable}" code/route.py',
+                expected_outputs=["results/raw/route.json"],
+                metrics_from="results/raw/route.json",
+                declared_route_id="R1",
+                executed_route_id="R0",
+            )
+            self.assertFalse(missing_reason["success"])
+            self.assertIn("fallback_reason", missing_reason["error"])
+            (run_dir / "results" / "raw" / "route.json").unlink()
+
+            recorded = execute_simple_experiment(
+                run_dir,
+                result_id="route-with-reason",
+                question_id="Q1",
+                kind="route",
+                command=f'"{sys.executable}" code/route.py',
+                expected_outputs=["results/raw/route.json"],
+                metrics_from="results/raw/route.json",
+                declared_route_id="R1",
+                executed_route_id="R0",
+                fallback_reason="挑战路线失败后执行了 baseline",
+            )
+            self.assertTrue(recorded["success"], recorded["error"])
+            provenance = recorded["result"]["execution_provenance"]
+            self.assertTrue(provenance["fallback_used"])
+            self.assertEqual("R0", provenance["executed_route_id"])
+
     def test_baseline_preserved_does_not_by_itself_allow_paper(self) -> None:
         """基线保持不能替代搜索充分性通过。"""
         with tempfile.TemporaryDirectory() as temporary:

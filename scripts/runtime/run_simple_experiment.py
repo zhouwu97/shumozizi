@@ -56,6 +56,9 @@ def main() -> int:
         help="从 --metrics-from 提取的 KEY=JSON_PATH；省略时读取 metrics.*",
     )
     parser.add_argument("--timeout", type=float)
+    parser.add_argument("--declared-route", help="比较计划原定的数学路线 ID")
+    parser.add_argument("--executed-route", help="本次命令实际执行的数学路线 ID")
+    parser.add_argument("--fallback-reason", help="实际路线不同于原定路线时的原因")
     parser.add_argument(
         "--execution-mode",
         choices=("exploration", "production"),
@@ -88,6 +91,9 @@ def main() -> int:
             # 传入 None 让底层按显式 mode 或运行状态推导暂存语义；这保持旧 CLI
             # 在 exploration 状态下漏传参数时仍是探索执行，而非悄然写入 production。
             provisional=True if args.provisional else None,
+            declared_route_id=args.declared_route,
+            executed_route_id=args.executed_route,
+            fallback_reason=args.fallback_reason,
         )
     except (ContractError, OSError) as exc:
         payload = {"success": False, "error": str(exc), "result": None}

@@ -464,6 +464,8 @@ def verify_submission_exports(
                 or result.get("question_id") != question_id
                 or result.get("execution_mode") != "production"
                 or result.get("execution_valid") is not True
+                or result.get("status") != "current"
+                or result.get("scientific_status", "valid") == "invalidated"
             ):
                 raise ContractError(
                     f"{question_id}.submission_export.source_result_id "

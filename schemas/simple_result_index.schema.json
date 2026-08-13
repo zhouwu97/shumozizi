@@ -43,6 +43,29 @@
             }
           },
           "status": {"enum": ["current", "candidate_eligible", "superseded", "failed", "diagnostic"]},
+          "scientific_status": {"enum": ["valid", "conditional", "invalidated", "unresolved"]},
+          "selection_status": {"enum": ["incumbent", "candidate", "dominated", "diagnostic"]},
+          "invalidation_event_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "dominated_by_result_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "execution_provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["declared_route_id", "executed_route_id", "fallback_used"],
+            "properties": {
+              "declared_route_id": {"type": "string", "minLength": 1},
+              "executed_route_id": {"type": "string", "minLength": 1},
+              "fallback_used": {"type": "boolean"},
+              "fallback_reason": {"type": ["string", "null"]}
+            }
+          },
           "execution_mode": {"enum": ["production", "exploration"]},
           "provisional": {"type": "boolean"},
           "objective_semantics_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},

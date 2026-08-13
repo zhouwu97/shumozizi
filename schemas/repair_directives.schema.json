@@ -37,6 +37,11 @@
         "repair_action": {"type": "string", "minLength": 1},
         "requires_new_evidence": {"type": "boolean"},
         "acceptance_test": {"type": "string", "minLength": 1},
+        "acceptance_roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
         "waivable": {"type": "boolean"},
         "status": {"enum": ["open", "closed"]},
         "opened_at": {"type": "string", "format": "date-time"},
@@ -48,7 +53,16 @@
           "required": ["acceptance_evidence", "verified"],
           "properties": {
             "acceptance_evidence": {"type": "string", "minLength": 1},
-            "verified": {"type": "boolean"}
+            "verified": {"type": "boolean"},
+            "acceptance_result_ids": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1}
+            },
+            "acceptance_bindings": {
+              "type": "object",
+              "additionalProperties": {"type": "string", "minLength": 1}
+            }
           }
         }
       }

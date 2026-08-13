@@ -67,6 +67,7 @@ def open_repair_directive(
     owner_stage: str,
     repair_action: str,
     acceptance_test: str,
+    acceptance_roles: list[str] | None = None,
     affected_questions: list[str] | None = None,
     requires_new_evidence: bool = False,
     waivable: bool = False,
@@ -82,6 +83,8 @@ def open_repair_directive(
         owner_stage: 负责人阶段（如 ``experiment`` / ``analysis`` / ``author``）。
         repair_action: 可执行的具体修复动作描述。
         acceptance_test: 确定性验收测试；不满足时指令不能 close。
+        acceptance_roles: 多部分科学修复必须分别覆盖的证据角色；为空时只要求
+            一项合格生产结果，避免为简单修复增加不必要表单。
         affected_questions: 受影响的问题 ID 列表。
         requires_new_evidence: 是否必须产出新的生产证据才能验收。
         waivable: 是否允许评审豁免。
@@ -107,6 +110,7 @@ def open_repair_directive(
         "repair_action": repair_action,
         "requires_new_evidence": requires_new_evidence,
         "acceptance_test": acceptance_test,
+        "acceptance_roles": list(dict.fromkeys(acceptance_roles or [])),
         "waivable": waivable,
         "status": "open",
         "opened_at": utc_now(),
@@ -239,6 +243,8 @@ def close_repair_directive(
     *,
     acceptance_evidence: str,
     verified: bool = False,
+    acceptance_result_ids: list[str] | None = None,
+    acceptance_bindings: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """关闭修复指令：必须提供验收证据，验收不过不能 close。
 
@@ -248,6 +254,10 @@ def close_repair_directive(
         acceptance_evidence: 验收证据（如何满足 acceptance_test 的说明）；
             已通过机械核验时用 ``verified=True`` 补充。
         verified: 是否由确定性机制复核通过（如测试、文件核验）。
+        acceptance_result_ids: 验收所绑定的生产结果。需要新证据的分析/实验
+            修复必须至少绑定一项在指令打开后产生的 current production 结果。
+        acceptance_bindings: “验收角色→结果 ID”的绑定。指令声明多个角色时，
+            必须逐项绑定不同结果，防止用一个局部实验关闭整组修复。
 
     Returns:
         更新后的指令条目。
@@ -266,11 +276,53 @@ def close_repair_directive(
         raise ContractError(f"修复指令不存在: {directive_id}")
     if entry["status"] != "open":
         raise ContractError(f"修复指令已关闭: {directive_id}")
+    bindings = dict(acceptance_bindings or {})
+    required_roles = entry.get("acceptance_roles", [])
+    if required_roles:
+        if set(bindings) != set(required_roles):
+            raise ContractError(
+                "修复验收角色未完整覆盖: "
+                + ", ".join(sorted(set(required_roles) - set(bindings)))
+            )
+        if len(set(bindings.values())) != len(bindings):
+            raise ContractError("不同验收角色必须绑定不同 production 结果")
+    identifiers = list(
+        dict.fromkeys([*(acceptance_result_ids or []), *bindings.values()])
+    )
+    if entry.get("requires_new_evidence"):
+        if verified is not True:
+            raise ContractError("需要新科学证据的修复必须通过确定性验收（verified=true）")
+        if not identifiers:
+            raise ContractError("需要新科学证据的修复必须绑定验收 production 结果")
+        from shumozizi.simple.results import read_result_index
+
+        results = {
+            item["result_id"]: item
+            for item in read_result_index(run_dir)["results"]
+        }
+        for result_id in identifiers:
+            result = results.get(result_id)
+            if (
+                result is None
+                or result.get("execution_mode") != "production"
+                or result.get("execution_valid") is not True
+                or result.get("status") != "current"
+                or result.get("scientific_status", "valid") == "invalidated"
+            ):
+                raise ContractError(
+                    f"验收结果 {result_id} 必须是科学有效的 current production"
+                )
+            if result.get("created_at", "") < entry["opened_at"]:
+                raise ContractError(
+                    f"验收结果 {result_id} 必须在修复指令打开后产生"
+                )
     entry["status"] = "closed"
     entry["closed_at"] = utc_now()
     entry["closure"] = {
         "acceptance_evidence": acceptance_evidence.strip(),
         "verified": bool(verified),
+        "acceptance_result_ids": identifiers,
+        "acceptance_bindings": bindings,
     }
     _save(run_dir, payload)
     return entry

@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from shumozizi.core.io import ContractError
+from shumozizi.core.io import ContractError, load_json
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.modeling_units import (
     question_outcome_selections,
@@ -33,7 +33,7 @@ from shumozizi.simple.review_tasks import (
     create_review_task_receipt,
     persist_review_task_creation_event,
 )
-from shumozizi.simple.state import utc_now
+from shumozizi.simple.state import read_simple_state, utc_now, write_simple_state
 
 
 def _run(tmp_path: Path, name: str) -> Path:
@@ -826,6 +826,7 @@ def _upgrade_units_to_semantic_13(
         "candidate_rankings": {"sum": "A>B", "min": "B>A"},
     }
     unit["answer_contract"]["semantic_scorer_preflight"] = {
+        "counterexample_case_id": "simultaneous",
         "cases": [
             {
                 "case_id": "simultaneous",
@@ -982,6 +983,63 @@ def test_semantic_scorer_preflight_must_precede_route_search(tmp_path: Path) -> 
     write_modeling_units(run_dir, units)
 
     require_v32_experiment_evidence(run_dir)
+
+
+def test_failed_semantic_counterexample_invalidates_current_results(
+    tmp_path: Path,
+) -> None:
+    """scorer 被语义反例推翻时，相关 current 必须沿负证据链失效。"""
+    run_dir = _run(tmp_path, "semantic-preflight-failed")
+    units = _upgrade_units_to_semantic_13(run_dir, _units(run_dir))
+    write_modeling_units(run_dir, units)
+    _register(
+        run_dir,
+        "semantic-preflight",
+        duration_seconds=1.0,
+        extra={"semantic_case_count": 3.0, "semantic_case_pass_rate": 0.0},
+        output_extra={
+            "semantic_cases": [
+                {
+                    "case_id": "simultaneous",
+                    "expected_ranking": "应高于累计相近但完全错开的方案。",
+                    "actual_ranking": "错误地低于完全错开的方案。",
+                    "passed": False,
+                }
+            ]
+        },
+    )
+    _search_results(run_dir, search_seconds=250.0)
+    _register(run_dir, "attack", duration_seconds=5.0)
+    _fill_actual(
+        units,
+        insights=[
+            {
+                "insight_id": "Q1-joint",
+                "kind": "mechanism",
+                "observation": "联合评价本应避免错开窗口得到高分。",
+                "mechanism": "主体间聚合必须先于时间测度执行。",
+                "boundary": "当前结论等待语义反例修复后重新验证。",
+                "evidence_result_ids": ["interval", "final"],
+            }
+        ],
+    )
+    units["units"][0]["actual"]["semantic_scorer_preflight_result_id"] = (
+        "semantic-preflight"
+    )
+    write_modeling_units(run_dir, units)
+    write_objective_candidates(run_dir, _candidates(run_dir))
+    state = read_simple_state(run_dir)
+    state["phase"] = "experiment"
+    write_simple_state(run_dir, state)
+
+    with pytest.raises(ContractError, match="未通过全部语义排序案例"):
+        require_v32_experiment_evidence(run_dir)
+
+    results = load_json(run_dir / "results/index.json")["results"]
+    assert results
+    assert all(item["execution_valid"] is True for item in results)
+    assert all(item["status"] == "superseded" for item in results)
+    assert all(item["scientific_status"] == "invalidated" for item in results)
 
 
 def test_high_risk_scientific_challenge_must_attack_semantics_first(

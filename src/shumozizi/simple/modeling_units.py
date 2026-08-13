@@ -20,8 +20,10 @@ from typing import Any
 from shumozizi.core.io import (
     ContractError,
     atomic_json,
+    json_bytes,
     load_json,
     resolve_inside,
+    sha256_bytes,
     sha256_file,
     sha256_tree,
 )
@@ -284,6 +286,8 @@ def _global_semantic_high_risk(value: object) -> bool:
     for raw in value:
         if not isinstance(raw, dict):
             continue
+        if _derived_semantic_risk_reasons(raw):
+            return True
         delta = raw.get("question_delta")
         if isinstance(delta, dict) and delta.get("must_recheck_aggregation") is True:
             return True
@@ -294,6 +298,74 @@ def _global_semantic_high_risk(value: object) -> bool:
         if isinstance(resolution, dict) and resolution.get("status") == "comparison_planned":
             return True
     return False
+
+
+def _derived_semantic_risk_reasons(unit: dict[str, Any]) -> set[str]:
+    """从建模结构派生语义风险，不依赖执行者主动勾选风险标签。
+
+    只使用少量高精度触发器，避免把所有普通求和题都升级为语义审查：协同单元、
+    非联合分解、待比较 endpoint，以及同一量词合同中同时出现全称和存在量词。
+
+    Args:
+        unit: 尚未完全验证的原始建模单元。
+
+    Returns:
+        系统派生的风险原因集合。
+    """
+    reasons: set[str] = set()
+    if unit.get("unit_kind", unit.get("mode")) == "coordination":
+        reasons.add("coordination_unit")
+
+    contract = unit.get("answer_contract")
+    if isinstance(contract, dict):
+        resolution = contract.get("endpoint_resolution")
+        if isinstance(resolution, dict) and resolution.get("status") == "comparison_planned":
+            reasons.add("endpoint_comparison")
+        endpoint = contract.get("primary_endpoint")
+        if isinstance(endpoint, dict):
+            aggregation = endpoint.get("aggregation")
+            if isinstance(aggregation, dict):
+                quantifier_text = " ".join(
+                    str(value).casefold() for value in aggregation.values()
+                )
+                universal = ("∀", "forall", "for all", "所有", "每个", "任意")
+                existential = ("∃", "exists", "至少一个", "存在一", "某个")
+                if any(token in quantifier_text for token in universal) and any(
+                    token in quantifier_text for token in existential
+                ):
+                    reasons.add("nested_quantifiers")
+                resource_text = str(
+                    aggregation.get("across_resources", "")
+                ).casefold()
+                multi_resource_tokens = (
+                    "每枚",
+                    "各枚",
+                    "多枚",
+                    "多个资源",
+                    "各资源",
+                    "共同",
+                    "联合",
+                    "共享资源",
+                    "each resource",
+                    "multiple resources",
+                    "joint resource",
+                    "shared resource",
+                )
+                if any(token in resource_text for token in multi_resource_tokens):
+                    reasons.add("multi_resource_aggregation")
+
+    routes: list[object] = [unit.get("baseline")]
+    candidates = unit.get("competitive_routes")
+    if isinstance(candidates, list):
+        routes.extend(candidates)
+    for route in routes:
+        if not isinstance(route, dict):
+            continue
+        composition = route.get("composition")
+        if isinstance(composition, dict) and composition.get("mode") not in {None, "joint"}:
+            reasons.add("decompose_then_combine")
+            break
+    return reasons
 
 
 def _semantic_reconstructions(
@@ -455,7 +527,9 @@ def _validate_aggregation_contract(value: object, label: str) -> None:
         _require_substantive_plan_text(item.get(field), f"{label}.{field}")
 
 
-def _validate_scorer_preflight(value: object, label: str) -> dict[str, str]:
+def _validate_scorer_preflight(
+    value: object, label: str, *, require_counterexample_case: bool = False
+) -> dict[str, str]:
     """验证正式搜索前计划的 3--5 个评分语义案例。"""
     item = _require_mapping(value, label)
     cases = item.get("cases")
@@ -471,6 +545,14 @@ def _validate_scorer_preflight(value: object, label: str) -> dict[str, str]:
         for field in ("construction", "expected_ranking", "rationale"):
             _require_substantive_plan_text(
                 case.get(field), f"{label}.cases[{index}].{field}"
+            )
+    if require_counterexample_case:
+        counterexample_case_id = _require_text(
+            item.get("counterexample_case_id"), f"{label}.counterexample_case_id"
+        )
+        if counterexample_case_id not in seen:
+            raise ContractError(
+                f"{label}.counterexample_case_id 必须引用 cases 中实际执行的语义反例"
             )
     _require_substantive_plan_text(item.get("pass_criterion"), f"{label}.pass_criterion")
     return {
@@ -991,10 +1073,11 @@ def _validate_answer_contract(
         counterexample_rankings = _validate_semantic_counterexample(
             contract.get("semantic_counterexample"), f"{label}.semantic_counterexample"
         )
-    if require_semantic_contract and semantic_high_risk and core_question:
+    if require_semantic_contract and semantic_high_risk:
         scorer_cases = _validate_scorer_preflight(
             contract.get("semantic_scorer_preflight"),
             f"{label}.semantic_scorer_preflight",
+            require_counterexample_case=schema_version == "1.4",
         )
     infeasible_policy: dict[str, str] = {}
     if decision_unit:
@@ -1042,6 +1125,7 @@ def _validate_unit_plan(
         if mode not in {"compare", "oracle_only"}:
             raise ContractError(f"{unit_id}.mode 必须为 compare 或 oracle_only")
     search_kind = mode in SEARCH_UNIT_KINDS or mode == "compare"
+    derived_semantic_reasons = _derived_semantic_risk_reasons(unit)
     capability_decision = _validate_capability_decision(
         run_dir,
         unit.get("capability_decision"),
@@ -1057,12 +1141,24 @@ def _validate_unit_plan(
         delta = _validate_question_delta(
             unit.get("question_delta"), f"{unit_id}.question_delta"
         )
+    derived_risk_signals = {
+        {
+            "coordination_unit": "multiple_entities",
+            "endpoint_comparison": "objective_form_ambiguity",
+            "nested_quantifiers": "nested_quantifiers",
+            "decompose_then_combine": "decompose_then_combine",
+            "multi_resource_aggregation": "multiple_entities",
+        }[reason]
+        for reason in derived_semantic_reasons
+    }
     risk_package = validate_risk_package(
         unit.get("risk_package"),
         label=f"{unit_id}.risk_package",
         core_question=core,
         unit_kind=str(mode),
-        semantic_risk_signals=set(delta["semantic_risk_signals"]),
+        semantic_risk_signals=(
+            set(delta["semantic_risk_signals"]) | derived_risk_signals
+        ),
     )
     answer_contract: dict[str, Any] = {}
     if require_decision_contract:
@@ -1071,7 +1167,9 @@ def _validate_unit_plan(
             f"{unit_id}.answer_contract",
             derive_qualification=schema_version in {"1.2", "1.3", "1.4"},
             require_semantic_contract=require_semantic_contract,
-            semantic_high_risk=bool(delta["semantic_high_risk"]),
+            semantic_high_risk=bool(
+                delta["semantic_high_risk"] or derived_semantic_reasons
+            ),
             core_question=core,
             # 决策闭环只对 v1.4 决策单元（优化/协同）强制，旧版本不加约束。
             decision_unit=schema_version == "1.4" and search_kind,
@@ -1397,8 +1495,10 @@ def _validate_unit_plan(
         "data_quality_contract": data_quality_contract,
         "semantic_high_risk": bool(
             delta["semantic_high_risk"]
+            or derived_semantic_reasons
             or answer_contract.get("semantic_high_risk_from_endpoint")
         ),
+        "derived_semantic_risk_reasons": sorted(derived_semantic_reasons),
         "composition_modes": composition_modes,
         **answer_contract,
         "expected_upsides": expected_upsides,
@@ -1743,6 +1843,7 @@ def _production_result(
         result.get("question_id") != question_id
         or result.get("execution_mode") != "production"
         or result.get("execution_valid") is not True
+        or result.get("scientific_status", "valid") == "invalidated"
     ):
         raise ContractError(f"{label} 必须是本问 execution_valid 的 production 结果")
     return result
@@ -2170,6 +2271,7 @@ def _validate_comparison_actual(
         raise ContractError(f"{plan['unit_id']} 的实际比较必须覆盖且仅覆盖已声明路线")
     scores: dict[str, float] = {}
     durations: list[float] = []
+    route_results: list[tuple[str, dict[str, Any]]] = []
     for route_id in plan["route_ids"]:
         result = _production_result(
             results,
@@ -2191,6 +2293,25 @@ def _validate_comparison_actual(
             raise ContractError(f"{plan['unit_id']} 的路线 {route_id} 缺少正的实际耗时")
         scores[route_id] = float(metric)
         durations.append(float(duration))
+        route_results.append((route_id, result))
+    provenance_count = sum(
+        "execution_provenance" in result for _, result in route_results
+    )
+    if provenance_count not in {0, len(route_results)}:
+        raise ContractError(f"{plan['unit_id']} 的路线来源记录不能只覆盖部分比较路线")
+    for route_id, result in route_results:
+        provenance = result.get("execution_provenance")
+        if provenance is None:
+            continue
+        if (
+            provenance.get("declared_route_id") != route_id
+            or provenance.get("executed_route_id") != route_id
+            or provenance.get("fallback_used") is not False
+        ):
+            raise ContractError(
+                f"{plan['unit_id']} 的路线 {route_id} 实际执行身份不一致，"
+                "fallback 结果不能冒充原路线比较证据"
+            )
     baseline_duration = durations[0]
     if any(
         abs(duration - baseline_duration) / baseline_duration > plan["budget_tolerance_ratio"]
@@ -2509,7 +2630,7 @@ def _validate_semantic_scorer_preflight_actual(
     results: dict[str, dict[str, Any]],
     search_ids: set[str],
 ) -> str | None:
-    """确认高风险核心问题在正式路线搜索前先通过评分语义案例。"""
+    """确认每个高风险单元在正式路线搜索前先实际执行评分语义案例。"""
     expected_cases = dict(plan.get("scorer_cases", {}))
     expected_count = len(expected_cases)
     if expected_count == 0:
@@ -2536,6 +2657,26 @@ def _validate_semantic_scorer_preflight_actual(
         or isinstance(pass_rate, bool)
         or not math.isclose(float(pass_rate), 1.0, rel_tol=0.0, abs_tol=1e-12)
     ):
+        from shumozizi.simple.evidence_consequences import (
+            apply_independent_evidence_consequences,
+        )
+
+        # scorer 在预登记反例上失败属于科学负证据，而非普通格式错误；立即
+        # 复用统一后果链撤销本问旧 current，避免只阻断入口却保留失真答案。
+        apply_independent_evidence_consequences(
+            run_dir,
+            [
+                {
+                    "evidence_id": f"semantic-preflight-{result_id}",
+                    "kind": "property-test",
+                    "semantic_output": {
+                        "verdict": "fail",
+                        "question_id": plan["question_id"],
+                    },
+                    "receipt": {"sha256": sha256_bytes(json_bytes(result))},
+                }
+            ],
+        )
         raise ContractError(f"{label} 的评分器未通过全部语义排序案例，不能接受路线搜索")
     raw_cases: list[dict[str, Any]] | None = None
     for output_file in result.get("output_files", []):
@@ -2860,6 +3001,11 @@ def _validate_actual_unit(
                 verify_ids.update(uncertainty_ids)
                 outcome["evidence_grade"]["uncertainty_result_ids"] = uncertainty_ids
             outcome["evidence_grade"]["methodology_result_ids"] = methodology_ids
+        preflight_result_id = _validate_semantic_scorer_preflight_actual(
+            run_dir, actual, plan, results, search_ids
+        )
+        if preflight_result_id is not None:
+            verify_ids.add(preflight_result_id)
         if plan["unit_kind"] == "exact_oracle":
             verify_ids.add(str(actual["oracle_result_id"]))
         _validate_insights(actual.get("insights"), plan, results)
@@ -3392,7 +3538,7 @@ def require_risk_adaptive_production_ready(run_dir: Path, question_id: str) -> N
 
 
 def semantic_high_risk_questions(run_dir: Path) -> set[str]:
-    """返回已由问题差分识别为聚合高风险的问题。"""
+    """返回由系统结构或问题差分识别为语义高风险的问题。"""
     path = run_dir / MODELING_UNITS_PATH
     if not path.is_file():
         return set()
@@ -3407,8 +3553,13 @@ def semantic_high_risk_questions(run_dir: Path) -> set[str]:
         for unit in payload.get("units", [])
         if isinstance(unit, dict)
         and isinstance(unit.get("question_id"), str)
-        and isinstance(unit.get("question_delta"), dict)
-        and unit["question_delta"].get("must_recheck_aggregation") is True
+        and (
+            (
+                isinstance(unit.get("question_delta"), dict)
+                and unit["question_delta"].get("must_recheck_aggregation") is True
+            )
+            or bool(_derived_semantic_risk_reasons(unit))
+        )
     }
 
 

@@ -434,6 +434,14 @@ def record_scientific_challenge_evidence(
     if semantic_assessment is not None:
         payload["stage_a_semantic_assessment"] = semantic_assessment
     atomic_json(run_dir / SCIENTIFIC_CHALLENGE_EVIDENCE_PATH, payload)
+    if normalized_findings is not None:
+        # 红队的模型级负结论与其他独立反例走同一条后果链，避免报告已经
+        # 发现问题但 current 结果、图表和论文资格仍保持有效。
+        from shumozizi.simple.evidence_consequences import (
+            apply_scientific_finding_consequences,
+        )
+
+        apply_scientific_finding_consequences(run_dir, normalized_findings)
     return payload
 
 

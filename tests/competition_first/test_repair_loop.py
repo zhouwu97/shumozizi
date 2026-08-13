@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -30,7 +31,8 @@ from shumozizi.simple.authoring import (
     set_authoring_mode,
 )
 from shumozizi.simple.initialization import initialize_simple_run
-from shumozizi.simple.state import read_simple_state, write_simple_state
+from shumozizi.simple.results import register_result
+from shumozizi.simple.state import read_simple_state, utc_now, write_simple_state
 
 
 def _run(tmp_path: Path, name: str = "repair") -> Path:
@@ -79,6 +81,54 @@ def _phase_only_updater(monkeypatch: pytest.MonkeyPatch, run_dir: Path) -> None:
     import shumozizi.paper.repair_loop as repair_loop
 
     monkeypatch.setattr(repair_loop, "update_simple_state", fake_update)
+
+
+def _register_repair_evidence(
+    run_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    result_id: str = "repair-evidence",
+) -> None:
+    """登记一条发生在指令打开后的真实 production 证据。"""
+    import shumozizi.simple.modeling_units as modeling_units
+
+    monkeypatch.setattr(
+        modeling_units,
+        "require_risk_adaptive_production_ready",
+        lambda *_args, **_kwargs: None,
+    )
+    source = run_dir / "code" / f"{result_id}.py"
+    output = run_dir / "results" / "raw" / f"{result_id}.json"
+    source.write_text("print('ok')\n", encoding="utf-8")
+    output.write_text(
+        json.dumps({"metrics": {"feasible": True}}),
+        encoding="utf-8",
+    )
+    now = utc_now()
+    register_result(
+        run_dir,
+        result_id=result_id,
+        question_id="Q1",
+        kind=f"repair-verification-{result_id}",
+        command=f"python code/{result_id}.py",
+        source_script=f"code/{result_id}.py",
+        input_files=[f"code/{result_id}.py"],
+        output_files=[f"results/raw/{result_id}.json"],
+        metrics={"feasible": True},
+        metric_sources={
+            "feasible": {
+                "file": f"results/raw/{result_id}.json",
+                "json_path": "metrics.feasible",
+            }
+        },
+        exit_code=0,
+        stdout_path=f"results/raw/{result_id}.stdout.log",
+        stderr_path=f"results/raw/{result_id}.stderr.log",
+        started_at=now,
+        finished_at=now,
+        duration_seconds=0.1,
+        objective_semantics_sha256="a" * 64,
+    )
 
 
 def test_open_and_apply_experiment_route_changes_phase(
@@ -144,13 +194,84 @@ def test_close_requires_evidence_and_unblocks(
     with pytest.raises(ContractError, match="未关闭的修复指令"):
         require_no_open_repairs(run_dir)
 
+    with pytest.raises(ContractError, match="确定性验收"):
+        close_repair_directive(
+            run_dir,
+            "fix-1",
+            acceptance_evidence="仅有执行者说明。",
+            verified=False,
+        )
+
+    _register_repair_evidence(run_dir, monkeypatch)
     closed = close_repair_directive(
-        run_dir, "fix-1", acceptance_evidence="Q1 已补齐机制级 insight 并绑定 current 结果。"
+        run_dir,
+        "fix-1",
+        acceptance_evidence="Q1 已补齐机制级 insight 并绑定 current 结果。",
+        verified=True,
+        acceptance_result_ids=["repair-evidence"],
     )
     assert closed["status"] == "closed"
-    assert closed["closure"]["verified"] is False
+    assert closed["closure"]["verified"] is True
+    assert closed["closure"]["acceptance_result_ids"] == ["repair-evidence"]
     require_no_open_repairs(run_dir)
     assert open_repair_directives(run_dir) == []
+
+
+def test_multi_part_repair_requires_distinct_role_bindings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """多目标返修不能用同一个局部实验包办全部验收角色。"""
+    run_dir = _run(tmp_path, "repair-roles")
+    open_repair_directive(
+        run_dir,
+        directive_id="multi-objective-fix",
+        source="scientific finding P0-01",
+        finding_class="objective",
+        route="experiment",
+        owner_stage="experiment",
+        repair_action="分别重跑正式目标和独立复算。",
+        acceptance_test="两个角色均有修复后 production 结果。",
+        acceptance_roles=["objective", "independent_recompute"],
+        affected_questions=["Q1"],
+        requires_new_evidence=True,
+    )
+    _register_repair_evidence(run_dir, monkeypatch, result_id="objective-fixed")
+
+    with pytest.raises(ContractError, match="未完整覆盖"):
+        close_repair_directive(
+            run_dir,
+            "multi-objective-fix",
+            acceptance_evidence="只完成主目标。",
+            verified=True,
+            acceptance_bindings={"objective": "objective-fixed"},
+        )
+    with pytest.raises(ContractError, match="不同验收角色"):
+        close_repair_directive(
+            run_dir,
+            "multi-objective-fix",
+            acceptance_evidence="重复绑定同一结果。",
+            verified=True,
+            acceptance_bindings={
+                "objective": "objective-fixed",
+                "independent_recompute": "objective-fixed",
+            },
+        )
+
+    _register_repair_evidence(run_dir, monkeypatch, result_id="independent-fixed")
+    closed = close_repair_directive(
+        run_dir,
+        "multi-objective-fix",
+        acceptance_evidence="主目标和独立复算均已通过。",
+        verified=True,
+        acceptance_bindings={
+            "objective": "objective-fixed",
+            "independent_recompute": "independent-fixed",
+        },
+    )
+    assert closed["closure"]["acceptance_bindings"] == {
+        "objective": "objective-fixed",
+        "independent_recompute": "independent-fixed",
+    }
 
 
 def test_unknown_route_rejected_closed_action_space(tmp_path: Path) -> None:

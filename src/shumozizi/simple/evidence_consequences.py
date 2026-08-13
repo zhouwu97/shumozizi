@@ -7,7 +7,13 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from shumozizi.core.io import ContractError, atomic_json, load_json
+from shumozizi.core.io import (
+    ContractError,
+    atomic_json,
+    json_bytes,
+    load_json,
+    sha256_bytes,
+)
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.critical_claims import read_critical_claims
 from shumozizi.simple.results import read_result_index
@@ -38,7 +44,45 @@ def _negative_event(kind: str, evidence: dict[str, Any]) -> str | None:
         return "incumbent_not_competitive"
     if kind == "fixed-action-utilization" and verdict in {"underutilized_required_action", "invalid"}:
         return "all_actions_not_material"
+    if kind == "scientific-finding" and verdict == "blocking_finding_open":
+        return "blocking_finding_open"
     return None
+
+
+def apply_scientific_finding_consequences(
+    run_dir: Path, findings: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """把开放的模型级科学发现转换为统一负证据事件。
+
+    这里只处理会改变答案、目标或模型的发现。写作修订和不可补救的数据边界
+    继续留在论文阶段，避免把每条编辑意见都升级成科学返工。
+
+    Args:
+        run_dir: 当前运行目录。
+        findings: 已完成字段规范化的科学挑战发现。
+
+    Returns:
+        实际产生的级联事件。
+    """
+    blocking_actions = {"MODEL_REPAIR", "OBJECTIVE_REDESIGN", "ANSWER_REJECTION"}
+    records: list[dict[str, Any]] = []
+    for finding in findings:
+        if finding.get("status") != "open" or finding.get("action_type") not in blocking_actions:
+            continue
+        digest = sha256_bytes(json_bytes(finding))
+        records.append(
+            {
+                "evidence_id": f"scientific-finding-{digest[:16]}",
+                "kind": "scientific-finding",
+                "semantic_output": {
+                    "verdict": "blocking_finding_open",
+                    "question_id": finding["question_id"],
+                    "finding_id": finding["finding_id"],
+                },
+                "receipt": {"sha256": digest},
+            }
+        )
+    return apply_independent_evidence_consequences(run_dir, records)
 
 
 def _question_for_record(record: dict[str, Any], claims: dict[str, dict[str, Any]]) -> str | None:
@@ -113,6 +157,23 @@ def apply_independent_evidence_consequences(
                 result_scope = set(result.get("affected_question_ids", [result.get("question_id")]))
                 if result.get("status") == "current" and result_scope & affected:
                     result["status"] = "superseded"
+                    result["scientific_status"] = "invalidated"
+                    result["selection_status"] = (
+                        "dominated"
+                        if event_name == "incumbent_not_competitive"
+                        else "candidate"
+                    )
+                    event_id = f"consequence-{record['evidence_id']}"
+                    result["invalidation_event_ids"] = sorted(
+                        set(result.get("invalidation_event_ids", [])) | {event_id}
+                    )
+                    if event_name == "incumbent_not_competitive":
+                        challenger_id = record["semantic_output"].get("challenger_result_id")
+                        if isinstance(challenger_id, str) and challenger_id:
+                            result["dominated_by_result_ids"] = sorted(
+                                set(result.get("dominated_by_result_ids", []))
+                                | {challenger_id}
+                            )
                     invalidated_results.append(result["result_id"])
             invalidated_claims = sorted(
                 claim_id for claim_id, claim in claims.items()
@@ -199,7 +260,10 @@ def apply_independent_evidence_consequences(
         if errors:
             raise ContractError("负面证据事件日志不符合 Schema: " + "；".join(errors))
         atomic_json(log_path, log)
-        update_simple_state(run_dir, phase="experiment")
+        # 已在 experiment 时不重复执行“进入实验”前置门；负证据级联负责撤销
+        # 科学资格，不应因为一次同阶段写回重新要求尚无关的分析入口材料。
+        if previous_phase != "experiment":
+            update_simple_state(run_dir, phase="experiment")
     except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
         try:
             update_simple_state(run_dir, phase="blocked")

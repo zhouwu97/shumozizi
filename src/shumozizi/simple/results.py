@@ -243,6 +243,9 @@ def register_result(
     dependency_scope: str = "question",
     affected_question_ids: list[str] | None = None,
     method_facts: dict[str, bool | str] | None = None,
+    declared_route_id: str | None = None,
+    executed_route_id: str | None = None,
+    fallback_reason: str | None = None,
 ) -> dict[str, Any]:
     """登记一次执行，不把执行成功误写成科学结论。
 
@@ -268,6 +271,9 @@ def register_result(
         candidate_eligible: 仅供正式 adapter 精评在独立审计完成前暂存；它不是 current。
         error: 失败原因。
         method_facts: 本次执行显式登记的方法事实；由审查前的联合推断读取。
+        declared_route_id: 比较计划中原定执行的路线 ID。
+        executed_route_id: 本次命令实际执行的路线 ID。
+        fallback_reason: 两个路线 ID 不同时必须说明的回退原因。
 
     Returns:
         新登记的结果条目。
@@ -320,6 +326,16 @@ def register_result(
         value not in {True, False, "unknown"} for value in method_facts.values()
     ):
         raise ContractError("method_facts 的值必须为 true、false 或 unknown")
+    route_fields_present = declared_route_id is not None or executed_route_id is not None
+    if route_fields_present:
+        if not isinstance(declared_route_id, str) or not declared_route_id.strip():
+            raise ContractError("登记路线来源时必须提供非空 declared_route_id")
+        if not isinstance(executed_route_id, str) or not executed_route_id.strip():
+            raise ContractError("登记路线来源时必须提供非空 executed_route_id")
+        if declared_route_id != executed_route_id and (
+            not isinstance(fallback_reason, str) or not fallback_reason.strip()
+        ):
+            raise ContractError("实际路线不同于计划路线时必须记录 fallback_reason")
     if not succeeded:
         status = "failed"
     elif candidate_eligible:
@@ -344,6 +360,20 @@ def register_result(
         "method_facts": method_facts or {},
         "metric_sources": normalized_metric_sources,
         "status": status,
+        "scientific_status": (
+            "valid"
+            if succeeded and execution_mode == "production" and not provisional
+            else "unresolved"
+        ),
+        "selection_status": (
+            "incumbent"
+            if status == "current"
+            else "candidate"
+            if status == "candidate_eligible"
+            else "diagnostic"
+        ),
+        "invalidation_event_ids": [],
+        "dominated_by_result_ids": [],
         "execution_mode": execution_mode,
         # 保留暂存语义，审计时可以确认正式结果确实来自 production 重跑，
         # 而不是把探索或分段验证的旧输出提升为正式答案。
@@ -358,6 +388,17 @@ def register_result(
         "error": error,
         "created_at": utc_now(),
     }
+    if route_fields_present:
+        entry["execution_provenance"] = {
+            "declared_route_id": declared_route_id.strip(),
+            "executed_route_id": executed_route_id.strip(),
+            "fallback_used": declared_route_id != executed_route_id,
+            "fallback_reason": (
+                fallback_reason.strip()
+                if isinstance(fallback_reason, str) and fallback_reason.strip()
+                else None
+            ),
+        }
     if execution_mode == "production" and not objective_semantics_sha256:
         raise ContractError("production 结果必须绑定 objective_semantics_sha256")
     if dependency_scope not in {"question", "shared", "global"}:
@@ -379,6 +420,7 @@ def register_result(
                 and existing["status"] == "current"
             ):
                 existing["status"] = "superseded"
+                existing["selection_status"] = "candidate"
     index["results"].append(entry)
     require_result_index(index)
     atomic_json(run_dir / INDEX_PATH, index)

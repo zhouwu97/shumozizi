@@ -1614,6 +1614,175 @@ def test_v32_promotion_checks_ignore_manual_override(tmp_path: Path) -> None:
         require_v32_experiment_evidence(run_dir)
 
 
+def test_v32_route_comparison_rejects_silent_fallback_identity(
+    tmp_path: Path,
+) -> None:
+    """挑战路线回退到 baseline 后不能继续以挑战路线身份参加比较。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v32-route-provenance",
+        competition="cumcm",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _plan(run_dir)
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("structural", 8.0),
+        ("global", 7.0),
+        ("attack", 7.0),
+        ("first-feasible", 9.0),
+        ("final", 7.0),
+        ("sensitivity", 7.2),
+        ("robustness", 7.3),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    index_path = run_dir / "results" / "index.json"
+    index = load_json(index_path)
+    route_by_result = {"baseline": "R0", "structural": "R1", "global": "R2"}
+    for result in index["results"]:
+        route_id = route_by_result.get(result["result_id"])
+        if route_id is None:
+            continue
+        result["execution_provenance"] = {
+            "declared_route_id": route_id,
+            "executed_route_id": "R0" if route_id == "R1" else route_id,
+            "fallback_used": route_id == "R1",
+            "fallback_reason": "挑战求解器失败，实际调用 baseline" if route_id == "R1" else None,
+        }
+    atomic_json(index_path, index)
+    _actual(plan)
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="实际执行身份不一致"):
+        require_v32_experiment_evidence(run_dir)
+
+
+def test_v14_coordination_is_system_derived_semantic_high_risk(
+    tmp_path: Path,
+) -> None:
+    """协同单元即使漏报 risk signal，也必须触发独立语义攻击。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-derived-coordination-risk",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["unit_kind"] = "coordination"
+    unit["joint_scorer"] = "统一评价全部主体、资源与时间聚合后的联合方案。"
+    unit["decomposition_assessment"] = "分解路线只生成初值，最终仍由联合 scorer 裁决。"
+    delta = unit["question_delta"]
+    assert isinstance(delta, dict)
+    delta["semantic_risk_signals"] = []
+    delta["must_recheck_aggregation"] = False
+
+    with pytest.raises(ContractError, match="semantic_adversary"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_v14_multi_resource_aggregation_triggers_risk_when_misclassified(
+    tmp_path: Path,
+) -> None:
+    """把协同题误标 optimization 也不能绕过多资源量词检查。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-derived-multi-resource-risk",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    delta = unit["question_delta"]
+    assert isinstance(delta, dict)
+    delta["semantic_risk_signals"] = []
+    delta["must_recheck_aggregation"] = False
+    endpoint = unit["answer_contract"]["primary_endpoint"]
+    assert isinstance(endpoint, dict)
+    aggregation = endpoint["aggregation"]
+    assert isinstance(aggregation, dict)
+    aggregation["across_resources"] = (
+        "每枚烟幕先独立判断完整遮蔽，再对各枚烟幕的有效时间区间取并集。"
+    )
+
+    with pytest.raises(ContractError, match="semantic_adversary"):
+        write_modeling_units(run_dir, plan)
+
+
+def test_v14_derived_high_risk_requires_executed_semantic_counterexample(
+    tmp_path: Path,
+) -> None:
+    """系统派生的高风险单元必须逐单元执行语义反例，不能只写合同。"""
+    run_dir = initialize_simple_run(
+        tmp_path,
+        "v14-derived-semantic-execution",
+        required_questions=["Q1"],
+        workflow_version="3.2",
+    )
+    for result_id, objective in (
+        ("baseline", 10.0),
+        ("challenger", 8.0),
+        ("attack", 8.0),
+        ("check", 8.0),
+        ("first-feasible", 9.0),
+        ("checkpoint-probe", 8.8),
+        ("final", 7.5),
+    ):
+        _register_result(run_dir, result_id, objective=objective)
+    plan = _v14_optimization_plan(run_dir)
+    unit = plan["units"][0]
+    assert isinstance(unit, dict)
+    unit["unit_kind"] = "coordination"
+    unit["joint_scorer"] = "统一评价全部主体、资源与时间聚合后的联合方案。"
+    unit["decomposition_assessment"] = "分解只生成初值，正式答案仍由联合 scorer 裁决。"
+    plan["semantic_reconstructions"].append(
+        _semantic_reconstruction(run_dir, "coord-adversary", "semantic_adversary")
+    )
+    answer = unit["answer_contract"]
+    assert isinstance(answer, dict)
+    answer["semantic_counterexample"] = {
+        "case_a": "资源 A 和 B 各自只覆盖目标的一半，但联合覆盖完整目标。",
+        "case_b": "资源 C 单独完整覆盖目标，但持续时间短于联合方案。",
+        "expected_preference": "联合量词应选择 A+B，单资源完整口径会错误选择 C。",
+        "candidate_rankings": {
+            "joint_cover": "A>B",
+            "single_resource_union": "B>A",
+        },
+    }
+    answer["semantic_scorer_preflight"] = {
+        "counterexample_case_id": "partial_joint_cover",
+        "cases": [
+            {
+                "case_id": "partial_joint_cover",
+                "construction": "两个资源分别覆盖互补目标子集，合并后完整覆盖。",
+                "expected_ranking": "联合覆盖方案优于持续更短的单资源完整方案。",
+                "rationale": "该案例直接区分全称存在量词的先后顺序。",
+            },
+            {
+                "case_id": "overlap_union",
+                "construction": "两个资源时间区间完全重叠，与两个错开区间比较。",
+                "expected_ranking": "时间并集更长的错开方案优于逐资源时长和更大的重叠方案。",
+                "rationale": "该案例区分逐资源求和与时间并集。",
+            },
+            {
+                "case_id": "shared_resource",
+                "construction": "两个实体争用同一资源，与资源独立的可行方案比较。",
+                "expected_ranking": "违反共享资源约束的方案必须低于联合可行方案。",
+                "rationale": "该案例检查先分解后组合是否破坏共享约束。",
+            },
+        ],
+        "pass_criterion": "三个案例都必须得到预登记排序且输出逐案例记录。",
+    }
+    _attach_v14_optimization_actual(plan)
+    write_modeling_units(run_dir, plan)
+
+    with pytest.raises(ContractError, match="semantic_scorer_preflight_result_id"):
+        require_v32_experiment_evidence(run_dir)
+
+
 def test_v32_research_story_requires_substantive_question_progression(tmp_path: Path) -> None:
     """新运行不能只用角色和升级标签冒充逐问继承蓝图。"""
     run_dir = initialize_simple_run(
@@ -2093,6 +2262,14 @@ def test_v32_scientific_challenge_uses_current_evidence_without_legacy_summary(
     blocked = simple_review.scientific_review_status(run_dir)
     assert not blocked["allowed"]
     assert "P1-02→experiment" in blocked["reason"]
+    invalidated = load_json(run_dir / "results" / "index.json")["results"]
+    assert invalidated
+    assert all(item["execution_valid"] is True for item in invalidated)
+    assert all(item["status"] == "superseded" for item in invalidated)
+    assert all(item["scientific_status"] == "invalidated" for item in invalidated)
+    consequence_log = load_json(run_dir / "review" / "evidence-consequences.json")
+    assert consequence_log["events"][-1]["negative_event"] == "blocking_finding_open"
+    assert read_simple_state(run_dir)["phase"] == "experiment"
 
 
 def test_v32_paper_generation_uses_modeling_evidence_not_legacy_tournament(

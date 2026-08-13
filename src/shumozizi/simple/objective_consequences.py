@@ -121,6 +121,7 @@ def _probe_result(
         result.get("question_id") != question_id
         or result.get("execution_mode") != "production"
         or result.get("execution_valid") is not True
+        or result.get("scientific_status", "valid") == "invalidated"
     ):
         raise ContractError(f"{label} 必须是本问 execution_valid 的 production 结果")
     return result

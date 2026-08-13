@@ -105,6 +105,7 @@ def _current_results(root: Path) -> dict[str, dict[str, Any]]:
         and item.get("status") == "current"
         and item.get("execution_mode") == "production"
         and item.get("execution_valid") is True
+        and item.get("scientific_status", "valid") != "invalidated"
         and item.get("paper_allowed", True) is not False
     }
 

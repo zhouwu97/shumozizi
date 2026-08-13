@@ -211,6 +211,9 @@ def execute_simple_experiment(
     execution_mode: str | None = None,
     provisional: bool | None = None,
     candidate_eligible: bool = False,
+    declared_route_id: str | None = None,
+    executed_route_id: str | None = None,
+    fallback_reason: str | None = None,
 ) -> dict[str, Any]:
     """实际运行一次 v3 实验并将事实写入 ``results/index.json``。
 
@@ -229,6 +232,9 @@ def execute_simple_experiment(
         execution_mode: 为 ``None`` 时继承运行状态，保持旧调用的用途语义。
         provisional: 为真时只登记诊断执行，不能被质量层提升。
         candidate_eligible: 仅供正式 adapter 精评在审计前保留可选择资格。
+        declared_route_id: 比较计划原定路线；普通非比较实验可省略。
+        executed_route_id: 命令实际执行路线；与原定路线不同时登记回退。
+        fallback_reason: 实际路线发生回退时的原因。
 
     Returns:
         包含成功状态、结果条目和错误信息的执行摘要。
@@ -368,6 +374,9 @@ def execute_simple_experiment(
             objective_semantics_sha256=objective_semantics_for_question(root, question_id),
             dependency_scope="question",
             affected_question_ids=[question_id],
+            declared_route_id=declared_route_id,
+            executed_route_id=executed_route_id,
+            fallback_reason=fallback_reason,
         )
     except ContractError as exc:
         error = error or str(exc)

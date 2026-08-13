@@ -18,6 +18,9 @@ from shumozizi.simple.competition import (
     validate_route_competition,
     write_answer_map,
 )
+from shumozizi.simple.evidence_consequences import (
+    apply_independent_evidence_consequences,
+)
 from shumozizi.simple.initialization import initialize_simple_run
 from shumozizi.simple.method_facts import write_method_facts
 from shumozizi.simple.objective_semantics import (
@@ -91,6 +94,42 @@ def _register_current_result(
         objective_semantics_sha256="a" * 64,
         method_facts=method_facts,
     )
+
+
+def test_negative_evidence_invalidates_science_without_rewriting_execution(
+    tmp_path: Path,
+) -> None:
+    """更强反例应撤销科学资格，但不能篡改已经成功的执行事实。"""
+    run_dir = _run_dir(tmp_path, "scientific-lifecycle")
+    _register_current_result(run_dir)
+
+    events = apply_independent_evidence_consequences(
+        run_dir,
+        [
+            {
+                "evidence_id": "q1-search-challenge",
+                "kind": "search-challenge",
+                "semantic_output": {
+                    "verdict": "incumbent_not_competitive",
+                    "question_id": "Q1",
+                    "challenger_result_id": "q1-better",
+                },
+                "receipt": {"sha256": "b" * 64},
+            }
+        ],
+    )
+
+    result = load_json(run_dir / "results" / "index.json")["results"][0]
+    assert result["execution_valid"] is True
+    assert result["status"] == "superseded"
+    assert result["scientific_status"] == "invalidated"
+    assert result["selection_status"] == "dominated"
+    assert result["invalidation_event_ids"] == [
+        "consequence-q1-search-challenge"
+    ]
+    assert result["dominated_by_result_ids"] == ["q1-better"]
+    assert events[0]["invalidated_results"] == ["q1_primary"]
+    assert read_simple_state(run_dir)["phase"] == "experiment"
 
 
 def test_new_run_uses_reduced_phase_set(tmp_path: Path) -> None:

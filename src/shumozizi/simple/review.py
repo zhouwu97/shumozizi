@@ -4496,6 +4496,23 @@ def _v32_scientific_challenge_status(run_dir: Path) -> dict[str, Any]:
         from shumozizi.simple.review_focus import verify_scientific_challenge_evidence
         from shumozizi.simple.review_tasks import validate_review_task_receipt
 
+        # 开放的模型级发现会立即撤销其绑定结果，因此必须先报告发现本身，
+        # 不能让后续“结果已失效”校验掩盖真正的回退原因。
+        raw_challenge = load_json(run_dir / "review" / "scientific-challenge-evidence.json")
+        raw_blocking = [
+            item
+            for item in raw_challenge.get("findings", [])
+            if item.get("status") == "open"
+            and item.get("action_type")
+            in {"MODEL_REPAIR", "OBJECTIVE_REDESIGN", "ANSWER_REJECTION"}
+        ]
+        if raw_blocking:
+            detail = ", ".join(
+                f"{item['finding_id']}→{item['rollback_target']}"
+                for item in raw_blocking
+            )
+            raise ContractError("科学挑战发现要求回退，不能进入 paper: " + detail)
+
         require_v32_experiment_evidence(run_dir)
         challenge_evidence = verify_scientific_challenge_evidence(run_dir)
         if not challenge_evidence["valid"]:
