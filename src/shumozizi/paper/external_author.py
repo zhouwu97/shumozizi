@@ -230,6 +230,30 @@ def decide_author_request(
                 "decision_reason": item["reason"],
             },
         )
+    # route 从标签升级为命令：experiment/analysis 的 fulfill 先登记可执行的
+    # 修复指令（含负责人阶段与验收测试）；路由的"真正执行"（把顶层 phase 切回
+    # 对应阶段）由编排层 CLI resolve_author_requests 在裁决完成后调用
+    # apply_repair_route 完成，避免裁决记录被实验入口门禁副作用打断。
+    from shumozizi.paper.repair_loop import open_repair_directive
+
+    for item in resolved:
+        request = by_gap[item["gap_id"]]
+        if item["route"] not in {"experiment", "analysis"} or item["decision"] != "fulfill":
+            continue
+        open_repair_directive(
+            root,
+            directive_id=f"req-{item['gap_id']}",
+            source=f"author request {item['gap_id']}",
+            finding_class=str(request.get("kind", "argument_material")),
+            route=item["route"],
+            owner_stage=item["route"],
+            repair_action=str(request.get("request", "")),
+            acceptance_test=(
+                "作者请求的缺口已由新生产结果或分析关闭，且相关结果绑定 "
+                "current production。"
+            ),
+            requires_new_evidence=item["route"] == "experiment",
+        )
     _advance_authoring_for_requests(root, resolved)
     return document
 

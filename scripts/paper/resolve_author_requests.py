@@ -22,8 +22,30 @@ from shumozizi.paper.external_author import (  # noqa: E402
 )
 
 
+def _apply_repair_routes(run_dir: Path, ledger: dict) -> list[dict]:
+    """把裁决后的修复指令真正执行（路由从标签升级为命令）。
+
+    experiment/analysis 的 fulfill 会把顶层 phase 沿合法迁移图切回对应阶段；
+    执行失败的入口门禁（如实验计划不完整）会让 CLI 以 blocked 退出，而不是
+    只在台账里标一行 rework_requested 就宣称"已路由返修"。
+    """
+    from shumozizi.paper.repair_loop import apply_repair_route
+
+    applied: list[dict] = []
+    for decision in ledger["decisions"]:
+        if (
+            decision.get("route") not in {"experiment", "analysis"}
+            or decision.get("decision") != "fulfill"
+        ):
+            continue
+        directive_id = f"req-{decision['gap_id']}"
+        entry = apply_repair_route(run_dir, directive_id)
+        applied.append({"gap_id": decision["gap_id"], "route": entry["route"]})
+    return applied
+
+
 def main() -> int:
-    """读取决策文件并记录作者请求裁决。"""
+    """读取决策文件，记录作者请求裁决并执行修复路由。"""
     parser = argparse.ArgumentParser(description="裁决外部 Author 材料请求")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--input", type=Path, required=True, help="decisions.json")
@@ -31,12 +53,14 @@ def main() -> int:
     try:
         decisions_input = load_json(args.input).get("decisions", [])
         ledger = decide_author_request(args.run_dir, decisions_input)
+        applied = _apply_repair_routes(args.run_dir, ledger)
         print(
             json.dumps(
                 {
                     "status": "resolved",
                     "request_count": len(read_author_requests(args.run_dir)),
                     "decisions": ledger["decisions"],
+                    "applied_repair_routes": applied,
                 },
                 ensure_ascii=False,
                 indent=2,
