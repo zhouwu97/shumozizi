@@ -112,21 +112,40 @@ Just choose `xelatex', no `pdflatex' or `latex' and so on.}
 	{\mcm@endoldtabular\egroup}
 % 每行缩进两个汉字
 \setlength\parindent{2em}
-% 设置字体
-\setmainfont{Times New Roman}
-%\setmonofont{Courier New}
-\setsansfont{Arial}
-\setCJKmainfont[AutoFakeBold]{STSong}
-\setCJKsansfont[AutoFakeBold]{STSong}
-\setCJKmonofont[AutoFakeBold]{STSong}
-\setCJKfamilyfont{zhsong}[AutoFakeBold]{STSong}
-\setCJKfamilyfont{zhhei}[AutoFakeBold]{STSong}
-\setCJKfamilyfont{zhkai}[AutoFakeBold]{STKaiti}
-\setCJKfamilyfont{zhfs}[AutoFakeBold]{STSong}
-\setCJKfamilyfont{hei}[AutoFakeBold]{STSong}
-\setCJKfamilyfont{kai}[AutoFakeBold]{STKaiti}
+% 设置字体：默认 STSong/STKaiti（macOS 系统字体），缺失时回退 Fandol 系
+% （TeX 发行版自带），保证 ubuntu/CI 等无商用字体的环境也能编译；西文
+% Times New Roman/Arial 缺失时回退 Liberation 系。main.tex 可在此之上
+% 再按 Windows SimSun 系覆盖，两层回退互不冲突。
+\IfFontExistsTF{STSong}{%
+  \setCJKmainfont[AutoFakeBold]{STSong}%
+  \setCJKsansfont[AutoFakeBold]{STSong}%
+  \setCJKmonofont[AutoFakeBold]{STSong}%
+  \setCJKfamilyfont{zhsong}[AutoFakeBold]{STSong}%
+  \setCJKfamilyfont{zhhei}[AutoFakeBold]{STSong}%
+  \setCJKfamilyfont{zhkai}[AutoFakeBold]{STKaiti}%
+  \setCJKfamilyfont{zhfs}[AutoFakeBold]{STSong}%
+  \setCJKfamilyfont{hei}[AutoFakeBold]{STSong}%
+  \setCJKfamilyfont{kai}[AutoFakeBold]{STKaiti}%
+  \setCJKfamilyfont{song}[AutoFakeBold]{STSong}%
+}{%
+  \setCJKmainfont[AutoFakeBold]{FandolSong-Regular.otf}%
+  \setCJKsansfont[AutoFakeBold]{FandolHei-Regular.otf}%
+  \setCJKmonofont[AutoFakeBold]{FandolSong-Regular.otf}%
+  \setCJKfamilyfont{zhsong}[AutoFakeBold]{FandolSong-Regular.otf}%
+  \setCJKfamilyfont{zhhei}[AutoFakeBold]{FandolHei-Regular.otf}%
+  \setCJKfamilyfont{zhkai}[AutoFakeBold]{FandolKai-Regular.otf}%
+  \setCJKfamilyfont{zhfs}[AutoFakeBold]{FandolFang-Regular.otf}%
+  \setCJKfamilyfont{hei}[AutoFakeBold]{FandolHei-Regular.otf}%
+  \setCJKfamilyfont{kai}[AutoFakeBold]{FandolKai-Regular.otf}%
+  \setCJKfamilyfont{song}[AutoFakeBold]{FandolSong-Regular.otf}%
+}
+\IfFontExistsTF{Times New Roman}{\setmainfont{Times New Roman}}{%
+  \IfFontExistsTF{Liberation Serif}{\setmainfont{Liberation Serif}}{}%
+}
+\IfFontExistsTF{Arial}{\setsansfont{Arial}}{%
+  \IfFontExistsTF{Liberation Sans}{\setsansfont{Liberation Sans}}{}%
+}
 \newcommand*{\kai}{\CJKfamily{kai}}
-\setCJKfamilyfont{song}[AutoFakeBold]{STSong}
 \newcommand*{\song}{\CJKfamily{song}}
 \providecommand*{\songti}{\CJKfamily{song}}
 \providecommand*{\heiti}{\CJKfamily{hei}}
