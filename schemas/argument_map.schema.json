@@ -7,7 +7,7 @@
   ],
   "$defs": {
     "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "claim": {
+        "claim": {
       "type": "object",
       "additionalProperties": false,
       "required": ["claim_id", "question_id", "claim", "motivation", "baseline_limitation", "model_support", "result_ids", "comparison_evidence", "validation_evidence", "figure_ids", "boundary", "outcome", "paper_location"],
@@ -16,6 +16,7 @@
         "question_id": {"type": "string", "minLength": 1},
         "claim": {"type": "string", "minLength": 1},
         "motivation": {"type": "string"},
+        "warrant": {"type": "string", "description": "论证桥梁：为什么这些 evidence 能推出这个 claim。核心问题的 warrant 由系统从机制级 insight 派生候选，Author 确认或改写，而不是从零填写。"},
         "baseline_limitation": {"type": "string"},
         "model_support": {"type": "string"},
         "result_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
