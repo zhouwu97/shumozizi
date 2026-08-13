@@ -336,7 +336,8 @@ def _visual_requirement_brief(root: Path) -> list[str]:
     if not current:
         lines.extend(
             [
-                "- 当前没有已就绪的 current 正式图；若论证需要图，提出返工请求补充，不得用装饰图替代。",
+                "- 当前没有已就绪的 current 正式图。正文只引用已生成并核验的 current 图；"
+                "缺图时图由写作工具基于 results/raw 与交接包素材生成，不得用装饰图替代。",
                 "",
             ]
         )
@@ -550,7 +551,7 @@ def _render_research_package(
                 + (f"（{', '.join(outputs)}）" if outputs else "")
             )
     else:
-        lines.append("- 当前没有已晋级图；可在 Visual Sandbox 中提出候选，不得在正文引用未晋级草图。")
+        lines.append("- 当前没有已晋级图；不得在正文引用未晋级草图，图由写作工具基于 results/raw 与交接包素材生成。")
     lines.append("")
 
     gate = _optional_json(root, "paper/claim_gate.json")

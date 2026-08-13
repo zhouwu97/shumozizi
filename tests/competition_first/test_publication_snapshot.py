@@ -98,6 +98,23 @@ def test_publication_closure_accepts_parent_relative_current_figure_inside_run(
     assert {"paper/main.tex", "figures/current/q1-main.pdf"}.issubset(relatives)
 
 
+def test_publication_closure_resolves_nested_input_from_entrypoint_directory(
+    tmp_path: Path,
+) -> None:
+    """嵌套子文件按主入口目录引用正文时必须进入正式闭包。"""
+    run_dir = _run_with_split_sources(tmp_path)
+    (run_dir / "paper/sections/questions.tex").write_text(
+        "\\input{longform-source.tex}\n", encoding="utf-8"
+    )
+
+    relatives = {
+        path.relative_to(run_dir).as_posix()
+        for path in publication_source_paths(run_dir)
+    }
+
+    assert "paper/longform-source.tex" in relatives
+
+
 def test_publication_closure_rejects_true_parent_escape(tmp_path: Path) -> None:
     """没有任何 run 内候选的相对路径仍须按越界引用拒绝。"""
     run_dir = _run_with_split_sources(tmp_path)

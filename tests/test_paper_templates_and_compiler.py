@@ -793,6 +793,39 @@ def test_compile_skips_optional_docx_without_invoking_converter(
     assert verify_paper_compile_receipt(run_dir)["valid"] is True
 
 
+def test_semantic_structure_map_allows_non_template_question_headings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """1.2 semantic 已覆盖逐问时，成稿无需保留“问题 Q1”骨架标题。"""
+    _set_engines(monkeypatch, latex=True, typst=False)
+    run_dir = _new_run(tmp_path, "semantic-headings", questions=["Q1", "Q2"])
+    select_paper_template(
+        run_dir,
+        language="zh",
+        engine="latex",
+        selection_reason="验证语义正文不被占位标题守卫误拒绝。",
+    )
+    materialize_selected_template(run_dir)
+    (run_dir / "paper/sections/questions.tex").write_text(
+        "\\section{纵向关系}正文。\\section{时点决策}正文。\n",
+        encoding="utf-8",
+    )
+    atomic_json(
+        run_dir / "paper/CUMCM_STRUCTURE_MAP.json",
+        {
+            "schema_version": "1.2",
+            "profile": "semantic",
+            "sections": [
+                {"roles": ["question_solution"], "question_ids": ["Q1"]},
+                {"roles": ["question_solution"], "question_ids": ["Q2"]},
+            ],
+        },
+    )
+
+    require_materialized_template(run_dir)
+
+
 def test_compile_records_reason_when_profile_requires_docx_pandoc_is_absent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

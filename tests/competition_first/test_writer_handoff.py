@@ -248,6 +248,7 @@ def test_prepare_writer_handoff_cli_blocks_with_exit_code_1(tmp_path: Path) -> N
         [sys.executable, str(script), str(run_dir)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert completed.returncode == 1
     assert '"status": "blocked"' in completed.stdout

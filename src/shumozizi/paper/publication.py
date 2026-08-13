@@ -103,6 +103,7 @@ def _strip_latex_comments(text: str) -> str:
 def _resolve_reference(
     root: Path,
     owner: Path,
+    compilation_dir: Path,
     raw_reference: str,
     suffixes: Iterable[str],
 ) -> list[Path]:
@@ -118,7 +119,9 @@ def _resolve_reference(
             raise ContractError(f"正式论文引用了绝对路径: {reference}")
         candidates: list[Path] = []
         escaped_candidates = 0
-        for parent in (owner.parent, root):
+        # WHY: TeX 的嵌套 \input 会继续相对主入口工作目录查找依赖；仅按子文件
+        # 目录解析会让“可编译但未冻结”的正文或图片逃出发布快照。
+        for parent in dict.fromkeys((owner.parent, compilation_dir, root)):
             for suffix in suffixes:
                 candidate = parent / (reference if not suffix or base.suffix else reference + suffix)
                 try:
@@ -138,7 +141,7 @@ def _resolve_reference(
     return resolved
 
 
-def _direct_dependencies(root: Path, path: Path) -> list[Path]:
+def _direct_dependencies(root: Path, path: Path, *, compilation_dir: Path) -> list[Path]:
     """解析单个正式源码文件的本地直接依赖。"""
     if path.suffix.casefold() not in {".tex", ".typ"}:
         return []
@@ -149,7 +152,9 @@ def _direct_dependencies(root: Path, path: Path) -> list[Path]:
     dependencies: list[Path] = []
     for pattern, suffixes in patterns:
         for match in pattern.finditer(text):
-            for dependency in _resolve_reference(root, path, match.group(1), suffixes):
+            for dependency in _resolve_reference(
+                root, path, compilation_dir, match.group(1), suffixes
+            ):
                 if dependency not in dependencies:
                     dependencies.append(dependency)
     return dependencies
@@ -159,6 +164,7 @@ def publication_source_paths(run_dir: Path, *, entrypoint: Path | None = None) -
     """返回正式入口的递归文件闭包，绝不扫描作者草稿或无关审计文件。"""
     root = run_dir.resolve()
     start = (entrypoint or publication_entrypoint(root)).resolve()
+    compilation_dir = start.parent
     try:
         start.relative_to(root)
     except ValueError as exc:
@@ -172,7 +178,13 @@ def publication_source_paths(run_dir: Path, *, entrypoint: Path | None = None) -
         if current in visited:
             continue
         visited.add(current)
-        queue.extend(dependency for dependency in _direct_dependencies(root, current) if dependency not in visited)
+        queue.extend(
+            dependency
+            for dependency in _direct_dependencies(
+                root, current, compilation_dir=compilation_dir
+            )
+            if dependency not in visited
+        )
     return sorted(visited, key=lambda item: relative_inside(root, item).as_posix())
 
 

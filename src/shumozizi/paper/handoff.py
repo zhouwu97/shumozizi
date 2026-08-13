@@ -2,10 +2,11 @@
 
 本模块负责四个职责：
 
-- ``writer_handoff_readiness``：科学事实与提交边界是硬门，素材、故事板和图表
-  缺口只作为 Author 可回流的编辑信号。
-- ``build_writer_handoff``：把已冻结研究材料投影成两个人读文件，后台继续保留
-  answer-and-claims JSON 与 provenance manifest。
+- ``writer_handoff_readiness``：科学事实、提交边界与素材池实质内容是硬门；
+  故事板和图表缺口只作为 Author 可回流的编辑信号。
+- ``build_writer_handoff``：先确保素材池绑定当前结果（缺失或 stale 时自动重建），
+  再把已冻结研究材料投影成两个人读文件，后台继续保留 answer-and-claims JSON
+  与 provenance manifest。
 - ``mark_waiting_external_author``：进入正常暂停状态，并记录 checkpoint。
 - ``verify_handoff_freshness``：确认外部稿件仍是针对当前材料版本写作的。
 
@@ -24,6 +25,7 @@ from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
 from shumozizi.paper.citations import citation_coverage_errors
 from shumozizi.paper.materials import (
+    build_material_pool,
     material_pool_quality_report,
     read_material_pool,
     validate_material_pool_freshness,
@@ -95,6 +97,36 @@ def _repo_root() -> Path:
 # ---------------------------------------------------------------------------
 
 
+def ensure_material_pool_current(root: Path) -> dict[str, Any]:
+    """素材池缺失或未绑定当前结果时自动重建，保证交接门看到最新素材池。
+
+    只对缺失或 stale 的素材池重建，fresh 的素材池原样保留——手工构造或
+    测试构造的素材池不应被无条件重建冲掉。重建后由实质门（material 层）
+    负责检查内容是否充分。
+
+    Args:
+        root: 运行目录。
+
+    Returns:
+        重建结果：``rebuilt`` 是否为本次重建、``items`` 重建后的条目数。
+    """
+    pool_path = root / "paper/generated/material_pool.json"
+    if pool_path.is_file():
+        try:
+            freshness = validate_material_pool_freshness(root)
+            if freshness.get("current"):
+                return {"rebuilt": False, "reason": "fresh", "items": None}
+        except ContractError:
+            # 素材池损坏无法解析：视为缺失，走重建。
+            pass
+    payload = build_material_pool(root)
+    return {
+        "rebuilt": True,
+        "reason": "missing_or_stale",
+        "items": len(payload.get("items", [])),
+    }
+
+
 def writer_handoff_readiness(run_dir: Path) -> dict[str, Any]:
     """检查研究材料是否满足 Writer Handoff 交接条件。
 
@@ -124,23 +156,24 @@ def writer_handoff_readiness(run_dir: Path) -> dict[str, Any]:
         reasons.append("scientific: 缺少科学挑战证据，关键科学挑战尚未关闭")
         layers["scientific"] = "blocked"
 
-    # Material：素材池充分且绑定当前结果。
+    # Material：素材池充分且绑定当前结果；实质缺口是硬门（交接包的核心内容
+    # 就是素材，空壳交接视为生产错误，与 prepare_writer_handoff 的 blocked 语义一致）。
     try:
         pool_report = material_pool_quality_report(root)
         if not pool_report.get("substantive"):
             messages = pool_report.get("errors") or ["素材池缺少实质内容"]
-            signals.append("material: " + "; ".join(str(item) for item in messages[:3]))
-            layers["material"] = "advisory"
+            reasons.append("material: " + "; ".join(str(item) for item in messages[:3]))
+            layers["material"] = "blocked"
         else:
             layers["material"] = "ok"
         freshness = validate_material_pool_freshness(root)
         if not freshness.get("current"):
             stale = freshness.get("stale_fields") or []
-            signals.append("material: 素材池未绑定当前结果: " + ", ".join(map(str, stale)))
-            layers["material"] = "advisory"
+            reasons.append("material: 素材池未绑定当前结果: " + ", ".join(map(str, stale)))
+            layers["material"] = "blocked"
     except ContractError as exc:
-        signals.append(f"material: {exc}")
-        layers["material"] = "advisory"
+        reasons.append(f"material: {exc}")
+        layers["material"] = "blocked"
 
     # Storyboard / narrative：故事板充分且绑定当前素材。
     try:
@@ -239,12 +272,14 @@ def _package_digests(
     """计算 manifest 需要的全部摘要。"""
     pool = root / "paper/generated/material_pool.json"
     storyboard = root / "paper/generated/research_storyboard.json"
+    claim_gate = root / "paper/claim_gate.json"
     return {
         "paper_policy_fingerprint": policy_fingerprint(_repo_root(), "paper"),
         "formal_result_digest": formal_result_digest(root),
         "material_pool_digest": sha256_tree(pool) if pool.is_file() else None,
         "storyboard_digest": sha256_tree(storyboard) if storyboard.is_file() else None,
         "claim_boundary_digest": sha256_tree(answers_path) if answers_path.is_file() else None,
+        "claim_gate_digest": sha256_tree(claim_gate) if claim_gate.is_file() else None,
         "figure_catalog_digest": sha256_tree(catalog_path) if catalog_path.is_file() else None,
         "citation_packet_digest": sha256_tree(packet_path) if packet_path.is_file() else None,
     }
@@ -708,6 +743,9 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
         ContractError: 交接材料未就绪，或输出不满足协议。
     """
     root = run_dir.resolve()
+    # 先确保素材池绑定当前结果，再跑实质门：避免"门看到旧空壳 → blocked →
+    # 到不了重建"的死锁。
+    ensure_material_pool_current(root)
     readiness = writer_handoff_readiness(root)
     if not readiness["ready"]:
         raise ContractError("Writer Handoff 未就绪: " + "；".join(readiness["reasons"]))
@@ -776,6 +814,7 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
         "material_pool_digest": digests["material_pool_digest"],
         "storyboard_digest": digests["storyboard_digest"],
         "claim_boundary_digest": digests["claim_boundary_digest"],
+        "claim_gate_digest": digests["claim_gate_digest"],
         "figure_catalog_digest": digests["figure_catalog_digest"],
         "citation_packet_digest": digests["citation_packet_digest"],
         "writer_files": writer_files,
@@ -806,7 +845,10 @@ def mark_waiting_external_author(run_dir: Path) -> dict[str, Any]:
     root = run_dir.resolve()
     if not (root / HANDOFF_DIR / "manifest.json").is_file():
         raise ContractError("尚未构建 Writer Handoff，无法进入等待外部 Author")
-    mark_authoring_status(root, "waiting_external_author")
+    # 已处于 waiting_external_author 时重建交接包（stale 后重跑）是合法路径：
+    # 状态不变，只刷新 manifest 与 checkpoint，避免状态机迁移非法。
+    if read_authoring(root)["authoring_status"] != "waiting_external_author":
+        mark_authoring_status(root, "waiting_external_author")
     manifest_path = root / HANDOFF_MANIFEST_PATH
     manifest = load_json(manifest_path)
     checkpoint = {

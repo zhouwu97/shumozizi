@@ -116,6 +116,14 @@ def _data_modeling_plan(
             },
         },
         "objective": {"exact_metric": "objective", "direction": "minimize"},
+        "formalization_diff": {
+            "source": "题面要求给出总体首次达标的推荐时点。",
+            "formalized_as": "t*=inf{t:P(T<=t)>=p0}",
+            "transformation": "equivalent",
+            "added_semantics": "无",
+            "removed_semantics": "无",
+            "equivalence_evidence": "首次达标时点直接对应题面达标比例要求。",
+        },
         "expected_outcome": "获得可复验的推荐时点，并说明观测机制下的区间边界。",
         "validation": {
             "oracle": {"required": False},

@@ -223,8 +223,24 @@ v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM se
 
 首稿 `longform-source.tex` 编译后，检查 `VISUAL_REQUIREMENTS`、冷读和正式稿审计是否仍有未覆盖论证角色或未满足的适用图合同；只有存在这类缺口时执行独立的 SECOND STEP。每问仍需 2--3 张 current 正文图；全篇 12 图和 3 图型只对四问及以上适用。SECOND STEP 由缺失的命题、机制、证据或边界驱动，不能用重复插图凑数。
 
-1. **Agent 决定补哪些高级图**：读首稿 + `mathmodel-advanced-figures/references/figure-catalog.md`，按每个结果的**数据特征**（分布/概率/优化/关系/网络/分类）从可用的 production 结果挑图种，写一个 plan JSON（模板、数据源、输出 stem、图注、一句"展示了什么"、插入锚点 = 章节标题或 \\label）。
-2. **脚本执行**：
+1. **先用数据驱动的自动生成器打底**：从论文 current 图引用的 production 结果出发，
+   自动构造高级模板计划项并渲染登记，而不是从零手写 plan：
+
+```text
+python scripts/figures/generate_advanced_figures.py <run_dir>            # dry-run 预览
+python scripts/figures/generate_advanced_figures.py <run_dir> --apply   # 渲染并登记到 figures/index.json
+```
+
+   生成器只适配论文 current 图**实际引用**的 production 结果（survival_curve /
+   ci_forest / cv_roc_ci 等），把朴素单面板图升级为同一数据渲染的高级版；会
+   自动复跑视觉竞争力审计并报告缺口闭合。这覆盖大多数"该有但没画"的高级图。
+2. **Agent 复核并补足生成器未覆盖的角色**：读首稿 +
+   `mathmodel-advanced-figures/references/figure-catalog.md`，对照自动生成器
+   的 plan 与复跑审计结果，按每个结果的**数据特征**（分布/概率/优化/关系/网络/
+   分类）从可用的 production 结果补选图种（例如生成器不覆盖的 group_violin /
+   correlation_heatmap / 结构图），把缺的角色补进 plan JSON（模板、数据源、输出
+   stem、图注、一句"展示了什么"、插入锚点 = 章节标题或 \\label）。
+3. **脚本执行**：
 
 ```text
 python scripts/paper/supplement_advanced_figures.py <run_dir> --plan <plan.json> [--compile]

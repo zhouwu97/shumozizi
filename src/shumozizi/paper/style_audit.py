@@ -897,6 +897,18 @@ def audit_report_like_manuscript(run_dir: Path) -> dict[str, Any]:
             )
         except (ContractError, OSError, ValueError, TypeError):
             body_figure_count = 0
+    else:
+        # WHY: v3.4 正式图以发布入口实际消费为准，不再要求旧 FIGURE_PLAN；
+        # 缺少旧计划时直接按唯一图路径计数，避免把真实 12 图论文误判为无图。
+        body_figure_count = len(
+            {
+                match.strip()
+                for match in re.findall(
+                    r"\\includegraphics(?:\[[^]]*\])?\s*\{([^}]+)\}", combined
+                )
+                if match.strip()
+            }
+        )
     scarcity_warnings, scarcity_metrics = _scarcity_findings(
         root,
         core_questions=core_questions,

@@ -4,6 +4,8 @@
 
     prepare_writer_handoff
     → 确保 authoring_mode=external_handoff
+    → 幂等守卫：已有交接包且仍 fresh 时拒绝，避免 revision 空转
+    → 素材池缺失或 stale 时自动重建（ensure_material_pool_current）
     → writer_handoff_readiness
     → build_writer_handoff（生成 6+1 交接包 + manifest，handoff_revision+1）
     → mark handoff_ready
@@ -11,6 +13,7 @@
 
 材料不充分时输出 blocked 与具体原因（退出码 1）；成功时输出
 ``WRITER_HANDOFF_READY`` 并把 authoring_status 置为 ``waiting_external_author``。
+结果、主张边界等输入更新后重跑会因 fresh 守卫自动放行并生成新 revision。
 """
 
 from __future__ import annotations
@@ -26,8 +29,11 @@ if str(REPO_ROOT / "src") not in sys.path:
 
 from shumozizi.core.io import ContractError  # noqa: E402
 from shumozizi.paper.handoff import (  # noqa: E402
+    HANDOFF_MANIFEST_PATH,
     build_writer_handoff,
+    ensure_material_pool_current,
     mark_waiting_external_author,
+    verify_handoff_freshness,
     writer_handoff_readiness,
 )
 from shumozizi.simple.authoring import (  # noqa: E402
@@ -56,6 +62,17 @@ def _ensure_external_and_handoff_ready(run_dir: Path) -> None:
             f"当前 authoring_status={current}，不能再次准备外部 Author 交接；"
             "请先完成导入、裁决或显式回退"
         )
+    # 幂等守卫：已有交接包且仍绑定最新材料时拒绝重建，避免 revision 空转；
+    # 输入（结果、claim 边界、素材源）变化后 verify_handoff_freshness 会报
+    # stale，此时放行重建并 revision+1。
+    if (run_dir / HANDOFF_MANIFEST_PATH).is_file():
+        freshness = verify_handoff_freshness(run_dir)
+        if freshness.get("fresh"):
+            raise ContractError(
+                "交接包已是最新（revision "
+                + str(freshness.get("handoff_revision", "?"))
+                + "），且仍绑定当前材料；若材料已更新，请先更新结果或主张边界再重跑"
+            )
 
 
 def main() -> int:
@@ -65,6 +82,8 @@ def main() -> int:
     args = parser.parse_args()
     try:
         _ensure_external_and_handoff_ready(args.run_dir)
+        # 素材池缺失或 stale 时先重建，使 readiness 的实质门看到最新素材池。
+        ensure_material_pool_current(args.run_dir)
         readiness = writer_handoff_readiness(args.run_dir)
         if not readiness["ready"]:
             print(

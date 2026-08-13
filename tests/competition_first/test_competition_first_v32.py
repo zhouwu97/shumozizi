@@ -317,8 +317,23 @@ def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
                 "status": "determined",
                 "basis": "题面直接给出评价定义，不存在合理的替代聚合。",
             },
+            "infeasible_policy": {
+                "strict_result": "严格报告是否存在可行解。",
+                "fallback_decision": "不可行时在可行集合内求最小风险时点。",
+                "fallback_attained_reliability": "备用时点实际达到的可靠性下界。",
+                "retest_strategy": "在备用时点检测并安排复检。",
+                "reliability_sensitivity": "关键阈值不同取值的时点变化。",
+            },
         },
         "objective": {"exact_metric": "objective", "direction": "minimize"},
+        "formalization_diff": {
+            "source": "题面要求按给定指标计算目标值。",
+            "formalized_as": "J=sum_i value_i 的直接计算。",
+            "transformation": "equivalent",
+            "added_semantics": "无",
+            "removed_semantics": "无",
+            "equivalence_evidence": "形式化目标与题面指标逐项一致，无目标替换。",
+        },
         "expected_outcome": "主方法给出可行且可由独立计算复验的直接答案。",
         "validation": {
             "oracle": {"required": False},
@@ -400,6 +415,8 @@ def _v14_optimization_plan(run_dir: Path) -> dict[str, object]:
         "exact_metric": "objective",
         "direction": "minimize",
         "significant_improvement_ratio": 0.1,
+        "threshold_provenance": "engineering_heuristic",
+        "threshold_provenance_rationale": "测试夹具：改善阈值仅作启发式，敏感性地报告。",
     }
     unit["budget"] = {"kind": "wall_seconds", "tolerance_ratio": 0.1}
     unit["baseline"] = {

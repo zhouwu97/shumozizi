@@ -723,6 +723,12 @@ def _validate_formalization_diff(
     可靠性达标后最早"这类目标漂移被下游严格审核放行的根因：下游只审查
     surrogate 有没有算对，从不审查 surrogate 有没有替换原题目标。
 
+    此外，``equivalent`` 转换还要求**对象保真**：题面明确的几何对象（如"半径
+    7m 高 10m 的圆柱形真目标"）若在正式目标里被收窄成单点/退化对象（如"真目标
+    参考点 T_ref"），必须通过 ``object_fidelity`` 显式声明并说明为何等价，否则
+    阻断。防止"把遮住整个圆柱收窄成遮住中心一条视线"这类判据收窄被标成
+    equivalent 蒙混过关。
+
     Args:
         value: 转换审计对象。
         label: 用于错误定位的字段名。
@@ -731,7 +737,7 @@ def _validate_formalization_diff(
         规范化后的转换审计。
 
     Raises:
-        ContractError: 缺字段、转换类型不合法或出现静默替换。
+        ContractError: 缺字段、转换类型不合法、出现静默替换或对象保真缺失。
     """
     item = _require_mapping(value, label)
     source = _require_text(item.get("source"), f"{label}.source")
@@ -766,6 +772,9 @@ def _validate_formalization_diff(
                 "只有题面直接支持或合理假设支持的目标才能作为正式目标；"
                 "sensitivity_only/incompatible 不能成为结论依据"
             )
+    # 对象保真：题面给出明确几何对象时，正式目标若把它收窄成单点/退化对象，
+    # 必须通过 object_fidelity 显式声明并证明等价，否则是静默判据收窄。
+    object_fidelity = _validate_object_fidelity(item, label)
     return {
         "source": source,
         "formalized_as": formalized,
@@ -773,6 +782,92 @@ def _validate_formalization_diff(
         "added_semantics": added,
         "removed_semantics": removed,
         "equivalence_evidence": evidence,
+        "object_fidelity": object_fidelity,
+    }
+
+
+# 通用数学"塌缩/退化形态"词：把体/区域/集合/分布塌缩为点、均值、代表值或单值。
+# 这些是数学表达层的通用信号，不依赖具体题面（不针对某道题）。
+_DEGENERATE_OBJECT_HINTS = (
+    "参考点",
+    "中心点",
+    "T_ref",
+    "ref",
+    "单点",
+    "点目标",
+    "均值",
+    "平均值",
+    "期望",
+    "代表值",
+    "典型值",
+    "单一值",
+    "简化",
+    "忽略",
+)
+
+
+def _validate_object_fidelity(
+    item: dict[str, Any],
+    label: str,
+) -> dict[str, str]:
+    """校验形式化目标是否把"体/区域/集合/分布"塌缩为退化形态而未声明。
+
+    通用问题：FORMALIZATION_DIFF 只审计"目标是否被替换"，不审计"对象是否被
+    变形"。建模者常把题面的体/区域/集合/分布静默写成点/均值/代表值（例如把
+    "圆柱形目标"写成"参考点 T_ref"、把"一组对象的风险分布"写成"平均风险"），
+    再用一句"题面物理量都进了模型"自证 equivalent。这道题暴露的就是这一通用
+    盲区——它不是圆柱题特有，任何题都会发生。
+
+    规则：``formalized_as`` 出现通用塌缩形态词时，若未声明 ``object_fidelity``
+    且 ``equivalence_evidence``/``added_semantics`` 未明确说明目标本身是点/标量，
+    则阻断。``object_fidelity`` 必须给出实质的等价或近似论证。
+
+    Args:
+        item: FORMALIZATION_DIFF 对象。
+        label: 用于错误定位的字段名。
+
+    Returns:
+        ``object_fidelity`` 字段（若声明）；否则空字典。
+
+    Raises:
+        ContractError: 出现未声明的对象塌缩。
+    """
+    formalized = str(item.get("formalized_as", ""))
+    fidelity = item.get("object_fidelity")
+    if not isinstance(fidelity, dict):
+        fidelity = {}
+    degenerate = any(hint in formalized for hint in _DEGENERATE_OBJECT_HINTS)
+    if not degenerate:
+        return {}
+    # 豁免：已说明目标本身是点/标量对象，不是把体/区域塌缩成点。
+    if not fidelity:
+        added = str(item.get("added_semantics", ""))
+        evidence = str(item.get("equivalence_evidence", ""))
+        point_justified = any(
+            [
+                "按点" in added or "目标为点" in added or "标量" in added,
+                "点" in evidence and "目标" in evidence,
+            ]
+        )
+        if point_justified:
+            return {}
+        raise ContractError(
+            f"{label}.object_fidelity：正式目标把对象表达为退化形态"
+            f"（{formalized} 含点/均值/代表等塌缩词），但未声明 object_fidelity。"
+            "把体/区域/集合/分布塌缩为点、均值或代表值时，必须显式说明为何等价"
+            "或它引入了哪些近似；只有题面对象本身是点/标量时才允许直接按点处理。"
+        )
+    statement = _require_text(
+        fidelity.get("statement"), f"{label}.object_fidelity.statement"
+    )
+    if len(statement.strip()) < 24:
+        raise ContractError(
+            f"{label}.object_fidelity.statement 过短，未说明对象塌缩如何"
+            "等价或它引入了哪些近似。"
+        )
+    return {
+        "statement": statement,
+        "subject": str(fidelity.get("subject", "")),
     }
 
 

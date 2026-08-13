@@ -302,6 +302,28 @@ def _normalize_stage_a_semantic_assessment(
     if not isinstance(reason, str) or len(reason.strip()) < 12:
         raise ContractError("stage_a_semantic_assessment.reason 至少需要 12 个字符")
     normalized: dict[str, Any] = {"priority": priority, "reason": reason.strip()}
+    # 判据对象保真：阶段 A 应核对正式目标中的几何对象是否被收窄（如把圆柱形
+    # 真目标收窄成参考点、把遮蔽整个轮廓收窄成遮挡一条视线）。此为可选字段；
+    # 一旦声明就必须是布尔 + 实质依据。
+    fidelity = value.get("object_fidelity_checked")
+    if fidelity is not None:
+        if not isinstance(fidelity, dict) or not isinstance(
+            fidelity.get("object_is_faithful"), bool
+        ):
+            raise ContractError(
+                "stage_a_semantic_assessment.object_fidelity_checked 必须是含 "
+                "布尔 object_is_faithful 的对象"
+            )
+        basis = fidelity.get("basis")
+        if not isinstance(basis, str) or len(basis.strip()) < 16:
+            raise ContractError(
+                "stage_a_semantic_assessment.object_fidelity_checked.basis 至少"
+                "需要 16 个字符，说明如何核对题面几何对象未被收窄"
+            )
+        normalized["object_fidelity_checked"] = {
+            "object_is_faithful": bool(fidelity["object_is_faithful"]),
+            "basis": basis.strip(),
+        }
     if high_risk_questions:
         if priority != "semantics_or_decomposition":
             raise ContractError("存在多主体、聚合或分解风险时，科学挑战第一攻击必须针对语义")

@@ -473,6 +473,27 @@ def _require_question_layout(run_dir: Path, manifest: dict[str, Any]) -> None:
     title = "问题" if manifest["language"] == "zh" else "Problem"
     missing = [question_id for question_id in layout["question_ids"] if f"{title} {question_id}" not in content]
     if missing:
+        structure_map_path = paper_dir / "CUMCM_STRUCTURE_MAP.json"
+        if structure_map_path.is_file():
+            try:
+                structure_map = load_json(structure_map_path)
+                if (
+                    structure_map.get("schema_version") == "1.2"
+                    and structure_map.get("profile") == "semantic"
+                ):
+                    covered = {
+                        str(question_id)
+                        for item in structure_map.get("sections", [])
+                        if isinstance(item, dict)
+                        and "question_solution" in item.get("roles", [])
+                        for question_id in item.get("question_ids", [])
+                    }
+                    # WHY: semantic 正文按共享数学对象组织，不能强迫标题退回
+                    # “问题 Q1”式骨架；结构映射已负责逐问覆盖与顺序校验。
+                    if set(layout["question_ids"]).issubset(covered):
+                        return
+            except (ContractError, OSError, TypeError, ValueError):
+                pass
         raise ContractError("动态问题章节与题目数量不一致: " + ", ".join(missing))
 
 

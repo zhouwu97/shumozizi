@@ -580,3 +580,63 @@ def test_data_quality_contract_optional_for_evaluation(tmp_path: Path) -> None:
     unit["natural_comparison"] = "与按定义直接计算的手工核对值比较。"
     unit.pop("data_quality_contract", None)
     _write(run_dir, plan)
+
+
+def test_cylinder_to_point_degeneration_blocked(tmp_path: Path) -> None:
+    """把题面'圆柱形真目标'收窄为'参考点'且未声明 → 判据收窄阻断。"""
+    run_dir = _run(tmp_path, "cylinder-degenerate")
+    plan = _base_plan(run_dir)
+    unit = plan["units"][0]
+    unit["formalization_diff"] = {
+        "source": "烟幕云团遮蔽半径7m高10m的圆柱形真目标，避免导弹发现真目标。",
+        "formalized_as": (
+            "T_ref=真目标中心点(0,200,5)；遮蔽=dist(segment(M1(t),T_ref),C(t))<=10"
+        ),
+        "transformation": "equivalent",
+        "added_semantics": "把云团中心10m内有效遮蔽形式化为与视线线段相交。",
+        "removed_semantics": "无",
+        "equivalence_evidence": "题面物理量全部进入模型，未改变原题目标。",
+    }
+
+    with pytest.raises(ContractError, match="object_fidelity"):
+        _write(run_dir, plan)
+
+
+def test_cylinder_to_point_degeneration_with_fidelity_passes(tmp_path: Path) -> None:
+    """几何收窄显式声明等价理由后应通过。"""
+    run_dir = _run(tmp_path, "cylinder-degenerate-declared")
+    plan = _base_plan(run_dir)
+    unit = plan["units"][0]
+    unit["formalization_diff"] = {
+        "source": "烟幕云团遮蔽半径7m高10m的圆柱形真目标，避免导弹发现真目标。",
+        "formalized_as": "T_ref=真目标中心点(0,200,5)；遮蔽=dist(segment(M1(t),T_ref),C(t))<=10",
+        "transformation": "equivalent",
+        "added_semantics": "把云团中心10m内有效遮蔽形式化为与视线线段相交。",
+        "removed_semantics": "无",
+        "equivalence_evidence": "题面物理量全部进入模型，未改变原题目标。",
+        "object_fidelity": {
+            "subject": "真目标圆柱 → 中心参考点",
+            "statement": (
+                "圆柱半径7m小于云团半径10m，且导弹导引头锁定目标中心；"
+                "以中心点作参考的遮蔽时长与实际轮廓遮挡差异已作为敏感性分析，"
+                "不作为唯一正式判据。"
+            ),
+        },
+    }
+    _write(run_dir, plan)
+
+
+def test_no_geometry_no_fidelity_required(tmp_path: Path) -> None:
+    """题面无几何对象时不强制 object_fidelity。"""
+    run_dir = _run(tmp_path, "no-geometry")
+    plan = _base_plan(run_dir)
+    unit = plan["units"][0]
+    unit["formalization_diff"] = {
+        "source": "题面要求给出使孕妇潜在风险最小的最佳时点。",
+        "formalized_as": "t* = argmin_t R_g(t)",
+        "transformation": "equivalent",
+        "added_semantics": "无",
+        "removed_semantics": "无",
+        "equivalence_evidence": "风险函数直接对应题面潜在风险。",
+    }
+    _write(run_dir, plan)

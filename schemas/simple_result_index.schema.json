@@ -29,6 +29,10 @@
             "type": "object",
             "additionalProperties": {"enum": [true, false, "unknown"]}
           },
+          "conclusion": {"type": ["string", "null"]},
+          "mechanism": {"type": ["string", "null"]},
+          "derivation": {"type": ["string", "null"]},
+          "boundary": {"type": ["string", "null"]},
           "metric_sources": {
             "type": "object",
             "additionalProperties": {
