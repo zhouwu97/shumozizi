@@ -325,6 +325,14 @@ def _v14_non_search_plan(run_dir: Path, unit_kind: str) -> dict[str, object]:
             "sensitivity": {"required": False},
             "robustness": {"required": False},
         },
+        "formalization_diff": {
+            "source": "题面要求给出按给定口径计算的精确指标与可行结论。",
+            "formalized_as": "J=sum_i value_i 的精确评价指标，按题面对象与时间范围计算。",
+            "transformation": "equivalent",
+            "added_semantics": "无",
+            "removed_semantics": "无",
+            "equivalence_evidence": "指标直接对应题面给定评价定义，无目标替换。",
+        },
     }
     if unit_kind == "exact_oracle":
         unit["capability_decision"] = _fixture_capability_decision(run_dir)
@@ -396,10 +404,19 @@ def _v14_optimization_plan(run_dir: Path) -> dict[str, object]:
     unit["unit_kind"] = "optimization"
     unit["capability_decision"] = _fixture_capability_decision(run_dir)
     unit.pop("primary_method")
+    # 优化单元是决策单元：v1.4 强制声明无可行解的决策闭环。
+    unit["answer_contract"]["infeasible_policy"] = {
+        "strict_result": "严格报告题面目标下是否存在可行解及最优值。",
+        "fallback_decision": "不可行集合内选择风险最低方案并报告其实际指标。",
+        "fallback_attained_reliability": "备用方案实际达到的指标下界。",
+        "retest_strategy": "在备用方案基础上安排复检与敏感性核验。",
+        "reliability_sensitivity": "关键参数扰动后可行性与指标排序的变化。",
+    }
     unit["objective"] = {
         "exact_metric": "objective",
         "direction": "minimize",
         "significant_improvement_ratio": 0.1,
+        "threshold_provenance": "prompt_defined",
     }
     unit["budget"] = {"kind": "wall_seconds", "tolerance_ratio": 0.1}
     unit["baseline"] = {

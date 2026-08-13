@@ -122,6 +122,14 @@ def _data_modeling_plan(
             "sensitivity": {"required": False},
             "robustness": {"required": False},
         },
+        "formalization_diff": {
+            "source": "题面要求给出满足达标目标的推荐时点及适用边界。",
+            "formalized_as": "t^*=inf{t:P(T<=t)>=p0} 的总体首次达标时点估计。",
+            "transformation": "equivalent",
+            "added_semantics": "无",
+            "removed_semantics": "无",
+            "equivalence_evidence": "推荐时点直接对应题面达标定义，无目标替换。",
+        },
         "primary_method": {
             "method_id": "interval-censored-aft",
             "mathematical_structure": "保留区间删失和对象层重复测量的生存时间模型。",
