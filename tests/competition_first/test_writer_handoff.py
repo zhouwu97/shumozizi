@@ -367,3 +367,62 @@ def test_handoff_status_summary(tmp_path: Path) -> None:
     assert status["authoring_mode"] == "internal"
     assert status["ready"] is False
     assert status["external_draft_present"] is False
+
+
+def _write_modeling_units_with_insights(
+    run_dir: Path, *, with_warrant: bool
+) -> None:
+    """写入单核心问建模单元；``with_warrant=False`` 时核心问无机制 insight。"""
+    insight = (
+        {
+            "insight_id": "ins-q1",
+            "kind": "mechanism",
+            "observation": "低风险组第 19 周是首个满足可靠性阈值的时点。",
+            "mechanism": "风险随干预时长单调下降，达标时间是风险曲线首次穿过"
+            "阈值的时刻，继续等待只增加时延。",
+            "boundary": "仅适用于题面可靠性阈值与数据覆盖区间。",
+            "evidence_result_ids": ["r-Q1"],
+        }
+        if with_warrant
+        else None
+    )
+    units = [
+        {
+            "unit_id": "q1",
+            "question_id": "Q1",
+            "core_question": True,
+            "answer_contract": {},
+            "actual": {"insights": [insight] if insight else []},
+        }
+    ]
+    atomic_json(
+        run_dir / "analysis/MODELING_UNITS.json",
+        {"schema_version": "1.4", "units": units},
+    )
+
+
+def test_argument_layer_blocks_core_question_without_warrant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """核心问题缺少机制级 insight（warrant 种子）时必须阻断交接。"""
+    run_dir = _ready_run(tmp_path, "arg-blocked", monkeypatch)
+    _write_modeling_units_with_insights(run_dir, with_warrant=False)
+
+    readiness = writer_handoff_readiness(run_dir)
+
+    assert readiness["ready"] is False
+    assert readiness["layers"]["argument"] == "blocked"
+    assert any("argument" in reason and "Q1" in reason for reason in readiness["reasons"])
+
+
+def test_argument_layer_passes_with_mechanism_warrant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """核心问题带机制类 insight 时 argument 层通过，整体可交接。"""
+    run_dir = _ready_run(tmp_path, "arg-ok", monkeypatch)
+    _write_modeling_units_with_insights(run_dir, with_warrant=True)
+
+    readiness = writer_handoff_readiness(run_dir)
+
+    assert readiness["layers"]["argument"] == "ok"
+    assert readiness["ready"] is True, readiness["reasons"]

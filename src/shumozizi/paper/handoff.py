@@ -2,8 +2,8 @@
 
 本模块负责四个职责：
 
-- ``writer_handoff_readiness``：科学事实与提交边界是硬门，素材、故事板和图表
-  缺口只作为 Author 可回流的编辑信号。
+- ``writer_handoff_readiness``：科学事实、提交边界与核心问题的论证链（warrant）
+  是硬门，素材、故事板和图表缺口只作为 Author 可回流的编辑信号。
 - ``build_writer_handoff``：把已冻结研究材料投影成两个人读文件，后台继续保留
   answer-and-claims JSON 与 provenance manifest。
 - ``mark_waiting_external_author``：进入正常暂停状态，并记录 checkpoint。
@@ -40,7 +40,10 @@ from shumozizi.simple.authoring import (
     read_authoring,
     record_handoff_revision,
 )
-from shumozizi.simple.modeling_units import question_outcome_selections
+from shumozizi.simple.modeling_units import (
+    _SUBSTANTIVE_INSIGHT_KINDS,
+    question_outcome_selections,
+)
 from shumozizi.simple.state import read_simple_state, utc_now
 
 HANDOFF_DIR = Path("paper/writer-handoff")
@@ -218,6 +221,60 @@ def writer_handoff_readiness(run_dir: Path) -> dict[str, Any]:
     else:
         # 未声明文献计划：允许"明确无需外部引用"的交接。
         layers["citation"] = "no_plan"
+
+    # Argument：核心问题的论证链（warrant）必须存在，否则 Author 拿到的只有
+    # 结果没有"为什么"。机制类 insight 是 warrant 的现成种子；核心问题缺它就
+    # 属于科学论证缺口（blocked），非核心问题只作编辑信号。没有 MODELING_UNITS
+    # 的轻量运行无法核验，只提示不阻断，避免旧协议运行被新门禁卡死。
+    try:
+        units_path = root / "analysis/MODELING_UNITS.json"
+        if not units_path.is_file():
+            signals.append("argument: 缺少 MODELING_UNITS，无法核验逐问论证链")
+            layers["argument"] = "advisory"
+        else:
+            payload = load_json(units_path)
+            core_without_warrant: list[str] = []
+            noncore_without_warrant: list[str] = []
+            for unit in payload.get("units", []):
+                if not isinstance(unit, dict):
+                    continue
+                question_id = str(unit.get("question_id", "")).strip()
+                if not question_id:
+                    continue
+                actual = unit.get("actual")
+                insights = (
+                    actual.get("insights")
+                    if isinstance(actual, dict)
+                    and isinstance(actual.get("insights"), list)
+                    else []
+                )
+                has_warrant = any(
+                    isinstance(item, dict)
+                    and str(item.get("kind", "")) in _SUBSTANTIVE_INSIGHT_KINDS
+                    and str(item.get("mechanism", "")).strip()
+                    for item in insights
+                )
+                if unit.get("core_question") is True:
+                    if not has_warrant:
+                        core_without_warrant.append(question_id)
+                elif not has_warrant:
+                    noncore_without_warrant.append(question_id)
+            if core_without_warrant:
+                reasons.append(
+                    "argument: 核心问题缺少机制级论证链（warrant），无法解释"
+                    f"结果为何成立: {', '.join(core_without_warrant)}"
+                )
+                layers["argument"] = "blocked"
+            else:
+                layers["argument"] = "ok"
+                if noncore_without_warrant:
+                    signals.append(
+                        "argument: 非核心问题未登记机制论证: "
+                        + ", ".join(noncore_without_warrant)
+                    )
+    except ContractError as exc:
+        signals.append(f"argument: {exc}")
+        layers["argument"] = "advisory"
 
     return {
         "ready": not reasons,
