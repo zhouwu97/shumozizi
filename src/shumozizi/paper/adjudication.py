@@ -26,6 +26,8 @@ REVIEWER_FINDINGS_PATH = Path("review/paper-reviewer-findings.json")
 ADJUDICATION_PATH = Path("review/paper-editorial-adjudication.json")
 
 # Reviewer 的 finding_class 中，只有这些允许 Adjudicator 自由裁决严重性。
+# unclassified 是 open-world 逃生舱：新问题可以进入系统，但 suggested_route
+# 仍保持 closed-world 枚举，Adjudicator 只能从五条已知路由中选。
 ADJUDICABLE_CLASSES = {
     "scientific_support",
     "argument",
@@ -33,6 +35,7 @@ ADJUDICABLE_CLASSES = {
     "writing",
     "layout",
     "citation",
+    "unclassified",
 }
 # 客观失败类别：Adjudicator 不能把它们主观判成可接受。
 OBJECTIVE_FINDING_CLASSES = {

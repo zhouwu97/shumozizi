@@ -168,6 +168,46 @@ def test_reviewer_fact_candidate_not_escalated_when_machine_binding_matches(
     require_paper_editorial_adjudication(run_dir)  # 可通过
 
 
+def test_unclassified_finding_requires_novelty_reason(tmp_path: Path) -> None:
+    """问题空间 open-world：unclassified 必须给出 novelty_reason 才能进入系统。"""
+    run_dir = _run(tmp_path, "unclassified-no-reason")
+    finding = _finding("REV-UNC-01", finding_class="unclassified", severity="P2")
+    finding.pop("novelty_reason", None)
+    _write_reviewer(run_dir, [finding])
+
+    with pytest.raises(ContractError, match="novelty_reason"):
+        from shumozizi.paper.adjudication import load_reviewer_findings
+
+        load_reviewer_findings(run_dir)
+
+
+def test_unclassified_finding_with_novelty_reason_enters_adjudication(
+    tmp_path: Path,
+) -> None:
+    """带 novelty_reason 的 unclassified finding 可进入系统并被 Adjudicator 裁决。"""
+    run_dir = _run(tmp_path, "unclassified-enters")
+    _write_audit(run_dir)
+    finding = _finding("REV-UNC-02", finding_class="unclassified", severity="P2")
+    finding["novelty_reason"] = "现有分类无法覆盖'数据口径在正文与附件间漂移'这一新问题。"
+    _write_reviewer(run_dir, [finding])
+
+    document = record_adjudication(
+        run_dir,
+        [
+            _decision(
+                "REV-UNC-02",
+                confirmed=False,
+                confirmed_severity="P2",
+                route="analysis",
+                decision="rework",
+                reason="口径漂移需回 analysis 检查数据合同，不能当局部写作问题处理。",
+            )
+        ],
+    )
+    assert document["decisions"][0]["finding_id"] == "REV-UNC-02"
+    assert document["decisions"][0]["confirmed_severity"] == "P2"
+
+
 def test_confirmed_fact_failure_cannot_be_downgraded(tmp_path: Path) -> None:
     """Test I：confirmed fact failure → Adjudicator 尝试接受/降级被拒绝。"""
     run_dir = _run(tmp_path, "confirmed-fact")

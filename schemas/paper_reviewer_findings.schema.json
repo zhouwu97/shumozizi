@@ -34,9 +34,10 @@
           "finding_class": {
             "enum": [
               "scientific_fact_candidate", "scientific_support", "argument",
-              "visual", "writing", "layout", "citation"
+              "visual", "writing", "layout", "citation", "unclassified"
             ]
           },
+          "novelty_reason": {"type": "string", "description": "仅 finding_class=unclassified 时必填：说明为什么现有分类无法覆盖该问题。"},
           "severity_recommendation": {"enum": ["P0", "P1", "P2", "P3"]},
           "location": {"type": "string", "minLength": 1},
           "observation": {"type": "string", "minLength": 1},
@@ -46,7 +47,13 @@
           },
           "minimum_fix": {"type": "string", "minLength": 1},
           "acceptance_test": {"type": "string", "minLength": 1}
-        }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"finding_class": {"const": "unclassified"}}, "required": ["finding_class"]},
+            "then": {"required": ["novelty_reason"]}
+          }
+        ]
       }
     },
     "generated_at": {"type": "string", "format": "date-time"}
