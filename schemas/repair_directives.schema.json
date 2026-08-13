@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhouwu97/shumozizi/schemas/repair_directives.schema.json",
+  "title": "Repair Loop v1 修复指令台账",
+  "description": "把 Reviewer finding / Author request 的 route 从标签升级为命令：每条 RepairDirective 声明可执行修复动作、负责人阶段与确定性验收测试；只有验收通过后才能 close，未关闭的修复指令会阻断交接与交付。问题空间允许 unclassified，动作空间保持封闭（route 枚举）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_name", "schema_version", "run_id", "directives"],
+  "properties": {
+    "schema_name": {"const": "repair_directives"},
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "directives": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/directive"}
+    }
+  },
+  "$defs": {
+    "directive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directive_id", "source", "finding_class", "route", "owner_stage",
+        "repair_action", "acceptance_test", "status", "opened_at"
+      ],
+      "properties": {
+        "directive_id": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "finding_class": {"type": "string", "minLength": 1},
+        "affected_questions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "route": {"enum": ["author", "visual", "experiment", "analysis", "render"]},
+        "owner_stage": {"type": "string", "minLength": 1},
+        "repair_action": {"type": "string", "minLength": 1},
+        "requires_new_evidence": {"type": "boolean"},
+        "acceptance_test": {"type": "string", "minLength": 1},
+        "waivable": {"type": "boolean"},
+        "status": {"enum": ["open", "closed"]},
+        "opened_at": {"type": "string", "format": "date-time"},
+        "closed_at": {"type": ["string", "null"], "format": "date-time"},
+        "render_required": {"type": "boolean"},
+        "closure": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["acceptance_evidence", "verified"],
+          "properties": {
+            "acceptance_evidence": {"type": "string", "minLength": 1},
+            "verified": {"type": "boolean"}
+          }
+        }
+      }
+    }
+  }
+}
