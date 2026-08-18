@@ -1,9 +1,9 @@
 """BZD 独立解题大脑 (Solver B) 准备工具。
 
 作用：
-1. 准备物理隔离的赛题与附件输入包 (analysis/dual_solver/solver_b_packet/)；
+1. 准备物理隔离的赛题与附件输入包 (analysis/dual_solver/solver_b_packet/) 与工作区 (analysis/dual_solver/solver_b/)；
 2. 完整装配上游原版 BZD Modeling Ideas 与 References 知识库；
-3. 一键生成 Solver B 独立全题解题提示词，用于在新对话中独立完成整题建模与计算。
+3. 一键生成 Solver B 独立全题解题提示词，用于在新对话 B 中独立完成整题建模与计算。
 """
 
 from __future__ import annotations
@@ -24,6 +24,11 @@ def prepare_solver_b_packet(run_dir: Path) -> Path:
 
     packet_problem_dir = packet_dir / "problem"
     packet_problem_dir.mkdir(parents=True, exist_ok=True)
+
+    # 同时创建 Solver B 结果归档目录
+    solver_b_dir = run_dir / "analysis" / "dual_solver" / "solver_b"
+    (solver_b_dir / "code").mkdir(parents=True, exist_ok=True)
+    (solver_b_dir / "results").mkdir(parents=True, exist_ok=True)
 
     src_problem_dir = run_dir / "problem"
     manifest_lines = [
@@ -53,7 +58,7 @@ def prepare_solver_b_packet(run_dir: Path) -> Path:
 
 
 def build_solver_b_prompt(run_dir: Path) -> str:
-    """生成用于独立新对话 B (Solver B) 的完整解题提示词。"""
+    """生成用于独立新对话 B (Solver B - BZD) 的完整解题提示词。"""
     packet_dir = prepare_solver_b_packet(run_dir)
     packet_problem_dir = packet_dir / "problem"
 
@@ -91,7 +96,7 @@ def build_solver_b_prompt(run_dir: Path) -> str:
 
     task_context = f"{joined_problem}"
 
-    local_rules = """你现在作为独立的数学建模解题专家 (Solver B)。
+    local_rules = """你现在作为独立的数学建模解题专家 (Solver B - BZD)。
 
 【解题要求】：
 1. 独立完成整题建模，不参考任何已有外部方案。
@@ -100,10 +105,11 @@ def build_solver_b_prompt(run_dir: Path) -> str:
 4. 若附件包含 Excel/PDF/CSV/图片，必须直接检视具体数据字段与真实特征，禁止凭空猜测。
 5. 明确指出方案的局限性、可能崩塌的边界条件与建议的多模型对比实验。
 
-【输出要求】：
-请将你的完整解题方案、关键代码与计算结果输出并保存至：
-`analysis/dual_solver/solver_b/SOLUTION_B.md`
-以及附带的代码文件 `analysis/dual_solver/solver_b/code/` 与结果 `analysis/dual_solver/solver_b/results/`。"""
+【成果归档要求】：
+请将你的本次完整解题对话、关键代码与计算结果保存至：
+- **完整解题与对话记录**：`analysis/dual_solver/solver_b/TRANSCRIPT.md`（或 `SOLUTION_B.md`）
+- **核心算法与仿真代码**：`analysis/dual_solver/solver_b/code/`
+- **计算与指标数据文件**：`analysis/dual_solver/solver_b/results/`"""
 
     return format_bzd_prompt(
         skill_name="bzd-modeling-ideas",

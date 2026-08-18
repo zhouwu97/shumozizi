@@ -1,10 +1,13 @@
-"""验证双解题大脑 (Dual-Solver) 与科学评审团 (Scientific Jury) 极简架构的输入准备、审核包组装与方案融合。"""
+"""验证双解题大脑 (Dual-Solver) 与科学评审团 (Scientific Jury) 极简全文件直读与无偏裁决机制。"""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from scripts.dual_solver.prepare_solver_a import (
+    build_solver_a_prompt,
+    prepare_solver_a_workspace,
+)
 from scripts.dual_solver.prepare_solver_b import (
     build_solver_b_prompt,
     prepare_solver_b_packet,
@@ -17,9 +20,29 @@ from scripts.dual_solver.run_scientific_jury import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_solver_b_packet_preparation_and_prompt_assembly(tmp_path: Path) -> None:
-    """Solver B 必须获得物理隔离的赛题与附件，并装配原版 BZD References 进行独立全题建模。"""
+def test_solver_a_workspace_and_prompt_assembly(tmp_path: Path) -> None:
+    """Solver A 能够初始化独立工作区，生成包含完整对话与代码保存规范的解题提示词。"""
     run_dir = tmp_path / "run_01"
+    problem_dir = run_dir / "problem"
+    problem_dir.mkdir(parents=True)
+    (problem_dir / "problem.md").write_text("# 2025 A题\n某无人机编队任务...", encoding="utf-8")
+
+    solver_a_dir = prepare_solver_a_workspace(run_dir)
+    assert solver_a_dir.is_dir()
+    assert (solver_a_dir / "code").is_dir()
+    assert (solver_a_dir / "results").is_dir()
+
+    prompt = build_solver_a_prompt(run_dir)
+    assert "Solver A - shumozizi" in prompt
+    assert "2025 A题" in prompt
+    assert "analysis/dual_solver/solver_a/TRANSCRIPT.md" in prompt
+    assert "analysis/dual_solver/solver_a/code/" in prompt
+    assert "analysis/dual_solver/solver_a/results/" in prompt
+
+
+def test_solver_b_packet_preparation_and_prompt_assembly(tmp_path: Path) -> None:
+    """Solver B 能够获得干净隔离包，装配原版 BZD References，并规范 TRANSCRIPT.md 保存。"""
+    run_dir = tmp_path / "run_02"
     problem_dir = run_dir / "problem"
     problem_dir.mkdir(parents=True)
     (problem_dir / "problem.md").write_text("# 2025 A题 太阳能光伏与储能协同优化\n\n背景与各问要求...", encoding="utf-8")
@@ -39,7 +62,7 @@ def test_solver_b_packet_preparation_and_prompt_assembly(tmp_path: Path) -> None
     assert (packet_dir / "INPUT_MANIFEST.md").is_file()
     assert not (packet_dir / "ROUTE_COMPETITION.md").exists()
 
-    # 2. 验证提示词生成（包含原版 References 与独立全题建模要求）
+    # 2. 验证提示词生成
     prompt = build_solver_b_prompt(run_dir)
     assert "2025 A题 太阳能光伏与储能协同优化" in prompt
     assert "[CSV数据附件] data.csv" in prompt
@@ -48,68 +71,59 @@ def test_solver_b_packet_preparation_and_prompt_assembly(tmp_path: Path) -> None
     assert "integrated-modeling-patterns.md" in prompt
     assert "strategy-output-standard.md" in prompt
     assert "独立完成整题建模，不参考任何已有外部方案" in prompt
-    assert "analysis/dual_solver/solver_b/SOLUTION_B.md" in prompt
+    assert "analysis/dual_solver/solver_b/TRANSCRIPT.md" in prompt
 
 
-def test_scientific_jury_prompt_assembly_with_both_solvers(tmp_path: Path) -> None:
-    """Scientific Jury 提示词必须完整聚合原题、Solver A 与 Solver B 的方案、代码与结果，并注入 10 项严苛审核规则。"""
-    run_dir = tmp_path / "run_02"
+def test_scientific_jury_prompt_assembly_no_truncation_and_unbiased_rules(tmp_path: Path) -> None:
+    """Jury Brief 必须指导直读全量文件（无截断），具备冲突驱动复算与彻底无偏的客观裁决原则。"""
+    run_dir = tmp_path / "run_03"
     problem_dir = run_dir / "problem"
     problem_dir.mkdir(parents=True)
-    (problem_dir / "problem.md").write_text("# 2025 C题 生产与检测调度问题\n\n要求求解最优抽检与装配策略...", encoding="utf-8")
-
-    # 准备 Solver A 记录
-    solver_a_dir = run_dir / "analysis" / "dual_solver" / "solver_a"
-    solver_a_dir.mkdir(parents=True)
-    (solver_a_dir / "SOLUTION_A.md").write_text("## 方案 A (shumozizi)\n采用状态转移动态规划，精确刻画每道工序检测成本与良品率传递。", encoding="utf-8")
-    (solver_a_dir / "code").mkdir(parents=True)
-    (solver_a_dir / "code" / "model_a.py").write_text("def solve_dp(): return 1234.5", encoding="utf-8")
-    (solver_a_dir / "results").mkdir(parents=True)
-    (solver_a_dir / "results" / "q1_a.json").write_text(json.dumps({"total_cost": 1234.5}), encoding="utf-8")
-
-    # 准备 Solver B 记录
-    solver_b_dir = run_dir / "analysis" / "dual_solver" / "solver_b"
-    solver_b_dir.mkdir(parents=True)
-    (solver_b_dir / "SOLUTION_B.md").write_text("## 方案 B (BZD)\n采用混合整数非线性规划 (MINLP)，引入极端工况下的风险置信惩罚项。", encoding="utf-8")
-    (solver_b_dir / "code").mkdir(parents=True)
-    (solver_b_dir / "code" / "model_b.py").write_text("def solve_minlp(): return 1198.0", encoding="utf-8")
-    (solver_b_dir / "results").mkdir(parents=True)
-    (solver_b_dir / "results" / "q1_b.json").write_text(json.dumps({"total_cost": 1198.0}), encoding="utf-8")
+    (problem_dir / "problem.md").write_text("# 2025 C题 生产与检测调度问题\n", encoding="utf-8")
 
     # 生成 Jury Prompt
     jury_prompt = build_scientific_jury_prompt(run_dir)
 
-    # 验证原题与双脑材料聚合
-    assert "2025 C题 生产与检测调度问题" in jury_prompt
-    assert "状态转移动态规划" in jury_prompt
-    assert "1234.5" in jury_prompt
-    assert "混合整数非线性规划 (MINLP)" in jury_prompt
-    assert "1198.0" in jury_prompt
+    # 1. 验证直读全量文件清单
+    assert "problem/**" in jury_prompt
+    assert "analysis/dual_solver/solver_a/TRANSCRIPT.md" in jury_prompt
+    assert "analysis/dual_solver/solver_a/code/**" in jury_prompt
+    assert "analysis/dual_solver/solver_a/results/**" in jury_prompt
+    assert "analysis/dual_solver/solver_b/TRANSCRIPT.md" in jury_prompt
+    assert "analysis/dual_solver/solver_b/code/**" in jury_prompt
+    assert "analysis/dual_solver/solver_b/results/**" in jury_prompt
 
-    # 验证 10 项核心审核规则
-    assert "严禁因为方案复杂、推导篇幅长或数值看似更优就直接判胜" in jury_prompt
-    assert "交叉复算与数值真实性" in jury_prompt
-    assert "漏洞与隐式假设挖掘" in jury_prompt
-    assert "边界崩塌分析" in jury_prompt
-    assert "最优方案融合 (Synthesis)" in jury_prompt
-    assert "采纳 A / 采纳 B / 融合 A+B / 均推翻重做" in jury_prompt
+    # 2. 验证冲突驱动复算机制
+    assert "冲突驱动复算" in jury_prompt
+    assert "直接在终端运行双方代码" in jury_prompt
+
+    # 3. 验证无偏客观裁决（四分类，且无强制融合偏见）
+    assert "采用 A (Adopt A)" in jury_prompt
+    assert "采用 B (Adopt B)" in jury_prompt
+    assert "融合 A+B (Synthesize A+B)" in jury_prompt
+    assert "两者均淘汰重做 (Reject Both & Redesign)" in jury_prompt
+    assert "绝不为了“融合感”而生硬拼凑" in jury_prompt
+    # 确保删除了带有主观强加色彩的旧表述
+    assert "绝非简单的全盘选" not in jury_prompt
+    assert "显著更强" not in jury_prompt
 
 
-def test_jury_verdict_exported_to_final_scientific_plan(tmp_path: Path) -> None:
-    """Jury 裁决报告能够直接导出为统一最终科学方案 FINAL_SCIENTIFIC_PLAN.md。"""
-    run_dir = tmp_path / "run_03"
+def test_jury_verdict_exported_to_final_scientific_plan_unbiased(tmp_path: Path) -> None:
+    """Jury 裁决报告能够正确导出为无偏的统一最终科学方案 FINAL_SCIENTIFIC_PLAN.md。"""
+    run_dir = tmp_path / "run_04"
     jury_dir = run_dir / "analysis" / "dual_solver"
     jury_dir.mkdir(parents=True)
 
     verdict_text = """## 科学评审团裁决意见
 
-### 1. 核心裁决与融合决策
-- **Q1**：采纳方案 A（动态规划模型推导严谨，B 方案松弛后存在约束违反）。
-- **Q2**：融合 A+B（采纳 A 的工序状态转移框架，同时引入 B 提出的非凸惩罚参数化）。
-- **Q3**：采纳方案 B（B 在多机协同冲突消解上的数学结构明显优于 A 的启发式）。
+### 1. 核心裁决与决策
+- **Q1**：采用方案 A（动态规划严格推导，B 存在约束遗漏）。
+- **Q2**：采用方案 B（B 在多机连续调度中的 MINLP 结构明显优于 A 的启发式）。
+- **Q3**：采用方案 A（A 的空间解析 oracle 经代码复算完全准确）。
+- **Q4**：融合 A+B（采纳 A 的事件驱动框架，引入 B 提出的非凸鲁棒参数化）。
 
 ### 2. 最终统一建模主线
-建立基于工序状态转移与鲁棒风险惩罚的统一调度框架。
+基于工序状态转移与鲁棒参数化调度模型。
 """
     verdict_file = jury_dir / "JURY_VERDICT.md"
     verdict_file.write_text(verdict_text, encoding="utf-8")
@@ -119,6 +133,6 @@ def test_jury_verdict_exported_to_final_scientific_plan(tmp_path: Path) -> None:
     plan_content = plan_file.read_text(encoding="utf-8")
 
     assert "# 统一最终科学方案 (FINAL_SCIENTIFIC_PLAN)" in plan_content
-    assert "Q1" in plan_content and "采纳方案 A" in plan_content
-    assert "Q2" in plan_content and "融合 A+B" in plan_content
-    assert "Q3" in plan_content and "采纳方案 B" in plan_content
+    assert "Q1" in plan_content and "采用方案 A" in plan_content
+    assert "Q2" in plan_content and "采用方案 B" in plan_content
+    assert "Q4" in plan_content and "融合 A+B" in plan_content
