@@ -75,8 +75,10 @@ python scripts/figures/use_template.py runs/<run-id> `
   --output-prefix figures/work/<figure-id>/v1/<name> --adaptation direct
 ```
 
-- `--adaptation direct`（默认）：复制原脚本 + 注入真实数据 shim，进程内**先注入数据再调用 make_figure**；
-- `--adaptation manual`：复制原脚本并写入标记好的数据入口 stub，由 Agent 手工做 master_adapted（保留视觉设计、剥离源论文语义）；
+- `--adaptation auto`（默认）：direct 安全时复制原脚本注入真实数据，否则自动执行 `master_adapted`；
+- `--adaptation direct`：仅在数据满足母版语义前提时原样套用；
+- `--adaptation adapted`：复制原脚本并自动替换真实数据、面板尺度和源论文语义，保留母版视觉结构；
+- `--adaptation manual`：仅在尚无自动适配器且确需人工拆/并/删面板时显式使用；
 - `--adaptation reimplemented`：本仓 v3 简化渲染器回退（明确要求才用，不作为默认路径）。
 
 渲染产出 `figures/work/<figure-id>/<version>/` 下的 PNG/PDF/SVG + 机器生成的

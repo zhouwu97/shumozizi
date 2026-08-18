@@ -55,8 +55,9 @@ def advanced_figure_quota_payload(required_question_count: int) -> dict[str, Any
             MIN_FORMAL_VISUAL_ARCHETYPES if global_hard_minimum else None
         ),
         "editorial_target": (
-            "先为每张图说明其支持的命题，再以数据直觉、模型机制、决定性证据和"
-            "边界中的未覆盖角色决定是否补图；少于四问时不得为总图数或图型数凑图。"
+            "核心问题通常需要 1 张能被记住的 Hero Figure；若一个图不能同时解释数据直觉、"
+            "机制、权衡或边界，再增加 supporting figure。全篇 13–18 图作为复杂建模赛题视觉"
+            "充足的推荐参考信号，按论证角色真实展开，不得为数量机械凑图。"
         ),
         "count_scope": (
             "仅计正式发布入口实际引用、status=current、paper_allowed=true 的图；"

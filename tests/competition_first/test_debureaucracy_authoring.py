@@ -591,3 +591,59 @@ def test_pairwise_package_requires_three_blind_reviewers(tmp_path: Path) -> None
     assert len(manifest["pairwise_questions"]) == 6
     assert any("工作报告" in item for item in manifest["pairwise_questions"])
     assert any("模板化" in item for item in manifest["pairwise_questions"])
+
+
+def test_selected_materials_preserves_all_distinct_categories_without_count_cutoff(
+    tmp_path: Path,
+) -> None:
+    """素材池去重按语义功能进行，不得有 del items[4:] 等机械数量截断。"""
+    from shumozizi.paper.author_pass import _selected_materials, prepare_longform_author
+
+    run_dir = _author_ready_run(tmp_path, name="materials-no-cutoff")
+    # 创建 7 个不同类别的素材项目，全部应该被保留
+    material_items = [
+        {"item_id": "m1", "question_id": "Q1", "category": "Mathematical Derivation", "title": "表面距离公式推导", "content": "公式推导内容 1", "status": "current"},
+        {"item_id": "m2", "question_id": "Q1", "category": "Mathematical Derivation", "title": "连通性并查集定理", "content": "公式推导内容 2", "status": "current"},
+        {"item_id": "m3", "question_id": "Q1", "category": "Mechanism", "title": "活跃约束机制", "content": "机制分析内容 A", "status": "current"},
+        {"item_id": "m4", "question_id": "Q1", "category": "Mechanism", "title": "渗流相变临界点", "content": "机制分析内容 B", "status": "current"},
+        {"item_id": "m5", "question_id": "Q1", "category": "Baseline/Contrast", "title": "基准模型对比", "content": "Baseline 对比内容", "status": "current"},
+        {"item_id": "m6", "question_id": "Q1", "category": "Illustrative Case", "title": "反例与临界形态", "content": "反例案例内容", "status": "current"},
+        {"item_id": "m7", "question_id": "Q1", "category": "Boundary/Robustness", "title": "适用边界与敏感性", "content": "边界条件内容", "status": "current"},
+    ]
+    atomic_json(
+        run_dir / "paper/generated/material_pool.json",
+        {"schema_version": "1.0", "items": material_items},
+    )
+    selected = _selected_materials(run_dir)
+    assert len(selected["Q1"]) == 7, "所有 7 项差异化科学素材必须全部保留，不得截断"
+
+    from shumozizi.simple.review_focus import record_scientific_challenge_evidence
+
+    record_scientific_challenge_evidence(
+        run_dir,
+        result_ids=["r-q1"],
+        attack_description="复核 Q1 科学事实",
+        findings=[],
+    )
+    manifest = prepare_longform_author(run_dir, require_template=False)
+    package = (run_dir / manifest["research_package"]["path"]).read_text(encoding="utf-8")
+    assert "表面距离公式推导" in package
+    assert "连通性并查集定理" in package
+    assert "活跃约束机制" in package
+    assert "渗流相变临界点" in package
+    assert "基准模型对比" in package
+    assert "反例与临界形态" in package
+    assert "适用边界与敏感性" in package
+
+
+def test_author_brief_has_natural_academic_tone_and_modeling_focus(tmp_path: Path) -> None:
+    """AUTHOR_BRIEF 强调 50-60% 建模重心与连续学术段落，不再强制被动语态。"""
+    from shumozizi.paper.author_pass import _render_author_brief
+
+    state = {"run_id": "test-tone", "required_questions": ["Q1"]}
+    brief = _render_author_brief(state, {"cards": []}, None)
+    assert "50–60%" in brief
+    assert "连续学术段落" in brief
+    assert "本文建立" in brief
+    assert "观察 → 机制 → 结论" in brief
+    assert "全文用被动语态" not in brief

@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from shumozizi.core.io import ContractError, relative_inside, resolve_inside
 from shumozizi.simple.direct_adaptation import (
     DIRECT_ADAPTATION_READY,
+    MASTER_ADAPTED_TEMPLATES,
     adapt_and_render,
     prepare_manual_adaptation,
 )
@@ -238,7 +239,11 @@ def template_catalog_payload() -> dict[str, object]:
                 "template_id": template_id,
                 "title": title,
                 "category": category,
-                "reference_script": (template_root / script_name).as_posix(),
+                "reference_script": (
+                    (template_root / script_name).as_posix()
+                    if (REPO_ROOT / template_root / script_name).is_file()
+                    else "src/shumozizi/simple/figure_templates.py"
+                ),
                 "preview": preview.as_posix() if (REPO_ROOT / preview).is_file() else None,
                 "renderer_available": True,
                 "requires_current_result": True,
@@ -273,20 +278,26 @@ def recommend_template_candidates(structure: str) -> dict[str, object]:
     catalog = template_catalog_payload()
     by_id = {item["template_id"]: item for item in catalog["templates"]}
     candidates = [by_id[template_id] for template_id in template_ids]
-    ready = [
-        item for item in candidates
-        if item["preview_fidelity"] != "needs_visual_refinement"
-    ]
-    refinement_queue = [
-        item for item in candidates
-        if item["preview_fidelity"] == "needs_visual_refinement"
-    ]
+    # 预览需要精修不等于母版不适合。高级母版应先进入候选，再由真实 PNG
+    # 决定是否继续调整，避免 direct 前提不满足时直接退回普通图。
+    for item in candidates:
+        item["recommended_action"] = (
+            "direct" if item["template_id"] in DIRECT_ADAPTATION_READY
+            else "master_adapted" if item["template_id"] in MASTER_ADAPTED_TEMPLATES
+            else "reimplemented"
+        )
+        item["adaptation_need"] = (
+            "light" if item["recommended_action"] == "direct"
+            else "medium" if item["recommended_action"] == "master_adapted"
+            else "n/a"
+        )
     return {
         "structure": normalized,
         "advisory_only": True,
         "selection_rule": "按整篇论文主线、当前真实数据和论证角色选择，不按每问强行一张高级图。",
-        "candidates": ready,
-        "refinement_queue": refinement_queue,
+        "candidates": candidates,
+        # 兼容旧消费者；不再把模板从主候选中移除。
+        "refinement_queue": [],
     }
 
 
@@ -413,7 +424,7 @@ def generate_from_result(
     scientific_question: str | None = None,
     expected_takeaway: str | None = None,
     cannot_prove: str | None = None,
-    adaptation: str = "direct",
+    adaptation: str = "auto",
 ) -> dict[str, object]:
     """以 current 真实结果生成并登记一张 v3.1 图表（旧运行兼容，单步登记到 current）。
 
@@ -428,7 +439,7 @@ def generate_from_result(
         input_result: 可选的具体 JSON 输出路径。
         figure_id: 可选稳定图表 ID。
         figure_stage: 登记阶段（evidence / publication / current）。
-        adaptation: ``direct`` / ``manual`` / ``reimplemented``。
+        adaptation: ``auto`` / ``direct`` / ``adapted`` / ``reimplemented``。
 
     Returns:
         登记结果；direct 无 shim 或 manual 时返回编辑指引而不登记。
@@ -447,9 +458,7 @@ def generate_from_result(
     stem, relative_stem, default_id = _output_stem(root, output_prefix)
     figure_id = figure_id or default_id
 
-    if adaptation == "manual" or (
-        adaptation == "direct" and template_id not in DIRECT_ADAPTATION_READY
-    ):
+    if adaptation == "manual":
         guide = prepare_manual_adaptation(template_id, data, stem, root)
         guide.update(
             {
@@ -465,7 +474,20 @@ def generate_from_result(
         )
         return guide
 
-    if adaptation == "direct":
+    requested_adaptation = adaptation
+    if adaptation == "direct" and template_id not in DIRECT_ADAPTATION_READY:
+        guide = prepare_manual_adaptation(template_id, data, stem, root)
+        guide.update({"success": True, "mode": "manual", "result_id": result_id,
+                      "input_result": chosen_input,
+                      "notice": f"{template_id} 未满足 direct 前提；当前 manual/手工模式仅作显式兼容，默认请使用 auto 进入 master_adapted。"})
+        return guide
+    if adaptation == "auto":
+        adaptation = (
+            "direct" if template_id in DIRECT_ADAPTATION_READY
+            else "adapted" if template_id in MASTER_ADAPTED_TEMPLATES
+            else "reimplemented"
+        )
+    if adaptation in {"direct", "adapted"}:
         target_dir = root / "code" / "figures"
         target_dir.mkdir(parents=True, exist_ok=True)
         reference_target = _freeze_runtime_source(
@@ -473,7 +495,13 @@ def generate_from_result(
             target_dir,
             prefix=f"reference_{Path(TEMPLATE_SCRIPTS[template_id]).stem}",
         )
-        result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id)
+        try:
+            result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
+        except ContractError:
+            if requested_adaptation != "auto" or template_id not in MASTER_ADAPTED_TEMPLATES:
+                raise
+            adaptation = "adapted"
+            result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
         outputs = result["outputs"]
         text_boxes = result["text_boxes"]
         visual_manifest = result["visual_manifest"]
@@ -544,7 +572,7 @@ def render_candidate(
     output_prefix: str,
     input_result: str | None = None,
     figure_id: str | None = None,
-    adaptation: str = "direct",
+    adaptation: str = "auto",
 ) -> dict[str, object]:
     """以 current 真实结果渲染一张 work 候选图（不登记，晋级走 promote_figure_candidate）。
 
@@ -555,8 +583,8 @@ def render_candidate(
         output_prefix: ``figures/work/<figure_id>/<version>/`` 内的不含扩展名输出前缀。
         input_result: 可选的具体 JSON 输出路径。
         figure_id: 可选稳定图表 ID。
-        adaptation: ``direct``（默认，复制 sci-box 母版脚本只换数据入口）、
-            ``manual``（复制原脚本留 stub 由 Agent 手工换数据）或
+        adaptation: ``auto``（默认，direct 安全时 direct，否则 master_adapted）、
+            ``direct``、``adapted``、``manual`` 或
             ``reimplemented``（本仓 v3 简化渲染器回退）。
 
     Returns:
@@ -582,9 +610,7 @@ def render_candidate(
             f"当前: {relative_stem}"
         )
 
-    if adaptation == "manual" or (
-        adaptation == "direct" and template_id not in DIRECT_ADAPTATION_READY
-    ):
+    if adaptation == "manual":
         # direct 无 shim 时自动进入 manual-copy（复制原母版留 stub），
         # 绝不静默回退到简化 reimplemented 渲染器。
         guide = prepare_manual_adaptation(template_id, data, stem, root)
@@ -602,7 +628,20 @@ def render_candidate(
         )
         return guide
 
-    if adaptation == "direct":
+    requested_adaptation = adaptation
+    if adaptation == "direct" and template_id not in DIRECT_ADAPTATION_READY:
+        guide = prepare_manual_adaptation(template_id, data, stem, root)
+        guide.update({"success": True, "mode": "manual", "result_id": result_id,
+                      "input_result": chosen_input,
+                      "notice": f"{template_id} 未满足 direct 前提；当前 manual/手工模式仅作显式兼容，默认请使用 auto 进入 master_adapted。"})
+        return guide
+    if adaptation == "auto":
+        adaptation = (
+            "direct" if template_id in DIRECT_ADAPTATION_READY
+            else "adapted" if template_id in MASTER_ADAPTED_TEMPLATES
+            else "reimplemented"
+        )
+    if adaptation in {"direct", "adapted"}:
         # 冻结母版原脚本作为 reference；复制后的 adapted 脚本就是本次实际执行的母版。
         target_dir = root / "code" / "figures"
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -611,7 +650,13 @@ def render_candidate(
             target_dir,
             prefix=f"reference_{Path(TEMPLATE_SCRIPTS[template_id]).stem}",
         )
-        result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id)
+        try:
+            result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
+        except ContractError:
+            if requested_adaptation != "auto" or template_id not in MASTER_ADAPTED_TEMPLATES:
+                raise
+            adaptation = "adapted"
+            result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
         outputs = result["outputs"]
         text_boxes = result["text_boxes"]
         layout_report = result["layout_report"]
@@ -659,10 +704,11 @@ def main() -> int:
     parser.add_argument("--figure-id")
     parser.add_argument(
         "--adaptation",
-        choices=("direct", "manual", "reimplemented"),
-        default="direct",
-        help="direct=复制 sci-box 母版脚本只换数据入口（默认，无 shim 时自动转 manual-copy）；"
-        "manual=复制原脚本留 stub 手工换数据；reimplemented=本仓 v3 简化渲染器回退（明确要求才用）",
+        choices=("auto", "direct", "adapted", "manual", "reimplemented"),
+        default="auto",
+        help="auto=direct 安全时原样适配，否则自动 master_adapted（默认）；"
+        "direct=仅允许安全直连；adapted=保留母版视觉语法并改造语义；"
+        "manual=复制原脚本留 stub；reimplemented=本仓简化渲染器回退",
     )
     parser.add_argument("--list", action="store_true", help="列出已接入真实数据接口的模板")
     parser.add_argument("--catalog", action="store_true", help="输出机器可读的生产模板目录")

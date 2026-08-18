@@ -38,7 +38,9 @@ python scripts/figures/promote_figure_candidate.py runs/<run-id> `
 | `--adaptation` | 行为 | 何时使用 |
 | --- | --- | --- |
 | `direct`（默认） | **复制 sci-box 母版原脚本**（`skills/sci-box/scibox-figure/scripts/templates/make_<id>.py`，上游 jihe520/sci-box 原样副本）到 `code/figures/adapted_<id>.py`，进程内**先注入** `_real_data_<id>.py` shim（把 `simulate_*()`/模块常量替换为真实结果）**再调用 make_figure**，原样保留绘图结构。无 shim 时自动转 manual-copy，**绝不静默回退**到简化 reimplemented。 | 首选；母版结构能直接表达本题结果时。 |
-| `manual` | 复制原脚本 + 改写输出路径 + 写入标记好的数据入口 stub（`TODO(manual adaptation)`），不运行、不登记。 | 需要拆/并/删面板、改变量数或母版无自动 shim 时，由 Agent 手工替换数据入口后运行。 |
+| `auto` | direct 安全时原样适配，否则自动进入 `master_adapted`。 | 默认入口；优先保留高级母版视觉语法。 |
+| `adapted` | 复制原脚本并由真实数据 shim 改造面板、尺度和语义，保留母版布局。 | direct 前提不满足但母版仍适合当前结果时。 |
+| `manual` | 复制原脚本 + 写入标记好的数据入口 stub（`TODO(manual adaptation)`），不运行、不登记。 | 仅在需要人工重排且尚无自动适配器时显式使用。 |
 | `reimplemented` | 本仓 v3 渲染器（`src/shumozizi/simple/figure_templates.py`）简化重绘。 | 明确要求才用；不作为默认路径。 |
 
 `direct` 是“**用了人家的模板**”的唯一正确姿势：母版脚本的版式（面板几何、字号、轴线、
@@ -88,7 +90,7 @@ python scripts/figures/use_template.py --recommend optimization
 
 `--catalog` 同时给出中文标题、分类、参考脚本、可用预览、真实 renderer 状态、`use_when`、`avoid_when`、`evidence_role`、`required_data_summary`、`min_paper_width_cm`、`preview_fidelity`、`adaptation_level` 和 `grayscale_readability`，可直接供 Agent 或图库前端消费。
 
-`preview_fidelity` 不与 `renderer_available` 混用：`preview_grade` 表示高级结构通过本轮人工视觉晋级；`safe_adapted` 表示证据语义可靠但不宣称等同参考预览；`needs_visual_refinement` 只进入 `refinement_queue`，不会被 `--recommend` 自动列为高级成品。推荐入口覆盖 optimization、uncertainty、classification、distribution、network/flow 和 temporal，但结果只作建议；Hero 图按整篇论文主线选择，不按每个问题强行配置高级图。
+`preview_fidelity` 不与 `renderer_available` 混用。`needs_visual_refinement` 只是视觉备注，不再把母版移出 `--recommend` 的主候选；候选会附带 `recommended_action`（`direct` 或 `master_adapted`）和 `adaptation_need`，最终以真实 PNG 复核决定。
 
 | 模板 | `figure_data` 必需结构 |
 | --- | --- |

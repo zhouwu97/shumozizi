@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +27,16 @@ _BLOCKING_SCIENTIFIC_ACTIONS = frozenset(
 _AUTHOR_MATERIAL_PRIORITIES = {
     "direct answer": 0,
     "mathematical derivation": 1,
-    "mechanism": 2,
+    "model rationale": 1,
+    "structural observation": 2,
     "structural insight": 2,
-    "boundary/robustness": 3,
+    "mechanism": 2,
+    "intermediate result": 3,
+    "baseline/contrast": 3,
+    "illustrative case": 3,
+    "boundary/robustness": 4,
     "validation": 4,
+    "negative finding": 5,
 }
 
 
@@ -230,7 +237,7 @@ def _units_by_question(modeling: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _selected_materials(root: Path) -> dict[str, list[dict[str, Any]]]:
-    """只选择直接答案和高价值论证素材，避免把完整素材池重新塞给 Author。"""
+    """选择高价值论证素材并按科学功能去重，不进行机械数量截断。"""
     pool = _optional_json(root, "paper/generated/material_pool.json")
     selected: dict[str, list[dict[str, Any]]] = {}
     for raw in pool.get("items", []):
@@ -241,8 +248,20 @@ def _selected_materials(root: Path) -> dict[str, list[dict[str, Any]]]:
             continue
         question_id = str(raw.get("question_id", "global"))
         selected.setdefault(question_id, []).append(raw)
-    for items in selected.values():
-        items.sort(
+    for question_id, items in selected.items():
+        # 语义功能去重：同类别且文本高度重复的内容去重，保留差异化推导、机制与反例
+        deduped: list[dict[str, Any]] = []
+        seen_signatures: set[tuple[str, str]] = set()
+        for item in items:
+            cat = str(item.get("category", "")).strip().casefold()
+            content = str(item.get("content", "")).strip()
+            norm_content = re.sub(r"\s+", "", content)
+            sig = (cat, norm_content[:120])
+            if sig in seen_signatures:
+                continue
+            seen_signatures.add(sig)
+            deduped.append(item)
+        deduped.sort(
             key=lambda item: (
                 _AUTHOR_MATERIAL_PRIORITIES[
                     str(item.get("category", "")).strip().casefold()
@@ -250,7 +269,7 @@ def _selected_materials(root: Path) -> dict[str, list[dict[str, Any]]]:
                 str(item.get("title", "")),
             )
         )
-        del items[4:]
+        selected[question_id] = deduped
     return selected
 
 
@@ -436,7 +455,6 @@ def _argument_chain_lines(
     return lines
 
 
-
 def _citation_brief(root: Path) -> list[str]:
     """把已核验引用及用途边界压缩为 Research Package 小节。"""
     coverage = _optional_json(root, "paper/generated/citation_coverage.json")
@@ -470,10 +488,10 @@ def _visual_requirement_brief(root: Path) -> list[str]:
     与旧版的关键区别：不再把视觉状态写成"需求需要视觉评估"（会误导 Author
     以为图还没生成），而是列出 figures/index.json 中 status=current 的正式图、
     它们在正文可直接引用的 ``\\includegraphics`` 相对路径（从 paper/ 出发），
-    并给出强制要求：正文必须引用其中的大部分，每张配图注与一句"展示了什么"的解读。
-    这修复"图生产了但论文没有图"的证据链断点。
+    并给出要求：正文必须引用其中的关键图，每张配图号与图注，并在正文中完成
+    '观察 → 机制 → 结论' 的完整三步论证。
     """
-    lines = ["## 已就绪正式图（必须引用，不得写纯文字论文）", ""]
+    lines = ["## 已就绪正式图（必须引用，并在正文完成观察—机制—结论）", ""]
     figures = _optional_json(root, "figures/index.json").get("figures", [])
     current = [
         item
@@ -511,9 +529,9 @@ def _visual_requirement_brief(root: Path) -> list[str]:
     lines.extend(
         [
             "",
-            f"以上 {referenced} 张正式图已由 current production 数据确定性生成，正文必须引用其中的大部分，"
-            "每张配图号、图注，并在图注后写一句'这张图展示了什么、能得出什么结论'。"
-            "不要因为图注复杂就省略图。",
+            f"以上 {referenced} 张正式图已由 current production 数据确定性生成，正文必须引用其中的关键图，"
+            "每张配图号、图注，并在正文中完成'观察（图显示了什么）→ 机制（为什么呈现该形态）→ 结论（对答案意味着什么）'。"
+            "不要因为图注复杂就省略图，也不要仅用一句话掠过。",
             "",
         ]
     )
@@ -550,6 +568,11 @@ def _render_research_package(
     units = _units_by_question(modeling)
     selected_materials = _selected_materials(root)
     story = modeling.get("research_story", {})
+    progression_map: dict[str, dict[str, Any]] = {}
+    for item in story.get("question_progression", []):
+        if isinstance(item, dict) and item.get("question_id"):
+            progression_map[str(item["question_id"])] = item
+
     lines = [
         "# RESEARCH PACKAGE",
         "",
@@ -566,6 +589,7 @@ def _render_research_package(
         unit = units.get(question_id, {})
         contract = unit.get("answer_contract", {})
         delta = unit.get("question_delta", {})
+        progression = progression_map.get(question_id, {})
         lines.extend([f"### {question_id}", ""])
         required_output = str(contract.get("required_output", "")).strip()
         decision_scope = str(contract.get("decision_scope", "")).strip()
@@ -585,6 +609,13 @@ def _render_research_package(
             prefix = f"继承 {inherits}" if inherits else "本问首次建立对象"
             suffix = "；新增 " + "、".join(map(str, changed)) if changed else ""
             lines.append(f"- 相邻问题变化：{prefix}{suffix}")
+        if progression:
+            why_insufficient = progression.get("why_previous_insufficient")
+            new_diff = progression.get("new_difficulty")
+            if why_insufficient:
+                lines.append(f"- 为什么不能沿用上一问方法：{why_insufficient}")
+            if new_diff:
+                lines.append(f"- 本问核心数学困难：{new_diff}")
         location = answer.get("direct_answer_location")
         if isinstance(location, str) and location.strip():
             lines.append(f"- 直接答案建议位置：{location.strip()}")
@@ -662,8 +693,6 @@ def _render_research_package(
 
     # 逐问论证链与决策建议：把 insight.mechanism 投影为 warrant（为什么证据
     # 支持结论），把决策单元合同投影为决策建议（推荐什么、何时不推荐）。
-    # 主张文本已在"逐问正式答案"给出，此处不重复；非决策问且无 insight 时
-    # 整节省略，避免为凑节而生成空壳。
     chain_lines: list[str] = []
     for question_id in state.get("required_questions", []):
         chain_lines.extend(
@@ -685,10 +714,24 @@ def _render_research_package(
             for item in selected_materials.get(question_id, [])
             if str(item.get("category", "")).strip().casefold() != "direct answer"
         ]
-        if not materials:
+        unit = units.get(question_id, {})
+        cap = unit.get("capability_decision", {})
+        delta = unit.get("question_delta", {})
+        contract = unit.get("answer_contract", {})
+        has_unit_context = bool(cap or delta or contract)
+        if not materials and not has_unit_context:
             continue
         substantive = True
         lines.extend([f"### {question_id}", ""])
+        if isinstance(cap, dict) and cap.get("reason"):
+            lines.extend([f"- 模型/算法选择依据：{cap.get('reason')}", ""])
+        if isinstance(contract, dict):
+            baseline = contract.get("natural_baseline")
+            if baseline:
+                lines.extend([f"- 自然基准（Baseline）：{baseline}", ""])
+            counterexample = contract.get("semantic_counterexample")
+            if isinstance(counterexample, dict) and counterexample.get("expected_preference"):
+                lines.extend([f"- 临界/反例校验设计：{counterexample.get('expected_preference')}", ""])
         for item in materials:
             title = str(item.get("title", item.get("category", "研究素材"))).strip()
             content = str(item.get("content", "")).strip()
@@ -750,49 +793,52 @@ def _render_author_brief(
 ) -> str:
     """生成不暴露 Reviewer checklist 的自由写作任务。"""
     lines = [
-            "# AUTHOR BRIEF",
-            "",
-            f"为运行 {state['run_id']} 撰写完整数学建模竞赛论文。",
-            "",
-            "论文必须按国奖级完整竞赛论文的论证标准自检，篇幅只由真实论证任务决定：每个问题都要能找到直接答案、"
-            "模型建立、求解、结果解读以及必要证据；不得用空泛压缩或堆砌页数、图数规避论证。"
-            "附录可含核心代码与稳定性图。",
-            "",
-            "正式答案、数字、题意语义和主张边界不可擅自修改。若无法解释结果或缺少必要对照、机制、图或证据，应提出返工请求。"
-            "每个主要结论都必须能回答'为什么这些证据支持这个结论'；"
-            "Research Package 的'逐问论证链与决策建议'已给出机制级论证候选，"
-            "你的工作是判断、改写与补全，而不是照抄。"
-            "决策类问题必须给出推荐，或明确说明严格目标不可行时的备用决策与适用条件，"
-            "不能把'无可行时点'写成推荐一个不满足可靠性的时点。",
-            "",
-            "前五页优先建立答案与证据链：摘要应给出关键数值与条件边界；读者应尽早找到逐问直接答案、"
-            "共享数学对象、原始数据直觉和至少一张决定性 Hero 图及其机制解释。具体页码与段落顺序由中心主线决定，"
-            "不要等到后半篇才首次展示主要结论。",
-            "",
-            "采用可识别的国赛外壳（问题重述与分析、必要假设和符号、共享模型、问题链、检验与结论、"
-            "参考文献及附录），但正文必须服从共享数学对象和中心主线。允许合并相邻问题、集中共享推导，"
-            "并让核心问题获得更多篇幅；每个必答问题只需在自然叙事中可定位地给出直接答案，"
-            "不要为所有问题复制相同的“建模—参数—结果—答案”小节序列。",
-            "",
-            "文风必须是学术论文而非技术报告："
-            "全文用被动语态与客观陈述，禁止'我们/大家'等第一人称；"
-            "每段第一句是主题句，后续围绕它展开；"
-            "每个数值结果后必须解读其物理/工程意义（'这表明……'、'其原因在于……'）；"
-            "正文叙述中尽量用文字描述代替符号（如'介质 A 的最优体积分数为 1.24%'而非只有 $f_A^*=1.24\\%$）。",
-            "",
-            "按 claim-first 的 Visual Brief 写图：先回答每张图要证明什么，再说明读者应看到的观察、"
-            "其机制或边界，以及对应的 current 数据来源；之后才选择 Hero 或 supporting 图型。图必须分别承担"
-            "数据直觉、模型机制、决定性证据、权衡/边界或验证中的真实论证角色，不能按问题编号凑图，"
-            "也不能靠拆图、换色或重复插图补数量。优先选择最能说明命题的图型；普通折线/柱状图在确实"
-            "最清楚时同样可用。所有正式图均从 current 数据或正式结构 renderer 生成，保持统一字体、"
-            "坐标轴/单位/图例，并配图号、图注和一句可复述的论证解释。候选稿的图消费合同由后台按题数"
-            "和未覆盖论证角色复核，Author 不应把总图数当成写作目标。",
-            "",
-            "不要把审核清单、内部结果编号、回执、哈希、工作流阶段或工具探测写入正文。",
-            "",
-            "输出 paper/longform-source.tex（或 Typst 对应文件）以及 paper/AUTHOR_GAPS.md。",
-            "",
-        ]
+        "# AUTHOR BRIEF",
+        "",
+        f"为运行 {state['run_id']} 撰写完整数学建模竞赛论文。",
+        "",
+        "论文必须按国奖级完整竞赛论文的论证标准自检，篇幅只由真实论证任务决定：每个问题都要能找到直接答案、"
+        "模型建立、求解、结果解读以及必要证据；不得用空泛压缩或堆砌页数、图数规避论证。"
+        "附录可含核心代码与稳定性图。",
+        "",
+        "正式答案、数字、题意语义和主张边界不可擅自修改。若无法解释结果或缺少必要对照、机制、图或证据，应提出返工请求。"
+        "每个主要结论都必须能回答'为什么这些证据支持这个结论'；"
+        "Research Package 的'逐问论证链与决策建议'已给出机制级论证候选，"
+        "你的工作是判断、改写与补全，而不是照抄。"
+        "决策类问题必须给出推荐，或明确说明严格目标不可行时的备用决策与适用条件，"
+        "不能把'无可行时点'写成推荐一个不满足可靠性的时点。",
+        "",
+        "前五页优先建立答案与证据链：摘要应给出关键数值与条件边界；读者应尽早找到逐问直接答案、"
+        "共享数学对象、原始数据直觉和至少一张决定性 Hero 图及其机制解释。具体页码与段落顺序由中心主线决定，"
+        "不要等到后半篇才首次展示主要结论。",
+        "",
+        "采用可识别的国赛外壳（问题重述与分析、必要假设和符号、共享模型、问题链、检验与结论、"
+        "参考文献及附录），但正文必须服从共享数学对象和中心主线。允许合并相邻问题、集中共享推导，"
+        "并让核心问题获得更多篇幅；每个必答问题只需在自然叙事中可定位地给出直接答案，"
+        "不要为所有问题复制相同的“建模—参数—结果—答案”小节序列。",
+        "",
+        "文风必须是学术论文而非技术报告："
+        "采用自然、正式、克制的数学建模学术语言，允许使用'本文建立'、'本文定义'、'由式(x)可得'、'这说明'、'其原因在于'等自然表达；"
+        "禁止口语化、自我吹捧和工作汇报式报账，正文禁止使用'我们/大家'等第一人称；"
+        "每段第一句通常是主题句，后续围绕它展开；"
+        "正文的核心是模型建立、数学推导、求解方法与结果机制分析（建议篇幅占比 50–60%）：必须解释为什么选择该模型（与更简单 baseline 对比）、变量与参数定量依据、关键推导展开、约束物理意义以及为什么结果呈现当前结构；"
+        "每个数值结果后必须解读其物理/工程意义和产生机理（'这表明……'、'其原因在于……'）；"
+        "正文叙述中尽量用文字描述结合符号（如'介质 A 的最优体积分数为 1.24%'而非只有 $f_A^*=1.24\\%$）；"
+        "正文的主要论证必须使用连续学术段落，列表仅适合必要模型假设、符号说明、极少量算法步骤或优缺点摘要，推导与机制分析严禁使用列表堆砌。",
+        "",
+        "按 claim-first 的 Visual Brief 写图：先回答每张图要证明什么，再说明读者应看到的观察、"
+        "其机制或边界，以及对应的 current 数据来源；之后才选择 Hero 或 supporting 图型。图必须分别承担"
+        "数据直觉、模型机制、决定性证据、权衡/边界或验证中的真实论证角色，不能按问题编号凑图，"
+        "也不能靠拆图、换色或重复插图补数量。优先选择最能说明命题的图型；普通折线/柱状图在确实"
+        "最清楚时同样可用。所有正式图均从 current 数据或正式结构 renderer 生成，保持统一字体、"
+        "坐标轴/单位/图例，并在正文中完成'观察 → 机制 → 结论'三步论证。候选稿的图消费合同由后台按题数"
+        "和未覆盖论证角色复核，Author 不应把总图数当成写作目标。",
+        "",
+        "不要把审核清单、内部结果编号、回执、哈希、工作流阶段或工具探测写入正文。",
+        "",
+        "输出 paper/longform-source.tex（或 Typst 对应文件）以及 paper/AUTHOR_GAPS.md。",
+        "",
+    ]
     if narrative:
         lines.extend(
             [

@@ -49,10 +49,15 @@ _SCRIPT_NAMES: dict[str, str] = {
     "correlation-pairgrid": "make_correlation_pairgrid.py",
     "grouped-corr-split-violin": "make_grouped_corr_split_violin.py",
     "nature-chord-diagram": "make_nature_chord_diagram.py",
+    "rf-tpe-surface": "make_rf_tpe_surface.py",
+    "grouped-circular-heatmap": "make_grouped_circular_heatmap.py",
     "taylor-diagram": "make_taylor_diagram.py",
 }
 
-DIRECT_ADAPTATION_READY = frozenset(_SCRIPT_NAMES)
+DIRECT_ADAPTATION_READY = frozenset({
+    "correlation-pairgrid", "grouped-corr-split-violin",
+    "nature-chord-diagram", "taylor-diagram",
+})
 
 
 def _validate_taylor(data: dict[str, Any]) -> None:
@@ -108,7 +113,7 @@ def _validate_chord(data: dict[str, Any]) -> None:
             raise ContractError("nature-chord-diagram direct adaptation: 边引用了未声明节点")
 
 
-# 每个可 direct 的母版：shim 生成器 + 数据语义前提校验器。
+# 每个可 direct 或 master_adapted 的母版：shim 生成器 + 数据语义前提校验器。
 DIRECT_ADAPTERS: dict[str, dict[str, Any]] = {
     "correlation-pairgrid": {
         "shim": lambda: _SHIM_CORRELATION_PAIRGRID,
@@ -128,6 +133,10 @@ DIRECT_ADAPTERS: dict[str, dict[str, Any]] = {
     },
 }
 
+# 这些母版的原始脚本含有源论文演示语义，不能 direct 原样套用；
+# adapted shim 会替换模拟数据、固定标签和演示曲面，保留母版布局与绘图语言。
+MASTER_ADAPTED_TEMPLATES = frozenset({"rf-tpe-surface", "grouped-circular-heatmap"})
+
 _OUTPUT_STEM_RE = re.compile(r'make_figure\(\s*ROOT\s*/\s*"outputs"\s*/\s*"([^"]+)"\s*\)')
 
 
@@ -145,7 +154,13 @@ def _shim_source(template_id: str) -> str:
     """生成 ``_real_data_<id>.py`` 的源码（真实数据入口转换，不重写绘图）。"""
     adapter = DIRECT_ADAPTERS.get(template_id)
     if adapter is None:
-        raise ContractError(f"{template_id} 没有自动 direct 适配 shim")
+        shim = {
+            "rf-tpe-surface": _SHIM_RF_TPE_SURFACE,
+            "grouped-circular-heatmap": _SHIM_GROUPED_CIRCULAR_HEATMAP,
+        }.get(template_id)
+        if shim is None:
+            raise ContractError(f"{template_id} 没有自动适配 shim")
+        return shim
     return adapter["shim"]()
 
 
@@ -166,6 +181,63 @@ _DATA = {}
 def load_real_data(*args, **kwargs):
     raise RuntimeError("load_real_data 应在导入后被引擎注入")
 """
+
+_SHIM_RF_TPE_SURFACE = _SHIM_HEADER + r'''
+
+def _real_trials(*args, **kwargs):
+    trials = _DATA["trials"]
+    return (np.asarray([item["x"] for item in trials], dtype=float),
+            np.asarray([item["y"] for item in trials], dtype=float),
+            np.asarray([item["metric"] for item in trials], dtype=float))
+
+def _real_surface(x_trials, y_trials, metrics, x_grid, y_grid):
+    # 仅由真实试验点做 IDW 插值，禁止混入母版的 analytic/demo surface。
+    scale_x = max(float(np.ptp(x_trials)), 1e-12)
+    scale_y = max(float(np.ptp(y_trials)), 1e-12)
+    out = np.empty_like(x_grid, dtype=float)
+    for row in range(x_grid.shape[0]):
+        dx = (x_grid[row, :, None] - x_trials[None, :]) / scale_x
+        dy = (y_grid[row, :, None] - y_trials[None, :]) / scale_y
+        weights = 1.0 / (dx * dx + dy * dy + 0.002) ** 1.35
+        out[row] = (weights @ metrics) / weights.sum(axis=1)
+    return out
+
+def apply_real_data(g):
+    trials = _DATA["trials"]
+    g["simulate_tpe_trials"] = _real_trials
+    g["idw_response_surface"] = _real_surface
+    g["_REAL_X"] = np.asarray([item["x"] for item in trials], dtype=float)
+    g["_REAL_Y"] = np.asarray([item["y"] for item in trials], dtype=float)
+    g["_REAL_Z"] = np.asarray([item["metric"] for item in trials], dtype=float)
+'''
+
+_SHIM_GROUPED_CIRCULAR_HEATMAP = _SHIM_HEADER + r'''
+
+def _real_values(*args, **kwargs):
+    return np.asarray([ring["values"] for ring in _DATA["rings"]], dtype=float)
+
+def apply_real_data(g):
+    matrix = np.asarray([ring["values"] for ring in _DATA["rings"]], dtype=float)
+    names = _DATA.get("items") or [f"Item {i + 1}" for i in range(matrix.shape[1])]
+    rings = _DATA.get("rings") or []
+    specs = []
+    for i, ring in enumerate(rings[:matrix.shape[0]]):
+        color = ring.get("color", "#4e6a8a")
+        specs.append(g["TraitSpec"](str(ring.get("name", f"Metric {i + 1}")), color, "#eef2f4"))
+    if specs:
+        g["TRAITS_OUTER_TO_INNER"] = specs
+    g["PAIR_GROUPS"] = [g["PairGroup"]("Items", "#9aa7b2", matrix.shape[1])]
+    g["simulate_heatmap_values"] = _real_values
+    def _labels(ax, theta, radius, start_angle, step_angle):
+        for idx, angle in enumerate(theta):
+            angle_deg = start_angle + (idx + 0.5) * step_angle
+            rotation, ha = g["text_rotation"](angle_deg)
+            ax.text(angle, radius, str(names[idx]), rotation=rotation,
+                    rotation_mode="anchor", ha=ha, va="center", fontsize=6.5, color="#111111")
+    g["draw_outer_labels"] = _labels
+    # 显著性星号需要当前题目的统计检验，母版固定阈值不能沿用。
+    g["draw_stars"] = lambda *args, **kwargs: None
+'''
 
 _SHIM_GROUPED_CORR_SPLIT_VIOLIN = _SHIM_HEADER + """
 
@@ -526,6 +598,7 @@ def adapt_and_render(
     output_stem: Path,
     run_dir: Path,
     figure_id: str | None = None,
+    mode: str = "direct",
 ) -> dict[str, Any]:
     """直接适配渲染：复制原模板脚本 -> 注入真实数据 shim -> 原样调用 make_figure。
 
@@ -542,7 +615,9 @@ def adapt_and_render(
     Raises:
         ContractError: 模板不支持直接适配、脚本缺失或渲染失败。
     """
-    if template_id not in DIRECT_ADAPTATION_READY:
+    if mode not in {"direct", "adapted"}:
+        raise ContractError(f"未知母版适配模式: {mode}")
+    if mode == "direct" and template_id not in DIRECT_ADAPTATION_READY:
         raise ContractError(
             f"{template_id} 尚无自动 direct 适配 shim；可用: "
             + ", ".join(sorted(DIRECT_ADAPTATION_READY))
@@ -556,8 +631,11 @@ def adapt_and_render(
 
     # 语义前提校验：当前数据必须满足母版暗含的数学/视觉前提，
     # 否则直接拒绝并指引 manual/master_adapted，避免静默画错。
-    adapter = DIRECT_ADAPTERS[template_id]
-    adapter["validate"](data)
+    if mode == "direct":
+        adapter = DIRECT_ADAPTERS[template_id]
+        adapter["validate"](data)
+    elif template_id not in MASTER_ADAPTED_TEMPLATES:
+        raise ContractError(f"{template_id} 暂无 master_adapted 适配器")
 
     source = _master_script_path(template_id)
     if not source.is_file():
@@ -599,6 +677,7 @@ def adapt_and_render(
     return {
         "outputs": outputs,
         "adapted_script": adapted_path.relative_to(root).as_posix(),
+        "mode": mode,
         "data_shim": shim_path.relative_to(root).as_posix(),
         "render_script": driver_path.relative_to(root).as_posix(),
         **artifacts,
