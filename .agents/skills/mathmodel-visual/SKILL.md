@@ -41,6 +41,20 @@ python scripts/figures/visual_sandbox.py review <run_dir> <idea-id> `
 
 评审只选择表达方案，不证明科学正确，也不改变正式答案。
 
+### 选模板前必须看预览（sci-box 母版优先）
+
+需要真实数据图时，选图顺序固定为 sci-box 母版优先（见 `skills/sci-box/scibox-figure/SKILL.md`）：
+① 母版原生模板（`use_template.py --adaptation direct`，复制原脚本只换数据入口）→
+② 模板深度改造/组合 → ③ `scibox-diagram` 结构图 → ④ 本题专用高级图 → ⑤ 普通
+scatter/heatmap/line → ⑥ bar。柱状/折线**不是禁止**，而是前面能表达清楚就不准偷懒。
+
+**禁止只凭 template_id 名称选模板。** 选择前必须打开
+`skills/sci-box/scibox-figure/assets/previews/` 的 preview PNG 实际看图，
+回答三个问题：结构是否匹配数据？比普通图多表达了什么？换真实数据后视觉优势是否保留？
+满足才用；不满足换下一张。需要结构解释图（路线/框架/流程）时直接用
+`scibox-diagram`（`selected_skill: skills/sci-box/scibox-diagram`），它是**一等候选**，
+不需要先试 ImageGen。
+
 ## Stage C：晋级与审计
 
 运行 `python scripts/figures/visual_sandbox.py graduate <run_dir> <idea-id>`，冻结胜出草图为 design reference，并取得 `target_work_dir`。草图不能直接复制成正式候选；必须从 current 数据与正式 renderer 在目标目录重新生成。从这里开始才执行现有正式流程：
@@ -84,3 +98,4 @@ python scripts/paper/visual_discovery.py status <run_dir>
 在 PDF 层面检查模型首次出现时是否需要理解图、关键结果是否有决定性图、核心 insight 是否有视觉证据、是否连续多页只有公式和表、是否连续堆叠大图。Hero / memorable figures 可优先保留 2--3 张；argument-supporting figures 按数学对象、机制、比较和边界的实际论证需要增加，不设数量上限。把缺口送回 Sandbox，不按“一问一图”或“图数不少于 N”补图，也不得把“2--3 张 memorable”误读为全文图数上限。
 
 知识库 visual pattern 只提供表达候选。使用前核对当前题是否真实具有所需结构数据；不满足时拒绝，不为匹配模式补造数据。所有正式图、表和结论最终只能来自本次 run 的 current/production/accepted 证据链。
+

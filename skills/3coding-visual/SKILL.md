@@ -110,13 +110,19 @@ plt.ylabel("反射率 (%)")
 - **中文论文图表的坐标轴、图例、图内注释一律中文**；英文论文才用英文。
 - 不生成流程图/架构图/路线图。
 - **图种必须多样，不能只画折线/柱状。** 每个核心问题至少产出两类不同论证角色的高级图，
-  例如小提琴/箱线/雨云（数据直觉）、带置信带的平滑/生存/达标曲线（机制）、SHAP/特征重要性
+  例如小提琴/箱线/云雨（数据直觉）、带置信带的平滑/生存/达标曲线（机制）、SHAP/特征重要性
   （解释）、校准/PR/ROC/混淆矩阵（判别验证）、Bootstrap/森林图（不确定性）、灵敏度矩阵
-  （决策稳健）。优先复用 `.agents/skills/mathmodel-advanced-figures/scripts/render_advanced.py`
-  的现成模板（`survival_curve`/`shap_combo`/`correlation_heatmap`/`paired_raincloud`/`cv_roc_ci`/
-  `ci_forest`/`group_violin`）或同一风格手写；数据支撑时画组合图（多个关联面板拼一张），
-  不用单面板草率了事。目标是用图承担数据直觉、机制、决定性证据、边界等真实论证角色，
-  不是凑到某个数量；第二阶段的图补充只应覆盖实验阶段遗漏的角色，不能替代实验阶段本身的丰富度。
+  （决策稳健）。
+- **数据图优先用 sci-box 母版模板（复制原脚本，只换数据入口）。** 选图顺序固定为：
+  ① `skills/sci-box/scibox-figure` 母版模板（`scripts/figures/use_template.py --adaptation direct`，
+  自动复制原模板脚本并只替换真实数据入口，保留 layout/panels/typography）→
+  ② 模板深度改造/组合（`--adaptation manual` 或手工改复制脚本，允许拆/并/删面板）→
+  ③ `scibox-diagram`（结构解释图）→ ④ 本题专用高级 Matplotlib/真实结构原型 →
+  ⑤ 普通 scatter/heatmap/line → ⑥ bar（最后选择）。选模板前必须打开
+  `skills/sci-box/scibox-figure/assets/previews/` 的 preview 实际看图，禁止只凭模板名选。
+  数据支撑时画组合图（多个关联面板拼一张），不用单面板草率了事。目标是用图承担数据直觉、
+  机制、决定性证据、边界等真实论证角色，不是凑到某个数量；第二阶段的图补充只应覆盖实验阶段
+  遗漏的角色，不能替代实验阶段本身的丰富度。
 
 流程、方法和机理解释图不得把 AI 生成的数字或公式当作正式结果；需要数据绑定时必须回到确定性 renderer。
 
@@ -130,3 +136,4 @@ plt.ylabel("反射率 (%)")
    （Linux：`fonts-noto-cjk`/`fonts-wqy-zenhei`；Win/mac 通常自带），不要绕过。
 3. `6verity` 的 `writing_check.sh` 会对每张被引用的图做"英文标签"硬检查，
    英文图会导致验收 FAIL；在本阶段就应消除，而非留到验收。
+

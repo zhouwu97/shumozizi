@@ -9,6 +9,21 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+# Ensure common TeX installation paths on Windows are included in PATH
+_TEX_CANDIDATE_PATHS = (
+    r"C:\Users\haha\AppData\Local\Programs\MiKTeX\miktex\bin\x64",
+    r"C:\Program Files\MiKTeX\miktex\bin\x64",
+    r"C:\Program Files (x86)\MiKTeX\miktex\bin",
+    r"C:\texlive\2025\bin\windows",
+    r"C:\texlive\2024\bin\windows",
+    r"D:\texlive\2025\bin\windows",
+    r"D:\texlive\2024\bin\windows",
+)
+for _tp in _TEX_CANDIDATE_PATHS:
+    if os.path.isdir(_tp) and _tp not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _tp + os.path.pathsep + os.environ.get("PATH", "")
+
+
 from jsonschema import Draft202012Validator, FormatChecker
 
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
@@ -157,9 +172,17 @@ def _compiler_steps(engine: str) -> tuple[str, list[list[str]]]:
             raise ContractError("模板选择了 Typst，但当前环境未检测到 typst")
         return "typst", [[command, "compile", "main.typ", "final.pdf"]]
 
+    xelatex = shutil.which("xelatex")
+    if xelatex is not None:
+        command = [
+            xelatex,
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-file-line-error",
+            "main.tex",
+        ]
+        return "xelatex", [command, command]
     latexmk = shutil.which("latexmk")
-    # latexmk 是 Perl 脚本包装器；MiKTeX 只安装了可执行入口而缺少 Perl 时，
-    # 直接调用它会阻断本可由 XeLaTeX 完成的受控双次编译。
     if latexmk is not None and shutil.which("perl") is not None:
         return "latexmk", [
             [
@@ -171,16 +194,6 @@ def _compiler_steps(engine: str) -> tuple[str, list[list[str]]]:
                 "main.tex",
             ]
         ]
-    xelatex = shutil.which("xelatex")
-    if xelatex is not None:
-        command = [
-            xelatex,
-            "-interaction=nonstopmode",
-            "-halt-on-error",
-            "-file-line-error",
-            "main.tex",
-        ]
-        return "xelatex", [command, command]
     tectonic = shutil.which("tectonic")
     if tectonic is not None:
         return "tectonic", [[tectonic, "--keep-logs", "--keep-intermediates", "main.tex"]]

@@ -15,6 +15,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from shumozizi.core.io import ContractError, relative_inside, resolve_inside
+from shumozizi.simple.direct_adaptation import (
+    DIRECT_ADAPTATION_READY,
+    adapt_and_render,
+    prepare_manual_adaptation,
+)
 from shumozizi.simple.figure_templates import SUPPORTED_TEMPLATES, load_data, render
 from shumozizi.simple.figures import register_figure
 from shumozizi.simple.quality import quality_allows_paper
@@ -184,10 +189,39 @@ _STRUCTURE_ROUTES = {
 }
 
 
+def _master_resources() -> tuple[Path, Path]:
+    """返回 sci-box 母版库的模板与预览目录（上游 jihe520/sci-box 原样副本）。
+
+    Returns:
+        ``(模板脚本目录, 预览目录)``。
+    """
+    sci_box_templates = Path("skills/sci-box/scibox-figure/scripts/templates")
+    sci_box_previews = Path("skills/sci-box/scibox-figure/assets/previews")
+    if (REPO_ROOT / sci_box_templates).is_dir():
+        return sci_box_templates, sci_box_previews
+    # legacy 兜底：mathmodel-figure-templates 是 sci-box 的同源本地副本（含扩展模板）。
+    return (
+        Path("skills/mathmodel-figure-templates/scripts/templates"),
+        Path("skills/mathmodel-figure-templates/assets/previews"),
+    )
+
+
+def _template_script_path(template_id: str) -> Path:
+    """返回母版模板脚本相对仓库根的路径（sci-box 优先，legacy 兜底）。"""
+    templates_dir, _ = _master_resources()
+    candidate = templates_dir / TEMPLATE_SCRIPTS[template_id]
+    if not (REPO_ROOT / candidate).is_file():
+        legacy = (
+            Path("skills/mathmodel-figure-templates/scripts/templates") / TEMPLATE_SCRIPTS[template_id]
+        )
+        if (REPO_ROOT / legacy).is_file():
+            return legacy
+    return candidate
+
+
 def template_catalog_payload() -> dict[str, object]:
     """构造供 CLI、Agent 和图库前端共同消费的生产模板目录。"""
-    template_root = Path("skills/mathmodel-figure-templates/scripts/templates")
-    preview_root = Path("skills/mathmodel-figure-templates/assets/previews")
+    template_root, preview_root = _master_resources()
     templates = []
     for template_id in SUPPORTED_TEMPLATES:
         script_name = TEMPLATE_SCRIPTS[template_id]
@@ -324,14 +358,7 @@ def _copy_runtime_sources(run_dir: Path, template_id: str) -> tuple[str, str]:
     """
     target_dir = run_dir / "code" / "figures"
     target_dir.mkdir(parents=True, exist_ok=True)
-    source_template = (
-        REPO_ROOT
-        / "skills"
-        / "mathmodel-figure-templates"
-        / "scripts"
-        / "templates"
-        / TEMPLATE_SCRIPTS[template_id]
-    )
+    source_template = REPO_ROOT / _template_script_path(template_id)
     if not source_template.is_file():
         raise ContractError(f"保留模板源不存在: {source_template}")
     reference_target = _freeze_runtime_source(
@@ -386,6 +413,7 @@ def generate_from_result(
     scientific_question: str | None = None,
     expected_takeaway: str | None = None,
     cannot_prove: str | None = None,
+    adaptation: str = "direct",
 ) -> dict[str, object]:
     """以 current 真实结果生成并登记一张 v3 图表。
 
@@ -396,9 +424,15 @@ def generate_from_result(
         output_prefix: ``figures/`` 内的不含扩展名输出前缀。
         input_result: 可选的具体 JSON 输出路径。
         figure_id: 可选稳定图表 ID；重新生成同 ID 会替代旧图。
+        adaptation: ``direct``（默认，复制 sci-box 母版脚本只换数据入口）、
+            ``manual``（复制原脚本留 stub 由 Agent 手工换数据）或
+            ``reimplemented``（本仓 v3 简化渲染器回退）。
 
     Returns:
-        新登记图表及其输出。
+        新登记图表及其输出；manual 模式返回编辑指引而不登记。
+
+    Raises:
+        ContractError: 输入不合法、模板不可用或渲染失败。
     """
     root = run_dir.resolve()
     read_simple_state(root)
@@ -409,9 +443,36 @@ def generate_from_result(
     chosen_input = _find_input(root, result_id, input_result)
     data = load_data(template_id, resolve_inside(root, chosen_input, must_exist=True))
     stem, relative_stem, default_id = _output_stem(root, output_prefix)
-    reference_template, renderer_script = _copy_runtime_sources(root, template_id)
-    text_boxes = render(template_id, data, stem)
-    outputs = [f"{relative_stem}{suffix}" for suffix in (".png", ".pdf", ".svg")]
+
+    if adaptation == "manual":
+        guide = prepare_manual_adaptation(template_id, data, stem, root)
+        guide.update({"success": True, "result_id": result_id, "input_result": chosen_input})
+        return guide
+
+    if adaptation == "direct":
+        if template_id not in DIRECT_ADAPTATION_READY:
+            raise ContractError(
+                f"{template_id} 暂无自动 direct 适配 shim（可用: "
+                + ", ".join(sorted(DIRECT_ADAPTATION_READY))
+                + "）；请用 --adaptation manual 复制原脚本手工换数据入口，"
+                "或 --adaptation reimplemented 使用 v3 简化渲染器回退"
+            )
+        # 冻结母版原脚本作为 reference，登记复制后的 adapted 脚本作为 renderer。
+        target_dir = root / "code" / "figures"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        reference_target = _freeze_runtime_source(
+            REPO_ROOT / _template_script_path(template_id),
+            target_dir,
+            prefix=f"reference_{Path(TEMPLATE_SCRIPTS[template_id]).stem}",
+        )
+        outputs, text_boxes = adapt_and_render(template_id, data, stem, root)
+        renderer_script = (target_dir / f"adapted_{template_id}.py").relative_to(root).as_posix()
+        reference_template = reference_target.relative_to(root).as_posix()
+    else:  # reimplemented
+        reference_template, renderer_script = _copy_runtime_sources(root, template_id)
+        text_boxes = relative_inside(root, render(template_id, data, stem)).as_posix()
+        outputs = [f"{relative_stem}{suffix}" for suffix in (".png", ".pdf", ".svg")]
+
     entry = register_figure(
         root,
         figure_id=figure_id or default_id,
@@ -421,7 +482,7 @@ def generate_from_result(
         reference_template=reference_template,
         renderer_script=renderer_script,
         outputs=outputs,
-        text_boxes=relative_inside(root, text_boxes).as_posix(),
+        text_boxes=text_boxes,
         figure_stage=figure_stage,
         claim_ids=claim_ids,
         scientific_question=scientific_question,
@@ -430,6 +491,7 @@ def generate_from_result(
     )
     return {
         "success": True,
+        "mode": adaptation,
         "figure": entry,
         "outputs": outputs,
         "visual_manifest": f"{relative_stem}.visual_manifest.json",
@@ -446,6 +508,13 @@ def main() -> int:
     parser.add_argument("--input-result")
     parser.add_argument("--figure-id")
     parser.add_argument("--stage", choices=("evidence", "publication"), default="publication")
+    parser.add_argument(
+        "--adaptation",
+        choices=("direct", "manual", "reimplemented"),
+        default="direct",
+        help="direct=复制 sci-box 母版脚本只换数据入口（默认）；manual=复制原脚本留 stub 手工换数据；"
+        "reimplemented=本仓 v3 简化渲染器回退",
+    )
     parser.add_argument("--claim-id", action="append", default=[])
     parser.add_argument("--scientific-question")
     parser.add_argument("--expected-takeaway")
@@ -485,6 +554,7 @@ def main() -> int:
             scientific_question=args.scientific_question,
             expected_takeaway=args.expected_takeaway,
             cannot_prove=args.cannot_prove,
+            adaptation=args.adaptation,
         )
     except (ContractError, OSError) as exc:
         print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False, indent=2))

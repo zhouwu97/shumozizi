@@ -206,7 +206,14 @@ def recommended_visual_archetypes(information_structure: str) -> list[str]:
 
 
 def _require_structure_aware_visual_grammar(payload: dict[str, Any]) -> None:
-    """约束 2.3+ 正文主图从数学结构出发选择表达。"""
+    """约束 2.3+ 正文主图从数学结构出发选择表达，但不要求前置填写预防性表单。
+
+    AGENTS.md 约定：普通柱形图/折线图确实最清楚时由人工视觉评审说明理由，
+    不要求 Author 填写预防性 override 表单。因此本函数只在字段已经填写且
+    内容互相矛盾时阻断（例如声明了 information_structure 与 visual_archetype
+    却明显不匹配且无理由），不再硬性要求 generic_chart_considered 等字段
+    必须提前存在。sci-box 母版模板先渲染 V1、后补追溯信息的流程不受阻碍。
+    """
     if payload.get("schema_version") not in {"2.3", "2.4"}:
         return
     for raw in payload.get("figures", []):
@@ -218,12 +225,26 @@ def _require_structure_aware_visual_grammar(payload: dict[str, Any]) -> None:
         figure_id = str(raw.get("figure_id", "<unknown>"))
         information_structure = str(raw.get("information_structure", ""))
         archetype = str(raw.get("visual_archetype", ""))
-        if raw.get("generic_chart_considered") is not True:
-            raise ContractError(
-                f"{figure_id}.generic_chart_considered 必须为 true："
-                "正文主图须显式比较普通柱形图/折线图"
-            )
-        recommended = _STRUCTURE_AWARE_ARCHETYPES[information_structure]
+        generic_considered = raw.get("generic_chart_considered")
+        # 只有显式声明“已考虑通用图”时才要求给出拒绝理由；缺省不阻断（advisory）。
+        if generic_considered is not None:
+            if generic_considered is not True and not isinstance(generic_considered, bool):
+                raise ContractError(
+                    f"{figure_id}.generic_chart_considered 必须为布尔值"
+                )
+            if generic_considered is False:
+                reason = raw.get("generic_chart_rejected_because")
+                if not isinstance(reason, str) or len(reason.strip()) < 12:
+                    raise ContractError(
+                        f"{figure_id}.generic_chart_rejected_because 必须说明"
+                        "为何普通柱形图/折线图不适用（至少 12 字符）"
+                    )
+        # 只有两个字段都填写时才做结构匹配一致性检查。
+        if not information_structure or not archetype:
+            continue
+        recommended = _STRUCTURE_AWARE_ARCHETYPES.get(information_structure)
+        if recommended is None:
+            raise ContractError(f"未知 information_structure: {information_structure}")
         if archetype in _GENERIC_CHART_ARCHETYPES:
             reason = raw.get("generic_chart_override_reason")
             if not isinstance(reason, str) or len(reason.strip()) < 16:
@@ -233,11 +254,14 @@ def _require_structure_aware_visual_grammar(payload: dict[str, Any]) -> None:
                 )
             continue
         if archetype not in recommended:
-            raise ContractError(
-                f"{figure_id}.visual_archetype={archetype} 不匹配 "
-                f"{information_structure} 信息结构；优先选择 "
-                + "、".join(sorted(recommended))
-            )
+            reason = raw.get("generic_chart_override_reason")
+            if not isinstance(reason, str) or len(reason.strip()) < 16:
+                raise ContractError(
+                    f"{figure_id}.visual_archetype={archetype} 不匹配 "
+                    f"{information_structure} 信息结构；优先选择 "
+                    + "、".join(sorted(recommended))
+                    + "，或填写 generic_chart_override_reason 说明当前题的真实结构"
+                )
 
 
 def _require_argument_obligation_contract(payload: dict[str, Any]) -> None:

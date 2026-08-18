@@ -1,6 +1,6 @@
 # v3 科研绘图模板适配器
 
-该适配器将**已登记的真实执行结果**渲染为可追溯图表。它不自动选择模板，也不把图表当成科学质量证明；选择仍由 Figure Contract 和当前题的证据需求决定。
+该适配器将**已登记的真实执行结果**渲染为可追溯图表。它不自动选择模板，也不把图表当成科学质量证明；选择仍由当前题的证据需求和论证角色决定。
 
 ## 使用方式
 
@@ -15,7 +15,31 @@ python scripts/figures/use_template.py runs/<run-id> `
 
 `--result-id` 必须是 `results/index.json` 中 `status=current` 且 `execution_valid=true` 的条目。默认只在其恰有一个 JSON 输出时使用该输出；有多个 JSON 输出时，以 `--input-result results/raw/<file>.json` 明确选择。
 
-输出固定为 PNG、PDF、SVG、`<prefix>.text-boxes.json` 和 `<prefix>.visual_manifest.json`。适配器同时复制冻结的原模板源与本次 v3 渲染器到 `code/figures/`，并在 `figures/index.json` 登记所有输入、脚本、输出的 SHA-256。
+输出固定为 PNG、PDF、SVG、`<prefix>.text-boxes.json` 和 `<prefix>.visual_manifest.json`。适配器同时复制冻结的原模板源与本次渲染脚本到 `code/figures/`，并在 `figures/index.json` 登记所有输入、脚本、输出的 SHA-256。
+
+## 三种适配模式（sci-box 母版优先）
+
+| `--adaptation` | 行为 | 何时使用 |
+| --- | --- | --- |
+| `direct`（默认） | **复制 sci-box 母版原脚本**（`skills/sci-box/scibox-figure/scripts/templates/make_<id>.py`，上游 jihe520/sci-box 原样副本）到 `code/figures/adapted_<id>.py`，注入 `_real_data_<id>.py` shim 把 `simulate_*()`/模块常量替换为真实结果，**原样保留绘图结构**后运行。 | 首选；母版结构能直接表达本题结果时。 |
+| `manual` | 复制原脚本 + 写入标记好的数据入口 stub（`TODO(manual adaptation)`），不运行、不登记。 | 需要拆/并/删面板、改变量数或母版无自动 shim 时，由 Agent 手工替换数据入口后运行。 |
+| `reimplemented` | 本仓 v3 渲染器（`src/shumozizi/simple/figure_templates.py`）简化重绘。 | 最后一档 fallback；不当作默认路径。 |
+
+`direct` 是“**用了人家的模板**”的唯一正确姿势：母版脚本的版式（面板几何、字号、轴线、
+图例、间距、注释）是人工设计好的成品，只允许换数据入口和少量调整（标签、变量数、重点），
+禁止默认重新实现。目前有自动 shim 的母版：`grouped-corr-split-violin`、`correlation-pairgrid`、
+`rf-tpe-surface`、`grouped-circular-heatmap`、`taylor-diagram`、`nature-chord-diagram`；
+其余模板用 `manual` 或 `reimplemented`。
+
+选图优先级（`skills/sci-box/scibox-figure` 的决策顺序）：
+① sci-box 原生母版 → ② 模板深度改造/组合 → ③ scibox-diagram 结构图 → ④ 本题专用高级图 →
+⑤ 普通 scatter/heatmap/line → ⑥ bar。柱状/折线不是禁止，而是能表达清楚就不准偷懒。
+选模板前必须打开 `skills/sci-box/scibox-figure/assets/previews/` 的 preview 实际看图，
+禁止只凭模板 id 名称选图。
+
+结构解释图（技术路线/研究框架/阶段流程/任务流水线）由 `skills/sci-box/scibox-diagram` 承担，
+它是一等候选：模板 id 为 `roadmap-5band` / `framework-3col` / `stageflow-3col` / `taskflow-land` /
+`custom` / `replica`，产出 `.drawio` + PNG/PDF，在 `figures/work/` 迭代后晋级 `figures/current/`。
 
 ## 已接入真实数据接口
 

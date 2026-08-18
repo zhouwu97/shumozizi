@@ -63,6 +63,19 @@
 - 许可证：当前固定提交的仓库根未发现许可证文件
 - 使用范围：仅研究作者预期的运行产物形态，不作为质量基准且不复制资产。
 
+### jihe520/sci-box（sci-box 母版图库 / scibox-diagram）
+
+- 地址：https://github.com/jihe520/sci-box
+- 固定提交：`9687d2a52037e92bf68a781b9b1e061ca03c8125`（2026-08 快照）
+- 许可证：仓库根未发现总许可证文件；`scibox-diagram` 内嵌的 Tabler Icons
+  （`skills/sci-box/scibox-diagram/assets/icons/tabler/`）为 MIT（版权归 Paweł Kuna），
+  许可证原文随文件保留（`ATTRIBUTION.md` + `LICENSE`）。
+- 使用范围：以原样副本 vendor 到 `skills/sci-box/`（`scibox-figure` 母版模板 +
+  `scibox-diagram` 结构图系统），作为生产图系统的“母版库”：数据图只允许复制原脚本后替换
+  数据入口，结构图用其模板/复刻/校验工具链。**未修改上游脚本语义**；本仓库只在其 SKILL.md
+  末尾追加“shumozizi 生产集成”说明（优先级、`use_template.py --adaptation`、`FIGURE_PLAN` 字段）。
+- 未引入：上游仓库根的工作流文档与无关素材。
+
 来源契约的机器可读版本位于 `knowledge/SOURCE_REGISTRY.json`。所有来源均已唯一定位并锁定
 提交；许可证未声明的仓库仅允许研究不受版权保护的抽象思想。
 

@@ -2,10 +2,26 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from pathlib import Path
 from typing import Any
+
+# Ensure common TeX installation paths on Windows are included in PATH
+_TEX_CANDIDATE_PATHS = (
+    r"C:\Users\haha\AppData\Local\Programs\MiKTeX\miktex\bin\x64",
+    r"C:\Program Files\MiKTeX\miktex\bin\x64",
+    r"C:\Program Files (x86)\MiKTeX\miktex\bin",
+    r"C:\texlive\2025\bin\windows",
+    r"C:\texlive\2024\bin\windows",
+    r"D:\texlive\2025\bin\windows",
+    r"D:\texlive\2024\bin\windows",
+)
+for _tp in _TEX_CANDIDATE_PATHS:
+    if os.path.isdir(_tp) and _tp not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _tp + os.path.pathsep + os.environ.get("PATH", "")
+
 
 from jsonschema import Draft202012Validator, FormatChecker
 

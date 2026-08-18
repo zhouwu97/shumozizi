@@ -10,8 +10,11 @@
     "run_id": {"type": "string", "minLength": 1},
     "figure_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "question_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
-    "selected_skill": {"enum": ["skills/mathmodel-figure-templates", "skills/3coding-visual"]},
-    "template_id": {"enum": ["multiclass-shap-combo", "paired-raincloud", "cv-roc-ci", "taylor-diagram", "correlation-pairgrid", "prediction-marginal-grid", "rf-tpe-surface", "grouped-corr-split-violin", "grouped-circular-heatmap", "urban-park-cooling-combo", "nature-chord-diagram", "feasible-region-active-constraints", "interval-event-timeline", "uncertainty-fan-threshold", "multi-panel-evidence-chain", "active_constraint_map", "constraint_margin_timeline", "uncertainty_threshold_ribbon", "model_evolution_schematic", "argument_evidence_map", "cumcm_semantic_v34", "cumcm_classic_v34", "custom"]},
+    "selected_skill": {"enum": [
+      "skills/sci-box/scibox-figure", "skills/sci-box/scibox-diagram",
+      "skills/mathmodel-figure-templates", "skills/3coding-visual", "skills/4drawio"
+    ]},
+    "template_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"},
     "accepted_result_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
     "data_files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}},
     "script": {"$ref": "#/$defs/file"},
@@ -26,6 +29,14 @@
     "file": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/sha"}}}
   },
   "allOf": [
+    {
+      "if": {"properties": {"selected_skill": {"const": "skills/sci-box/scibox-figure"}}},
+      "then": {"properties": {"template_id": {"not": {"const": "custom"}}}}
+    },
+    {
+      "if": {"properties": {"selected_skill": {"const": "skills/sci-box/scibox-diagram"}}},
+      "then": {"properties": {"template_id": {"not": {"const": "custom"}}}}
+    },
     {
       "if": {"properties": {"selected_skill": {"const": "skills/mathmodel-figure-templates"}}},
       "then": {"properties": {"template_id": {"not": {"const": "custom"}}}}

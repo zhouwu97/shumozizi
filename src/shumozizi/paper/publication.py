@@ -118,7 +118,7 @@ def _resolve_reference(
             raise ContractError(f"正式论文引用了绝对路径: {reference}")
         candidates: list[Path] = []
         escaped_candidates = 0
-        for parent in (owner.parent, root):
+        for parent in (owner.parent, root / "paper", root):
             for suffix in suffixes:
                 candidate = parent / (reference if not suffix or base.suffix else reference + suffix)
                 try:

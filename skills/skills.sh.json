@@ -18,7 +18,9 @@
       "skills": [
         "doctor",
         "typst-author",
-        "mathmodel-figure-templates"
+        "mathmodel-figure-templates",
+        "sci-box/scibox-figure",
+        "sci-box/scibox-diagram"
       ]
     },
     {
