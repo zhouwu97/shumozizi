@@ -1,0 +1,4 @@
+interface:
+  display_name: "论文高级科研图表"
+  short_description: "按数据特征补充类型丰富、风格统一的高级科研图表。"
+  default_prompt: "Use $mathmodel-advanced-figures to enhance scientific figures for the paper."

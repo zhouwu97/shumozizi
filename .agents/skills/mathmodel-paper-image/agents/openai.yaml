@@ -1,0 +1,4 @@
+interface:
+  display_name: "论文解释型流程图"
+  short_description: "规划解释型流程图候选并生成 A/B Prompt。"
+  default_prompt: "Use $mathmodel-paper-image to plan diagram prompts for the paper."

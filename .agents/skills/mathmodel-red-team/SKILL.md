@@ -106,6 +106,15 @@ PDF 盲评需要独立上下文，**不能新开浏览器页面**，平台区分
 
 ---
 
+## 按需 BZD 外部评委攻击
+
+模拟国赛评委视角，按两阶段执行：
+1. 阶段一：运行 `python scripts/review/show_bzd_judge_prompt.py <run_dir> --stage rubric`，仅依据题面独立生成并冻结 100 分制评分细则 (`review/external/bzd-frozen-rubric.json`)。
+2. 阶段二：运行 `python scripts/review/show_bzd_judge_prompt.py <run_dir> --stage judge`，依据冻结细则与冻结 PDF 输出评审报告 (`review/external/bzd-review.md`)。
+3. 清洗与合流：运行 `python scripts/review/sanitize_bzd_review.py <review_file>` 剔除广告、主观位次预测与 90% 天花板保留，提取结构化 P0/P1/P2 缺陷至 `review/external/bzd-review-findings.json`，合流进入修论文台账。评委分数与位次预测为 advisory，不阻断主链。
+
+---
+
 ## 按需网页 PDF 审核
 
 这不是 PDF 盲评的替代品。只有运行初始化时显式要求网页审核，或论文稳定后需要一轮专项编辑审查时，生成 `WEB_PAPER_AUDIT_PROMPT`，由用户在网页版普通新对话中只上传当前 PDF 和固定提示词。记录 `provider=chatgpt_web`、`creation_mode=manual_new_chat` 与 `waiting_external_review`，等待结果导入；不得用当前对话、联网检索、题面、代码或作者解释替代该输入边界。

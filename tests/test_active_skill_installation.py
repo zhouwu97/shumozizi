@@ -13,7 +13,7 @@ def test_every_active_skill_has_valid_frontmatter_and_openai_interface() -> None
     """每个主动入口都必须具有稳定名称、触发描述和显式默认调用提示。"""
     skills_root = REPO_ROOT / ".agents/skills"
     skills = sorted(path for path in skills_root.iterdir() if path.is_dir())
-    assert len(skills) == 14
+    assert len(skills) == 18
 
     for skill in skills:
         content = (skill / "SKILL.md").read_text(encoding="utf-8")
@@ -112,6 +112,11 @@ def test_vendor_sources_are_pinned_and_do_not_expose_external_workflows() -> Non
             "stats-reporting-audit",
         },
         "math-modeling-skills": {"solver-references", "paper-references"},
+        "bzd-math-modeling": {
+            "bzd-problem-translator",
+            "bzd-modeling-ideas",
+            "bzd-review-paper",
+        },
     }
     for source_name, imported in expected.items():
         source_root = REPO_ROOT / "vendor" / source_name

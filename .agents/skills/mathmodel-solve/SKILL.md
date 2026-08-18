@@ -5,7 +5,11 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 
 # 路线竞争
 
+分析前置阶段可按需运行 `python scripts/challenger/run_bzd_translator.py <run_dir>` 生成 `analysis/external/bzd-problem-ledger.md`，执行逐句题意翻译、明示/隐含条件提取与全问 Mermaid 联动图审计，确保零遗漏；题面原句为一级硬事实，推论需经忠实度核验。
+
 先比较相邻问题新增的实体、资源、共享约束和聚合层，再区分题目对象、目标、约束、单位、输出和问题依赖。低风险题只做一次忠实重建，覆盖决策变量、成功事件、聚合和输出；任一问题要求重查聚合或 endpoint 尚待比较时，再增加一次语义攻击，专查量词次序、和/最小值/并集/交集、前问目标机械复制与分解失效，并构造能让两个解释排序相反的最小反例。重建结论是科学输入，线程回执和题面树哈希只作独立性记录；多份重建一致只说明共识，不证明正确。
+
+对于核心优化/协同题，可在独立上下文调用 `python scripts/challenger/run_bzd_challenger.py <run_dir>` 生成候选路线 `analysis/external/bzd-route-candidates.md`；严禁向其泄露本地主路线或代码。抽取具备实质数学结构差异的路线 B/C，与主路线 A 一同排入 `analysis/ROUTE_COMPETITION.md`，在同一 Exact Scorer、同等数据和计算预算下运行最低成本 Probe 与真实实验，由实测证据决定胜负。
 
 每个必答问题在提出复杂模型前先写直接答案合同，并进入 `MODELING_UNITS.json`：
 

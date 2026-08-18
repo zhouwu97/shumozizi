@@ -23,7 +23,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 - `mathmodel-paper`
 - `mathmodel-red-team`
 
-`mathmodel-matlab`、`mathmodel-geometry-oracle`、`mathmodel-geometry-visual`、`mathmodel-optimizer-benchmark`、`mathmodel-learn-paper` 和 `mathmodel-literature` 是按需工具；但用户确认联网的国赛运行必须在 Author 前执行一次紧凑的 `literature → Research Package → citation ledger` 链。`mathmodel-literature` 只记录双语检索、候选来源核验和引用台账，不执行自动登录、凭据存储、绕过验证码或批量抓取。`mathmodel-capability-router` 仅为旧运行或按需工具探测保留，不能成为新运行阶段。`mathmodel-final-check` 只执行机械 QA。
+`mathmodel-matlab`、`mathmodel-geometry-oracle`、`mathmodel-geometry-visual`、`mathmodel-optimizer-benchmark`、`mathmodel-learn-paper`、`mathmodel-literature` 和 `mathmodel-bzd-challenger` 是按需工具；但用户确认联网的国赛运行必须在 Author 前执行一次紧凑的 `literature → Research Package → citation ledger` 链。`mathmodel-literature` 只记录双语检索、候选来源核验和引用台账，不执行自动登录、凭据存储、绕过验证码或批量抓取。`mathmodel-bzd-challenger` 承载三项桥接：前置逐句题意 Ledger (`scripts/challenger/run_bzd_translator.py`) 辅助覆盖审计；隔离上下文 Challenger (`scripts/challenger/run_bzd_challenger.py`) 提出候选路线 B/C 并与主路线 A 在统一 Exact Scorer/Probe 下打擂；外部评委审查 (`scripts/review/show_bzd_judge_prompt.py` 与 `scripts/review/sanitize_bzd_review.py`) 基于预冻结细则攻击论文并清洗合流缺陷。`mathmodel-capability-router` 仅为旧运行或按需工具探测保留，不能成为新运行阶段。`mathmodel-final-check` 只执行机械 QA。
 
 用户提供完整数学建模题面或附件，或要求解答整题、多问建模、真实实验并形成论文/竞赛交付时，必须优先使用 `mathmodel-workflow` 总控；用户无需精确说出 Skill 名称。只有局部分析、调试、单个实验、单图或论文局部修改时才不自动启动完整工作流。
 
@@ -62,7 +62,9 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 无论哪种平台：新上下文只接收冻结 PDF，提示词必须由 `scripts/review/show_paper_blind_prompt.py` 生成，不附带题面、源码、运行记录、计划文件、作者解释或前序审查结论。盲评写入 `review/PAPER_BLIND_REVIEW.md`，除第一印象、写作风格、可读性、P0/P1 和最高价值修改外，必须在三分钟内逐问找直接答案、复述一句话贡献、说明问题继承、识别主图及其论点、指出工作报告页，并判断前五页是否建立数据直觉；报告末尾必须按固定提示嵌入同源结构化 JSON，逐问记录缺失论证角色、实际页码和具体 finding。导入器把这些事实写入现有 `review/paper-blind-review.json` 并绑定报告哈希、任务/对话 ID 与 `argument_revision`。一次独立盲评不可省略；同一科学版本默认最多两轮，首轮同类小修改必须批量合并，只有新的 P0/P1、实质论证重构或科学事实变化才开始第二轮。P0/P1 与已验证负面证据始终阻断。PDF 盲评无法创建时必须明确写 `review/PAPER_BLIND_REVIEW_SKIP.md` 的原因；该说明只允许继续机械 QA，绝不能将运行标记为 `complete` 或 `submission_ready`。
 
-**网页版 GPT 补充审核为可选环节**，只在论文主模型和结果已稳定、需要专项编辑审查时使用，不是每次 PDF 编译后的默认流程。使用时：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核聚焦写作风格（AI 句式 / 分点堆砌 / 空话）、可读性和论证表达，找出最高价值的修改建议；无法由 PDF 验证的内容标为”需要本地复算/对照题面”。发现需要重写章节、替换主图或回到实验的问题时，直接说明，不要降级为局部修补。将审核结果写入 `WEB_PAPER_AUDIT.json`；如有修复，重新编译并复核。最多使用一轮；确需再次审核时生成新提示。网页评价不能证明省一或任何奖项，只能降低已识别的质量风险。
+**BZD 外部评委与网页版 GPT 补充审核为可选外部攻击环节**：
+- **BZD 外部评委**：使用 `scripts/review/show_bzd_judge_prompt.py` 先基于题面生成并冻结 100 分制评阅细则（`review/external/bzd-frozen-rubric.json`），再基于冻结 PDF 产生评委报告（`review/external/bzd-review.md`）。使用 `scripts/review/sanitize_bzd_review.py` 清洗广告、位次估算与 90% 天花板截断后，将结构化缺陷汇入 `review/external/bzd-review-findings.json` 并合并至修复台账。BZD 分数与预测位次一律为 advisory，不阻断主链。
+- **网页版 GPT 补充审核**：只在论文主模型和结果已稳定、需要专项编辑审查时使用，不是每次 PDF 编译后的默认流程。使用时：通过网页”添加照片和文件”只上传当前 PDF 与 `scripts/review/web_paper_audit.py prompt` 生成的固定提示，必须另开网页对话，禁止搜索答案、题解或外部资料。网页审核聚焦写作风格（AI 句式 / 分点堆砌 / 空话）、可读性和论证表达，找出最高价值的修改建议；无法由 PDF 验证的内容标为”需要本地复算/对照题面”。发现需要重写章节、替换主图或回到实验的问题时，直接说明，不要降级为局部修补。将审核结果写入 `WEB_PAPER_AUDIT.json`；如有修复，重新编译并复核。最多使用一轮；确需再次审核时生成新提示。网页评价不能证明省一或任何奖项，只能降低已识别的质量风险。
 
 ## Gate 治理（Repair-Driven）
 

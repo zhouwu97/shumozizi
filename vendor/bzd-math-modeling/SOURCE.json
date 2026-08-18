@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/BZDmathclub/bzd-math-modeling-skills",
+  "commit": "1c81ae427109b0bb4f9932f105b50bd1b316c6b5",
+  "license": "MIT",
+  "license_files": ["LICENSE"],
+  "imported_paths": [
+    "bzd-problem-translator",
+    "bzd-modeling-ideas",
+    "bzd-review-paper"
+  ],
+  "local_modifications": []
+}
