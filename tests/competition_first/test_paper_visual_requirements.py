@@ -120,7 +120,8 @@ def test_four_question_visual_contract_keeps_global_quality_minima(tmp_path: Pat
     quota = payload["advanced_figure_quota"]
 
     assert quota["overall_enforcement"] == "hard_minimum"
-    assert quota["minimum_formal_current_figures"] == 12
+    assert quota["minimum_formal_current_figures"] == 13
+    assert quota["maximum_formal_current_figures"] == 18
     assert quota["minimum_visual_archetypes"] == 3
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from pathlib import Path
@@ -256,7 +257,7 @@ def _selected_materials(root: Path) -> dict[str, list[dict[str, Any]]]:
             cat = str(item.get("category", "")).strip().casefold()
             content = str(item.get("content", "")).strip()
             norm_content = re.sub(r"\s+", "", content)
-            sig = (cat, norm_content[:120])
+            sig = (cat, hashlib.sha256(norm_content.encode("utf-8")).hexdigest())
             if sig in seen_signatures:
                 continue
             seen_signatures.add(sig)
@@ -445,7 +446,7 @@ def _argument_chain_lines(
     lines = [f"### {question_id}", ""]
     if warrants:
         lines.append(f"- 论证理由（为什么这些证据支持上述正式答案）：{warrants[0]}")
-        for extra in warrants[1:3]:
+        for extra in warrants[1:]:
             lines.append(f"  - {extra}")
     if support:
         lines.append(f"- 支持强度：{support}")

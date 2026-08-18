@@ -9,7 +9,8 @@ from typing import Any
 # 各自复制数值后再次漂移。
 MIN_BODY_FIGURES_PER_QUESTION = 2
 MAX_BODY_FIGURES_PER_QUESTION = 3
-MIN_FORMAL_BODY_FIGURES = 12
+MIN_FORMAL_BODY_FIGURES = 13
+MAX_FORMAL_BODY_FIGURES = 18
 MIN_FORMAL_VISUAL_ARCHETYPES = 3
 GLOBAL_FIGURE_HARD_MINIMUM_QUESTION_COUNT = 4
 
@@ -18,8 +19,8 @@ def advanced_figure_quota_payload(required_question_count: int) -> dict[str, Any
     """返回可写入视觉需求契约的按题数图合同。
 
     每个必答问题始终需要足以承担不同论证角色的两到三张 current 正文图。
-    全篇十二图和三种图型只在至少四问时作为硬门；较少问题以论证角色为
-    编辑目标，不能为了满足全局数量而拆分或重复插图。
+    四问及以上正式稿：全篇 13–18 张 current 正文图和至少 3 种图型作为硬门；
+    少于四问以论证角色为编辑目标，不能为了满足全局数量而拆分或重复插图。
 
     Args:
         required_question_count: 当前正式候选稿的必答问题数量。
@@ -51,13 +52,16 @@ def advanced_figure_quota_payload(required_question_count: int) -> dict[str, Any
         "minimum_formal_current_figures": (
             MIN_FORMAL_BODY_FIGURES if global_hard_minimum else None
         ),
+        "maximum_formal_current_figures": (
+            MAX_FORMAL_BODY_FIGURES if global_hard_minimum else None
+        ),
         "minimum_visual_archetypes": (
             MIN_FORMAL_VISUAL_ARCHETYPES if global_hard_minimum else None
         ),
         "editorial_target": (
-            "核心问题通常需要 1 张能被记住的 Hero Figure；若一个图不能同时解释数据直觉、"
-            "机制、权衡或边界，再增加 supporting figure。全篇 13–18 图作为复杂建模赛题视觉"
-            "充足的推荐参考信号，按论证角色真实展开，不得为数量机械凑图。"
+            "每个必答问题 2–3 张 current 正文图【硬门】；四问及以上全篇 13–18 张 current 正文图及"
+            "至少 3 种 visual archetype【硬门】。包含核心问题 Hero Figure、按需 supporting figures，"
+            "以及全局/跨问模型路线或数据结构图。不得通过重复图、拆分同一图或装饰图凑数。"
         ),
         "count_scope": (
             "仅计正式发布入口实际引用、status=current、paper_allowed=true 的图；"

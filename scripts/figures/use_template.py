@@ -277,27 +277,31 @@ def recommend_template_candidates(structure: str) -> dict[str, object]:
         )
     catalog = template_catalog_payload()
     by_id = {item["template_id"]: item for item in catalog["templates"]}
-    candidates = [by_id[template_id] for template_id in template_ids]
-    # 预览需要精修不等于母版不适合。高级母版应先进入候选，再由真实 PNG
-    # 决定是否继续调整，避免 direct 前提不满足时直接退回普通图。
-    for item in candidates:
+    candidates = [
+        by_id[template_id]
+        for template_id in template_ids
+        if by_id[template_id]["preview_fidelity"] != "needs_visual_refinement"
+    ]
+    refinement_queue = [
+        by_id[template_id]
+        for template_id in template_ids
+        if by_id[template_id]["preview_fidelity"] == "needs_visual_refinement"
+    ]
+    for item in [*candidates, *refinement_queue]:
         item["recommended_action"] = (
             "direct" if item["template_id"] in DIRECT_ADAPTATION_READY
-            else "master_adapted" if item["template_id"] in MASTER_ADAPTED_TEMPLATES
-            else "reimplemented"
+            else "master_adapted"
         )
         item["adaptation_need"] = (
             "light" if item["recommended_action"] == "direct"
-            else "medium" if item["recommended_action"] == "master_adapted"
-            else "n/a"
+            else "medium"
         )
     return {
         "structure": normalized,
         "advisory_only": True,
         "selection_rule": "按整篇论文主线、当前真实数据和论证角色选择，不按每问强行一张高级图。",
         "candidates": candidates,
-        # 兼容旧消费者；不再把模板从主候选中移除。
-        "refinement_queue": [],
+        "refinement_queue": refinement_queue,
     }
 
 
@@ -497,16 +501,19 @@ def generate_from_result(
         )
         try:
             result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
+            outputs = result["outputs"]
+            text_boxes = result["text_boxes"]
+            visual_manifest = result["visual_manifest"]
+            renderer_script = result["render_script"]
+            reference_template = reference_target.relative_to(root).as_posix()
         except ContractError:
-            if requested_adaptation != "auto" or template_id not in MASTER_ADAPTED_TEMPLATES:
+            if requested_adaptation != "auto":
                 raise
-            adaptation = "adapted"
-            result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
-        outputs = result["outputs"]
-        text_boxes = result["text_boxes"]
-        visual_manifest = result["visual_manifest"]
-        renderer_script = result["render_script"]
-        reference_template = reference_target.relative_to(root).as_posix()
+            adaptation = "reimplemented"
+            reference_template, renderer_script = _copy_runtime_sources(root, template_id)
+            text_boxes = relative_inside(root, render(template_id, data, stem, figure_id=figure_id)).as_posix()
+            outputs = [f"{relative_stem}{suffix}" for suffix in (".png", ".pdf", ".svg")]
+            visual_manifest = f"{relative_stem}.visual_manifest.json"
     else:  # reimplemented
         reference_template, renderer_script = _copy_runtime_sources(root, template_id)
         text_boxes = relative_inside(root, render(template_id, data, stem, figure_id=figure_id)).as_posix()
@@ -585,7 +592,7 @@ def render_candidate(
         figure_id: 可选稳定图表 ID。
         adaptation: ``auto``（默认，direct 安全时 direct，否则 master_adapted）、
             ``direct``、``adapted``、``manual`` 或
-            ``reimplemented``（本仓 v3 简化渲染器回退）。
+            ``reimplemented``（本仓 v3 简化渲染器回退，仅显式指定时使用）。
 
     Returns:
         候选输出、机器生成的 text-boxes/visual_manifest/layout_report 与晋级命令；
@@ -638,8 +645,7 @@ def render_candidate(
     if adaptation == "auto":
         adaptation = (
             "direct" if template_id in DIRECT_ADAPTATION_READY
-            else "adapted" if template_id in MASTER_ADAPTED_TEMPLATES
-            else "reimplemented"
+            else "adapted"
         )
     if adaptation in {"direct", "adapted"}:
         # 冻结母版原脚本作为 reference；复制后的 adapted 脚本就是本次实际执行的母版。
@@ -653,10 +659,26 @@ def render_candidate(
         try:
             result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
         except ContractError:
-            if requested_adaptation != "auto" or template_id not in MASTER_ADAPTED_TEMPLATES:
-                raise
-            adaptation = "adapted"
-            result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id, mode=adaptation)
+            if requested_adaptation == "auto" and (
+                template_id not in DIRECT_ADAPTATION_READY
+                and template_id not in MASTER_ADAPTED_TEMPLATES
+            ):
+                guide = prepare_manual_adaptation(template_id, data, stem, root)
+                guide.update(
+                    {
+                        "success": True,
+                        "mode": "adapted_manual_stub",
+                        "result_id": result_id,
+                        "input_result": chosen_input,
+                        "notice": (
+                            f"{template_id} 暂无自动化 direct shim；已复制原母版脚本到 "
+                            f"{guide['adapted_script']}，由 Agent 替换真实数据入口后运行并晋级。"
+                            "绝不自动退回简化 reimplemented 渲染器。"
+                        ),
+                    }
+                )
+                return guide
+            raise
         outputs = result["outputs"]
         text_boxes = result["text_boxes"]
         layout_report = result["layout_report"]

@@ -816,3 +816,55 @@ def test_figure_plan_hero_without_preventive_form_no_longer_blocked(ws_tmp: Path
     with pytest.raises(ContractError, match="generic_chart_rejected_because"):
         write_figure_plan(run_dir, {**plan, "figures": [bad]})
 
+
+def test_auto_never_falls_back_to_reimplemented_for_scibox_master(ws_tmp: Path) -> None:
+    """auto 模式绝不自动回退到简化 reimplemented 渲染器，只走 direct、master_adapted 或 manual stub。"""
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    from scripts.figures.use_template import (
+        _STRUCTURE_ROUTES,
+        recommend_template_candidates,
+        render_candidate,
+    )
+
+    # 1. 推荐候选测试：所有结构的推荐动作均为 direct 或 master_adapted，绝无 reimplemented
+    for structure in _STRUCTURE_ROUTES:
+        rec = recommend_template_candidates(structure)
+        for cand in rec["candidates"]:
+            assert cand["recommended_action"] in {"direct", "master_adapted"}
+            assert cand["recommended_action"] != "reimplemented"
+
+    # 2. 渲染候选测试：构造一个合法的 current 结果，对未提供 direct shim 的母版模板用 auto 渲染
+    run_dir, artifacts = _quality_ready_run(
+        ws_tmp,
+        "auto-no-reimplemented",
+        {
+            "raincloud": {
+                "figure_data": {
+                    "groups": [
+                        {"name": "Group A", "before": [1.0, 2.0, 3.0], "after": [1.5, 2.5, 3.5]}
+                    ]
+                }
+            }
+        },
+    )
+    res_id = "q1_visual"
+    out_prefix = "figures/work/q1-raincloud/v1/q1-raincloud"
+    result = render_candidate(
+        run_dir,
+        template_id="paired-raincloud",
+        result_id=res_id,
+        input_result=artifacts["raincloud"],
+        output_prefix=out_prefix,
+        adaptation="auto",
+    )
+    assert result["mode"] in {"adapted", "adapted_manual_stub"}
+    assert result["mode"] != "reimplemented"
+    if result["mode"] == "adapted_manual_stub":
+        assert "绝不自动退回简化 reimplemented 渲染器" in result["notice"]
+
+

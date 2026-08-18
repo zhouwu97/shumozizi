@@ -18,7 +18,7 @@ description: 从 Competition-First v3.4 的当前真实结果组织、编译和�
 7. **图文完成完整论证**：每张图在正文中完成“观察（显示了什么）→ 机制（为什么这样）→ 结论（对答案意味着什么）”，不做一句话敷衍。
 8. **正文以连续学术段落为主**：列表仅用于必要假设、符号表、极简算法步骤与优缺点摘要，推导与分析严禁写成 bullet list。
 9. **自然克制的学术语言**：采用严谨中文学术表达，允许“本文建立”、“由式(x)可得”、“这说明”等，严禁第一人称“我们”与技术汇报语气。
-10. **视觉覆盖与 Hero 图**：核心问题配备 1 张高辨识度 Hero 图 + 必要 supporting 图；全篇 13–18 图作为复杂赛题视觉充足的参考信号，不搞机械凑图。
+10. **视觉覆盖与图配额硬门**：每个必答问题正文必须消费 **2–3 张** current 正文图【硬门】；四问及以上正式稿全篇消费 **13–18 张** current 正文图【硬门】且覆盖至少 **3 种**可审计 visual archetype【硬门】。包含核心问题 Hero 图、按需 supporting 图与全局/跨问结构图，禁止机械凑图。
 
 ## v3.4 首稿默认链
 
@@ -224,7 +224,7 @@ python scripts/paper/audit_report_style.py <run_dir>
 
 视觉想法先用 `write_visual_ideas.py` 写入轻量列表，并在 `figures/sandbox/<idea-id>/` 生成多个草图。草图不要求结果绑定、最终 caption、LaTeX label、manifest、panel mapping 或 design contract。fresh reviewer 选出最快说明机制且最不重复表格的候选后，`visual_sandbox.py graduate` 只记录 design reference、其哈希和目标 work 目录；必须再用 current 数据与正式 renderer 重新生成 work 候选，此时才进入来源绑定、图形 QA 和正文消费闭环。
 
-Author Pass 和长篇首稿会自动维护 `paper/generated/VISUAL_REQUIREMENTS.json`。也可手动运行 `python scripts/paper/build_visual_requirements.py <run_dir>` 刷新并路由；`--no-sync` 仅用于只读审计准备。需求按 `hero_figure` 与 `supporting_figure` 分层：前者追求少数可记忆主图，后者先补齐数据直觉、机制、决定性证据和边界等未覆盖角色。每问 2--3 张仍须在候选稿消费；只有四问及以上再把全篇 12 图和 3 图型作为硬门，少题稿不得为了全篇数字补装饰图。候选稿必须逐项由 current 正式图覆盖，或由视觉评阅者给出实质 `DROP` 记录；缺少旧 `FIGURE_PLAN` 本身不阻断 Author 开稿。
+Author Pass 和长篇首稿会自动维护 `paper/generated/VISUAL_REQUIREMENTS.json`。也可手动运行 `python scripts/paper/build_visual_requirements.py <run_dir>` 刷新并路由；`--no-sync` 仅用于只读审计准备。需求按 `hero_figure` 与 `supporting_figure` 分层：前者追求少数可记忆主图，后者先补齐数据直觉、机制、决定性证据和边界等未覆盖角色。每问 2--3 张必须在候选稿正文消费【硬门】；四问及以上全篇消费 13--18 张 current 正文图且覆盖至少 3 种 visual archetype 作为硬门，少题稿按未覆盖论证角色复核，不得为了全篇数字补装饰图。候选稿必须逐项由 current 正式图覆盖，或由视觉评阅者给出实质 `DROP` 记录；缺少旧 `FIGURE_PLAN` 本身不阻断 Author 开稿。
 
 v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM semantic/classic 外壳。`design_only` 只提供当前题的结构启发，只有明确标记 `renderer_available` 的模板才可进入渲染计划；注册表不携带其他题目的数据、公式或结论。
 
@@ -234,7 +234,7 @@ v3.4 的 `figure_templates_v34.py` 注册科研图、模型示意图和 CUMCM se
 
 ## SECOND STEP：首稿后独立补充高级图（可执行阶段，不是提示词）
 
-首稿 `longform-source.tex` 编译后，检查 `VISUAL_REQUIREMENTS`、冷读和正式稿审计是否仍有未覆盖论证角色或未满足的适用图合同；只有存在这类缺口时执行独立的 SECOND STEP。每问仍需 2--3 张 current 正文图；全篇 12 图和 3 图型只对四问及以上适用。SECOND STEP 由缺失的命题、机制、证据或边界驱动，不能用重复插图凑数。
+首稿 `longform-source.tex` 编译后，检查 `VISUAL_REQUIREMENTS`、冷读和正式稿审计是否仍有未覆盖论证角色或未满足的适用图合同；只有存在这类缺口时执行独立的 SECOND STEP。每问必须在正文消费 2--3 张 current 正文图【硬门】；四问及以上全篇消费 13--18 张 current 正文图且覆盖至少 3 种可审计图型作为硬门。SECOND STEP 由缺失的命题、机制、证据或边界驱动，不能用重复插图凑数。
 
 1. **Agent 决定补哪些高级图**：读首稿 + `mathmodel-advanced-figures/references/figure-catalog.md`，按每个结果的**数据特征**（分布/概率/优化/关系/网络/分类）从可用的 production 结果挑图种，写一个 plan JSON（模板、数据源、输出 stem、图注、一句"展示了什么"、插入锚点 = 章节标题或 \\label）。
 2. **脚本执行**：

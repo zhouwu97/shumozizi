@@ -208,11 +208,11 @@ def test_missing_figure_plan_does_not_bypass_candidate_gate(tmp_path: Path) -> N
     assert any(error.startswith("VISUAL_NOT_ASSESSED") for error in errors)
 
 
-def test_four_reviewed_figures_do_not_create_a_minimum_count_gate(tmp_path: Path) -> None:
-    """已完成视觉评估的三问稿可以只有四张图，不能被机械图数门阻断。"""
+def test_legacy_runs_do_not_inherit_competition_quality_figure_quota(tmp_path: Path) -> None:
+    """非 competition-quality-v1 的历史/普通运行不继承新质量合同的全篇硬配额。"""
     run_dir = initialize_simple_run(
         tmp_path,
-        "four-reviewed-figures",
+        "legacy-figure-plan",
         required_questions=["Q1", "Q2", "Q3"],
         workflow_version="3.2",
     )

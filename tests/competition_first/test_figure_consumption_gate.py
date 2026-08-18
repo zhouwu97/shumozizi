@@ -50,6 +50,7 @@ def _run_with_advanced_figure_quota(
     *,
     question_count: int = 4,
     figures_per_question: int | None = None,
+    total_figures: int | None = None,
 ) -> Path:
     """构造满足按题数自适应视觉合同的正式稿。"""
     question_ids = [f"Q{index}" for index in range(1, question_count + 1)]
@@ -89,6 +90,25 @@ def _run_with_advanced_figure_quota(
                 "\\includegraphics[width=0.9\\textwidth]"
                 f"{{../figures/current/{figure_id}.pdf}}"
             )
+    # 四问若每问 3 张（共 12 张），补上一张全局模型路线图以达到全篇硬门 13 张
+    if question_count == 4 and figures_per_question == 3 and total_figures is None:
+        global_id = "fig_global_map"
+        figures.append(
+            {
+                "figure_id": global_id,
+                "status": "current",
+                "paper_allowed": True,
+                "placement": "body",
+                "visual_archetype": "pareto_frontier",
+                "outputs": [
+                    {
+                        "path": f"figures/current/{global_id}.pdf",
+                        "sha256": "0" * 64,
+                    }
+                ],
+            }
+        )
+        tex_parts.append(f"\\includegraphics[width=0.9\\textwidth]{{../figures/current/{global_id}.pdf}}")
     tex_parts.append("\\end{document}")
     atomic_json(
         run_dir / "figures/index.json",
@@ -143,15 +163,17 @@ def test_adaptive_figure_quota_has_a_feasible_formal_paper_for_every_question_co
 def test_adaptive_figure_quota_only_enforces_global_targets_from_four_questions(
     tmp_path: Path,
 ) -> None:
-    """少题运行保留逐题覆盖，但不被十二图或三图型反向强迫凑图。"""
+    """少题运行保留逐题覆盖，但不被十三图或三图型反向强迫凑图。"""
     short = advanced_figure_quota_payload(3)
     long = advanced_figure_quota_payload(4)
 
     assert short["overall_enforcement"] == "coverage_driven_editorial_target"
     assert short["minimum_formal_current_figures"] is None
+    assert short["maximum_formal_current_figures"] is None
     assert short["minimum_visual_archetypes"] is None
     assert long["overall_enforcement"] == "hard_minimum"
-    assert long["minimum_formal_current_figures"] == 12
+    assert long["minimum_formal_current_figures"] == 13
+    assert long["maximum_formal_current_figures"] == 18
     assert long["minimum_visual_archetypes"] == 3
 
     run_dir = _run_with_advanced_figure_quota(
@@ -167,21 +189,23 @@ def test_advanced_figure_quota_rejects_shortage_overflow_and_single_type(tmp_pat
     """硬规格须能定位逐题不足、逐题超额和图型单一三类绕过方式。"""
     run_dir = _run_with_advanced_figure_quota(tmp_path)
     main_path = run_dir / "paper" / "main.tex"
-    # Q1 少一张，同时总量从 12 降到 11；只删正文引用而不动登记，验证消费闭环。
+    # 全局图删掉，总量从 13 降到 12；逐题每题 3 张仍满足，但全篇最低配额 13 必须失败。
     text = main_path.read_text(encoding="utf-8")
     text = text.replace(
-        "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_q1_3.pdf}\n",
+        "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_global_map.pdf}\n",
         "",
     )
     main_path.write_text(text, encoding="utf-8")
     errors = validate_required_figure_consumption(run_dir)
     assert not any("Q1 在正式稿只消费 2 张" in error for error in errors)
-    # Q1 此时仍有两张，逐题最低配额通过；全篇最低配额必须失败。
-    assert any("正式稿只消费 11 张" in error for error in errors)
+    assert any("正式稿只消费 12 张" in error for error in errors)
 
-    # 再删一张，触发逐题最低配额。
+    # 再删两张 Q1 图，触发逐题最低配额。
     text = main_path.read_text(encoding="utf-8")
     text = text.replace(
+        "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_q1_3.pdf}\n",
+        "",
+    ).replace(
         "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_q1_2.pdf}\n",
         "",
     )
@@ -234,20 +258,59 @@ def test_advanced_figure_quota_rejects_more_than_three_body_figures_for_one_ques
 
 
 def test_advanced_figure_quota_does_not_count_appendix_figures(tmp_path: Path) -> None:
-    """附录稳定性图不能用来伪造正文十二图规格。"""
+    """附录稳定性图不能用来伪造正文十三图规格。"""
     run_dir = _run_with_advanced_figure_quota(tmp_path)
     index_path = run_dir / "figures/index.json"
     payload = json.loads(index_path.read_text(encoding="utf-8"))
     appendix_figure = next(
-        item for item in payload["figures"] if item["figure_id"] == "fig_q1_3"
+        item for item in payload["figures"] if item["figure_id"] == "fig_global_map"
     )
     appendix_figure["placement"] = "appendix"
     atomic_json(index_path, payload)
 
     errors = validate_required_figure_consumption(run_dir)
 
-    assert any("正式稿只消费 11 张 current 正文图" in error for error in errors)
-    assert not any("Q1 在正式稿只消费 2 张" in error for error in errors)
+    assert any("正式稿只消费 12 张 current 正文图" in error for error in errors)
+
+
+def test_competition_quality_requires_13_to_18_body_figures(tmp_path: Path) -> None:
+    """四问及以上正式稿：12张FAIL、13张PASS、18张PASS、19张FAIL；逐问<2FAIL、>3FAIL。"""
+    # 1. 12 张正文图 -> 失败（低于全篇 13 张硬门）
+    run_12 = _run_with_advanced_figure_quota(tmp_path / "run-12", question_count=4, figures_per_question=3, total_figures=12)
+    errors_12 = validate_required_figure_consumption(run_12)
+    assert any("正式稿只消费 12 张 current 正文图；全篇硬要求不少于 13 张" in e for e in errors_12)
+
+    # 2. 13 张正文图（4题*3张 + 1全局图） -> 通过
+    run_13 = _run_with_advanced_figure_quota(tmp_path / "run-13", question_count=4, figures_per_question=3)
+    assert validate_required_figure_consumption(run_13) == []
+
+    # 3. 18 张正文图（6题*3张） -> 通过
+    run_18 = _run_with_advanced_figure_quota(tmp_path / "run-18", question_count=6, figures_per_question=3)
+    assert validate_required_figure_consumption(run_18) == []
+
+    # 4. 19 张正文图 -> 失败（超过全篇 18 张硬门）
+    run_19 = _run_with_advanced_figure_quota(tmp_path / "run-19", question_count=6, figures_per_question=3)
+    idx_path = run_19 / "figures/index.json"
+    idx = json.loads(idx_path.read_text(encoding="utf-8"))
+    idx["figures"].append({
+        "figure_id": "fig_extra_19",
+        "status": "current",
+        "paper_allowed": True,
+        "placement": "body",
+        "visual_archetype": "pareto_frontier",
+        "outputs": [{"path": "figures/current/fig_extra_19.pdf", "sha256": "0" * 64}],
+    })
+    atomic_json(idx_path, idx)
+    main_tex = run_19 / "paper/main.tex"
+    main_tex.write_text(
+        main_tex.read_text(encoding="utf-8").replace(
+            "\\end{document}",
+            "\\includegraphics[width=0.9\\textwidth]{../figures/current/fig_extra_19.pdf}\n\\end{document}",
+        ),
+        encoding="utf-8",
+    )
+    errors_19 = validate_required_figure_consumption(run_19)
+    assert any("全篇硬上限为 18 张" in e for e in errors_19)
 
 
 def test_visual_requirement_brief_lists_ready_figures_with_paths(tmp_path: Path) -> None:
@@ -274,7 +337,7 @@ def test_author_brief_prioritizes_claim_first_visuals_and_semantic_structure(
         "数据直觉", "决定性证据", "current 数据",
     ]:
         assert kw in brief, f"brief 缺少: {kw}"
-    for forbidden in ("不得混写", "每个问题单独成节", "至少 12 张", "至少 3 种可审计图型"):
+    for forbidden in ("不得混写", "每个问题单独成节"):
         assert forbidden not in brief, f"brief 不应再强制: {forbidden}"
     assert "20 页以上" not in brief
     assert "第一人称" in brief

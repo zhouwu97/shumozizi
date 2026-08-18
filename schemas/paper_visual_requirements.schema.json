@@ -186,6 +186,7 @@
           "enum": ["hard_minimum", "coverage_driven_editorial_target"]
         },
         "minimum_formal_current_figures": {"type": ["integer", "null"], "minimum": 0},
+        "maximum_formal_current_figures": {"type": ["integer", "null"], "minimum": 0},
         "minimum_visual_archetypes": {"type": ["integer", "null"], "minimum": 0},
         "editorial_target": {"type": "string", "minLength": 1},
         "count_scope": {"type": "string", "minLength": 1}
@@ -198,7 +199,8 @@
           },
           "then": {
             "properties": {
-              "minimum_formal_current_figures": {"const": 12},
+              "minimum_formal_current_figures": {"const": 13},
+              "maximum_formal_current_figures": {"const": 18},
               "minimum_visual_archetypes": {"const": 3}
             }
           }
@@ -211,6 +213,7 @@
           "then": {
             "properties": {
               "minimum_formal_current_figures": {"type": "null"},
+              "maximum_formal_current_figures": {"type": "null"},
               "minimum_visual_archetypes": {"type": "null"}
             }
           }

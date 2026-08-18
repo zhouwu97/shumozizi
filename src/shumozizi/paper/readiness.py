@@ -342,11 +342,17 @@ def _advanced_figure_quota_errors(run_dir: Path) -> list[str]:
                 f"{question_id} 在正式稿消费 {count} 张 current 正文图；"
                 f"硬上限为每题 {maximum_per_question} 张，请合并重复论证图或移入附录"
             )
-    total_minimum = quota["minimum_formal_current_figures"]
+    total_minimum = quota.get("minimum_formal_current_figures")
     if isinstance(total_minimum, int) and len(body_figures) < total_minimum:
         errors.append(
             "ADVANCED_FIGURE_QUOTA："
             f"正式稿只消费 {len(body_figures)} 张 current 正文图；全篇硬要求不少于 {total_minimum} 张"
+        )
+    total_maximum = quota.get("maximum_formal_current_figures")
+    if isinstance(total_maximum, int) and len(body_figures) > total_maximum:
+        errors.append(
+            "ADVANCED_FIGURE_QUOTA："
+            f"正式稿消费了 {len(body_figures)} 张 current 正文图；全篇硬上限为 {total_maximum} 张，请合并重复论证图或移入附录"
         )
     archetypes = {
         archetype
