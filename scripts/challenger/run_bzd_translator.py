@@ -1,6 +1,6 @@
 """BZD 题意翻译桥接工具：加载原版 Skill、生成提示词、解析与 100% 逐句覆盖验证。
 
-定位：主链分析前置辅助，确保题面 100% 句子覆盖，无遗漏约束与隐含建模信号。
+定位：主链分析前置辅助，确保题面 100% 句子与表格条件覆盖，无遗漏约束与隐含建模信号。
 产物路径：analysis/external/bzd-problem-ledger.md
 """
 
@@ -15,16 +15,16 @@ from scripts.challenger.bzd_skill_bundle import format_bzd_prompt
 
 
 def slice_problem_into_sentence_units(problem_text: str) -> list[dict[str, str]]:
-    """将题面文本拆解为带唯一编号的实体句子单元（substantive sentence units）。
+    """将题面文本（包括正文句子与 Markdown 表格参数行）拆解为带唯一编号的实体句子单元。
 
     - 题干背景段落编号为 B01, B02, ...
     - 针对具体小问（问题1/一/Q1）拆解为 Q1-01, Q1-02, Q2-01, ...
+    - 表格中包含约束、参数、数据定义的行同样作为独立单元切入。
     """
     units: list[dict[str, str]] = []
     lines = [line.strip() for line in problem_text.splitlines() if line.strip()]
 
     current_scope = "B"
-    q_index = 0
     unit_counters: dict[str, int] = {"B": 0}
 
     for line in lines:
@@ -40,12 +40,28 @@ def slice_problem_into_sentence_units(problem_text: str) -> list[dict[str, str]]
                     unit_counters[current_scope] = 0
             continue
 
+        # 处理表格行
+        if line.startswith("|") and line.endswith("|"):
+            if "---" in line or "| 编号 |" in line or "| 参数 |" in line or "| 符号 |" in line or "| 序号 |" in line:
+                continue
+            cells = [c.strip() for c in line.split("|")[1:-1] if c.strip()]
+            if len(cells) >= 2:
+                unit_counters[current_scope] += 1
+                idx = unit_counters[current_scope]
+                unit_id = f"{current_scope}{idx:02d}" if current_scope == "B" else f"{current_scope}-{idx:02d}"
+                units.append({
+                    "unit_id": unit_id,
+                    "scope": current_scope,
+                    "text": f"表格参数项: {' | '.join(cells)}",
+                })
+            continue
+
         # 按中文/英文句号、分号、问号切分子句
         sentences = re.split(r"(?<=[。！？；\n])|(?<=[.!?])\s+", line)
         for s in sentences:
             s_clean = s.strip()
-            # 过滤过短或非实体句子（如纯符号、表格分割线、markdown 标记）
-            if len(s_clean) < 4 or s_clean.startswith("|") or s_clean.startswith("```"):
+            # 过滤过短或非实体句子（如纯符号、代码标记）
+            if len(s_clean) < 4 or s_clean.startswith("```"):
                 continue
 
             unit_counters[current_scope] += 1
@@ -60,26 +76,45 @@ def slice_problem_into_sentence_units(problem_text: str) -> list[dict[str, str]]
     return units
 
 
+def _read_all_problem_sources(problem_dir: Path) -> str:
+    """全面读取题面目录中的所有文本、表格与 PDF 文本。"""
+    problem_texts: list[str] = []
+
+    # 1. 优先读取 Markdown 和 TXT
+    for path in sorted(problem_dir.glob("*.md")) + sorted(problem_dir.glob("*.txt")):
+        problem_texts.append(path.read_text(encoding="utf-8", errors="ignore"))
+
+    # 2. 如果存在 PDF 题面且没有 md，尝试提取文本
+    if not problem_texts:
+        for path in sorted(problem_dir.glob("*.pdf")):
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(str(path))
+                pdf_text = "\n".join([page.extract_text() or "" for page in reader.pages])
+                if pdf_text.strip():
+                    problem_texts.append(pdf_text)
+            except Exception:
+                pass
+
+    if not problem_texts:
+        for path in sorted(problem_dir.rglob("*")):
+            if path.is_file() and path.suffix.lower() in {".md", ".txt", ".json", ".csv"}:
+                problem_texts.append(path.read_text(encoding="utf-8", errors="ignore"))
+
+    return "\n\n".join(problem_texts) if problem_texts else "【题面文件存放在 problem/ 目录下】"
+
+
 def build_translator_prompt(run_dir: Path) -> str:
     """生成结合 BZD 原版技能与切分单元的题意翻译提示词。"""
     problem_dir = run_dir / "problem"
     if not problem_dir.is_dir():
         raise FileNotFoundError(f"问题目录不存在: {problem_dir}")
 
-    problem_texts: list[str] = []
-    for path in sorted(problem_dir.glob("*.md")) + sorted(problem_dir.glob("*.txt")):
-        problem_texts.append(f"=== {path.name} ===\n{path.read_text(encoding='utf-8')}")
-
-    if not problem_texts:
-        for path in sorted(problem_dir.rglob("*")):
-            if path.is_file() and path.suffix.lower() in {".md", ".txt", ".json", ".csv"}:
-                problem_texts.append(f"=== {path.name} ===\n{path.read_text(encoding='utf-8', errors='ignore')}")
-
-    joined_problem = "\n\n".join(problem_texts) if problem_texts else "【题面文件存放在 problem/ 目录下】"
+    joined_problem = _read_all_problem_sources(problem_dir)
     units = slice_problem_into_sentence_units(joined_problem)
 
     unit_manifest_lines = [
-        "【题面预切分实体句子单元（编号必须 100% 完整保留在第 2 节表格第一列中）】",
+        "【题面预切分实体句子与表格单元（编号必须 100% 完整保留在第 2 节表格第一列中）】",
     ]
     for u in units:
         unit_manifest_lines.append(f"- [{u['unit_id']}] {u['text']}")
@@ -145,30 +180,25 @@ def validate_bzd_ledger(
                     table_ids.append(first_cell)
 
     if not table_ids:
-        # 也支持非严格正则的匹配
         extracted = re.findall(r"\b(B\d+|Q\d+-\d+)\b", content)
         table_ids = extracted
 
     # 若提供了题面目录，执行精准的 100% 句子覆盖比对
     target_problem_dir = problem_dir
     if target_problem_dir is None:
-        # 尝试从 ledger_path 路径向上查找 problem/ 目录
         possible_problem = ledger_path.resolve().parents[2] / "problem"
         if possible_problem.is_dir():
             target_problem_dir = possible_problem
 
     if target_problem_dir and target_problem_dir.is_dir():
-        problem_texts: list[str] = []
-        for path in sorted(target_problem_dir.glob("*.md")) + sorted(target_problem_dir.glob("*.txt")):
-            problem_texts.append(path.read_text(encoding="utf-8"))
-        if problem_texts:
-            units = slice_problem_into_sentence_units("\n".join(problem_texts))
-            expected_ids = {u["unit_id"] for u in units}
-            found_ids = set(table_ids)
+        problem_text = _read_all_problem_sources(target_problem_dir)
+        units = slice_problem_into_sentence_units(problem_text)
+        expected_ids = {u["unit_id"] for u in units}
+        found_ids = set(table_ids)
 
-            missing_ids = expected_ids - found_ids
-            if missing_ids:
-                issues.append(f"题面单元未 100% 覆盖，缺失以下 {len(missing_ids)} 个单元: {sorted(missing_ids)}")
+        missing_ids = expected_ids - found_ids
+        if missing_ids:
+            issues.append(f"题面单元未 100% 覆盖，缺失以下 {len(missing_ids)} 个单元: {sorted(missing_ids)}")
 
     # 检查重复 ID
     duplicates = {i for i in table_ids if table_ids.count(i) > 1}
@@ -188,7 +218,7 @@ def main() -> None:
         ledger = args.run_dir / "analysis" / "external" / "bzd-problem-ledger.md"
         valid, issues = validate_bzd_ledger(ledger, args.run_dir / "problem")
         if valid:
-            print(f"BZD Problem Ledger 验证通过 (100% 句子覆盖): {ledger}")
+            print(f"BZD Problem Ledger 验证通过 (100% 句子与表格覆盖): {ledger}")
         else:
             print("BZD Problem Ledger 验证未通过:\n" + "\n".join(f"- {i}" for i in issues))
             raise SystemExit(1)

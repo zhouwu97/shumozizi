@@ -189,6 +189,8 @@ def import_bzd_findings_to_repair_loop(
             route = "author"
             owner_stage = "author"
 
+        requires_new_evidence = action_type in {"MODEL_REPAIR", "OBJECTIVE_REDESIGN"}
+
         try:
             directive = open_repair_directive(
                 run_dir,
@@ -199,6 +201,7 @@ def import_bzd_findings_to_repair_loop(
                 owner_stage=owner_stage,
                 repair_action=f["description"],
                 acceptance_test=f"响应 BZD 外部评委缺陷并完成对应阶段复验: {f['finding_id']}",
+                requires_new_evidence=requires_new_evidence,
             )
             registered.append(directive)
         except Exception:

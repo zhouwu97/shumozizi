@@ -1,4 +1,4 @@
-"""BZD 独立 Challenger 桥接工具：隔离包生成、加载原版 Skill、提取结构化打擂路线并合流。
+"""BZD 独立 Challenger 桥接工具：隔离包生成、加载原版 Skill、提取真实打擂路线并合流。
 
 定位：独立二号解题专家（Challenger B/C），在完全隔离上下文运行，与主路线 A 统一打擂。
 产物路径：analysis/external/bzd-route-candidates.md
@@ -21,9 +21,13 @@ def prepare_bzd_isolation_packet(run_dir: Path) -> Path:
     """构建物理隔离的题目与附件输入包，确保独立 Challenger 绝不接触本地主路线与代码。
 
     输出目录：`analysis/external/bzd-packet/`
+    每次执行前强制清空旧目录，彻底杜绝 stale-file 遗留。
     仅包含 `problem/` 题面及附件，严格屏蔽 `analysis/ROUTE_COMPETITION.md`, `code/`, `results/`, `paper/` 等。
     """
     packet_dir = run_dir / "analysis" / "external" / "bzd-packet"
+    if packet_dir.exists():
+        shutil.rmtree(packet_dir, ignore_errors=True)
+
     packet_problem_dir = packet_dir / "problem"
     packet_problem_dir.mkdir(parents=True, exist_ok=True)
 
@@ -56,6 +60,29 @@ def prepare_bzd_isolation_packet(run_dir: Path) -> Path:
     return packet_dir
 
 
+def record_challenger_execution(
+    run_dir: Path,
+    thread_id: str,
+    provider: str = "codex",
+    candidates_file: str = "analysis/external/bzd-route-candidates.md",
+) -> Path:
+    """记录独立上下文 Challenger 执行收据，证明其来自无父上下文的独立执行环境。"""
+    receipt_file = run_dir / "analysis" / "external" / "bzd-challenger-execution.json"
+    receipt_file.parent.mkdir(parents=True, exist_ok=True)
+
+    receipt = {
+        "schema_version": "1.0",
+        "role": "bzd_modeling_challenger",
+        "provider": provider,
+        "raw_thread_id": thread_id,
+        "parent_context_inherited": False,
+        "isolated_packet_dir": "analysis/external/bzd-packet",
+        "candidates_file": candidates_file,
+    }
+    receipt_file.write_text(json.dumps(receipt, indent=2, ensure_ascii=False), encoding="utf-8")
+    return receipt_file
+
+
 def build_isolated_challenger_prompt(run_dir: Path) -> str:
     """生成结合 BZD 原版技能与物理隔离输入包的 Challenger 提示词。"""
     packet_dir = prepare_bzd_isolation_packet(run_dir)
@@ -76,9 +103,17 @@ def build_isolated_challenger_prompt(run_dir: Path) -> str:
                 attachment_summaries.append(
                     f"=== [CSV附件] {rel_name} (共 {len(lines)} 行) ===\n{preview}\n..."
                 )
+            elif suffix in {".xlsx", ".xls"}:
+                attachment_summaries.append(
+                    f"=== [Excel附件] {rel_name} ({path.stat().st_size} bytes) ===\n（请使用 Python/pandas 深入读取其 sheet 结构、字段名与数据分布）"
+                )
+            elif suffix in {".pdf"}:
+                attachment_summaries.append(
+                    f"=== [PDF文件] {rel_name} ({path.stat().st_size} bytes) ===\n（请深入阅读其全部章节与图表）"
+                )
             else:
                 attachment_summaries.append(
-                    f"=== [数据附件] {rel_name} ({path.stat().st_size} bytes) ==="
+                    f"=== [附件文件] {rel_name} ({path.stat().st_size} bytes) ==="
                 )
 
     joined_problem = "\n\n".join(problem_texts) if problem_texts else "【题面文件存放在 problem/ 目录下】"
@@ -89,8 +124,27 @@ def build_isolated_challenger_prompt(run_dir: Path) -> str:
 
     local_rules = """1. 严格使用原版 BZD Modeling Ideas 模式库与策略输出标准，独立提出整篇连贯的骨干路线（backbone）与分问多模型。
 2. 严禁任何主观投票；提出的每条候选路线必须具备可计算的数学结构（mathematical_structure）、形式化 endpoint 与区分性验证 probe。
-3. 输出目标文件固定为：`analysis/external/bzd-route-candidates.md`。
-4. 所有路线将被提取并直接排入现有 `analysis/ROUTE_COMPETITION.md`，在同一 Exact Scorer 下执行真实代码实验打擂。"""
+3. 若附件包含 Excel/PDF/图片，必须直接检视具体数据字段与机制，禁止脱离数据凭空猜测。
+4. 输出目标文件固定为：`analysis/external/bzd-route-candidates.md`。
+5. 【重要输出格式】：在 Markdown 报告末尾，必须追加一段名为 ```json 的结构化路线代码块，格式如下：
+```json
+[
+  {
+    "question": "Q1",
+    "route_id": "bzd-q1-01",
+    "name": "模型名称",
+    "role": "challenger_primary",
+    "mathematical_structure": "精确数学结构名称",
+    "endpoint": "明确的数学主终点与优化目标定义（未明确时填 null）",
+    "assumptions": ["假设1", "假设2"],
+    "required_data": ["字段1", "字段2"],
+    "solver": "建议求解器或算法",
+    "distinguishing_probe": "区分性验证实验或对照方法",
+    "failure_risk": "失败风险与局限性"
+  }
+]
+```
+所有路线将被提取并直接排入现有 `analysis/ROUTE_COMPETITION.md`，在同一 Exact Scorer 下执行真实代码实验打擂。"""
 
     return format_bzd_prompt(
         skill_name="bzd-modeling-ideas",
@@ -129,14 +183,45 @@ def validate_challenger_candidates(candidates_path: Path) -> tuple[bool, list[st
 
 
 def extract_challenger_routes(candidates_path: Path) -> list[dict[str, Any]]:
-    """从 Challenger 产物中提取包含 question、数学结构、endpoint 与 probe 的结构化打擂路线。"""
+    """从 Challenger 产物中提取真实的结构化打擂路线。
+
+    【核心原则】：严禁自动编造 endpoint、assumptions、solver 或 failure_risk！
+    BZD 输出什么就提取什么；缺失的内容严格置为 None 或空列表。
+    """
     if not candidates_path.is_file():
         return []
 
     content = candidates_path.read_text(encoding="utf-8")
-    routes: list[dict[str, Any]] = []
 
-    # 按小问分割（4.1, 4.2... 或 问题一, 问题二...）
+    # 1. 优先尝试提取末尾追加的标准 JSON 代码块
+    json_blocks = re.findall(r"```json\s*\n([\s\S]*?)\n```", content)
+    for block in reversed(json_blocks):
+        try:
+            parsed = json.loads(block.strip())
+            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                routes = []
+                for item in parsed:
+                    if "question" in item and "name" in item:
+                        routes.append({
+                            "question": item.get("question", "Q1"),
+                            "route_id": item.get("route_id") or f"bzd-{item.get('question', 'q1').lower()}-01",
+                            "name": item.get("name", "未命名模型"),
+                            "role": item.get("role", "challenger_primary"),
+                            "mathematical_structure": item.get("mathematical_structure") or _infer_math_structure(item.get("name", "")),
+                            "endpoint": item.get("endpoint"),  # 严禁假填充！无则 None
+                            "assumptions": item.get("assumptions") if isinstance(item.get("assumptions"), list) else [],
+                            "required_data": item.get("required_data") if isinstance(item.get("required_data"), list) else [],
+                            "solver": item.get("solver"),
+                            "distinguishing_probe": item.get("distinguishing_probe"),
+                            "failure_risk": item.get("failure_risk"),
+                        })
+                if routes:
+                    return routes
+        except Exception:
+            pass
+
+    # 2. 如果没有 JSON 块，精确从 Markdown 文本与表格中解析真实内容
+    routes: list[dict[str, Any]] = []
     q_blocks = re.split(r"(?=####?\s*(?:4\.[1-9]|问题[一二三四五1-5]))", content)
     route_counter = 1
 
@@ -153,9 +238,7 @@ def extract_challenger_routes(candidates_path: Path) -> list[dict[str, Any]]:
         rec_match = re.search(r"[-*]\s*推荐模型[：:]\s*([^\n]+)", block)
         alt_match = re.search(r"[-*]\s*备选模型[：:]\s*([^\n]+)", block)
         probe_match = re.search(r"[-*]\s*多模型对比建议[：:]\s*([^\n]+)", block) or re.search(r"验证方法[：:]\s*([^\n]+)", block)
-
-        # 提取表格行
-        table_rows = re.findall(r"^\|([^|\n]+)\|([^|\n]+)\|([^|\n]+)\|([^|\n]+)\|([^|\n]+)\|([^|\n]+)\|([^|\n]+)\|", block, flags=re.MULTILINE)
+        endpoint_match = re.search(r"[-*]\s*(?:主终点|终点|目标函数|优化目标)[：:]\s*([^\n]+)", block)
 
         if rec_match:
             model_name = rec_match.group(1).strip()
@@ -165,12 +248,12 @@ def extract_challenger_routes(candidates_path: Path) -> list[dict[str, Any]]:
                 "name": model_name,
                 "role": "challenger_primary",
                 "mathematical_structure": _infer_math_structure(model_name, block),
-                "endpoint": f"formal_target_{q_id.lower()}",
-                "distinguishing_probe": probe_match.group(1).strip() if probe_match else "小规模 exact enumeration 对照",
-                "assumptions": ["数据完整性", "连续状态无突变"],
-                "required_data": ["附件数据"],
-                "solver": "SciPy / Custom Exact Scorer",
-                "failure_risk": "高维计算复杂度或局部极值",
+                "endpoint": endpoint_match.group(1).strip() if endpoint_match else None,  # 绝不假填 formal_target_q1
+                "distinguishing_probe": probe_match.group(1).strip() if probe_match else None,
+                "assumptions": _extract_bullet_items(block, "假设"),
+                "required_data": _extract_bullet_items(block, "数据|输入"),
+                "solver": _extract_inline_item(block, "求解器|算法"),
+                "failure_risk": _extract_inline_item(block, "局限|失败风险|风险"),
             })
             route_counter += 1
 
@@ -182,37 +265,34 @@ def extract_challenger_routes(candidates_path: Path) -> list[dict[str, Any]]:
                 "name": alt_name,
                 "role": "challenger_alternative",
                 "mathematical_structure": _infer_math_structure(alt_name, block),
-                "endpoint": f"formal_target_{q_id.lower()}",
-                "distinguishing_probe": "边界案例可行性复算",
-                "assumptions": ["简化线性/高斯假设"],
-                "required_data": ["附件数据"],
-                "solver": "Standard Optimization Engine",
-                "failure_risk": "松弛误差或模型失真",
+                "endpoint": None,  # 备选路线未显式声明 endpoint 则为 None
+                "distinguishing_probe": None,
+                "assumptions": [],
+                "required_data": [],
+                "solver": None,
+                "failure_risk": None,
             })
             route_counter += 1
 
-        # 若无明确推荐行，但有表格行，解析表格
-        if not rec_match and not alt_match and table_rows:
-            for row in table_rows[1:3]:  # 跳过表头
-                row_model = row[0].strip()
-                if "可行模型" in row_model or "---" in row_model:
-                    continue
-                routes.append({
-                    "question": q_id,
-                    "route_id": f"bzd-{q_id.lower()}-{route_counter:02d}",
-                    "name": row_model,
-                    "role": "challenger_candidate",
-                    "mathematical_structure": row[1].strip() if len(row) > 1 else "mathematical optimization",
-                    "endpoint": f"formal_target_{q_id.lower()}",
-                    "distinguishing_probe": row[6].strip() if len(row) > 6 else "小规模 exact 对照",
-                    "assumptions": [row[3].strip()] if len(row) > 3 else [],
-                    "required_data": ["附件数据"],
-                    "solver": "Exact Scorer",
-                    "failure_risk": row[5].strip() if len(row) > 5 else "未知",
-                })
-                route_counter += 1
-
     return routes
+
+
+def _extract_bullet_items(text: str, keyword_pattern: str) -> list[str]:
+    """提取指定关键词下的列表条目。"""
+    match = re.search(rf"[-*]\s*(?:{keyword_pattern})[：:]\s*([^\n]+)", text)
+    if match:
+        raw = match.group(1).strip()
+        items = [i.strip() for i in re.split(r"[,，;；、]", raw) if i.strip()]
+        return items
+    return []
+
+
+def _extract_inline_item(text: str, keyword_pattern: str) -> str | None:
+    """提取行内单项内容。"""
+    match = re.search(rf"[-*]\s*(?:{keyword_pattern})[：:]\s*([^\n]+)", text)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def _infer_math_structure(model_name: str, context: str = "") -> str:
@@ -250,7 +330,7 @@ def _infer_math_structure(model_name: str, context: str = "") -> str:
 def import_challenger_routes_to_competition(
     run_dir: Path, candidates_path: Path | None = None
 ) -> Path:
-    """将提取出的 BZD 结构化候选路线合流写入 analysis/ROUTE_COMPETITION.md。"""
+    """将提取出的 BZD 真实结构化候选路线合流写入 analysis/ROUTE_COMPETITION.md。"""
     c_path = candidates_path or (run_dir / "analysis" / "external" / "bzd-route-candidates.md")
     routes = extract_challenger_routes(c_path)
     competition_file = run_dir / "analysis" / "ROUTE_COMPETITION.md"
@@ -267,8 +347,11 @@ def import_challenger_routes_to_competition(
     lines.append("|---|---|---|---|---|---|---|---|")
 
     for r in routes:
+        endpoint_display = f"`{r['endpoint']}`" if r.get("endpoint") else "*未指定 / 待解析*"
+        probe_display = r.get("distinguishing_probe") or "*小规模对照*"
+        risk_display = r.get("failure_risk") or "*无明确风险标注*"
         lines.append(
-            f"| `{r['route_id']}` | **{r['question']}** | {r['name']} | `{r['role']}` | {r['mathematical_structure']} | `{r['endpoint']}` | {r['distinguishing_probe']} | {r['failure_risk']} |"
+            f"| `{r['route_id']}` | **{r['question']}** | {r['name']} | `{r['role']}` | {r['mathematical_structure']} | {endpoint_display} | {probe_display} | {risk_display} |"
         )
 
     lines.append("\n> **打擂规则**：上述候选路线已注册，将在同一 Exact Scorer 与同等计算预算下由 `scripts/runtime/run_simple_experiment.py` 执行 exploration 实测，由实测指标决定胜者。\n")
@@ -284,11 +367,15 @@ def main() -> None:
     parser.add_argument("--validate", action="store_true", help="验证 analysis/external/bzd-route-candidates.md")
     parser.add_argument("--extract", action="store_true", help="提取结构化候选路线")
     parser.add_argument("--import-to-competition", action="store_true", help="将提取路线合流入 ROUTE_COMPETITION.md")
+    parser.add_argument("--record-receipt", type=str, help="记录独立上下文执行 thread ID")
     args = parser.parse_args()
 
     candidates = args.run_dir / "analysis" / "external" / "bzd-route-candidates.md"
 
-    if args.validate:
+    if args.record_receipt:
+        receipt_path = record_challenger_execution(args.run_dir, thread_id=args.record_receipt)
+        print(f"已记录 Challenger 执行收据: {receipt_path}")
+    elif args.validate:
         valid, issues = validate_challenger_candidates(candidates)
         if valid:
             print(f"BZD Challenger 产物验证通过: {candidates}")
