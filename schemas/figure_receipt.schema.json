@@ -34,10 +34,6 @@
       "then": {"properties": {"template_id": {"not": {"const": "custom"}}}}
     },
     {
-      "if": {"properties": {"selected_skill": {"const": "skills/sci-box/scibox-diagram"}}},
-      "then": {"properties": {"template_id": {"not": {"const": "custom"}}}}
-    },
-    {
       "if": {"properties": {"selected_skill": {"const": "skills/mathmodel-figure-templates"}}},
       "then": {"properties": {"template_id": {"not": {"const": "custom"}}}}
     },

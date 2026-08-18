@@ -6,10 +6,14 @@
 1. 把 ``skills/sci-box/scibox-figure/scripts/templates/make_<id>.py``（上游 jihe520/sci-box
    的原样副本；legacy 的 ``mathmodel-figure-templates`` 为同源兜底）原样复制到
    运行目录 ``code/figures/adapted_<id>.py``；
-2. 注入 ``_real_data_<id>.py`` shim（``apply_real_data(globals())``），把原脚本里的
-   ``simulate_*()`` 函数或模块级数据常量替换为真实结果 JSON 的转换结果；
-3. 其余绘图结构（``draw_*``、``fig.add_axes``、``fig.legend``、字号、轴线、面板几何）全部保留；
-4. 原样运行复制后的脚本，产出 PNG/PDF/SVG。
+2. 生成 ``_real_data_<id>.py`` shim，把原脚本里的 ``simulate_*()`` 函数或模块级数据
+   常量替换为真实结果 JSON 的转换结果；
+3. 在**进程内**导入复制后的母版脚本，并在调用 ``make_figure()`` **之前**执行
+   ``apply_real_data(globals())``——数据入口替换必然先于绘图，不存在“先画模拟数据、
+   后注入真实数据”的顺序问题；
+4. 其余绘图结构（``draw_*``、``fig.add_axes``、``fig.legend``、字号、轴线、面板几何）全部保留；
+5. 渲染后从 Figure 机器提取 ``text-boxes.json``、``visual_manifest.json`` 与
+   ``layout_report.json``（论文尺寸、字号、坐标范围、图例遮挡），供 work→promotion 闭环使用。
 
 只有模板自动 shim 未覆盖、或需要拆/并/删面板时才使用 manual 模式（复制原脚本 +
 写入标记好的数据入口 stub，由 Agent 手工完成替换），或 reimplemented 回退（本仓 v3
@@ -18,19 +22,24 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
-import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 from shumozizi.core.io import ContractError
 from shumozizi.core.repo_root import resolve_repo_root
+from shumozizi.simple.figure_templates import (
+    _figure_text_artists,
+    _text_boxes,
+    _write_visual_manifest,
+    write_plot_layout_report,
+)
 
 # 模板 id -> 母版脚本文件名。只收录“直接复制 + 换数据入口”即可成立的模板；
-# 其余模板仍走 manual 或 reimplemented。
+# 其余模板走 manual-copy（复制原脚本由 Agent 手工换数据），默认不回退简化 reimplemented。
 _SCRIPT_NAMES: dict[str, str] = {
     "correlation-pairgrid": "make_correlation_pairgrid.py",
     "grouped-circular-heatmap": "make_grouped_circular_heatmap.py",
@@ -44,15 +53,15 @@ DIRECT_ADAPTATION_READY = frozenset(_SCRIPT_NAMES)
 
 _OUTPUT_STEM_RE = re.compile(r'make_figure\(\s*ROOT\s*/\s*"outputs"\s*/\s*"([^"]+)"\s*\)')
 
-# 来源论文残留文本的确定性替换（在复制后的脚本里直接改文字，不重写绘图函数）。
-# rf-tpe-surface 与 nature-chord-diagram 的标签/标题替换在 _apply_text_patches 中
-# 用真实数据驱动（x_label/y_label/metric_label/title），这里只保留静态文本替换。
-_TEXT_PATCHES: dict[str, list[tuple[str, str]]] = {}
-
 
 def _shim_safe(template_id: str) -> str:
     """把模板 id 转成合法的 Python 模块名（短横线 -> 下划线）。"""
     return f"_real_data_{template_id.replace('-', '_')}"
+
+
+def _module_safe(template_id: str) -> str:
+    """把模板 id 转成复制脚本的模块名。"""
+    return f"shumozizi_adapted_{template_id.replace('-', '_')}"
 
 
 def _shim_source(template_id: str) -> str:
@@ -74,24 +83,27 @@ def _shim_source(template_id: str) -> str:
 
 # ---------------------------------------------------------------------------
 # 各模板 shim：只做“真实 figure_data -> 原 simulate_* 返回形状”的转换。
-# 数据读取路径经环境变量 SHUMOZIZI_FIGURE_DATA 传入，保证复制脚本可搬移。
+# 数据由引擎在导入后写入 shim 模块的 _DATA，保证复制脚本可搬移、可重渲染。
 # ---------------------------------------------------------------------------
 
 _SHIM_HEADER = """\
 # 本文件由 shumozizi direct adaptation 生成：只负责把真实结果 JSON 转成
 # 原模板 simulate_* 函数的返回形状，绘图结构全部保留在原模板脚本中。
-import json
-import os
+from shumozizi.core.io import ContractError
 
 import numpy as np
 
-_DATA = json.load(open(os.environ["SHUMOZIZI_FIGURE_DATA"], encoding="utf-8"))
+_DATA = {}
+
+
+def load_real_data(*args, **kwargs):
+    raise SystemExit("load_real_data 应在导入后被引擎注入")
 """
 
 _SHIM_GROUPED_CORR_SPLIT_VIOLIN = _SHIM_HEADER + """
 
 
-def load_real_data(*args, **kwargs):
+def _real_data(*args, **kwargs):
     groups = _DATA["groups"]
     train = np.asarray(groups[0]["values"], dtype=float)
     test = np.asarray(groups[1]["values"], dtype=float)
@@ -102,19 +114,19 @@ def apply_real_data(g):
     expected = len(g["FEATURES"])
     features = _DATA.get("features") or [item.name for item in g["FEATURES"]]
     if len(features) != expected:
-        raise SystemExit(
+        raise ContractError(
             "grouped-corr-split-violin direct adaptation: 本题特征数 %d != 模板特征数 %d；"
             "请用 --adaptation manual 手工调整小提琴网格与分组括号位置"
             % (len(features), expected)
         )
     g["FEATURES"] = [g["FeatureSpec"](name=name, label=name) for name in features]
-    g["simulate_feature_data"] = load_real_data
+    g["simulate_feature_data"] = _real_data
 """
 
 _SHIM_CORRELATION_PAIRGRID = _SHIM_HEADER + """
 
 
-def load_real_data(*args, **kwargs):
+def _real_data(*args, **kwargs):
     return np.asarray(_DATA["values"], dtype=float)
 
 
@@ -122,13 +134,13 @@ def apply_real_data(g):
     columns = _DATA.get("columns")
     if columns:
         g["VARIABLES"] = [str(item) for item in columns]
-    g["simulate_data"] = load_real_data
+    g["simulate_data"] = _real_data
 """
 
 _SHIM_RF_TPE_SURFACE = _SHIM_HEADER + """
 
 
-def load_real_data(*args, **kwargs):
+def _real_data(*args, **kwargs):
     trials = _DATA["trials"]
     return (
         np.asarray([item["x"] for item in trials], dtype=float),
@@ -138,7 +150,7 @@ def load_real_data(*args, **kwargs):
 
 
 def apply_real_data(g):
-    g["simulate_tpe_trials"] = load_real_data
+    g["simulate_tpe_trials"] = _real_data
 """
 
 _SHIM_GROUPED_CIRCULAR_HEATMAP = _SHIM_HEADER + """
@@ -149,7 +161,7 @@ _TRAIT_COLORS = [
 ]
 
 
-def load_real_data(*args, **kwargs):
+def _real_data(*args, **kwargs):
     rings = _DATA["rings"]
     return np.asarray([ring["values"] for ring in rings], dtype=float)
 
@@ -164,7 +176,7 @@ def apply_real_data(g):
     g["PAIR_GROUPS"] = [
         g["PairGroup"](label=str(item), color="#c9d8e8", count=1) for item in items
     ]
-    g["simulate_heatmap_values"] = load_real_data
+    g["simulate_heatmap_values"] = _real_data
 """
 
 _SHIM_TAYLOR_DIAGRAM = _SHIM_HEADER + """
@@ -177,8 +189,11 @@ def _neutral_header(fig):
 
 def apply_real_data(g):
     panels = _DATA["panels"]
+    reference_std = float(_DATA.get("reference_std") or 1.0)
+    if reference_std <= 0:
+        raise ContractError("taylor-diagram direct adaptation: reference_std 必须为正数")
     if len(panels) != 3:
-        raise SystemExit(
+        raise ContractError(
             "taylor-diagram direct adaptation: 需要恰好 3 个面板"
             "（模板 training/testing/full dataset 三个槽位）"
         )
@@ -186,8 +201,13 @@ def apply_real_data(g):
     names: list[str] = []
     for key, panel in zip(("training", "testing", "full dataset"), panels, strict=True):
         points = panel["points"]
+        # 用 reference_std 归一化标准差，母版 Observed 固定在 (1.0, 1.0) 不变。
         rebuilt[key] = [
-            g["TaylorPoint"](name=str(point["name"]), std=float(point["std"]), corr=float(point["corr"]))
+            g["TaylorPoint"](
+                model=str(point["name"]),
+                std=float(point["std"]) / reference_std,
+                corr=float(point["corr"]),
+            )
             for point in points
         ]
         for point in points:
@@ -195,10 +215,10 @@ def apply_real_data(g):
                 names.append(str(point["name"]))
     # 每个面板必须包含全部模型，否则原 draw_panel 的 next(...) 会 StopIteration。
     for key, points in rebuilt.items():
-        have = {point.name for point in points}
+        have = {point.model for point in points}
         missing = set(names) - have
         if missing:
-            raise SystemExit(
+            raise ContractError(
                 "taylor-diagram direct adaptation: 面板 %s 缺少模型 %s"
                 % (key, "、".join(sorted(missing)))
             )
@@ -283,7 +303,6 @@ def _patch_output_stem(text: str, output_stem: Path) -> str:
 
 def _apply_text_patches(text: str, template_id: str, data: dict[str, Any]) -> str:
     """替换来源论文残留文字与本题标签（只改字符串，不重写绘图函数）。"""
-    patches = list(_TEXT_PATCHES.get(template_id, []))
     if template_id == "rf-tpe-surface":
         x_label = str(data.get("x_label") or "X")
         y_label = str(data.get("y_label") or "Y")
@@ -299,8 +318,13 @@ def _apply_text_patches(text: str, template_id: str, data: dict[str, Any]) -> st
         title = str(data.get("title") or "Chord Diagram")
         text = text.replace('"Circos Graph"', json.dumps(title))
         return text
-    for old, new in patches:
-        text = text.replace(old, new)
+    if template_id == "taylor-diagram":
+        reference_std = float(data.get("reference_std") or 1.0)
+        if reference_std != 1.0:
+            text = text.replace(
+                '"Standard Deviation"', '"Normalized Standard Deviation"'
+            )
+        return text
     return text
 
 
@@ -315,32 +339,150 @@ def _write_data_json(template_id: str, data: dict[str, Any], target_dir: Path) -
     return path
 
 
+def _import_module(module_name: str, path: Path) -> Any:
+    """在进程内导入一个 Python 文件作为模块。"""
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ContractError(f"无法加载模块: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _render_in_process(
+    template_id: str,
+    data: dict[str, Any],
+    output_stem: Path,
+    target_dir: Path,
+    data_path: Path,
+    shim_path: Path,
+    adapted_path: Path,
+) -> Any:
+    """进程内导入母版脚本：先注入真实数据，再调用 make_figure，返回渲染后的 Figure。"""
+    try:
+        # 先强制 Agg 并绑定 canvas 类，避免宿主默认后端（如 tkagg）污染母版脚本
+        # 导入后创建的 Figure（否则 canvas 退化 FigureCanvasBase，无法做文字边界
+        # 与布局提取）。
+        import matplotlib
+
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as _plt
+
+        _plt.figure(figsize=(1, 1))
+        _plt.close("all")
+
+        shim_module = _import_module(_shim_safe(template_id), shim_path)
+        shim_module._DATA = data
+        module = _import_module(_module_safe(template_id), adapted_path)
+        # 数据入口替换必须先于 make_figure（P0-1：不能先画模拟数据再注入）。
+        shim_module.apply_real_data(module.__dict__)
+        pyplot = module.plt
+        real_close = pyplot.close
+        captured: dict[str, Any] = {}
+
+        def _capturing_close(fig: Any = None) -> Any:
+            if fig is not None:
+                captured["figure"] = fig
+            return real_close(fig)
+
+        pyplot.close = _capturing_close
+        try:
+            module.make_figure(Path(str(output_stem)))
+        finally:
+            pyplot.close = real_close
+        figure = captured.get("figure") or pyplot.gcf()
+        if figure is None:
+            raise ContractError("direct adaptation 未能捕获渲染后的 Figure")
+        return figure
+    except ContractError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - 转成协议异常，保留母版脚本的真实错误信息
+        raise ContractError(f"direct adaptation 渲染失败 ({template_id}): {exc}") from exc
+
+
+def _write_figure_artifacts(
+    figure: Any,
+    template_id: str,
+    output_stem: Path,
+    figure_id: str,
+    run_dir: Path,
+    adapted_path: Path,
+    shim_path: Path,
+) -> dict[str, str]:
+    """从 Figure 机器提取 text-boxes、visual_manifest、layout_report。"""
+    root = run_dir.resolve()
+    # 母版脚本可能在宿主默认后端下创建 Figure，canvas 退化为 FigureCanvasBase，
+    # 无法做文字边界/布局提取；这里显式挂上 Agg canvas 保证可渲染可测量。
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    if not isinstance(figure.canvas, FigureCanvasAgg):
+        FigureCanvasAgg(figure)
+    figure._shumozizi_panels = ["main"]
+    elements: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for artist in _figure_text_artists(figure):
+        label = artist.get_text().strip()
+        if label in seen:
+            continue
+        seen.add(label)
+        elements.append({"type": "text", "label": label, "panel": "main"})
+    if not elements:
+        elements = [{"type": "figure", "label": template_id, "panel": "main"}]
+    figure._shumozizi_elements = elements
+    boxes_path = output_stem.with_suffix(".text-boxes.json")
+    boxes_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "boxes": _text_boxes(figure),
+                "adapted_script": adapted_path.relative_to(root).as_posix(),
+                "data_shim": shim_path.relative_to(root).as_posix(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    manifest_path = _write_visual_manifest(figure, output_stem)
+    layout_path = write_plot_layout_report(figure, output_stem, figure_id)
+    return {
+        "text_boxes": boxes_path.relative_to(root).as_posix(),
+        "visual_manifest": manifest_path.relative_to(root).as_posix(),
+        "layout_report": layout_path.relative_to(root).as_posix(),
+    }
+
+
 def adapt_and_render(
     template_id: str,
     data: dict[str, Any],
     output_stem: Path,
     run_dir: Path,
-) -> tuple[list[str], str]:
-    """直接适配渲染：复制原模板脚本 -> 注入真实数据 shim -> 原样运行。
+    figure_id: str | None = None,
+) -> dict[str, Any]:
+    """直接适配渲染：复制原模板脚本 -> 注入真实数据 shim -> 原样调用 make_figure。
 
     Args:
         template_id: 母版模板 ID。
         data: :func:`shumozizi.simple.figure_templates.load_data` 返回的真实数据。
-        output_stem: 不含扩展名的绝对输出路径（对应 ``figures/...`` 前缀）。
+        output_stem: 不含扩展名的绝对输出路径（对应 ``figures/work/<id>/<version>/...``）。
         run_dir: v3 运行目录。
+        figure_id: 布局报告使用的图表 ID；缺省用输出前缀文件名。
 
     Returns:
-        ``(输出相对路径列表, 文字边界 JSON 相对路径)``。
+        输出相对路径、text-boxes、visual_manifest、layout_report 与复制脚本的路径字典。
 
     Raises:
-        ContractError: 模板不支持直接适配、脚本缺少输出语句或渲染失败。
+        ContractError: 模板不支持直接适配、脚本缺失或渲染失败。
     """
     if template_id not in DIRECT_ADAPTATION_READY:
         raise ContractError(
             f"{template_id} 尚无自动 direct 适配 shim；可用: "
             + ", ".join(sorted(DIRECT_ADAPTATION_READY))
-            + "。其余模板请用 --adaptation manual（复制原脚本手工换数据入口）"
-            "或 --adaptation reimplemented（v3 简化渲染器回退）"
+            + "。其余模板请用 --adaptation manual（复制原脚本手工换数据入口），"
+            "默认不会自动回退到简化 reimplemented 渲染器"
         )
     root = run_dir.resolve()
     output_stem = output_stem.resolve()
@@ -358,28 +500,12 @@ def adapt_and_render(
     text = source.read_text(encoding="utf-8")
     text = _patch_output_stem(text, output_stem)
     text = _apply_text_patches(text, template_id, data)
-    text = (
-        text.rstrip()
-        + "\n\n# ==== shumozizi direct adaptation: 只替换数据入口，绘图结构保持原样 ====\n"
-        + f"from {_shim_safe(template_id)} import apply_real_data\n"
-        + "apply_real_data(globals())\n"
-    )
     adapted_path = target_dir / f"adapted_{template_id}.py"
     adapted_path.write_text(text, encoding="utf-8", newline="\n")
 
-    env = {**os.environ, "SHUMOZIZI_FIGURE_DATA": str(data_path)}
-    proc = subprocess.run(
-        [sys.executable, str(adapted_path)],
-        cwd=str(target_dir),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=600,
+    figure = _render_in_process(
+        template_id, data, output_stem, target_dir, data_path, shim_path, adapted_path
     )
-    if proc.returncode != 0:
-        raise ContractError(
-            f"direct adaptation 渲染失败 ({template_id}):\n{proc.stderr[-2000:]}"
-        )
 
     relative = output_stem.relative_to(root).as_posix()
     outputs = [f"{relative}{suffix}" for suffix in (".png", ".pdf", ".svg")]
@@ -387,24 +513,22 @@ def adapt_and_render(
         path = root / item
         if not path.is_file() or path.stat().st_size == 0:
             raise ContractError(f"direct adaptation 未产出有效输出: {item}")
-    boxes_path = output_stem.with_suffix(".text-boxes.json")
-    boxes_path.write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "boxes": [],
-                "note": "direct adaptation：文字边界与排版由人工看图复核，不自动断言。",
-                "adapted_script": adapted_path.relative_to(root).as_posix(),
-                "data_shim": shim_path.relative_to(root).as_posix(),
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
+
+    artifacts = _write_figure_artifacts(
+        figure,
+        template_id,
+        output_stem,
+        figure_id or output_stem.name,
+        root,
+        adapted_path,
+        shim_path,
     )
-    return outputs, boxes_path.relative_to(root).as_posix()
+    return {
+        "outputs": outputs,
+        "adapted_script": adapted_path.relative_to(root).as_posix(),
+        "data_shim": shim_path.relative_to(root).as_posix(),
+        **artifacts,
+    }
 
 
 def prepare_manual_adaptation(
@@ -416,7 +540,7 @@ def prepare_manual_adaptation(
     """manual 模式：复制原模板脚本并写入标记好的数据入口 stub，不运行、不登记。
 
     由 Agent 在复制后的脚本里完成“模拟数据 -> 真实 loader”的替换（可拆/并/删面板），
-    运行后通过正常的登记流程进入 ``figures/``。
+    运行后通过正常的候选流程进入 ``figures/``。
 
     Args:
         template_id: 模板 ID（不要求有自动 shim）。
@@ -454,6 +578,9 @@ def prepare_manual_adaptation(
     data_path = _write_data_json(template_id, data, target_dir)
     adapted_path = target_dir / f"adapted_{template_id}.py"
     text = source.read_text(encoding="utf-8")
+    # manual 同样改写输出路径与来源论文残留文字，避免运行后写到模板默认 outputs/。
+    text = _patch_output_stem(text, output_stem)
+    text = _apply_text_patches(text, template_id, data)
     # 在数据入口行前插入标记，Agent 在此完成替换。
     text = text.replace(
         "def make_figure(output_stem: Path) -> None:",
@@ -472,7 +599,7 @@ def prepare_manual_adaptation(
         "instructions": (
             f"编辑 {adapted_path.relative_to(root).as_posix()}：把 simulate_* 数据入口换成真实 loader"
             f"（读 {data_path.relative_to(root).as_posix()}），允许拆/并/删面板；"
-            f"然后运行 `python {adapted_path.relative_to(root).as_posix()}` 生成"
-            f" {output_stem.relative_to(root).as_posix()}.{{png,pdf,svg}}，再走登记流程。"
+            f"输出路径已改写为 {output_stem.relative_to(root).as_posix()}.{{png,pdf,svg}}，"
+            "运行后走候选与晋级流程。"
         ),
     }

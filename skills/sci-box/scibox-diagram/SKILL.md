@@ -98,32 +98,47 @@ python3 scripts/preview_html.py fig.drawio      # 浏览器预览，无需 drawi
 - 需要 LaTeX 排版的公式推导链 → 用 TikZ 或写进正文。
 
 ---
+---
 
 ## shumozizi 生产集成（本仓库）
 
 本技能是**结构解释图的一等候选**，不是 fallback。需要技术路线、研究框架、阶段流程、任务流水线、
 算法/模型结构等**结构解释图**时直接用它，不需要先尝试 ImageGen——一个手工设计的 DrawIO 模板
-通常比每次抽卡式生图稳定得多。ImageGen 只在“真没有现成表达”时才考虑，且结果必须由确定性
+通常比每次抽卡式生图稳定得多。ImageGen 只在"真没有现成表达"时才考虑，且结果必须由确定性
 DrawIO / Python 重建后才能进论文。
 
 ### 生产接入
 
-1. FIGURE_PLAN 登记：selected_skill: skills/sci-box/scibox-diagram，
-   	emplate_id 用真实模板 id（oadmap-5band / ramework-3col / stageflow-3col /
-   	askflow-land / custom / eplica），	emplate_source 记 master_original / master_adapted / combined / custom。
-2. 结构内容必须来自当前 run 的真实模型/方法（nalysis/、esults/、paper/ 的冻结内容），不能画不存在的流程或关系。
-3. 成品在 igures/work/<id>/<version>/ 迭代，机械 QA 与人工看图后晋级 igures/current/；
-   图表输出保留 .drawio 源文件（或 content JSON）+ PNG/PDF。
-4. 图内不写大标题（标题交给论文 caption）；文字语言与论文一致；严禁在正文写死“图1/图2”手工编号。
+1. `FIGURE_PLAN` 登记：`selected_skill: skills/sci-box/scibox-diagram`，
+   `template_id` 用真实模板 id（`roadmap-5band` / `framework-3col` / `stageflow-3col` /
+   `taskflow-land` / `custom` / `replica`），`template_source` 记 `master_original` / `master_adapted` / `combined` / `custom`。
+2. 结构内容必须来自当前 run 的真实模型/方法（`analysis/`、`results/`、`paper/` 的冻结内容），不能画不存在的流程或关系。
+3. 成品在 `figures/work/<id>/<version>/` 迭代，机械 QA 与人工看图后晋级 `figures/current/`；
+   图表输出保留 `.drawio` 源文件（或 content JSON）+ PNG/PDF。
+4. 图内不写大标题（标题交给论文 caption）；文字语言与论文一致；严禁在正文写死"图1/图2"手工编号。
+
+### 生产桥（机器自动提取，不手写 layout JSON）
+
+```powershell
+python scripts/figures/render_scibox_diagram.py runs/<run-id> `
+  --template roadmap-5band --content-json <content.json> `
+  --figure-id q1-roadmap `
+  --output-prefix figures/work/q1-roadmap/v1/q1-roadmap
+```
+
+桥会自动：调用原 sci-box 生成器产出 `.drawio` → 运行 `check_layout.py` → 从 XML 机器提取
+节点框/文字框/箭头/画布/字号 → 生成 `layout_report.json` 与 `visual_manifest.json` →
+（装有 draw.io 命令行时）导出 PNG/PDF → 输出晋级命令。机器能知道的全部机器做，
+Agent 只负责"这张图好不好看、表达对不对"。
 
 ### 决策顺序（与 scibox-figure 共享）
 
-`
+```
 ① scibox-figure 原生数据图母版 → ② 数据图深度改造 → ③ 本技能（结构图模板/复刻/custom drawio）
 → ④ 本题专用高级图 → ⑤ 普通 scatter/heatmap/line → ⑥ bar
-`
+```
 
-数据图走 scibox-figure，结构图走本技能；两者都优先于 ImageGen。
+数据图走 `scibox-figure`，结构图走本技能；两者都优先于 ImageGen。
 
 ### 科学真实性底线
 

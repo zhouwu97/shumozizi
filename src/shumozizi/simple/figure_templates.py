@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 import warnings
@@ -2079,13 +2080,135 @@ def _write_visual_manifest(figure: Any, output_stem: Path) -> Path:
     return manifest_path
 
 
-def render(template_id: str, data: dict[str, Any], output_stem: Path) -> Path:
+def _legend_overlaps_data(axis: Any) -> bool:
+    """机器判定图例窗口是否与数据绘制区域重叠（无法判定时保守返回 True）。"""
+    legend = axis.get_legend()
+    if legend is None or not legend.get_visible():
+        return False
+    try:
+        axis.figure.canvas.draw()
+        renderer = axis.figure.canvas.get_renderer()
+        legend_box = legend.get_window_extent(renderer)
+        data_box = axis.get_window_extent(renderer)
+        overlap_w = min(legend_box.x1, data_box.x1) - max(legend_box.x0, data_box.x0)
+        overlap_h = min(legend_box.y1, data_box.y1) - max(legend_box.y0, data_box.y0)
+        # numpy 2.x 的比较结果可能是 np.bool，JSON 无法序列化，显式转 Python bool。
+        return bool(overlap_w > 0 and overlap_h > 0)
+    except (AttributeError, RuntimeError, ValueError):
+        # 图例不可测量时保守标记为可能遮挡，交由人工复核。
+        return True
+
+
+def write_plot_layout_report(figure: Any, output_stem: Path, figure_id: str) -> Path:
+    """从已渲染的 Matplotlib Figure 机器提取统计图布局报告。
+
+    机器只声明它真正能验证的事实（论文尺寸、字号、坐标范围、图例遮挡）；
+    色盲安全、语言一致性与结论标注属于审美/语义判断，标记为待人工确认，
+    不替人工作答。
+
+    Args:
+        figure: 已完成布局的 Matplotlib Figure。
+        output_stem: 输出前缀（与 PNG 同目录）。
+        figure_id: 图表 ID。
+
+    Returns:
+        布局报告 JSON 路径。
+    """
+    figure.canvas.draw()
+    width_cm, height_cm = (float(value) * 2.54 for value in figure.get_size_inches())
+    fonts = [
+        float(artist.get_fontsize())
+        for artist in _figure_text_artists(figure)
+        if artist.get_fontsize()
+    ]
+    minimum_font_pt = min(fonts) if fonts else 12.0
+    axes: list[dict[str, Any]] = []
+    needs_human: list[str] = ["colorblind_safe", "locale_consistent", "takeaway_annotation"]
+    if width_cm > 20 or height_cm > 24:
+        # sci-box 母版原图按整页/横版设计，正文排版需要缩放到栏宽；
+        # 论文实际占用尺寸由人工看图后确认。
+        needs_human.append("paper_size_cm")
+    for index, axis in enumerate(figure.axes):
+        axis_id = f"panel-{index + 1}"
+        projection = "3d" if axis.name == "3d" else "2d"
+        x_limits = [float(value) for value in axis.get_xlim()]
+        y_limits = [float(value) for value in axis.get_ylim()]
+        try:
+            data_lim = axis.dataLim
+            x_data = [float(data_lim.x0), float(data_lim.x1)]
+            y_data = [float(data_lim.y0), float(data_lim.y1)]
+            if not all(math.isfinite(value) for value in (*x_data, *y_data)):
+                raise ValueError
+        except (AttributeError, RuntimeError, ValueError):
+            # dataLim 不可用时（纯装饰/极坐标 axes），保守按显示范围全占用。
+            x_data, y_data = x_limits, y_limits
+        record: dict[str, Any] = {
+            "id": axis_id,
+            "role": "primary" if index == 0 else "supporting",
+            "projection": projection,
+            "x_limits": x_limits,
+            "x_data_range": x_data,
+            "y_limits": y_limits,
+            "y_data_range": y_data,
+            "legend_overlaps_data": _legend_overlaps_data(axis),
+            "takeaway_annotation": False,
+        }
+        if projection == "3d":
+            try:
+                box_aspect = [float(value) for value in axis.get_box_aspect()]
+            except (AttributeError, RuntimeError, ValueError):
+                box_aspect = [1.0, 1.0, 1.0]
+            record["data_aspect_ratio"] = box_aspect
+            record["camera_projection"] = "orthographic"
+            record["camera_view"] = {
+                "azimuth": float(getattr(axis, "azim", 30.0)),
+                "elevation": float(getattr(axis, "elev", 30.0)),
+            }
+            record["coordinate_unit"] = ""
+            record["trajectory_direction_labeled"] = False
+            needs_human.extend([f"{axis_id}.camera_projection", f"{axis_id}.coordinate_unit"])
+        axes.append(record)
+    report_path = output_stem.with_suffix(".layout_report.json")
+    atomic_json(
+        report_path,
+        {
+            "schema_name": "plot_layout_report",
+            "schema_version": "1.0",
+            "figure_id": figure_id,
+            "paper_size_cm": {
+                "width": round(width_cm, 2),
+                "height": round(height_cm, 2),
+            },
+            "minimum_font_size_pt": round(minimum_font_pt, 1),
+            "colorblind_safe": False,
+            "locale_consistent": False,
+            "axes": axes,
+            "primary_panel_id": axes[0]["id"] if axes else "panel-1",
+            "machine_verified": [
+                "paper_size_cm",
+                "minimum_font_size_pt",
+                "axes",
+                "legend_overlaps_data",
+            ],
+            "needs_human_confirmation": needs_human,
+        },
+    )
+    return report_path
+
+
+def render(
+    template_id: str,
+    data: dict[str, Any],
+    output_stem: Path,
+    figure_id: str | None = None,
+) -> Path:
     """以已验证的真实数据生成 PNG、PDF、SVG 和文字边界文件。
 
     Args:
         template_id: 模板 ID。
         data: 由 :func:`load_data` 返回的真实数据。
         output_stem: 不含扩展名的运行目录内输出路径。
+        figure_id: 可选图表 ID；提供时同时机器生成 layout_report.json。
 
     Returns:
         文字边界 JSON 文件路径。
@@ -2143,6 +2266,8 @@ def render(template_id: str, data: dict[str, Any], output_stem: Path) -> Path:
             newline="\n",
         )
         _write_visual_manifest(figure, output_stem)
+        if figure_id:
+            write_plot_layout_report(figure, output_stem, figure_id)
         return boxes_path
     finally:
         plt.close(figure)

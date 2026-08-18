@@ -415,21 +415,23 @@ def generate_from_result(
     cannot_prove: str | None = None,
     adaptation: str = "direct",
 ) -> dict[str, object]:
-    """以 current 真实结果生成并登记一张 v3 图表。
+    """以 current 真实结果生成并登记一张 v3.1 图表（旧运行兼容，单步登记到 current）。
+
+    v3.2 及以后的生产路径请用 :func:`render_candidate`（渲染 work 候选，不登记），
+    再经 ``promote_figure_candidate.py`` 晋级。本函数保留旧 v3.1 运行的一次性登记行为。
 
     Args:
         run_dir: v3 运行目录。
         template_id: 已接入模板 ID。
         result_id: 数据来源结果 ID。
-        output_prefix: ``figures/`` 内的不含扩展名输出前缀。
+        output_prefix: ``figures/current/...`` 内的不含扩展名输出前缀。
         input_result: 可选的具体 JSON 输出路径。
-        figure_id: 可选稳定图表 ID；重新生成同 ID 会替代旧图。
-        adaptation: ``direct``（默认，复制 sci-box 母版脚本只换数据入口）、
-            ``manual``（复制原脚本留 stub 由 Agent 手工换数据）或
-            ``reimplemented``（本仓 v3 简化渲染器回退）。
+        figure_id: 可选稳定图表 ID。
+        figure_stage: 登记阶段（evidence / publication / current）。
+        adaptation: ``direct`` / ``manual`` / ``reimplemented``。
 
     Returns:
-        新登记图表及其输出；manual 模式返回编辑指引而不登记。
+        登记结果；direct 无 shim 或 manual 时返回编辑指引而不登记。
 
     Raises:
         ContractError: 输入不合法、模板不可用或渲染失败。
@@ -443,21 +445,27 @@ def generate_from_result(
     chosen_input = _find_input(root, result_id, input_result)
     data = load_data(template_id, resolve_inside(root, chosen_input, must_exist=True))
     stem, relative_stem, default_id = _output_stem(root, output_prefix)
+    figure_id = figure_id or default_id
 
-    if adaptation == "manual":
+    if adaptation == "manual" or (
+        adaptation == "direct" and template_id not in DIRECT_ADAPTATION_READY
+    ):
         guide = prepare_manual_adaptation(template_id, data, stem, root)
-        guide.update({"success": True, "result_id": result_id, "input_result": chosen_input})
+        guide.update(
+            {
+                "success": True,
+                "mode": "manual",
+                "result_id": result_id,
+                "input_result": chosen_input,
+                "notice": (
+                    f"{template_id} 暂无自动 direct shim；已复制原母版脚本到 "
+                    f"{guide['adapted_script']}，由你手工替换数据入口后运行，再走晋级流程。"
+                ),
+            }
+        )
         return guide
 
     if adaptation == "direct":
-        if template_id not in DIRECT_ADAPTATION_READY:
-            raise ContractError(
-                f"{template_id} 暂无自动 direct 适配 shim（可用: "
-                + ", ".join(sorted(DIRECT_ADAPTATION_READY))
-                + "）；请用 --adaptation manual 复制原脚本手工换数据入口，"
-                "或 --adaptation reimplemented 使用 v3 简化渲染器回退"
-            )
-        # 冻结母版原脚本作为 reference，登记复制后的 adapted 脚本作为 renderer。
         target_dir = root / "code" / "figures"
         target_dir.mkdir(parents=True, exist_ok=True)
         reference_target = _freeze_runtime_source(
@@ -465,17 +473,21 @@ def generate_from_result(
             target_dir,
             prefix=f"reference_{Path(TEMPLATE_SCRIPTS[template_id]).stem}",
         )
-        outputs, text_boxes = adapt_and_render(template_id, data, stem, root)
-        renderer_script = (target_dir / f"adapted_{template_id}.py").relative_to(root).as_posix()
+        result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id)
+        outputs = result["outputs"]
+        text_boxes = result["text_boxes"]
+        visual_manifest = result["visual_manifest"]
+        renderer_script = result["adapted_script"]
         reference_template = reference_target.relative_to(root).as_posix()
     else:  # reimplemented
         reference_template, renderer_script = _copy_runtime_sources(root, template_id)
-        text_boxes = relative_inside(root, render(template_id, data, stem)).as_posix()
+        text_boxes = relative_inside(root, render(template_id, data, stem, figure_id=figure_id)).as_posix()
         outputs = [f"{relative_stem}{suffix}" for suffix in (".png", ".pdf", ".svg")]
+        visual_manifest = f"{relative_stem}.visual_manifest.json"
 
     entry = register_figure(
         root,
-        figure_id=figure_id or default_id,
+        figure_id=figure_id,
         template_id=template_id,
         result_id=result_id,
         input_result=chosen_input,
@@ -494,31 +506,161 @@ def generate_from_result(
         "mode": adaptation,
         "figure": entry,
         "outputs": outputs,
-        "visual_manifest": f"{relative_stem}.visual_manifest.json",
+        "visual_manifest": visual_manifest,
+        "layout_report": f"{relative_stem}.layout_report.json",
+    }
+
+
+def _promote_command(
+    run_dir: Path,
+    figure_id: str,
+    relative_stem: str,
+    layout_report: str,
+    visual_manifest: str,
+) -> str:
+    """生成 work 候选晋级 current 的 promote 命令模板（角色与人工复核由 Agent 补充）。"""
+    return (
+        f"# 1) 打开 {relative_stem}.png 实际看图（文字溢出/箭头/面板/数据是否真实）\n"
+        f"# 2) 确认 layout_report 的 needs_human_confirmation 字段（colorblind_safe / "
+        f"locale_consistent / takeaway_annotation）后写入 figures/work/{figure_id}/<version>/*.human-review.json\n"
+        f"python scripts/figures/promote_figure_candidate.py runs/{run_dir.name} \\\n"
+        f"  --figure-id {figure_id} \\\n"
+        f"  --candidate {relative_stem}.png --candidate {relative_stem}.pdf \\\n"
+        f"  --target-stem figures/current/{figure_id} \\\n"
+        f"  --rendering-mode plot \\\n"
+        f"  --layout-report {layout_report} \\\n"
+        f"  --visual-manifest {visual_manifest} \\\n"
+        f"  --figure-role <model_understanding|decisive_evidence|insight|stability> \\\n"
+        f"  [--presentation-role <data_portrait|question_hero|supporting|appendix>] \\\n"
+        f"  --human-review figures/work/{figure_id}/<version>/{figure_id}.human-review.json"
+    )
+
+
+def render_candidate(
+    run_dir: Path,
+    *,
+    template_id: str,
+    result_id: str,
+    output_prefix: str,
+    input_result: str | None = None,
+    figure_id: str | None = None,
+    adaptation: str = "direct",
+) -> dict[str, object]:
+    """以 current 真实结果渲染一张 work 候选图（不登记，晋级走 promote_figure_candidate）。
+
+    Args:
+        run_dir: v3 运行目录。
+        template_id: 已接入模板 ID。
+        result_id: 数据来源结果 ID。
+        output_prefix: ``figures/work/<figure_id>/<version>/`` 内的不含扩展名输出前缀。
+        input_result: 可选的具体 JSON 输出路径。
+        figure_id: 可选稳定图表 ID。
+        adaptation: ``direct``（默认，复制 sci-box 母版脚本只换数据入口）、
+            ``manual``（复制原脚本留 stub 由 Agent 手工换数据）或
+            ``reimplemented``（本仓 v3 简化渲染器回退）。
+
+    Returns:
+        候选输出、机器生成的 text-boxes/visual_manifest/layout_report 与晋级命令；
+        manual 模式返回编辑指引而不渲染。
+
+    Raises:
+        ContractError: 输入不合法、模板不可用或渲染失败。
+    """
+    root = run_dir.resolve()
+    read_simple_state(root)
+    if template_id not in SUPPORTED_TEMPLATES:
+        raise ContractError(
+            f"模板未接入真实数据接口: {template_id}；可用: {', '.join(SUPPORTED_TEMPLATES)}"
+        )
+    chosen_input = _find_input(root, result_id, input_result)
+    data = load_data(template_id, resolve_inside(root, chosen_input, must_exist=True))
+    stem, relative_stem, default_id = _output_stem(root, output_prefix)
+    figure_id = figure_id or default_id
+    if not relative_stem.startswith("figures/work/"):
+        raise ContractError(
+            "work 候选输出必须位于 figures/work/<figure_id>/<version>/ 下；"
+            f"当前: {relative_stem}"
+        )
+
+    if adaptation == "manual" or (
+        adaptation == "direct" and template_id not in DIRECT_ADAPTATION_READY
+    ):
+        # direct 无 shim 时自动进入 manual-copy（复制原母版留 stub），
+        # 绝不静默回退到简化 reimplemented 渲染器。
+        guide = prepare_manual_adaptation(template_id, data, stem, root)
+        guide.update(
+            {
+                "success": True,
+                "mode": "manual",
+                "result_id": result_id,
+                "input_result": chosen_input,
+                "notice": (
+                    f"{template_id} 暂无自动 direct shim；已复制原母版脚本到 "
+                    f"{guide['adapted_script']}，由你手工替换数据入口后运行，再走晋级流程。"
+                ),
+            }
+        )
+        return guide
+
+    if adaptation == "direct":
+        # 冻结母版原脚本作为 reference；复制后的 adapted 脚本就是本次实际执行的母版。
+        target_dir = root / "code" / "figures"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        _freeze_runtime_source(
+            REPO_ROOT / _template_script_path(template_id),
+            target_dir,
+            prefix=f"reference_{Path(TEMPLATE_SCRIPTS[template_id]).stem}",
+        )
+        result = adapt_and_render(template_id, data, stem, root, figure_id=figure_id)
+        outputs = result["outputs"]
+        text_boxes = result["text_boxes"]
+        layout_report = result["layout_report"]
+        visual_manifest = result["visual_manifest"]
+        renderer_script = result["adapted_script"]
+    else:  # reimplemented
+        reference_template, renderer_script = _copy_runtime_sources(root, template_id)
+        text_boxes = relative_inside(root, render(template_id, data, stem, figure_id=figure_id)).as_posix()
+        outputs = [f"{relative_stem}{suffix}" for suffix in (".png", ".pdf", ".svg")]
+        layout_report = f"{relative_stem}.layout_report.json"
+        visual_manifest = f"{relative_stem}.visual_manifest.json"
+
+    promote = _promote_command(root, figure_id, relative_stem, layout_report, visual_manifest)
+    return {
+        "success": True,
+        "mode": adaptation,
+        "figure_id": figure_id,
+        "result_id": result_id,
+        "input_result": chosen_input,
+        "outputs": outputs,
+        "text_boxes": text_boxes,
+        "visual_manifest": visual_manifest,
+        "layout_report": layout_report,
+        "renderer_script": renderer_script,
+        "promote": promote,
     }
 
 
 def main() -> int:
-    """解析命令行、生成真实图表并输出登记摘要。"""
-    parser = argparse.ArgumentParser(description="从 current v3 真实结果生成可追溯科研图表")
+    """解析命令行、渲染 work 候选图并输出晋级命令。"""
+    parser = argparse.ArgumentParser(
+        description="从 current v3 真实结果渲染 sci-box 母版 work 候选图（晋级走 promote_figure_candidate）"
+    )
     parser.add_argument("run_dir", nargs="?", help="v3 运行目录")
     parser.add_argument("--template", choices=SUPPORTED_TEMPLATES)
     parser.add_argument("--result-id")
-    parser.add_argument("--output-prefix")
+    parser.add_argument(
+        "--output-prefix",
+        help="figures/work/<figure-id>/<version>/ 下的不含扩展名输出前缀",
+    )
     parser.add_argument("--input-result")
     parser.add_argument("--figure-id")
-    parser.add_argument("--stage", choices=("evidence", "publication"), default="publication")
     parser.add_argument(
         "--adaptation",
         choices=("direct", "manual", "reimplemented"),
         default="direct",
-        help="direct=复制 sci-box 母版脚本只换数据入口（默认）；manual=复制原脚本留 stub 手工换数据；"
-        "reimplemented=本仓 v3 简化渲染器回退",
+        help="direct=复制 sci-box 母版脚本只换数据入口（默认，无 shim 时自动转 manual-copy）；"
+        "manual=复制原脚本留 stub 手工换数据；reimplemented=本仓 v3 简化渲染器回退（明确要求才用）",
     )
-    parser.add_argument("--claim-id", action="append", default=[])
-    parser.add_argument("--scientific-question")
-    parser.add_argument("--expected-takeaway")
-    parser.add_argument("--cannot-prove")
     parser.add_argument("--list", action="store_true", help="列出已接入真实数据接口的模板")
     parser.add_argument("--catalog", action="store_true", help="输出机器可读的生产模板目录")
     parser.add_argument("--recommend", help="按建模结构推荐高级图候选")
@@ -542,18 +684,13 @@ def main() -> int:
             "除 --list/--catalog/--recommend 外，必须提供 run_dir、--template、--result-id 和 --output-prefix"
         )
     try:
-        payload = generate_from_result(
+        payload = render_candidate(
             Path(args.run_dir),
             template_id=args.template,
             result_id=args.result_id,
             output_prefix=args.output_prefix,
             input_result=args.input_result,
             figure_id=args.figure_id,
-            figure_stage=args.stage,
-            claim_ids=args.claim_id,
-            scientific_question=args.scientific_question,
-            expected_takeaway=args.expected_takeaway,
-            cannot_prove=args.cannot_prove,
             adaptation=args.adaptation,
         )
     except (ContractError, OSError) as exc:

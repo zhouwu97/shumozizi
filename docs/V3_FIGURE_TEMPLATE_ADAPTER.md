@@ -2,34 +2,50 @@
 
 该适配器将**已登记的真实执行结果**渲染为可追溯图表。它不自动选择模板，也不把图表当成科学质量证明；选择仍由当前题的证据需求和论证角色决定。
 
-## 使用方式
+## 使用方式（渲染与登记分离）
 
 ```powershell
 python -m pip install -e ".[figures]"
 
+# 第一步：渲染 work 候选（不登记）
 python scripts/figures/use_template.py runs/<run-id> `
-  --template cv-roc-ci `
+  --template nature-chord-diagram `
   --result-id q3_classifier `
-  --output-prefix figures/q3_cv_roc
+  --output-prefix figures/work/q3-chord/v1/q3-chord `
+  --adaptation direct
+
+# 第二步：打开真实 PNG 看图，确认 layout_report 的 needs_human_confirmation 字段，
+# 写 human-review JSON，再晋级 current（命令由第一步输出给出）
+python scripts/figures/promote_figure_candidate.py runs/<run-id> `
+  --figure-id q3-chord --candidate figures/work/q3-chord/v1/q3-chord.png `
+  --candidate figures/work/q3-chord/v1/q3-chord.pdf `
+  --target-stem figures/current/q3-chord --rendering-mode plot `
+  --layout-report figures/work/q3-chord/v1/q3-chord.layout_report.json `
+  --visual-manifest figures/work/q3-chord/v1/q3-chord.visual_manifest.json `
+  --figure-role insight --human-review <review.json>
 ```
 
 `--result-id` 必须是 `results/index.json` 中 `status=current` 且 `execution_valid=true` 的条目。默认只在其恰有一个 JSON 输出时使用该输出；有多个 JSON 输出时，以 `--input-result results/raw/<file>.json` 明确选择。
 
-输出固定为 PNG、PDF、SVG、`<prefix>.text-boxes.json` 和 `<prefix>.visual_manifest.json`。适配器同时复制冻结的原模板源与本次渲染脚本到 `code/figures/`，并在 `figures/index.json` 登记所有输入、脚本、输出的 SHA-256。
+渲染产出 `figures/work/<figure-id>/<version>/` 下的 PNG/PDF/SVG，并**机器生成**
+`<prefix>.text-boxes.json`、`<prefix>.visual_manifest.json` 与 `<prefix>.layout_report.json`
+（论文尺寸、字号、坐标范围、图例遮挡均从 Figure 提取；`needs_human_confirmation` 列出
+色盲安全/语言一致性/结论标注等必须由人工看图确认的字段）。渲染阶段不登记，晋级走
+`promote_figure_candidate.py`；旧 v3.1 运行的一次性登记仍由 `generate_from_result` 保留。
 
 ## 三种适配模式（sci-box 母版优先）
 
 | `--adaptation` | 行为 | 何时使用 |
 | --- | --- | --- |
-| `direct`（默认） | **复制 sci-box 母版原脚本**（`skills/sci-box/scibox-figure/scripts/templates/make_<id>.py`，上游 jihe520/sci-box 原样副本）到 `code/figures/adapted_<id>.py`，注入 `_real_data_<id>.py` shim 把 `simulate_*()`/模块常量替换为真实结果，**原样保留绘图结构**后运行。 | 首选；母版结构能直接表达本题结果时。 |
-| `manual` | 复制原脚本 + 写入标记好的数据入口 stub（`TODO(manual adaptation)`），不运行、不登记。 | 需要拆/并/删面板、改变量数或母版无自动 shim 时，由 Agent 手工替换数据入口后运行。 |
-| `reimplemented` | 本仓 v3 渲染器（`src/shumozizi/simple/figure_templates.py`）简化重绘。 | 最后一档 fallback；不当作默认路径。 |
+| `direct`（默认） | **复制 sci-box 母版原脚本**（`skills/sci-box/scibox-figure/scripts/templates/make_<id>.py`，上游 jihe520/sci-box 原样副本）到 `code/figures/adapted_<id>.py`，进程内**先注入** `_real_data_<id>.py` shim（把 `simulate_*()`/模块常量替换为真实结果）**再调用 make_figure**，原样保留绘图结构。无 shim 时自动转 manual-copy，**绝不静默回退**到简化 reimplemented。 | 首选；母版结构能直接表达本题结果时。 |
+| `manual` | 复制原脚本 + 改写输出路径 + 写入标记好的数据入口 stub（`TODO(manual adaptation)`），不运行、不登记。 | 需要拆/并/删面板、改变量数或母版无自动 shim 时，由 Agent 手工替换数据入口后运行。 |
+| `reimplemented` | 本仓 v3 渲染器（`src/shumozizi/simple/figure_templates.py`）简化重绘。 | 明确要求才用；不作为默认路径。 |
 
 `direct` 是“**用了人家的模板**”的唯一正确姿势：母版脚本的版式（面板几何、字号、轴线、
 图例、间距、注释）是人工设计好的成品，只允许换数据入口和少量调整（标签、变量数、重点），
 禁止默认重新实现。目前有自动 shim 的母版：`grouped-corr-split-violin`、`correlation-pairgrid`、
 `rf-tpe-surface`、`grouped-circular-heatmap`、`taylor-diagram`、`nature-chord-diagram`；
-其余模板用 `manual` 或 `reimplemented`。
+其余模板默认转 manual-copy。
 
 选图优先级（`skills/sci-box/scibox-figure` 的决策顺序）：
 ① sci-box 原生母版 → ② 模板深度改造/组合 → ③ scibox-diagram 结构图 → ④ 本题专用高级图 →

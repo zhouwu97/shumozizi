@@ -1,9 +1,12 @@
-"""sci-box 母版模板“直接适配”渲染与图计划选型合同测试。
+"""sci-box 母版模板“直接适配”渲染、数据真实性回归与 work→promotion 闭环测试。
 
 覆盖：
-- direct adaptation：复制原模板脚本 -> 注入真实数据 shim -> 原样运行 -> PNG/PDF/SVG 产出；
-- 特征数不匹配、无 shim 模板、manual 模式；
-- FIGURE_PLAN 允许 sci-box 技能（selected_skill / preferred / template_id 放宽）。
+- P0-1：真实数据必须先于 make_figure 注入——两份不同真实数据必须产出不同 PNG；
+- direct adaptation：复制原模板脚本、机器生成 text-boxes/visual_manifest/layout_report；
+- Taylor：TaylorPoint(model=...) 字段与 reference_std 归一化；
+- manual 模式：复制原脚本 + 输出路径改写 + 数据入口 stub；
+- e2e 闭环：render_candidate（work 候选）→ 人工确认 → promote → figures/current；
+- FIGURE_PLAN：scibox-diagram 允许 template_id=custom，sci-box 技能可选。
 
 注意：本文件不使用 pytest 的 tmp_path（其 basetemp 以 POSIX 0o700 创建，在受沙箱
 限制的 Windows 环境会拒绝枚举），改用工作区内默认权限的临时目录 ws_tmp。
@@ -11,20 +14,28 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import uuid
 from pathlib import Path
 
 import pytest
 
-from shumozizi.core.io import ContractError
+from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.simple.direct_adaptation import (
     DIRECT_ADAPTATION_READY,
     adapt_and_render,
     prepare_manual_adaptation,
 )
+from shumozizi.simple.figure_promotion import promote_figure_candidate
 from shumozizi.simple.figures import write_figure_plan
 from shumozizi.simple.initialization import initialize_simple_run
+from shumozizi.simple.quality import assess_result_quality
+from tests.quality_protocol_helpers import (
+    adapter_backed_assessment,
+    record_passing_scientific_review,
+    run_synthetic_verification_protocol,
+)
 
 
 @pytest.fixture
@@ -38,7 +49,7 @@ def ws_tmp() -> Path:
         shutil.rmtree(base, ignore_errors=True)
 
 
-def _split_violin_data(feature_count: int = 13, rows: int = 30) -> dict[str, object]:
+def _split_violin_data(feature_count: int = 13, rows: int = 30, seed: float = 0.0) -> dict[str, object]:
     """构造符合 grouped-corr-split-violin 数据合同的真实观测。"""
     return {
         "features": [f"f{i:02d}" for i in range(feature_count)],
@@ -46,97 +57,336 @@ def _split_violin_data(feature_count: int = 13, rows: int = 30) -> dict[str, obj
             {
                 "name": "Train",
                 "values": [
-                    [float(i + j * 0.5) for j in range(feature_count)] for i in range(rows)
+                    [float(i + j * 0.5 + seed) for j in range(feature_count)] for i in range(rows)
                 ],
             },
             {
                 "name": "Test",
                 "values": [
-                    [float(i + 2.0 - j * 0.5) for j in range(feature_count)] for i in range(rows)
+                    [float(i + 2.0 - j * 0.5 + seed) for j in range(feature_count)] for i in range(rows)
                 ],
             },
         ],
     }
 
 
-def test_direct_adaptation_copies_original_and_swaps_data_entry(
-    ws_tmp: Path,
-) -> None:
-    """direct 模式必须复制原脚本、只替换数据入口并产出三种格式。"""
-    run_dir = ws_tmp / "run"
+def _chord_data() -> dict[str, object]:
+    """构造符合 nature-chord-diagram 数据合同的节点与加权边。"""
+    return {
+        "nodes": [
+            {"id": "n1", "label": "约束", "group": "输入"},
+            {"id": "n2", "label": "决策变量", "group": "中间"},
+            {"id": "n3", "label": "指标", "group": "输出"},
+            {"id": "n4", "label": "灵敏度", "group": "输出"},
+        ],
+        "links": [
+            {"source": "n1", "target": "n2", "weight": 3.0},
+            {"source": "n2", "target": "n3", "weight": 4.5},
+            {"source": "n2", "target": "n4", "weight": 2.5},
+            {"source": "n1", "target": "n4", "weight": 1.8},
+        ],
+    }
+
+
+def test_direct_adaptation_real_data_changes_the_png() -> None:
+    """P0-1：给两份不同的真实数据，PNG 必须真的发生变化（而不是都画模拟数据）。"""
+    run_dir = Path("tmp") / f"t-p01-{uuid.uuid4().hex[:8]}"
     run_dir.mkdir()
-    output_stem = run_dir / "figures" / "publication" / "q3-corr"
+    try:
+        stem_a = run_dir / "figures" / "work" / "q3-corr" / "v1" / "q3-corr"
+        stem_b = run_dir / "figures" / "work" / "q3-corr" / "v1" / "q3-corr-b"
+        adapt_and_render(
+            "grouped-corr-split-violin", _split_violin_data(seed=0.0), stem_a, run_dir, figure_id="q3-corr"
+        )
+        adapt_and_render(
+            "grouped-corr-split-violin", _split_violin_data(seed=50.0), stem_b, run_dir, figure_id="q3-corr"
+        )
+        png_a = sha256_file(stem_a.with_suffix(".png"))
+        png_b = sha256_file(stem_b.with_suffix(".png"))
+        assert png_a != png_b, "不同真实数据必须生成不同的 PNG，否则仍是模拟数据"
+        # 数据 shim 必须存在于复制脚本同目录，且布局/清单是机器生成的。
+        artifacts = load_json(stem_a.with_suffix(".layout_report.json"))
+        assert artifacts["needs_human_confirmation"]
+        assert load_json(stem_a.with_suffix(".visual_manifest.json"))["elements"]
+        assert load_json(stem_a.with_suffix(".text-boxes.json"))["boxes"] is not None
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
-    outputs, boxes = adapt_and_render(
-        "grouped-corr-split-violin", _split_violin_data(), output_stem, run_dir
+
+def test_direct_adaptation_copies_original_and_keeps_drawing() -> None:
+    """direct 模式必须复制原脚本并保留绘图结构（draw_* / fig.add_axes / fig.legend）。"""
+    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        stem = run_dir / "figures" / "work" / "q3-corr" / "v1" / "q3-corr"
+        result = adapt_and_render(
+            "grouped-corr-split-violin", _split_violin_data(), stem, run_dir, figure_id="q3-corr"
+        )
+        for item in result["outputs"]:
+            assert (run_dir / item).is_file()
+            assert (run_dir / item).stat().st_size > 0
+        adapted = run_dir / result["adapted_script"]
+        text = adapted.read_text(encoding="utf-8")
+        assert "def draw_lower_corr" in text
+        assert "def draw_split_violin" in text
+        assert "fig.add_axes([0.024, 0.165, 0.018, 0.72])" in text
+        assert 'fig.legend(handles=handles, loc="lower center"' in text
+        # 输出路径指向本次运行目录，而不是模板默认 outputs/。
+        assert 'outputs" / "grouped_corr_split_violin_replica' not in text
+        # P0-1：数据 shim 由引擎先注入（进程内 apply_real_data 先于 make_figure），
+        # 复制脚本里不应再出现“先 main 后注入”的顺序。
+        assert "apply_real_data" not in text
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_direct_adaptation_feature_count_mismatch_raises() -> None:
+    """特征数不等于母版模板时明确报错，指引 manual 模式手工调整布局。"""
+    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        stem = run_dir / "figures" / "work" / "mismatch" / "v1" / "mismatch"
+        with pytest.raises(ContractError, match="特征数|manual"):
+            adapt_and_render(
+                "grouped-corr-split-violin", _split_violin_data(feature_count=6), stem, run_dir
+            )
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_direct_adaptation_unknown_template_raises() -> None:
+    """没有自动 shim 的模板直接调用 adapt_and_render 必须给出 manual 指引。"""
+    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        stem = run_dir / "figures" / "work" / "unknown" / "v1" / "unknown"
+        with pytest.raises(ContractError, match="manual"):
+            adapt_and_render("cv-roc-ci", {"models": []}, stem, run_dir)
+        assert "cv-roc-ci" not in DIRECT_ADAPTATION_READY
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_manual_adaptation_patches_output_stem_and_leaves_stub() -> None:
+    """manual 模式复制原脚本、改写输出路径、写数据入口 stub，不运行不产出图。"""
+    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        stem = run_dir / "figures" / "work" / "manual-roc" / "v1" / "manual-roc"
+        guide = prepare_manual_adaptation("cv-roc-ci", {"models": []}, stem, run_dir)
+        assert guide["mode"] == "manual"
+        adapted = run_dir / guide["adapted_script"]
+        text = adapted.read_text(encoding="utf-8")
+        assert "TODO(manual adaptation)" in text
+        # P1：manual 也必须改写输出路径，不能运行后写到模板默认 outputs/。
+        assert 'outputs" / "cv_roc_ci_replica' not in text
+        assert (run_dir / guide["figure_data"]).is_file()
+        assert not (stem.with_suffix(".png")).exists()
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_taylor_direct_adaptation_uses_model_field_and_reference_std() -> None:
+    """Taylor shim 必须用 model= 字段，并把 std 按 reference_std 归一化。"""
+    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        data = {
+            "reference_std": 2.0,
+            "panels": [
+                {
+                    "title": "留出集",
+                    "points": [
+                        {"name": "基线", "std": 2.0, "corr": 0.80},
+                        {"name": "挑战者", "std": 1.6, "corr": 0.95},
+                    ],
+                },
+                {
+                    "title": "训练集",
+                    "points": [
+                        {"name": "基线", "std": 2.1, "corr": 0.82},
+                        {"name": "挑战者", "std": 1.7, "corr": 0.96},
+                    ],
+                },
+                {
+                    "title": "全量",
+                    "points": [
+                        {"name": "基线", "std": 2.05, "corr": 0.81},
+                        {"name": "挑战者", "std": 1.65, "corr": 0.95},
+                    ],
+                },
+            ],
+        }
+        stem = run_dir / "figures" / "work" / "taylor" / "v1" / "taylor"
+        result = adapt_and_render("taylor-diagram", data, stem, run_dir, figure_id="taylor")
+        assert (run_dir / result["outputs"][0]).stat().st_size > 0
+        # 归一化后标签应提示 Normalized Standard Deviation。
+        layout = load_json(stem.with_suffix(".layout_report.json"))
+        assert layout["figure_id"] == "taylor"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# e2e 闭环：render_candidate（work 候选）→ 人工确认 → promote → figures/current
+# ---------------------------------------------------------------------------
+
+
+def _quality_ready_run(
+    ws_tmp: Path, name: str, extra_payloads: dict[str, dict[str, object]] | None = None
+) -> tuple[Path, dict[str, str]]:
+    """建立带 current + quality 通过结果的 v3 运行，返回 (run_dir, figure_data 输入映射)。"""
+    run_dir = initialize_simple_run(
+        ws_tmp,
+        name,
+        required_questions=["Q1"],
     )
+    payloads: dict[str, dict[str, object]] = {
+        "chord": {"figure_data": _chord_data()},
+        **{key: value for key, value in (extra_payloads or {}).items()},
+    }
+    protocol = run_synthetic_verification_protocol(
+        run_dir,
+        result_id="q1_visual",
+        question_id="Q1",
+        objective=0.83,
+        artifact_payloads=payloads,
+    )
+    assessment = assess_result_quality(
+        run_dir,
+        result_id="q1_visual",
+        assessment=adapter_backed_assessment(protocol),
+    )
+    assert assessment["paper_allowed"]
+    record_passing_scientific_review(run_dir)
+    return run_dir, protocol["paths"]["artifacts"]
 
-    assert boxes == "figures/publication/q3-corr.text-boxes.json"
-    for item in outputs:
+
+def test_render_candidate_to_promotion_closes_v32_flow(ws_tmp: Path) -> None:
+    """P0-2：use_template 渲染 work 候选（不登记）→ 人工看图确认 → promote → current。"""
+    from scripts.figures.use_template import render_candidate
+
+    run_dir, artifacts = _quality_ready_run(ws_tmp, "scibox-closure")
+    input_result = artifacts["chord"]
+    figure_id = "q1-chord"
+    payload = render_candidate(
+        run_dir,
+        template_id="nature-chord-diagram",
+        result_id="q1_visual",
+        input_result=input_result,
+        output_prefix=f"figures/work/{figure_id}/v1/{figure_id}",
+        adaptation="direct",
+    )
+    assert payload["success"] is True
+    assert payload["mode"] == "direct"
+    for item in payload["outputs"]:
         assert (run_dir / item).is_file()
         assert (run_dir / item).stat().st_size > 0
-    assert any(item.endswith(".png") for item in outputs)
-    assert any(item.endswith(".pdf") for item in outputs)
-    assert any(item.endswith(".svg") for item in outputs)
+    # 渲染阶段不登记、不产生 current。
+    assert not (run_dir / "figures/current").exists() or not list(
+        (run_dir / "figures/current").glob("*.png")
+    )
+    assert "promote" in payload
 
-    adapted = run_dir / "code" / "figures" / "adapted_grouped-corr-split-violin.py"
-    shim = run_dir / "code" / "figures" / "_real_data_grouped_corr_split_violin.py"
-    assert adapted.is_file()
-    assert shim.is_file()
-    text = adapted.read_text(encoding="utf-8")
-    # 数据入口被替换，但绘图结构保留。
-    assert "apply_real_data(globals())" in text
-    assert "def draw_lower_corr" in text
-    assert "def draw_split_violin" in text
-    assert "fig.add_axes([0.024, 0.165, 0.018, 0.72])" in text
-    assert 'fig.legend(handles=handles, loc="lower center"' in text
-    # 输出路径指向本次运行目录（绝对路径），而不是模板默认 outputs/。
-    import json
+    # 人工看图确认：把机器报告的 needs_human_confirmation 字段补成已核实值，
+    # 并把正文排版尺寸改为栏宽放置（sci-box 母版按整页设计）。
+    layout_path = run_dir / payload["layout_report"]
+    layout = load_json(layout_path)
+    assert layout["needs_human_confirmation"]
+    layout["colorblind_safe"] = True
+    layout["locale_consistent"] = True
+    for axis in layout["axes"]:
+        axis["takeaway_annotation"] = True
+    png_ratio = _png_ratio(run_dir / payload["outputs"][0])
+    layout["paper_size_cm"] = {
+        "width": 15.5,
+        "height": round(15.5 / png_ratio, 2),
+    }
+    atomic_json(layout_path, layout)
 
-    assert f'Path({json.dumps(str(output_stem.resolve()))})' in text
-    assert 'outputs" / "grouped_corr_split_violin_replica' not in text
+    human_review = run_dir / f"figures/work/{figure_id}/v1/{figure_id}.human-review.json"
+    atomic_json(
+        human_review,
+        {
+            "reviewed": True,
+            "paper_width_preview_checked": True,
+            "mathematical_object_visible": True,
+            "key_observation_visible": True,
+            "mechanism_or_relation_visible": True,
+            "constraint_or_boundary_visible": True,
+            "decision_consequence_visible": True,
+            "not_redundant_with_table": True,
+            "caption_matches_figure": True,
+            "font_readable": True,
+            "panel_mapping_valid": True,
+            "focal_claim": "加权关系由节点分组与连接强度共同呈现，约束到指标的结构清晰。",
+            "visible_elements": [
+                {"type": "text", "label": "约束", "panel": "main"},
+                {"type": "text", "label": "决策变量", "panel": "main"},
+                {"type": "text", "label": "指标", "panel": "main"},
+            ],
+            "reading_order": ["main"],
+            "panel_takeaways": {"main": "约束经决策变量连接指标，加权关系直观可读。"},
+            "issues": [],
+            "verdict": "promote",
+        },
+    )
+
+    receipt = promote_figure_candidate(
+        run_dir,
+        figure_id=figure_id,
+        candidate_outputs=[item for item in payload["outputs"] if item.endswith((".png", ".pdf"))],
+        target_stem=f"figures/current/{figure_id}",
+        rendering_mode="plot",
+        layout_report=payload["layout_report"],
+        figure_role="insight",
+        human_review=load_json(human_review),
+        visual_manifest=payload["visual_manifest"],
+    )
+    assert receipt["figure_id"] == figure_id
+    assert (run_dir / f"figures/current/{figure_id}.png").is_file()
+    assert (run_dir / f"figures/current/{figure_id}.pdf").is_file()
 
 
-def test_direct_adaptation_feature_count_mismatch_raises(ws_tmp: Path) -> None:
-    """特征数不等于母版模板时明确报错，指引 manual 模式手工调整布局。"""
-    run_dir = ws_tmp / "run"
-    run_dir.mkdir()
-    output_stem = run_dir / "figures" / "evidence" / "mismatch"
+def _png_ratio(png: Path) -> float:
+    from PIL import Image
 
-    with pytest.raises(ContractError, match="特征数|manual"):
-        adapt_and_render(
-            "grouped-corr-split-violin", _split_violin_data(feature_count=6), output_stem, run_dir
-        )
+    with Image.open(png) as image:
+        width, height = image.size
+    return width / height
 
 
-def test_direct_adaptation_unknown_template_raises(ws_tmp: Path) -> None:
-    """没有自动 shim 的模板必须给出 direct/manual/reimplemented 三种指引。"""
-    run_dir = ws_tmp / "run"
-    run_dir.mkdir()
-    output_stem = run_dir / "figures" / "evidence" / "unknown"
+def test_render_candidate_direct_without_shim_auto_manual_copy(ws_tmp: Path) -> None:
+    """direct 无 shim 时自动转 manual-copy（复制原母版留 stub），不静默回退 reimplemented。"""
+    from scripts.figures.use_template import render_candidate
 
-    with pytest.raises(ContractError, match="manual|reimplemented"):
-        adapt_and_render("cv-roc-ci", {"models": []}, output_stem, run_dir)
-
-    assert "cv-roc-ci" not in DIRECT_ADAPTATION_READY
-
-
-def test_manual_adaptation_prepares_stub_without_running(ws_tmp: Path) -> None:
-    """manual 模式只复制原脚本并写入标记好的数据入口 stub，不运行、不产出图。"""
-    run_dir = ws_tmp / "run"
-    run_dir.mkdir()
-    output_stem = run_dir / "figures" / "evidence" / "manual-roc"
-
-    guide = prepare_manual_adaptation("cv-roc-ci", {"models": []}, output_stem, run_dir)
-
-    assert guide["mode"] == "manual"
-    adapted = run_dir / guide["adapted_script"]
-    assert adapted.is_file()
-    assert "TODO(manual adaptation)" in adapted.read_text(encoding="utf-8")
-    assert (run_dir / guide["figure_data"]).is_file()
-    # 没有产出任何图。
-    assert not (output_stem.with_suffix(".png")).exists()
-    assert "instructions" in guide
+    roc_payload = {
+        "figure_data": {
+            "models": [
+                {
+                    "name": "基线",
+                    "folds": [
+                        {"fpr": [0, 0.3, 1.0], "tpr": [0, 0.7, 1.0]},
+                        {"fpr": [0, 0.2, 1.0], "tpr": [0, 0.8, 1.0]},
+                    ],
+                }
+            ]
+        }
+    }
+    run_dir, artifacts = _quality_ready_run(ws_tmp, "scibox-manual-fallback", {"roc": roc_payload})
+    payload = render_candidate(
+        run_dir,
+        template_id="cv-roc-ci",
+        result_id="q1_visual",
+        input_result=artifacts["roc"],
+        output_prefix="figures/work/q1-roc/v1/q1-roc",
+        adaptation="direct",
+    )
+    assert payload["mode"] == "manual"
+    assert "手工" in payload["notice"]
+    assert (run_dir / payload["adapted_script"]).is_file()
+    # 不产生 work PNG（还没运行）。
+    assert not (run_dir / "figures/work/q1-roc/v1/q1-roc.png").exists()
 
 
 def _run(ws_tmp: Path, name: str) -> Path:
@@ -182,6 +432,46 @@ def _sci_box_figure() -> dict[str, object]:
     }
 
 
+def test_scibox_diagram_bridge_machine_extracts_layout(ws_tmp: Path) -> None:
+    """P1：scibox-diagram 桥自动从 .drawio XML 提取布局，diagram QA 零错误。"""
+    from scripts.figures.render_scibox_diagram import render_diagram_candidate
+    from shumozizi.simple.figure_promotion import _diagram_layout_errors
+
+    run_dir = ws_tmp / "diagram-run"
+    run_dir.mkdir()
+    content = json.loads(
+        (
+            Path("skills/sci-box/scibox-diagram/assets/roadmap-5band/example.json")
+        ).read_text(encoding="utf-8")
+    )
+    (run_dir / "content.json").write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
+
+    payload = render_diagram_candidate(
+        run_dir,
+        template_id="roadmap-5band",
+        content_json="content.json",
+        output_prefix="figures/work/q1-roadmap/v1/q1-roadmap",
+        figure_id="q1-roadmap",
+    )
+    assert payload["success"] is True
+    assert (run_dir / payload["drawio"]).is_file()
+    layout = load_json(run_dir / payload["layout_report"])
+    assert layout["machine_extracted"] is True
+    assert layout["node_boxes"]
+    assert layout["text_boxes"]
+    assert payload["artifacts"]["export"] == "pending_requires_drawio_cli" or payload[
+        "artifacts"
+    ].get("outputs")
+
+    errors = _diagram_layout_errors(
+        layout,
+        png_size=(int(layout["canvas"]["width"]), int(layout["canvas"]["height"])),
+        minimum_font_size_pt=8.0,
+    )
+    assert errors == [], errors
+    assert "promote" in payload
+
+
 def test_figure_plan_accepts_sci_box_skills_and_template_fields(ws_tmp: Path) -> None:
     """sci-box 技能必须成为正式可选技能，preferred 不再固定旧模板技能。"""
     run_dir = _run(ws_tmp, "figure-plan-scibox")
@@ -208,10 +498,35 @@ def test_figure_plan_accepts_sci_box_skills_and_template_fields(ws_tmp: Path) ->
     assert figure["template_preview_viewed"] is True
 
 
+def test_figure_plan_scibox_diagram_allows_custom_template(ws_tmp: Path) -> None:
+    """scibox-diagram 必须允许 template_id=custom（自由绘制 DrawIO 不被 schema 阉割）。"""
+    run_dir = _run(ws_tmp, "figure-plan-diagram-custom")
+    figure = _sci_box_figure()
+    figure["selected_skill"] = "skills/sci-box/scibox-diagram"
+    figure["preferred"] = "skills/sci-box/scibox-diagram"
+    figure["template_id"] = "custom"
+    figure["template_source"] = "custom"
+    plan = {
+        "schema_name": "figure_plan",
+        "schema_version": "2.3",
+        "run_id": run_dir.name,
+        "visual_decisions": [
+            {
+                "scope": "Q2",
+                "evidence_need": "required",
+                "presentation_need": "required",
+                "reason": "本题结构特殊，需要自由绘制 DrawIO 结构图。",
+            }
+        ],
+        "figures": [figure],
+    }
+
+    assert write_figure_plan(run_dir, plan)["figures"][0]["template_id"] == "custom"
+
+
 def test_figure_plan_hero_without_preventive_form_no_longer_blocked(ws_tmp: Path) -> None:
     """正文主图不再被前置的 generic_chart_considered 表单阻断（advisory）。"""
     run_dir = _run(ws_tmp, "figure-plan-no-preventive-form")
-    # _sci_box_figure() 不含 generic_chart_* 字段：结构匹配时直接放行。
     plan = {
         "schema_name": "figure_plan",
         "schema_version": "2.3",
