@@ -131,6 +131,16 @@ python scripts/figures/render_scibox_diagram.py runs/<run-id> `
 （装有 draw.io 命令行时）导出 PNG/PDF → 输出晋级命令。机器能知道的全部机器做，
 Agent 只负责"这张图好不好看、表达对不对"。
 
+custom / replica / 人工魔改或手工导出后的补全：用 `--drawio <已有.drawio>` 进入同一个桥
+（跳过生成器，直接机器提取；同目录已有 PNG/PDF 时自动补 manifest 与晋级命令）：
+
+```powershell
+python scripts/figures/render_scibox_diagram.py runs/<run-id> `
+  --drawio figures/work/q1-custom/v1/q1-custom.drawio `
+  --figure-id q1-custom `
+  --output-prefix figures/work/q1-custom/v1/q1-custom
+```
+
 ### 决策顺序（与 scibox-figure 共享）
 
 ```

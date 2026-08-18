@@ -38,18 +38,95 @@ from shumozizi.simple.figure_templates import (
     write_plot_layout_report,
 )
 
-# 模板 id -> 母版脚本文件名。只收录“直接复制 + 换数据入口”即可成立的模板；
-# 其余模板走 manual-copy（复制原脚本由 Agent 手工换数据），默认不回退简化 reimplemented。
+# 模板 id -> 母版脚本文件名。只收录“复制原脚本 + 只换数据入口 + 当前数据满足母版
+# 暗含数学/视觉前提”的模板。其余模板走 manual-copy（复制原脚本由 Agent 手工做
+# master_adapted：保留视觉设计、剥离源论文语义），默认不回退简化 reimplemented。
+#
+# 注意：rf-tpe-surface 与 grouped-circular-heatmap 已因“模拟语义藏在绘图函数里”
+# （42% 演示曲面混合 / Brain Phenotype 标签与固定星号规则）移出 direct，必须先做
+# master_adapted 剥离后再考虑恢复。
 _SCRIPT_NAMES: dict[str, str] = {
     "correlation-pairgrid": "make_correlation_pairgrid.py",
-    "grouped-circular-heatmap": "make_grouped_circular_heatmap.py",
     "grouped-corr-split-violin": "make_grouped_corr_split_violin.py",
     "nature-chord-diagram": "make_nature_chord_diagram.py",
-    "rf-tpe-surface": "make_rf_tpe_surface.py",
     "taylor-diagram": "make_taylor_diagram.py",
 }
 
 DIRECT_ADAPTATION_READY = frozenset(_SCRIPT_NAMES)
+
+
+def _validate_taylor(data: dict[str, Any]) -> None:
+    """Taylor 母版把负相关截断为 0 且 rmax=1.75：当前数据必须先满足其数学前提。"""
+    panels = data.get("panels")
+    if not isinstance(panels, list) or len(panels) != 3:
+        raise ContractError(
+            "taylor-diagram direct adaptation: 需要恰好 3 个面板"
+            "（模板 training/testing/full dataset 三个槽位）"
+        )
+    reference_std = float(data.get("reference_std") or 1.0)
+    if reference_std <= 0:
+        raise ContractError("taylor-diagram direct adaptation: reference_std 必须为正数")
+    for index, panel in enumerate(panels):
+        for point in panel.get("points", []):
+            corr = float(point["corr"])
+            if not 0.0 <= corr <= 1.0:
+                raise ContractError(
+                    f"taylor-diagram direct adaptation: 面板 {index} 的 {point.get('name')} "
+                    f"corr={corr} 会被母版截断为 0（np.clip(corr,0,1)），静默画错；"
+                    "请改用 manual/master_adapted"
+                )
+            if float(point["std"]) / reference_std > 1.7:
+                raise ContractError(
+                    f"taylor-diagram direct adaptation: 面板 {index} 的 {point.get('name')} "
+                    f"std/reference_std={float(point['std']) / reference_std:.3f} 超过母版 "
+                    "rmax=1.75 会被裁掉；请改用 manual/master_adapted"
+                )
+
+
+def _validate_grouped_corr(data: dict[str, Any]) -> None:
+    """相关矩阵母版的括号布局按 13 列固定：特征数必须匹配。"""
+    features = data.get("features")
+    if not isinstance(features, list) or len(features) != 13:
+        raise ContractError(
+            "grouped-corr-split-violin direct adaptation: 母版括号布局按 13 列设计，"
+            f"本题特征数 {len(features) if isinstance(features, list) else '未知'} != 13；"
+            "请用 manual 调整网格与括号"
+        )
+
+
+def _validate_chord(data: dict[str, Any]) -> None:
+    """和弦图母版要求至少三个真实节点、有效正权边。"""
+    nodes = data.get("nodes")
+    links = data.get("links")
+    if not isinstance(nodes, list) or len(nodes) < 3:
+        raise ContractError("nature-chord-diagram direct adaptation: 至少需要三个节点")
+    node_ids = {str(item["id"]) for item in nodes}
+    if not isinstance(links, list) or not links:
+        raise ContractError("nature-chord-diagram direct adaptation: 至少需要一条加权边")
+    for link in links:
+        if str(link["source"]) not in node_ids or str(link["target"]) not in node_ids:
+            raise ContractError("nature-chord-diagram direct adaptation: 边引用了未声明节点")
+
+
+# 每个可 direct 的母版：shim 生成器 + 数据语义前提校验器。
+DIRECT_ADAPTERS: dict[str, dict[str, Any]] = {
+    "correlation-pairgrid": {
+        "shim": lambda: _SHIM_CORRELATION_PAIRGRID,
+        "validate": lambda data: None,
+    },
+    "grouped-corr-split-violin": {
+        "shim": lambda: _SHIM_GROUPED_CORR_SPLIT_VIOLIN,
+        "validate": _validate_grouped_corr,
+    },
+    "nature-chord-diagram": {
+        "shim": lambda: _SHIM_NATURE_CHORD_DIAGRAM,
+        "validate": _validate_chord,
+    },
+    "taylor-diagram": {
+        "shim": lambda: _SHIM_TAYLOR_DIAGRAM,
+        "validate": _validate_taylor,
+    },
+}
 
 _OUTPUT_STEM_RE = re.compile(r'make_figure\(\s*ROOT\s*/\s*"outputs"\s*/\s*"([^"]+)"\s*\)')
 
@@ -66,19 +143,10 @@ def _module_safe(template_id: str) -> str:
 
 def _shim_source(template_id: str) -> str:
     """生成 ``_real_data_<id>.py`` 的源码（真实数据入口转换，不重写绘图）。"""
-    if template_id == "grouped-corr-split-violin":
-        return _SHIM_GROUPED_CORR_SPLIT_VIOLIN
-    if template_id == "correlation-pairgrid":
-        return _SHIM_CORRELATION_PAIRGRID
-    if template_id == "rf-tpe-surface":
-        return _SHIM_RF_TPE_SURFACE
-    if template_id == "grouped-circular-heatmap":
-        return _SHIM_GROUPED_CIRCULAR_HEATMAP
-    if template_id == "taylor-diagram":
-        return _SHIM_TAYLOR_DIAGRAM
-    if template_id == "nature-chord-diagram":
-        return _SHIM_NATURE_CHORD_DIAGRAM
-    raise ContractError(f"{template_id} 没有自动 direct 适配 shim")
+    adapter = DIRECT_ADAPTERS.get(template_id)
+    if adapter is None:
+        raise ContractError(f"{template_id} 没有自动 direct 适配 shim")
+    return adapter["shim"]()
 
 
 # ---------------------------------------------------------------------------
@@ -89,15 +157,14 @@ def _shim_source(template_id: str) -> str:
 _SHIM_HEADER = """\
 # 本文件由 shumozizi direct adaptation 生成：只负责把真实结果 JSON 转成
 # 原模板 simulate_* 函数的返回形状，绘图结构全部保留在原模板脚本中。
-from shumozizi.core.io import ContractError
-
+# 注意：不得 import shumozizi，保证生成物可脱离本仓库独立运行。
 import numpy as np
 
 _DATA = {}
 
 
 def load_real_data(*args, **kwargs):
-    raise SystemExit("load_real_data 应在导入后被引擎注入")
+    raise RuntimeError("load_real_data 应在导入后被引擎注入")
 """
 
 _SHIM_GROUPED_CORR_SPLIT_VIOLIN = _SHIM_HEADER + """
@@ -114,7 +181,7 @@ def apply_real_data(g):
     expected = len(g["FEATURES"])
     features = _DATA.get("features") or [item.name for item in g["FEATURES"]]
     if len(features) != expected:
-        raise ContractError(
+        raise RuntimeError(
             "grouped-corr-split-violin direct adaptation: 本题特征数 %d != 模板特征数 %d；"
             "请用 --adaptation manual 手工调整小提琴网格与分组括号位置"
             % (len(features), expected)
@@ -127,7 +194,12 @@ _SHIM_CORRELATION_PAIRGRID = _SHIM_HEADER + """
 
 
 def _real_data(*args, **kwargs):
-    return np.asarray(_DATA["values"], dtype=float)
+    # 母版散点面板固定 xlim/ylim = (-3.1, 3.1)，假定输入已标准化；
+    # 对任意真实数据按列 z-score，保证点落在画布内（相关结构对仿射不变）。
+    values = np.asarray(_DATA["values"], dtype=float)
+    centered = values - values.mean(axis=0)
+    std = centered.std(axis=0, ddof=1)
+    return centered / np.where(std > 0, std, 1.0)
 
 
 def apply_real_data(g):
@@ -135,48 +207,6 @@ def apply_real_data(g):
     if columns:
         g["VARIABLES"] = [str(item) for item in columns]
     g["simulate_data"] = _real_data
-"""
-
-_SHIM_RF_TPE_SURFACE = _SHIM_HEADER + """
-
-
-def _real_data(*args, **kwargs):
-    trials = _DATA["trials"]
-    return (
-        np.asarray([item["x"] for item in trials], dtype=float),
-        np.asarray([item["y"] for item in trials], dtype=float),
-        np.asarray([item["metric"] for item in trials], dtype=float),
-    )
-
-
-def apply_real_data(g):
-    g["simulate_tpe_trials"] = _real_data
-"""
-
-_SHIM_GROUPED_CIRCULAR_HEATMAP = _SHIM_HEADER + """
-
-_TRAIT_COLORS = [
-    "#51448a", "#606766", "#4e9568", "#bd454c",
-    "#7b54b9", "#3d719b", "#e58a50", "#5d6a67",
-]
-
-
-def _real_data(*args, **kwargs):
-    rings = _DATA["rings"]
-    return np.asarray([ring["values"] for ring in rings], dtype=float)
-
-
-def apply_real_data(g):
-    items = _DATA["items"]
-    rings = _DATA["rings"]
-    g["TRAITS_OUTER_TO_INNER"] = [
-        g["TraitSpec"](name=str(ring["name"]), color=_TRAIT_COLORS[i % len(_TRAIT_COLORS)], pale="#f0f0f0")
-        for i, ring in enumerate(rings)
-    ]
-    g["PAIR_GROUPS"] = [
-        g["PairGroup"](label=str(item), color="#c9d8e8", count=1) for item in items
-    ]
-    g["simulate_heatmap_values"] = _real_data
 """
 
 _SHIM_TAYLOR_DIAGRAM = _SHIM_HEADER + """
@@ -190,13 +220,6 @@ def _neutral_header(fig):
 def apply_real_data(g):
     panels = _DATA["panels"]
     reference_std = float(_DATA.get("reference_std") or 1.0)
-    if reference_std <= 0:
-        raise ContractError("taylor-diagram direct adaptation: reference_std 必须为正数")
-    if len(panels) != 3:
-        raise ContractError(
-            "taylor-diagram direct adaptation: 需要恰好 3 个面板"
-            "（模板 training/testing/full dataset 三个槽位）"
-        )
     rebuilt = {}
     names: list[str] = []
     for key, panel in zip(("training", "testing", "full dataset"), panels, strict=True):
@@ -218,7 +241,7 @@ def apply_real_data(g):
         have = {point.model for point in points}
         missing = set(names) - have
         if missing:
-            raise ContractError(
+            raise RuntimeError(
                 "taylor-diagram direct adaptation: 面板 %s 缺少模型 %s"
                 % (key, "、".join(sorted(missing)))
             )
@@ -303,17 +326,8 @@ def _patch_output_stem(text: str, output_stem: Path) -> str:
 
 def _apply_text_patches(text: str, template_id: str, data: dict[str, Any]) -> str:
     """替换来源论文残留文字与本题标签（只改字符串，不重写绘图函数）。"""
-    if template_id == "rf-tpe-surface":
-        x_label = str(data.get("x_label") or "X")
-        y_label = str(data.get("y_label") or "Y")
-        metric_label = str(data.get("metric_label") or "Metric")
-        title = str(data.get("title") or f"{metric_label} response surface")
-        text = text.replace('"Smooth 3D Surface Plot with RMSE"', json.dumps(title))
-        text = text.replace('ax.set_xlabel("max_depth"', f'ax.set_xlabel({json.dumps(x_label)}')
-        text = text.replace('ax.set_ylabel("n_estimators"', f'ax.set_ylabel({json.dumps(y_label)}')
-        text = text.replace('ax.set_zlabel("RMSE"', f'ax.set_zlabel({json.dumps(metric_label)}')
-        text = text.replace('cbar.set_label("RMSE"', f'cbar.set_label({json.dumps(metric_label)}')
-        return text
+    if template_id == "grouped-corr-split-violin":
+        return _patch_grouped_corr_labels(text, data)
     if template_id == "nature-chord-diagram":
         title = str(data.get("title") or "Chord Diagram")
         text = text.replace('"Circos Graph"', json.dumps(title))
@@ -325,6 +339,57 @@ def _apply_text_patches(text: str, template_id: str, data: dict[str, Any]) -> st
                 '"Standard Deviation"', '"Normalized Standard Deviation"'
             )
         return text
+    return text
+
+
+def _patch_grouped_corr_labels(text: str, data: dict[str, Any]) -> str:
+    """grouped-corr-split-violin：图例与分组括号必须由当前真实数据驱动。
+
+    母版里写死 Train/Test 图例与 Substrate/Biomass/Operation 三个括号；若直接
+    套用会把“数据真、注释假”带进论文。这里：
+    - Train/Test 图例 → 真实 groups[].name；
+    - 提供 feature_groups（3 组、边界与 13 列母版布局一致）→ 括号标签换成真实组名；
+    - 未提供 feature_groups → 删掉三个括号（不画不存在的变量分组）。
+    """
+    groups = data.get("groups")
+    if not isinstance(groups, list) or len(groups) != 2:
+        raise ContractError("grouped-corr-split-violin 数据合同需要恰好两个分组")
+    # 图例标签
+    text = text.replace(
+        'label="Train"', f"label={json.dumps(str(groups[0]['name']), ensure_ascii=False)}"
+    )
+    text = text.replace(
+        'label="Test"', f"label={json.dumps(str(groups[1]['name']), ensure_ascii=False)}"
+    )
+    # 括号：默认母版 13 列分组边界（Substrate 0-4 / Biomass 4-7 / Operation 7-12）。
+    default_bounds = ((0, 5), (5, 8), (8, 13))
+    default_labels = ("Substrate", "Biomass", "Operation")
+    feature_groups = data.get("feature_groups")
+    if feature_groups is None:
+        # 未声明变量分组：删掉三个括号调用，避免伪造 Substrate/Biomass/Operation。
+        for label in default_labels:
+            pattern = re.compile(
+                rf'^(\s*)draw_group_bracket\([^\n]*label="{re.escape(label)}"[^\n]*\)\n',
+                re.MULTILINE,
+            )
+            text = pattern.sub("", text)
+        return text
+    if not isinstance(feature_groups, list) or len(feature_groups) != 3:
+        raise ContractError(
+            "grouped-corr-split-violin 的 feature_groups 需要恰好 3 组（start/end 为列下标）"
+        )
+    for index, (raw, (start, end), default_label) in enumerate(
+        zip(feature_groups, default_bounds, default_labels, strict=True)
+    ):
+        name = str(raw.get("name") or default_label)
+        if int(raw["start"]) != start or int(raw["end"]) != end:
+            raise ContractError(
+                f"grouped-corr-split-violin 的 feature_groups[{index}] 边界 ({raw['start']},{raw['end']}) "
+                f"与母版 13 列布局不一致；请用 manual 调整括号位置"
+            )
+        text = text.replace(
+            f'label="{default_label}"', f"label={json.dumps(name, ensure_ascii=False)}"
+        )
     return text
 
 
@@ -481,13 +546,18 @@ def adapt_and_render(
         raise ContractError(
             f"{template_id} 尚无自动 direct 适配 shim；可用: "
             + ", ".join(sorted(DIRECT_ADAPTATION_READY))
-            + "。其余模板请用 --adaptation manual（复制原脚本手工换数据入口），"
-            "默认不会自动回退到简化 reimplemented 渲染器"
+            + "。其余模板请用 --adaptation manual（复制原脚本手工做 master_adapted："
+            "保留视觉设计、剥离源论文语义），默认不会自动回退到简化 reimplemented 渲染器"
         )
     root = run_dir.resolve()
     output_stem = output_stem.resolve()
     target_dir = root / "code" / "figures"
     target_dir.mkdir(parents=True, exist_ok=True)
+
+    # 语义前提校验：当前数据必须满足母版暗含的数学/视觉前提，
+    # 否则直接拒绝并指引 manual/master_adapted，避免静默画错。
+    adapter = DIRECT_ADAPTERS[template_id]
+    adapter["validate"](data)
 
     source = _master_script_path(template_id)
     if not source.is_file():
@@ -523,12 +593,77 @@ def adapt_and_render(
         adapted_path,
         shim_path,
     )
+    # 生成可独立复现的渲染入口：母版 + 真实数据 shim + make_figure。
+    # 未来直接运行 python code/figures/render_<id>.py 即可重新得到同一张正式图。
+    driver_path = _write_render_driver(template_id, data_path, output_stem, target_dir)
     return {
         "outputs": outputs,
         "adapted_script": adapted_path.relative_to(root).as_posix(),
         "data_shim": shim_path.relative_to(root).as_posix(),
+        "render_script": driver_path.relative_to(root).as_posix(),
         **artifacts,
     }
+
+
+def _write_render_driver(
+    template_id: str,
+    data_path: Path,
+    output_stem: Path,
+    target_dir: Path,
+) -> Path:
+    """生成可独立运行的 direct 渲染 driver（正式 renderer_script）。"""
+    driver = target_dir / f"render_{template_id}.py"
+    driver.write_text(
+        _RENDER_DRIVER_TEMPLATE.format(
+            module_safe=_module_safe(template_id),
+            shim_safe=_shim_safe(template_id),
+            adapted_file=(target_dir / f"adapted_{template_id}.py").name,
+            shim_file=(target_dir / f"{_shim_safe(template_id)}.py").name,
+            figure_data=json.dumps(str(data_path)),
+            output_stem=json.dumps(str(output_stem)),
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return driver
+
+
+_RENDER_DRIVER_TEMPLATE = '''#!/usr/bin/env python3
+"""可独立复现的 direct 渲染入口（shumozizi 生成）：母版 + 真实数据 shim + make_figure。
+
+直接运行本文件即可重新生成与登记时相同的正式图：
+    python {adapted_file}
+"""
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE))
+
+
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def main() -> None:
+    master = _load({module_safe!r}, _HERE / {adapted_file!r})
+    shim = _load({shim_safe!r}, _HERE / {shim_file!r})
+    with open({figure_data}, encoding="utf-8") as stream:
+        shim._DATA = json.load(stream)
+    shim.apply_real_data(master.__dict__)
+    master.make_figure(Path({output_stem}))
+    print("rendered:", {output_stem})
+
+
+if __name__ == "__main__":
+    main()
+'''
 
 
 def prepare_manual_adaptation(

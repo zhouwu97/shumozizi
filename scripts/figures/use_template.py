@@ -477,7 +477,7 @@ def generate_from_result(
         outputs = result["outputs"]
         text_boxes = result["text_boxes"]
         visual_manifest = result["visual_manifest"]
-        renderer_script = result["adapted_script"]
+        renderer_script = result["render_script"]
         reference_template = reference_target.relative_to(root).as_posix()
     else:  # reimplemented
         reference_template, renderer_script = _copy_runtime_sources(root, template_id)
@@ -616,13 +616,15 @@ def render_candidate(
         text_boxes = result["text_boxes"]
         layout_report = result["layout_report"]
         visual_manifest = result["visual_manifest"]
-        renderer_script = result["adapted_script"]
+        renderer_script = result["render_script"]
+        adapted_script = result["adapted_script"]
     else:  # reimplemented
         reference_template, renderer_script = _copy_runtime_sources(root, template_id)
         text_boxes = relative_inside(root, render(template_id, data, stem, figure_id=figure_id)).as_posix()
         outputs = [f"{relative_stem}{suffix}" for suffix in (".png", ".pdf", ".svg")]
         layout_report = f"{relative_stem}.layout_report.json"
         visual_manifest = f"{relative_stem}.visual_manifest.json"
+        adapted_script = None
 
     promote = _promote_command(root, figure_id, relative_stem, layout_report, visual_manifest)
     return {
@@ -636,6 +638,7 @@ def render_candidate(
         "visual_manifest": visual_manifest,
         "layout_report": layout_report,
         "renderer_script": renderer_script,
+        "adapted_script": adapted_script,
         "promote": promote,
     }
 

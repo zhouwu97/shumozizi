@@ -432,6 +432,180 @@ def _sci_box_figure() -> dict[str, object]:
     }
 
 
+def test_p0_semantics_templates_removed_from_direct(ws_tmp: Path) -> None:
+    """P0：rf-tpe（42% 演示曲面混合）与 grouped-circular（Brain Phenotype/固定星号）必须移出 direct。"""
+    from scripts.figures.use_template import render_candidate
+    from shumozizi.simple.direct_adaptation import DIRECT_ADAPTERS
+
+    assert "rf-tpe-surface" not in DIRECT_ADAPTERS
+    assert "grouped-circular-heatmap" not in DIRECT_ADAPTERS
+    assert "rf-tpe-surface" not in DIRECT_ADAPTATION_READY
+    assert "grouped-circular-heatmap" not in DIRECT_ADAPTATION_READY
+
+    run_dir, artifacts = _quality_ready_run(
+        ws_tmp,
+        "scibox-p0-removed",
+        {
+            "tpe": {
+                "figure_data": {
+                    "x_label": "X",
+                    "y_label": "Y",
+                    "metric_label": "M",
+                    "direction": "minimize",
+                    "trials": [
+                        {"x": 3.0, "y": 80.0, "metric": 0.42},
+                        {"x": 5.0, "y": 160.0, "metric": 0.27},
+                        {"x": 7.0, "y": 120.0, "metric": 0.36},
+                        {"x": 6.0, "y": 200.0, "metric": 0.31},
+                    ],
+                }
+            }
+        },
+    )
+    payload = render_candidate(
+        run_dir,
+        template_id="rf-tpe-surface",
+        result_id="q1_visual",
+        input_result=artifacts["tpe"],
+        output_prefix="figures/work/q1-tpe/v1/q1-tpe",
+        adaptation="direct",
+    )
+    # direct 无 shim -> 自动 manual-copy，绝不能静默走 reimplemented 或原假曲面。
+    assert payload["mode"] == "manual"
+    assert "manual" in payload.get("notice", "") or "手工" in payload.get("notice", "")
+
+
+def test_grouped_corr_labels_are_data_driven(ws_tmp: Path) -> None:
+    """P0-3：grouped-corr 的 Train/Test 图例与 Substrate/Biomass/Operation 括号必须由数据驱动。"""
+    from shumozizi.simple.direct_adaptation import adapt_and_render
+
+    run_dir = Path("tmp") / f"t-lbl-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        data = _split_violin_data()
+        data["groups"][0]["name"] = "方案A"
+        data["groups"][1]["name"] = "方案B"
+        data["feature_groups"] = [
+            {"name": "环境变量", "start": 0, "end": 5},
+            {"name": "决策变量", "start": 5, "end": 8},
+            {"name": "结果变量", "start": 8, "end": 13},
+        ]
+        stem = run_dir / "figures" / "work" / "q3-corr" / "v1" / "q3-corr"
+        result = adapt_and_render(
+            "grouped-corr-split-violin", data, stem, run_dir, figure_id="q3-corr"
+        )
+        text = (run_dir / result["adapted_script"]).read_text(encoding="utf-8")
+        assert 'label="方案A"' in text
+        assert 'label="方案B"' in text
+        assert 'label="环境变量"' in text
+        assert 'label="决策变量"' in text
+        assert 'label="结果变量"' in text
+        assert 'label="Substrate"' not in text
+        assert 'label="Biomass"' not in text
+        assert 'label="Operation"' not in text
+        assert 'label="Train"' not in text
+        assert 'label="Test"' not in text
+
+        # 未提供 feature_groups -> 三个括号调用整体删除（不画不存在的变量分组）。
+        bare = _split_violin_data()
+        bare["groups"][0]["name"] = "组1"
+        bare["groups"][1]["name"] = "组2"
+        stem2 = run_dir / "figures" / "work" / "q3-corr" / "v2" / "q3-corr"
+        result2 = adapt_and_render(
+            "grouped-corr-split-violin", bare, stem2, run_dir, figure_id="q3-corr"
+        )
+        text2 = (run_dir / result2["adapted_script"]).read_text(encoding="utf-8")
+        # 括号调用（含其固定 x 坐标）被删除；函数定义保留不影响。
+        assert "x=13.15" not in text2
+        assert "x=13.65" not in text2
+        assert "x=14.60" not in text2
+        assert 'label="组1"' in text2
+        assert 'label="组2"' in text2
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_taylor_validator_rejects_negative_corr(ws_tmp: Path) -> None:
+    """P1：Taylor 母版会把负相关截断为 0，direct 必须拒绝而非静默画错。"""
+    from shumozizi.simple.direct_adaptation import adapt_and_render
+
+    run_dir = Path("tmp") / f"t-tay-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        data = {
+            "reference_std": 1.0,
+            "panels": [
+                {"title": "a", "points": [{"name": "M", "std": 1.0, "corr": -0.4}]},
+                {"title": "b", "points": [{"name": "M", "std": 1.0, "corr": 0.5}]},
+                {"title": "c", "points": [{"name": "M", "std": 1.0, "corr": 0.6}]},
+            ],
+        }
+        stem = run_dir / "figures" / "work" / "taylor" / "v1" / "taylor"
+        with pytest.raises(ContractError, match="corr|manual"):
+            adapt_and_render("taylor-diagram", data, stem, run_dir)
+
+        # std/reference_std 超过 rmax=1.75 同样拒绝。
+        data["panels"][0]["points"][0]["corr"] = 0.9
+        data["panels"][0]["points"][0]["std"] = 2.0
+        with pytest.raises(ContractError, match="rmax|manual"):
+            adapt_and_render("taylor-diagram", data, stem, run_dir)
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_pairgrid_z_scores_real_data(ws_tmp: Path) -> None:
+    """P1：pairgrid 母版散点轴固定 [-3.1, 3.1]，任意量纲真实数据必须被标准化。"""
+    from shumozizi.simple.direct_adaptation import adapt_and_render
+
+    run_dir = Path("tmp") / f"t-pg-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        # 年龄 18~80、价格 2000~10000：未标准化会全部飞出画布。
+        data = {
+            "columns": ["年龄", "价格", "销量"],
+            "values": [
+                [18 + i * 2, 2000 + i * 300, 100 + i * 5] for i in range(25)
+            ],
+        }
+        stem = run_dir / "figures" / "work" / "pairgrid" / "v1" / "pairgrid"
+        result = adapt_and_render("correlation-pairgrid", data, stem, run_dir, figure_id="pairgrid")
+        assert (run_dir / result["outputs"][0]).stat().st_size > 0
+        # shim 按列 z-score，散点落在固定轴内。
+        shim_text = (run_dir / result["data_shim"]).read_text(encoding="utf-8")
+        assert "std(axis=0" in shim_text
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_render_driver_reproduces_figure_standalone(ws_tmp: Path) -> None:
+    """P1：生成的 render_<id>.py 必须能独立运行复现同一张正式图。"""
+    from shumozizi.simple.direct_adaptation import adapt_and_render
+
+    run_dir = Path("tmp") / f"t-drv-{uuid.uuid4().hex[:8]}"
+    run_dir.mkdir()
+    try:
+        stem = run_dir / "figures" / "work" / "chord" / "v1" / "chord"
+        result = adapt_and_render("nature-chord-diagram", _chord_data(), stem, run_dir, figure_id="chord")
+        driver = run_dir / result["render_script"]
+        assert driver.is_file()
+        png_before = sha256_file(stem.with_suffix(".png"))
+        # 独立运行 driver，重新生成到同一输出。
+        import subprocess
+        import sys as _sys
+
+        proc = subprocess.run(
+            [_sys.executable, str(driver)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        assert proc.returncode == 0, proc.stderr[-1500:]
+        png_after = sha256_file(stem.with_suffix(".png"))
+        assert png_before == png_after, "独立 driver 必须复现同一张图"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_scibox_diagram_bridge_machine_extracts_layout(ws_tmp: Path) -> None:
     """P1：scibox-diagram 桥自动从 .drawio XML 提取布局，diagram QA 零错误。"""
     from scripts.figures.render_scibox_diagram import render_diagram_candidate
@@ -470,6 +644,98 @@ def test_scibox_diagram_bridge_machine_extracts_layout(ws_tmp: Path) -> None:
     )
     assert errors == [], errors
     assert "promote" in payload
+
+
+def test_scibox_diagram_finalize_and_promote_e2e(ws_tmp: Path) -> None:
+    """P2：drawio → 手工导出 PNG/PDF → finalize（manifest）→ 人工复核 → promote → current。"""
+    from PIL import Image
+    from pypdf import PdfWriter
+
+    from scripts.figures.render_scibox_diagram import render_diagram_candidate
+    from shumozizi.simple.figure_promotion import promote_figure_candidate
+
+    run_dir = ws_tmp / "diagram-e2e"
+    run_dir.mkdir()
+    content = json.loads(
+        (
+            Path("skills/sci-box/scibox-diagram/assets/roadmap-5band/example.json")
+        ).read_text(encoding="utf-8")
+    )
+    (run_dir / "content.json").write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
+    figure_id = "q1-roadmap"
+    prefix = f"figures/work/{figure_id}/v1/{figure_id}"
+    payload = render_diagram_candidate(
+        run_dir, template_id="roadmap-5band", content_json="content.json",
+        output_prefix=prefix, figure_id=figure_id,
+    )
+    layout = load_json(run_dir / payload["layout_report"])
+    width, height = int(layout["canvas"]["width"]), int(layout["canvas"]["height"])
+
+    # 模拟人工在 diagrams.net 手工导出 PNG/PDF 到同目录。
+    png = run_dir / f"{prefix}.png"
+    pdf = run_dir / f"{prefix}.pdf"
+    png.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (width, height), "white").save(png)
+    writer = PdfWriter()
+    writer.add_blank_page(width=width, height=height)
+    with pdf.open("wb") as stream:
+        writer.write(stream)
+
+    # finalize-existing：--drawio 指向已生成的 drawio，同目录有 PNG/PDF 时补全 manifest。
+    finalized = render_diagram_candidate(
+        run_dir,
+        template_id="custom",
+        content_json=None,
+        output_prefix=prefix,
+        figure_id=figure_id,
+        drawio_input=payload["drawio"],
+    )
+    assert "visual_manifest" in finalized["artifacts"]
+    manifest = load_json(run_dir / finalized["artifacts"]["visual_manifest"])
+    # manifest 标签是真实可见文字，不是 cell id。
+    assert all(not str(item["label"]).startswith("text-") for item in manifest["elements"])
+    assert manifest["elements"]
+
+    human_review = run_dir / f"{prefix}.human-review.json"
+    atomic_json(
+        human_review,
+        {
+            "reviewed": True,
+            "paper_width_preview_checked": True,
+            "mathematical_object_visible": True,
+            "key_observation_visible": True,
+            "mechanism_or_relation_visible": True,
+            "constraint_or_boundary_visible": True,
+            "decision_consequence_visible": True,
+            "not_redundant_with_table": True,
+            "caption_matches_figure": True,
+            "font_readable": True,
+            "panel_mapping_valid": True,
+            "focal_claim": "五带技术路线把问题、方法、机制、结果与评价串成完整论证链。",
+            "visible_elements": [
+                {"type": "text", "label": item["label"], "panel": "main"}
+                for item in manifest["elements"][:2]
+            ],
+            "reading_order": ["main"],
+            "panel_takeaways": {"main": "技术路线五带结构完整、逻辑递进。"},
+            "issues": [],
+            "verdict": "promote",
+        },
+    )
+    receipt = promote_figure_candidate(
+        run_dir,
+        figure_id=figure_id,
+        candidate_outputs=[f"{prefix}.png", f"{prefix}.pdf"],
+        target_stem=f"figures/current/{figure_id}",
+        rendering_mode="diagram",
+        layout_report=payload["layout_report"],
+        figure_role="model_understanding",
+        human_review=load_json(human_review),
+        visual_manifest=finalized["artifacts"]["visual_manifest"],
+    )
+    assert receipt["figure_id"] == figure_id
+    assert (run_dir / f"figures/current/{figure_id}.png").is_file()
+    assert (run_dir / f"figures/current/{figure_id}.pdf").is_file()
 
 
 def test_figure_plan_accepts_sci_box_skills_and_template_fields(ws_tmp: Path) -> None:

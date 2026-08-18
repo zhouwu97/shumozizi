@@ -125,9 +125,11 @@ def parse_drawio(drawio_path: Path) -> dict[str, Any]:
         if record["edge"]:
             continue
         if record["value"]:
+            # text 是真实可见文字；id 是 drawio cell id（作为 source_node_id 追溯）。
             text_boxes.append(
                 {
                     "id": f"text-{cell_id}",
+                    "text": record["value"],
                     "x": record.get("x", 0),
                     "y": record.get("y", 0),
                     "width": record.get("width", 10),
@@ -202,7 +204,7 @@ def write_diagram_layout_report(drawio_path: Path, figure_id: str) -> dict[str, 
 
 
 def write_diagram_visual_manifest(drawio_path: Path, png_path: Path, extracted: dict[str, Any]) -> Path:
-    """从提取结构生成与候选 PNG 哈希绑定的最小 visual_manifest。"""
+    """从提取结构生成与候选 PNG 哈希绑定的 visual_manifest（标签用真实可见文字）。"""
     from shumozizi.core.io import sha256_file
 
     canvas = extracted["canvas"]
@@ -210,7 +212,7 @@ def write_diagram_visual_manifest(drawio_path: Path, png_path: Path, extracted: 
     elements: list[dict[str, Any]] = []
     seen: set[str] = set()
     for text in extracted["text_boxes"]:
-        label = text["id"]
+        label = str(text.get("text") or text["id"])
         if label in seen:
             continue
         seen.add(label)
@@ -219,6 +221,7 @@ def write_diagram_visual_manifest(drawio_path: Path, png_path: Path, extracted: 
                 "type": "text",
                 "label": label,
                 "panel": "main",
+                "source_node_id": text["id"],
                 "bbox": [
                     round(text["x"] / width, 6),
                     round(text["y"] / height, 6),
@@ -257,19 +260,38 @@ def render_diagram_candidate(
     run_dir: Path,
     *,
     template_id: str,
-    content_json: str,
+    content_json: str | None,
     output_prefix: str,
     figure_id: str,
+    drawio_input: str | None = None,
 ) -> dict[str, Any]:
-    """生成 .drawio、机器提取布局/清单、尝试导出 PNG/PDF，返回 work 候选信息与晋级命令。"""
+    """生成/接入 .drawio，机器提取布局/清单，尝试导出或补全手工导出的 PNG/PDF。
+
+    Args:
+        run_dir: v3 运行目录。
+        template_id: 内置生成器 id（roadmap-5band 等）；drawio_input 提供时可为 custom/replica。
+        content_json: 内置模板的 content JSON 相对路径；drawio_input 提供时可为空。
+        output_prefix: ``figures/work/<id>/<version>/`` 下的不含扩展名路径。
+        figure_id: 图表 ID。
+        drawio_input: 可选的已有 .drawio 相对路径（custom / replica / 人工魔改后），
+            此时跳过生成器，直接机器提取；若同目录已有 PNG/PDF 则一并补全 manifest。
+    """
     root = run_dir.resolve()
-    content = resolve_inside(root, content_json, must_exist=True)
     stem = resolve_inside(root, output_prefix)
     relative = stem.relative_to(root).as_posix()
     if not relative.startswith("figures/work/") or stem.suffix:
         raise ContractError("output_prefix 必须是 figures/work/<id>/<version>/ 下的不含扩展名路径")
     drawio_path = stem.with_suffix(".drawio")
-    generate_drawio(template_id, content, drawio_path)
+    if drawio_input is not None:
+        provided = resolve_inside(root, drawio_input, must_exist=True)
+        if provided.resolve() != drawio_path.resolve():
+            drawio_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(provided, drawio_path)
+    else:
+        if content_json is None:
+            raise ContractError("内置模板需要 --content-json")
+        content = resolve_inside(root, content_json, must_exist=True)
+        generate_drawio(template_id, content, drawio_path)
     extracted = write_diagram_layout_report(drawio_path, figure_id)
 
     # 运行上游 check_layout.py 作独立版式体检（结果只作提示，晋级仍以
@@ -294,14 +316,14 @@ def render_diagram_candidate(
         )
         check_result = (check_proc.stdout or check_proc.stderr or "").strip()
 
-    # 导出 PNG/PDF（依赖 draw.io 命令行）；缺省时留待人工导出。
+    # 导出 PNG/PDF（依赖 draw.io 命令行）；缺省或人工已导出时直接补全。
     png_path = stem.with_suffix(".png")
     pdf_path = stem.with_suffix(".pdf")
     export_script = (
         REPO_ROOT / "skills" / "sci-box" / "scibox-diagram" / "scripts" / "export_figure.py"
     )
-    exported = False
-    if shutil.which("drawio") is not None:
+    exported = png_path.is_file() and pdf_path.is_file()
+    if not exported and shutil.which("drawio") is not None:
         proc = subprocess.run(
             [sys.executable, str(export_script), str(drawio_path)],
             capture_output=True,
@@ -362,21 +384,33 @@ def _diagram_promote_command(
 
 
 def main() -> int:
-    """生成 scibox-diagram work 候选并输出晋级命令。"""
-    parser = argparse.ArgumentParser(description="scibox-diagram 生产桥：content JSON → work 候选")
+    """生成/接入 scibox-diagram work 候选并输出晋级命令。"""
+    parser = argparse.ArgumentParser(description="scibox-diagram 生产桥：content JSON / 已有 drawio → work 候选")
     parser.add_argument("run_dir", type=Path)
-    parser.add_argument("--template", required=True, choices=sorted(_GENERATORS))
-    parser.add_argument("--content-json", required=True, help="运行目录内的 content JSON 相对路径")
+    parser.add_argument(
+        "--template",
+        required=False,
+        choices=sorted(_GENERATORS),
+        help="内置生成器 id；--drawio 提供时可为 custom/replica（此时省略）",
+    )
+    parser.add_argument("--content-json", help="运行目录内的 content JSON 相对路径")
+    parser.add_argument(
+        "--drawio",
+        help="已有 .drawio 相对路径（custom / replica / 人工魔改或手工导出后补全 manifest）",
+    )
     parser.add_argument("--figure-id", required=True)
     parser.add_argument("--output-prefix", required=True)
     args = parser.parse_args()
+    if args.drawio is None and not (args.template and args.content_json):
+        parser.error("需要 --drawio，或 --template 与 --content-json")
     try:
         payload = render_diagram_candidate(
             args.run_dir,
-            template_id=args.template,
+            template_id=args.template or "custom",
             content_json=args.content_json,
             output_prefix=args.output_prefix,
             figure_id=args.figure_id,
+            drawio_input=args.drawio,
         )
     except (ContractError, OSError) as exc:
         print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False, indent=2))

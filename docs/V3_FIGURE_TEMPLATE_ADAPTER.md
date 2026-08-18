@@ -43,9 +43,28 @@ python scripts/figures/promote_figure_candidate.py runs/<run-id> `
 
 `direct` 是“**用了人家的模板**”的唯一正确姿势：母版脚本的版式（面板几何、字号、轴线、
 图例、间距、注释）是人工设计好的成品，只允许换数据入口和少量调整（标签、变量数、重点），
-禁止默认重新实现。目前有自动 shim 的母版：`grouped-corr-split-violin`、`correlation-pairgrid`、
-`rf-tpe-surface`、`grouped-circular-heatmap`、`taylor-diagram`、`nature-chord-diagram`；
-其余模板默认转 manual-copy。
+禁止默认重新实现。
+
+**但 direct 不只看“有没有适配代码”，还要看“当前数据是否满足母版暗含的数学/视觉前提”。**
+每个可 direct 的母版都带语义校验器（`DIRECT_ADAPTERS`），不满足前提直接拒绝并指引
+manual/master_adapted：
+
+| 母版 | 数据前提（校验器） |
+| --- | --- |
+| `correlation-pairgrid` | 任意量纲真实数据由 shim 按列 z-score（母版散点轴固定 [-3.1, 3.1]） |
+| `grouped-corr-split-violin` | 恰好 13 列；Train/Test 图例与 Substrate/Biomass/Operation 括号由数据驱动（未提供 `feature_groups` 则删除括号） |
+| `nature-chord-diagram` | ≥3 节点、有效正权边 |
+| `taylor-diagram` | 恰好 3 面板、corr∈[0,1]（母版会把负相关截断为 0）、std/reference_std≤1.7（rmax=1.75 会裁点） |
+
+**已移出 direct（必须先 master_adapted 剥离源论文语义才能恢复）：**
+- `rf-tpe-surface`：母版把曲面混合成 `0.58×IDW(真实 trials) + 0.42×true_rmse_surface()`，
+  其中 `true_rmse_surface` 是源论文的演示函数，且固定 grid/norm/axis/ticks；
+- `grouped-circular-heatmap`：外围写死 `Brain Phenotype N`、`Normalize(-5,5)` 与
+  `abs(values)>4.1 → "*"` 固定显著性星号规则，会把不存在的科学含义带进论文。
+
+direct 渲染还会生成**可独立复现的 driver**（`code/figures/render_<id>.py`：母版 + shim +
+真实数据 + `make_figure`），它就是正式 renderer_script，未来直接 `python render_<id>.py`
+即可重新得到同一张正式图。
 
 选图优先级（`skills/sci-box/scibox-figure` 的决策顺序）：
 ① sci-box 原生母版 → ② 模板深度改造/组合 → ③ scibox-diagram 结构图 → ④ 本题专用高级图 →

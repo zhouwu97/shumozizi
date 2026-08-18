@@ -61,7 +61,6 @@ If the user asks for changes, copy/run the nearest template first, then edit the
 Use `references/plot-recipes.md` for implementation patterns.
 
 ---
----
 
 ## shumozizi 生产集成（本仓库）
 
@@ -77,12 +76,29 @@ python scripts/figures/use_template.py runs/<run-id> `
 ```
 
 - `--adaptation direct`（默认）：复制原脚本 + 注入真实数据 shim，进程内**先注入数据再调用 make_figure**；
-- `--adaptation manual`：复制原脚本并写入标记好的数据入口 stub，由 Agent 手工换数据（允许拆/并/删面板、改变量数）；
+- `--adaptation manual`：复制原脚本并写入标记好的数据入口 stub，由 Agent 手工做 master_adapted（保留视觉设计、剥离源论文语义）；
 - `--adaptation reimplemented`：本仓 v3 简化渲染器回退（明确要求才用，不作为默认路径）。
 
 渲染产出 `figures/work/<figure-id>/<version>/` 下的 PNG/PDF/SVG + 机器生成的
-`layout_report.json`、`visual_manifest.json`、`text-boxes.json`；**不直接登记**，
+`layout_report.json`、`visual_manifest.json`、`text-boxes.json`，以及**可独立复现的 driver**
+（`code/figures/render_<id>.py`，即正式 renderer_script）；**不直接登记**，
 打开真实 PNG 看图满意后用 `promote_figure_candidate.py` 晋级 `figures/current/`（命令由渲染结果给出）。
+
+### 语义前提：不是"换数据入口"就完事
+
+模板的模拟语义有时不只藏在 `simulate_*()` 里，还藏在坐标范围、阈值、星号规则、分组名、
+归一化范围、曲面生成方式中。`direct` 对每个母版都有**数据语义校验器**（`DIRECT_ADAPTERS`），
+不满足前提直接拒绝并指引 manual/master_adapted：
+
+- `correlation-pairgrid`：任意量纲数据由 shim 按列 z-score（散点轴固定 [-3.1,3.1]）；
+- `grouped-corr-split-violin`：恰 13 列；图例与 Substrate/Biomass/Operation 括号由数据驱动；
+- `nature-chord-diagram`：≥3 节点、有效正权边；
+- `taylor-diagram`：恰 3 面板、corr∈[0,1]（负相关会被母版截断为 0）、std/reference_std≤1.7。
+
+**已移出 direct 的母版（必须先 master_adapted 剥离源论文语义）：** `rf-tpe-surface`
+（曲面 = 0.58×IDW(真实 trials) + 0.42×源论文演示函数，且固定 grid/norm/axis）、
+`grouped-circular-heatmap`（写死 `Brain Phenotype N` 与 `abs(values)>4.1 → "*"` 显著性星号）。
+这两个目前 direct 会自动转 manual-copy，禁止静默套用。
 
 ### 决策顺序（硬性优先级，前面的能表达清楚就不准偷懒跑后面）
 
