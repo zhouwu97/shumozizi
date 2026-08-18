@@ -1,6 +1,6 @@
 ---
 name: mathmodel-visual
-description: 用当前真实结果探索、比较并晋级数学建模图表；适用于单图、整篇视觉节奏、机制图和 Visual Sandbox，不强制固定图种或图数。
+description: 用当前真实结果探索、比较并晋级数学建模图表；适用于单图、整篇视觉节奏、机制图和 Visual Sandbox。图型由数学结构和论证作用动态选择，但正式稿必须满足逐问和全篇配额硬门。
 ---
 
 # 洞察驱动图表
@@ -89,13 +89,13 @@ python scripts/paper/visual_discovery.py status <run_dir>
 
 在 analysis 阶段按需要保存候选解、可行边界、活跃约束、Pareto 点、状态轨迹或不确定性样本。只保存最终标量时先修模型输出，不让绘图阶段猜造结构数据。
 
-正式图可承担 `model_understanding`、`decisive_evidence`、`insight` 或 `stability`。`stability` 一律进附录。一个问题可以没有 hero、拥有多个互补图，或与相邻问题共享一张图；图数和义务数都不是质量指标。
+正式图可承担 `model_understanding`、`decisive_evidence`、`insight` 或 `stability`。`stability` 一律进附录。一个问题可以没有 hero、拥有多个互补图，或与相邻问题共享一张图。正式 competition-quality 论文必须满足：每个必答问题 **2–3 张** current 正文图【硬门】；四问及以上全篇 **13–18 张** current 正文图【硬门】且覆盖至少 **3 种**可审计 visual archetype【硬门】。数量门不允许用重复图、拆图、换色图或装饰图凑数；在该配额内，图型仍由数学结构和论证作用动态选择。
 
 空间、集合、网络、场、决策面、区间或不确定性结构出现时，优先选择能呈现其真实结构的原型。柱形图或折线图确实最清楚时可以使用，由人工视觉评审说明理由，不要求 Author 填写预防性 override 表单。2D/3D 都不是质量标签：精确阈值和区间优先 2D，真实空间或场结构才使用 3D。
 
 ## 整篇视觉节奏
 
-在 PDF 层面检查模型首次出现时是否需要理解图、关键结果是否有决定性图、核心 insight 是否有视觉证据、是否连续多页只有公式和表、是否连续堆叠大图。Hero / memorable figures 可优先保留 2--3 张；argument-supporting figures 按数学对象、机制、比较和边界的实际论证需要增加，不设数量上限。把缺口送回 Sandbox，不按“一问一图”或“图数不少于 N”补图，也不得把“2--3 张 memorable”误读为全文图数上限。
+在 PDF 层面检查模型首次出现时是否需要理解图、关键结果是否有决定性图、核心 insight 是否有视觉证据、是否连续多页只有公式和表、是否连续堆叠大图。Hero / memorable figures 可优先保留 2--3 张；argument-supporting figures 按数学对象、机制、比较和边界的实际论证需要增加。把缺口送回 Sandbox，按逐问 2–3 张和全篇 13–18 张的配额规划补图，不按“一问一图”机械均摊，也不用装饰图或拆图凑数。
 
 知识库 visual pattern 只提供表达候选。使用前核对当前题是否真实具有所需结构数据；不满足时拒绝，不为匹配模式补造数据。所有正式图、表和结论最终只能来自本次 run 的 current/production/accepted 证据链。
 
