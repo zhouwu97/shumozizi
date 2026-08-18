@@ -19,7 +19,7 @@ def build_scientific_jury_prompt(run_dir: Path) -> str:
     prompt = f"""# 数学建模科学评审团 (Scientific Jury) 裁决任务 Brief
 
 你是第三个独立的数学建模总评审对话 (Dialogue C: Scientific Jury)。
-你需要针对同一道赛题，独立审查两个解题大脑分别给出的完整方案：
+你需要针对同一道赛题，独立审查两个解题大脑分别给出的完整方案与推演日志：
 - **方案 A (Solver A - shumozizi 路线)**
 - **方案 B (Solver B - BZD 路线)**
 
@@ -32,11 +32,13 @@ def build_scientific_jury_prompt(run_dir: Path) -> str:
 1. **原始赛题与全部附件**：
    - `problem/**`（包含所有题目正文、PDF 附注、Excel 工作表、CSV 数据及图像）
 2. **方案 A 完整解题成果 (Solver A - shumozizi)**：
-   - 完整解题与对话记录：`analysis/dual_solver/solver_a/TRANSCRIPT.md`（或 `SOLUTION_A.md`）
+   - 最终解题方案：`analysis/dual_solver/solver_a/FINAL_SOLUTION.md`
+   - 思考推演日志：`analysis/dual_solver/solver_a/SOLVER_LOG.md`（或 `TRANSCRIPT.md`）
    - 全部实现与仿真代码：`analysis/dual_solver/solver_a/code/**`
    - 全部计算与指标数据：`analysis/dual_solver/solver_a/results/**`
 3. **方案 B 完整解题成果 (Solver B - BZD)**：
-   - 完整解题与对话记录：`analysis/dual_solver/solver_b/TRANSCRIPT.md`（或 `SOLUTION_B.md`）
+   - 最终解题方案：`analysis/dual_solver/solver_b/FINAL_SOLUTION.md`
+   - 思考推演日志：`analysis/dual_solver/solver_b/SOLVER_LOG.md`（或 `TRANSCRIPT.md`）
    - 全部实现与仿真代码：`analysis/dual_solver/solver_b/code/**`
    - 全部计算与指标数据：`analysis/dual_solver/solver_b/results/**`
 

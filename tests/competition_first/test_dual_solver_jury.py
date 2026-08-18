@@ -21,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_solver_a_workspace_and_prompt_assembly(tmp_path: Path) -> None:
-    """Solver A 能够初始化独立工作区，生成包含完整对话与代码保存规范的解题提示词。"""
+    """Solver A 能够初始化独立工作区，生成包含 FINAL_SOLUTION.md 与 SOLVER_LOG.md 保存规范的解题提示词。"""
     run_dir = tmp_path / "run_01"
     problem_dir = run_dir / "problem"
     problem_dir.mkdir(parents=True)
@@ -35,13 +35,15 @@ def test_solver_a_workspace_and_prompt_assembly(tmp_path: Path) -> None:
     prompt = build_solver_a_prompt(run_dir)
     assert "Solver A - shumozizi" in prompt
     assert "2025 A题" in prompt
-    assert "analysis/dual_solver/solver_a/TRANSCRIPT.md" in prompt
+    assert "analysis/dual_solver/solver_a/FINAL_SOLUTION.md" in prompt
+    assert "analysis/dual_solver/solver_a/SOLVER_LOG.md" in prompt
     assert "analysis/dual_solver/solver_a/code/" in prompt
     assert "analysis/dual_solver/solver_a/results/" in prompt
+    assert "根据题型特征决定是否需要 baseline/challenger" in prompt
 
 
 def test_solver_b_packet_preparation_and_prompt_assembly(tmp_path: Path) -> None:
-    """Solver B 能够获得干净隔离包，装配原版 BZD References，并规范 TRANSCRIPT.md 保存。"""
+    """Solver B 能够获得干净隔离包，装配原版 BZD References，并规范 FINAL_SOLUTION.md 与 SOLVER_LOG.md 保存。"""
     run_dir = tmp_path / "run_02"
     problem_dir = run_dir / "problem"
     problem_dir.mkdir(parents=True)
@@ -71,7 +73,8 @@ def test_solver_b_packet_preparation_and_prompt_assembly(tmp_path: Path) -> None
     assert "integrated-modeling-patterns.md" in prompt
     assert "strategy-output-standard.md" in prompt
     assert "独立完成整题建模，不参考任何已有外部方案" in prompt
-    assert "analysis/dual_solver/solver_b/TRANSCRIPT.md" in prompt
+    assert "analysis/dual_solver/solver_b/FINAL_SOLUTION.md" in prompt
+    assert "analysis/dual_solver/solver_b/SOLVER_LOG.md" in prompt
 
 
 def test_scientific_jury_prompt_assembly_no_truncation_and_unbiased_rules(tmp_path: Path) -> None:
@@ -86,10 +89,12 @@ def test_scientific_jury_prompt_assembly_no_truncation_and_unbiased_rules(tmp_pa
 
     # 1. 验证直读全量文件清单
     assert "problem/**" in jury_prompt
-    assert "analysis/dual_solver/solver_a/TRANSCRIPT.md" in jury_prompt
+    assert "analysis/dual_solver/solver_a/FINAL_SOLUTION.md" in jury_prompt
+    assert "analysis/dual_solver/solver_a/SOLVER_LOG.md" in jury_prompt
     assert "analysis/dual_solver/solver_a/code/**" in jury_prompt
     assert "analysis/dual_solver/solver_a/results/**" in jury_prompt
-    assert "analysis/dual_solver/solver_b/TRANSCRIPT.md" in jury_prompt
+    assert "analysis/dual_solver/solver_b/FINAL_SOLUTION.md" in jury_prompt
+    assert "analysis/dual_solver/solver_b/SOLVER_LOG.md" in jury_prompt
     assert "analysis/dual_solver/solver_b/code/**" in jury_prompt
     assert "analysis/dual_solver/solver_b/results/**" in jury_prompt
 

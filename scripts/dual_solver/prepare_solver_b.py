@@ -100,14 +100,15 @@ def build_solver_b_prompt(run_dir: Path) -> str:
 
 【解题要求】：
 1. 独立完成整题建模，不参考任何已有外部方案。
-2. 建立整篇论文的统一共享建模骨干（backbone），并逐问给出模型选型理由（对比更简单 baseline）、数学变量与目标形式化定义、约束物理意义展开。
-3. 提供完整的求解算法设计、Python 实现代码（或关键计算步骤）与数值验证结果。
+2. 建立整篇论文的统一共享建模骨干（backbone），并逐问给出模型选型理由与数学/物理适配依据（无需人为生造无意义的弱 baseline），形式化定义数学变量、目标与硬约束。
+3. 提供完整的求解算法设计、Python/MATLAB 实现代码与数值验证结果。
 4. 若附件包含 Excel/PDF/CSV/图片，必须直接检视具体数据字段与真实特征，禁止凭空猜测。
-5. 明确指出方案的局限性、可能崩塌的边界条件与建议的多模型对比实验。
+5. 明确指出方案的局限性、可能崩塌的边界条件与未决疑点。
 
 【成果归档要求】：
-请将你的本次完整解题对话、关键代码与计算结果保存至：
-- **完整解题与对话记录**：`analysis/dual_solver/solver_b/TRANSCRIPT.md`（或 `SOLUTION_B.md`）
+请将你的本次解题成果保存至：
+- **最终完整解题方案**：`analysis/dual_solver/solver_b/FINAL_SOLUTION.md`（包含各问模型、公式推导、求解步骤与最终答案）
+- **思考与推演日志**：`analysis/dual_solver/solver_b/SOLVER_LOG.md`（记录初始理解、考虑过的候选方案、失败或放弃的路线、模型修改理由与关键反例）
 - **核心算法与仿真代码**：`analysis/dual_solver/solver_b/code/`
 - **计算与指标数据文件**：`analysis/dual_solver/solver_b/results/`"""
 

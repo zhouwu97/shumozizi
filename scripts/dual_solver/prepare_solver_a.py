@@ -3,7 +3,7 @@
 作用：
 1. 创建 Solver A 独立解题工作区目录 (analysis/dual_solver/solver_a/)；
 2. 一键生成 Solver A 独立全题解题提示词，指导在新对话 A 中独立完成整题形式化、求解与计算；
-3. 规范完整对话记录 (TRANSCRIPT.md)、代码 (code/) 与结果 (results/) 的保存路径。
+3. 规范最终解题方案 (FINAL_SOLUTION.md)、思考与推演日志 (SOLVER_LOG.md)、代码 (code/) 与结果 (results/) 的保存路径。
 """
 
 from __future__ import annotations
@@ -45,10 +45,10 @@ def build_solver_a_prompt(run_dir: Path) -> str:
 ## 解题核心要求
 
 1. **独立完整解题**：请使用文件读取工具完整查看 `problem/**` 下的所有题面、数据表格（Excel/CSV）、PDF 附注与图像，独立完成整道赛题的全部建模与计算。
-2. **严谨形式化**：
+2. **严谨形式化与灵活选型**：
    - 明确定义各小问的形式化决策对象、决策变量、目标函数与物理/逻辑硬约束；
-   - 建立 baseline 模型与深入优化/仿真模型；
-   - 构造最小反例或性质检验，验证模型与算法的边界可靠性。
+   - 根据题型特征决定是否需要 baseline/challenger 对照：对于解析题、几何题或精确计算题，优先直接建立最自然、严密可验证的数学模型（无需人为生造无意义的弱 baseline）；对于复杂优化与协同题，按需设计有效的对照或启发式初值；
+   - 重点关注模型的边界条件与物理合理性。
 3. **真实计算与收敛验证**：
    - 编写完整的 Python/MATLAB 算法代码，真实运行并输出各项关键指标与数据结果；
    - 给出保守、可复验的数值结论。
@@ -57,8 +57,9 @@ def build_solver_a_prompt(run_dir: Path) -> str:
 
 ## 成果归档要求
 
-在对话完成后，请将本次解题成果保存至：
-- **完整解题与对话记录**：`analysis/dual_solver/solver_a/TRANSCRIPT.md`（或 `SOLUTION_A.md`）
+在解题完成后，请将本次解题成果保存至：
+- **最终完整解题方案**：`analysis/dual_solver/solver_a/FINAL_SOLUTION.md`（包含各问模型、公式推导、求解步骤与最终答案）
+- **思考与推演日志**：`analysis/dual_solver/solver_a/SOLVER_LOG.md`（记录初始理解、考虑过的候选方案、失败或放弃的路线、模型修改理由、关键反例与未决疑点）
 - **核心算法与仿真代码**：`analysis/dual_solver/solver_a/code/`
 - **计算与指标数据文件**：`analysis/dual_solver/solver_a/results/`
 """
