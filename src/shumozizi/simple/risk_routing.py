@@ -476,8 +476,10 @@ def validate_risk_assessment(
             str(item["created_at"])
             for item in results.values()
             if item.get("question_id") == question_id
+            and item.get("status", "current") == "current"
             and item.get("execution_mode") == "production"
             and item.get("execution_valid") is True
+            and item.get("scientific_status", "valid") != "invalidated"
             and isinstance(item.get("created_at"), str)
         ]
         if not production_times:

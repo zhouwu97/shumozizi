@@ -395,6 +395,7 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
     if unknown:
         raise ContractError(f"v3 状态不允许更新字段: {', '.join(unknown)}")
     state = read_simple_state(run_dir)
+    from shumozizi.simple.science_checkpoint import is_science_first_run
     if "phase" in changes:
         next_phase = changes["phase"]
         if next_phase not in PHASES:
@@ -402,32 +403,42 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
         if next_phase not in ALLOWED_PHASE_TRANSITIONS[state["phase"]]:
             raise ContractError(f"v3 状态不允许从 {state['phase']} 直接进入 {next_phase}")
         if next_phase == "experiment":
-            from shumozizi.simple.modeling_units import require_v32_modeling_plan
+            if is_science_first_run(run_dir):
+                from shumozizi.simple.science_checkpoint import require_science_checkpoint
+
+                require_science_checkpoint(run_dir)
+            else:
+                from shumozizi.simple.modeling_units import require_v32_modeling_plan
             from shumozizi.simple.objective_consequences import (
                 require_objective_candidate_plan,
             )
             from shumozizi.simple.objective_semantics import objective_semantics_review_required
             from shumozizi.simple.review import require_objective_semantics_review
 
-            require_objective_candidate_plan(run_dir)
-            require_v32_modeling_plan(run_dir)
-            if objective_semantics_review_required(run_dir):
+            if not is_science_first_run(run_dir):
+                require_objective_candidate_plan(run_dir)
+                require_v32_modeling_plan(run_dir)
+            if not is_science_first_run(run_dir) and objective_semantics_review_required(run_dir):
                 require_objective_semantics_review(run_dir)
         if next_phase == "paper":
-            if is_competition_first_v32_state(state) and state["execution_mode"] == "production":
+            if (
+                is_competition_first_v32_state(state)
+                and state["execution_mode"] == "production"
+                and not is_science_first_run(run_dir)
+            ):
                 from scripts.qa.metric_ledger import require_v32_metric_ledger_for_paper
 
                 require_v32_metric_ledger_for_paper(run_dir)
             from shumozizi.paper.templates import require_materialized_template
-            from shumozizi.simple.modeling_units import require_v32_experiment_evidence
-            from shumozizi.simple.objective_consequences import (
-                require_objective_consequences,
-            )
             from shumozizi.simple.review import require_paper_generation_allowed
 
             require_paper_generation_allowed(run_dir)
-            require_objective_consequences(run_dir)
-            require_v32_experiment_evidence(run_dir)
+            if not is_science_first_run(run_dir):
+                from shumozizi.simple.modeling_units import require_v32_experiment_evidence
+                from shumozizi.simple.objective_consequences import require_objective_consequences
+
+                require_objective_consequences(run_dir)
+                require_v32_experiment_evidence(run_dir)
             require_materialized_template(run_dir)
         if next_phase == "paper_review":
             from shumozizi.paper.templates import require_materialized_template
@@ -438,10 +449,11 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
 
                 require_current_pdf_milestone(run_dir, "candidate")
         if next_phase == "verify":
-            from shumozizi.simple.review import require_paper_blind_review_allowed
+            if not is_science_first_run(run_dir):
+                from shumozizi.simple.review import require_paper_blind_review_allowed
 
-            require_paper_blind_review_allowed(run_dir)
-            if is_competition_first_v32_state(state):
+                require_paper_blind_review_allowed(run_dir)
+            if is_competition_first_v32_state(state) and not is_science_first_run(run_dir):
                 from shumozizi.knowledge.external_discussion import (
                     require_web_paper_audit_release,
                     validate_web_paper_audit_if_present,

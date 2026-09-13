@@ -4694,6 +4694,14 @@ def require_paper_generation_allowed(run_dir: Path) -> None:
         missing = sorted(set(state["required_questions"]) - current)
         if missing:
             raise ContractError("不能进入论文阶段：必答问题缺少 current production 结果: " + ", ".join(missing))
+        # science-first 只在这里确认结果已产生；深入路线审计和更强路线判断
+        # 属于可选 reviewer 证据，不能阻塞作者开始组织科学叙事。
+        from shumozizi.simple.science_checkpoint import is_science_first_run
+        if is_science_first_run(run_dir):
+            from shumozizi.simple.production_manifest import require_production_manifest
+
+            require_production_manifest(run_dir)
+            return
         if is_competition_first_v32_state(state):
             # v3.2 的真实路线竞争由 modeling units 的 compare 证据承载；
             # 不能以 v3.1 的单一 route_tournament 元数据缺失阻断论文。
@@ -4821,12 +4829,16 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
         # 最低必要检查集合：与 run_final_checks.py 使用的稳定 ID 一致
         required_check_ids = {
             "state-phase", "paper-template-manifest", "paper-compile-receipt",
-            "paper-blind-review-release", "pdf", "paper-structure-signals",
-            "placeholders", "result-references", "numeric-consistency",
-            "current-result-files", "current-figure-files", "contact-sheet",
-            "central-metric-coherence",
+            "pdf", "result-references", "numeric-consistency",
+            "current-result-files", "current-figure-files",
         }
-        if _competition_first_run(run_dir):
+        from shumozizi.simple.science_checkpoint import is_science_first_run
+        if not is_science_first_run(run_dir):
+            required_check_ids |= {
+                "paper-blind-review-release", "paper-structure-signals", "placeholders",
+                "contact-sheet", "central-metric-coherence",
+            }
+        if _competition_first_run(run_dir) and not is_science_first_run(run_dir):
             required_check_ids.add("scientific-challenge-release")
             if is_competition_first_v32_state(state):
                 required_check_ids.add("web-paper-audit-release")
@@ -4953,6 +4965,32 @@ def competition_submission_status(run_dir: Path) -> dict[str, Any]:
 
 def completion_status(run_dir: Path) -> dict[str, Any]:
     """组合当前审核、事实产物与机械 QA，形成唯一的 complete 放行结论。"""
+    from shumozizi.simple.science_checkpoint import is_science_first_run
+    if is_science_first_run(run_dir):
+        try:
+            from shumozizi.simple.figures import verify_current_figure_files
+            from shumozizi.simple.production_manifest import require_production_manifest
+            from shumozizi.simple.results import verify_current_result_files
+
+            require_production_manifest(run_dir)
+            mechanical = mechanical_qa_status(run_dir)
+            if not mechanical["allowed"]:
+                return {"allowed": False, "reason": mechanical["reason"]}
+            results = verify_current_result_files(run_dir)
+            figures = verify_current_figure_files(run_dir)
+            if not results["success"] or not figures["success"]:
+                return {"allowed": False, "reason": "当前结果或图表已漂移"}
+            return {
+                "allowed": True,
+                "reason": "",
+                "scientific_valid": True,
+                "competition_strength": "unassessed",
+                "submission_ready": True,
+                "status": "submission_ready",
+                "completion_status": "complete",
+            }
+        except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+            return {"allowed": False, "reason": str(exc)}
     if _competition_first_run(run_dir):
         scientific = scientific_review_status(run_dir)
         if not scientific["allowed"]:

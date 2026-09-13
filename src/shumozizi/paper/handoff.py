@@ -5,12 +5,12 @@
 - ``writer_handoff_readiness``：科学事实与提交边界是硬门，素材、故事板和图表
   缺口只作为 Author 可回流的编辑信号；核心问题的论证链（warrant）由上游
   modeling-units canonical 门禁唯一负责，handoff 不重复判定。
-- ``build_writer_handoff``：把已冻结研究材料投影成两个人读文件，后台继续保留
+- ``build_writer_handoff``：把已冻结研究材料投影成三个人读文件，后台继续保留
   answer-and-claims JSON 与 provenance manifest。
 - ``mark_waiting_external_author``：进入正常暂停状态，并记录 checkpoint。
 - ``verify_handoff_freshness``：确认外部稿件仍是针对当前材料版本写作的。
 
-Writer 只读 ``RESEARCH_PACKAGE.md`` 与 ``AUTHOR_BRIEF.md``；机器 JSON 与 manifest
+Writer 只读 ``RESEARCH_PACKAGE.md``、``AUTHOR_BRIEF.md`` 与 ``THESIS_CARD.md``；机器 JSON 与 manifest
 是 Import Audit 做数字 / 主张绑定的机器事实来源，不要求 Author 阅读。
 """
 
@@ -23,6 +23,7 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file, sha256_tree
 from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.core.schema import require_valid
+from shumozizi.paper.author_pass import THESIS_CARD_PATH
 from shumozizi.paper.citations import citation_coverage_errors
 from shumozizi.paper.materials import (
     material_pool_quality_report,
@@ -54,6 +55,7 @@ HANDOFF_READY_CHECKPOINT_PATH = Path("review/writer-handoff-ready.json")
 WRITER_MARKDOWN_FILES = (
     "RESEARCH_PACKAGE.md",
     "AUTHOR_BRIEF.md",
+    "THESIS_CARD.md",
 )
 ANSWER_AND_CLAIMS_JSON = "answer-and-claims.json"
 PACKAGE_FILES = (*WRITER_MARKDOWN_FILES, ANSWER_AND_CLAIMS_JSON)
@@ -770,6 +772,8 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
     _atomic_text(research, (root / RESEARCH_PACKAGE_PATH).read_text(encoding="utf-8"))
     author_brief = handoff_dir / "AUTHOR_BRIEF.md"
     _atomic_text(author_brief, (root / AUTHOR_BRIEF_PATH).read_text(encoding="utf-8"))
+    thesis_card = handoff_dir / "THESIS_CARD.md"
+    _atomic_text(thesis_card, (root / THESIS_CARD_PATH).read_text(encoding="utf-8"))
     # 旧投影只供后台兼容与审计，物理隔离到 internal，避免整目录交接时污染 Author。
     _write_writer_brief(root, internal_dir)
     _write_blueprint_projection(root, internal_dir)
@@ -780,7 +784,7 @@ def build_writer_handoff(run_dir: Path) -> dict[str, Any]:
         (handoff_dir / filename).unlink(missing_ok=True)
     digests = _package_digests(root, answers_json, catalog, packet)
     writer_files: dict[str, str] = {}
-    for path in (research, author_brief):
+    for path in (research, author_brief, thesis_card):
         relative = path.relative_to(root).as_posix()
         writer_files[relative] = sha256_file(path)
     authoring = read_authoring(root)

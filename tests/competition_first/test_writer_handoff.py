@@ -298,6 +298,7 @@ def test_handoff_files_are_writer_facing_not_control_layer(
     assert sorted(manifest["writer_files"]) == [
         "paper/writer-handoff/AUTHOR_BRIEF.md",
         "paper/writer-handoff/RESEARCH_PACKAGE.md",
+        "paper/writer-handoff/THESIS_CARD.md",
     ]
     handoff_root = run_dir / "paper/writer-handoff"
     for filename in (

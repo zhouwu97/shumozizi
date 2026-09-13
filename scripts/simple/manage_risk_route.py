@@ -213,7 +213,16 @@ def main() -> int:
     except (ContractError, OSError, ValueError) as exc:
         print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         return 1
-    print(json.dumps({"success": True, "result": report}, ensure_ascii=False, indent=2))
+    # 风险包验证器内部保留 set 便于做重复检查；输出时转为稳定排序数组，
+    # 使命令行回执可被日志和后续审计程序直接读取。
+    print(
+        json.dumps(
+            {"success": True, "result": report},
+            ensure_ascii=False,
+            indent=2,
+            default=lambda value: sorted(value) if isinstance(value, set) else str(value),
+        )
+    )
     return 0
 
 
