@@ -5,6 +5,10 @@ description: 解析数学建模题面与附件，比较候选目标的策略后�
 
 # 路线竞争
 
+## science-first 优先级
+
+新运行默认采用 `science-first`：先完成轻量题意重建、最小反例、baseline 与必要的生产实验。下文的 `MODELING_UNITS`、`OBJECTIVE_CANDIDATES`、risk package、3--5 scorer 案例、MATLAB 探测和独立 fidelity reviewer 均为风险触发工具，不能因文件存在或旧版本协议而自动成为阶段门。只有题意歧义、分解风险或结果不稳定确实触发时，才创建并执行相应材料；解析、固定评价和低风险描述题不得为了填协议生造 challenger。
+
 分析前置阶段可按需运行 `python scripts/challenger/run_bzd_translator.py <run_dir>` 生成 `analysis/external/bzd-problem-ledger.md`，执行逐句题意翻译、明示/隐含条件提取与全问 Mermaid 联动图审计，确保零遗漏；题面原句为一级硬事实，推论需经忠实度核验。
 
 先比较相邻问题新增的实体、资源、共享约束和聚合层，再区分题目对象、目标、约束、单位、输出和问题依赖。低风险题只做一次忠实重建，覆盖决策变量、成功事件、聚合和输出；任一问题要求重查聚合或 endpoint 尚待比较时，再增加一次语义攻击，专查量词次序、和/最小值/并集/交集、前问目标机械复制与分解失效，并构造能让两个解释排序相反的最小反例。重建结论是科学输入，线程回执和题面树哈希只作独立性记录；多份重建一致只说明共识，不证明正确。

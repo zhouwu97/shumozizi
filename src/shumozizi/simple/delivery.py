@@ -797,7 +797,9 @@ def next_required_action(
             forbidden_actions=forbidden,
             work_summary=summary,
         )
-    if elapsed >= plan["blind_review_deadline"]:
+    # science-first 将盲评作为风险触发的编辑工具；不能因时间截止重新变成硬门。
+    from shumozizi.simple.science_checkpoint import is_science_first_run
+    if elapsed >= plan["blind_review_deadline"] and not is_science_first_run(run_dir):
         from shumozizi.simple.review import paper_blind_review_status
 
         blind = paper_blind_review_status(run_dir)
@@ -833,7 +835,7 @@ def next_required_action(
         from shumozizi.simple.review import paper_blind_review_status
 
         blind = paper_blind_review_status(run_dir)
-        if not blind["allowed"]:
+        if not blind["allowed"] and not is_science_first_run(run_dir):
             next_action = "create_or_resume_independent_blind_review"
         elif web_paper_audit_started(run_dir) and not web_paper_audit_status(run_dir)["allowed"]:
             next_action = "wait_for_or_close_manual_web_review"

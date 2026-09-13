@@ -12,6 +12,8 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 `blocked` 仅用于真实生产失败或实际负面证据，不能因为缺少 metadata、可选文档或旧协议文件阻断。v3.1 与 v3.0 状态保持兼容：读取 v3.0 时映射 `capability_route -> analysis`、`scientific_review/visualization -> experiment`、`final_review -> verify`；第一次显式更新才保存 v3.1 和迁移日志。
 
+**science-first 优先级规则**：新运行以 `mathmodel-workflow` 的 science-first 路径为唯一主控制面。本文后续保留的 v3.2/v3.3 细化协议仅用于兼容旧运行或风险触发后的按需工具，不得因为旧文件、旧字段或旧 Skill 文本存在而自动生成、阻断或要求完整填写。发生规则冲突时，优先采用轻量语义确认、最小反例、真实生产、结果冻结和作者叙事；审计、回执、固定图数、第二 Solver、MATLAB 探测和盲评只能在明确科学风险或用户要求时启动。
+
 ## 主动 Skill
 
 完整赛题只使用以下六个主动 Skill：

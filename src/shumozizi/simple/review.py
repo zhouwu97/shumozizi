@@ -4842,7 +4842,7 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
             required_check_ids.add("scientific-challenge-release")
             if is_competition_first_v32_state(state):
                 required_check_ids.add("web-paper-audit-release")
-        else:
+        elif not is_science_first_run(run_dir):
             required_check_ids |= {
                 "scientific-review-release", "competition-submission-release",
                 "visualization-contract",
