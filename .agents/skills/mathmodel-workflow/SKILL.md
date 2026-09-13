@@ -18,7 +18,7 @@ discovery → science_checkpoint → production → freeze → author → delive
 初始化新运行：
 
 ```powershell
-python scripts/codex/init_simple_run.py <problem_path> --run-id <run-id> --workflow-version 3.2 --question Q1
+python scripts/codex/init_run.py <problem_path> --run-id <run-id> --workflow science-first --question Q1
 ```
 
 ## 1. Discovery
@@ -35,7 +35,7 @@ python scripts/codex/init_simple_run.py <problem_path> --run-id <run-id> --workf
 
 ## 3. Production
 
-先在共同评价窗口运行 baseline 与 challenger，再从同一输入重跑唯一正式结果。生产结果必须是真实执行、输出新鲜、硬约束可行、账本一致，并登记到 `results/index.json`。同一问题允许多个历史结果，但只有明确选中的一个进入 `current`；被替换结果进入 `archive` 或标记失效。
+先在共同评价窗口运行 baseline 与 challenger，再从同一输入重跑正式结果。生产结果必须是真实执行、输出新鲜、硬约束可行、账本一致，并登记到 `results/index.json`。同一问题可同时保留多个互补的 `current` 结果（如 primary、uncertainty、oracle）；`production_manifest` 与 answer-map 明确哪一个是正式 primary，其余作为 supporting，不得自动猜答案。
 
 参数只能由统一 scorer 的比较冻结；不得因为“已经运行过”或流程字段齐全而保留参数。固定评价、解析题和普通仿真不强迫路线赛马。任何“分别求解再组合”必须标明等价证明、启发式初值或联合优化结果。
 

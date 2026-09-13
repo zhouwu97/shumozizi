@@ -398,6 +398,7 @@ def _patch_output_stem(text: str, output_stem: Path) -> str:
 
 def _apply_text_patches(text: str, template_id: str, data: dict[str, Any]) -> str:
     """替换来源论文残留文字与本题标签（只改字符串，不重写绘图函数）。"""
+    text = _patch_font_fallback(text)
     if template_id == "grouped-corr-split-violin":
         return _patch_grouped_corr_labels(text, data)
     if template_id == "nature-chord-diagram":
@@ -411,6 +412,37 @@ def _apply_text_patches(text: str, template_id: str, data: dict[str, Any]) -> st
                 '"Standard Deviation"', '"Normalized Standard Deviation"'
             )
         return text
+    return text
+
+
+def _patch_font_fallback(text: str) -> str:
+    """为复制的母版补充当前系统中文字体，不改变任何布局参数。"""
+    try:
+        from matplotlib import font_manager
+
+        candidates = ("Microsoft YaHei", "Noto Sans CJK SC", "SimHei", "SimSun", "DejaVu Sans")
+        cjk = next(
+            name for name in candidates
+            if font_manager.findfont(name, fallback_to_default=False)
+        )
+    except (ImportError, OSError, ValueError):
+        cjk = "DejaVu Sans"
+    # 母版通常以 rcParams 字面量设置西文族；保留其第一字体，只在族尾加入 CJK。
+    def add_fallback(match: re.Match[str]) -> str:
+        prefix, body, suffix = match.group(1), match.group(2), match.group(3)
+        if cjk in body:
+            return match.group(0)
+        return f"{prefix}{cjk!r}, {body.lstrip()}{suffix}"
+
+    pattern = re.compile(r"(font\.(?:sans-serif|serif)\"\s*:\s*\[)([^\]]*)(\])")
+    text = pattern.sub(add_fallback, text)
+    # 少数母版对单个 artist 显式指定 fontname，rcParams fallback 对其不起作用；
+    # 仅将这些标签字体替换为已确认支持中文的字体，字号和坐标保持不变。
+    text = re.sub(
+        r"fontname\s*=\s*(['\"])(?:Times New Roman|Arial)\1",
+        f"fontname={cjk!r}",
+        text,
+    )
     return text
 
 

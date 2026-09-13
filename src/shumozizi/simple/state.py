@@ -84,6 +84,11 @@ def require_simple_state(payload: dict[str, Any]) -> None:
         ContractError: 状态字段缺失或不合法。
     """
     errors = validate_simple_state(payload)
+    if payload.get("execution_policy") == "science-first-v1":
+        if payload.get("workflow_profile") != "science-first":
+            errors.append("workflow_profile: science-first-v1 必须使用 science-first")
+        if payload.get("workflow_generation") != "3.4":
+            errors.append("workflow_generation: science-first-v1 必须为 3.4")
     if errors:
         raise ContractError("; ".join(errors))
 
@@ -433,7 +438,11 @@ def update_simple_state(run_dir: Path, **changes: Any) -> dict[str, Any]:
             from shumozizi.simple.review import require_paper_generation_allowed
 
             require_paper_generation_allowed(run_dir)
-            if not is_science_first_run(run_dir):
+            if is_science_first_run(run_dir):
+                from shumozizi.simple.production_manifest import require_production_manifest
+
+                require_production_manifest(run_dir)
+            else:
                 from shumozizi.simple.modeling_units import require_v32_experiment_evidence
                 from shumozizi.simple.objective_consequences import require_objective_consequences
 

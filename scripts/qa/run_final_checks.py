@@ -43,6 +43,7 @@ from shumozizi.simple.review import (
     paper_blind_review_status,
     scientific_review_status,
 )
+from shumozizi.simple.science_checkpoint import is_science_first_run
 from shumozizi.simple.state import (
     is_competition_first_state,
     is_competition_first_v32_state,
@@ -74,7 +75,13 @@ def _print_cli_payload(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def _check(check_id: str, payload: dict[str, Any], details: str) -> dict[str, Any]:
+def _check(
+    check_id: str,
+    payload: dict[str, Any],
+    details: str,
+    *,
+    blocking: bool = True,
+) -> dict[str, Any]:
     """将子检查标准化为报告条目。
 
     Args:
@@ -88,6 +95,7 @@ def _check(check_id: str, payload: dict[str, Any], details: str) -> dict[str, An
     return {
         "id": check_id,
         "passed": bool(payload.get("success")),
+        "blocking": blocking,
         "details": details,
         "payload": payload,
     }
@@ -149,6 +157,7 @@ def run_final_checks(
         {
             "id": "state-phase",
             "passed": state["phase"] != "blocked",
+            "blocking": True,
             "details": f"当前运行阶段：{state['phase']}",
             "payload": {"phase": state["phase"]},
         }
@@ -163,6 +172,7 @@ def run_final_checks(
                     "reason": scientific_challenge["reason"],
                 },
                 "自由科学挑战仍绑定当前生产结果、审查包和真实任务回执",
+                blocking=not is_science_first_run(root),
             )
         )
     else:
@@ -243,6 +253,7 @@ def run_final_checks(
             "paper-blind-review-release",
             {"success": paper_blind_review["allowed"], "reason": paper_blind_review["reason"]},
             "独立 PDF 盲审的冻结输入、报告和隔离声明仍有效",
+            blocking=not is_science_first_run(root),
         )
     )
     # 网页审核是可选增强而非必经环节：只有实际发起过审核的运行才按完整状态放行，
@@ -261,6 +272,7 @@ def run_final_checks(
             "web-paper-audit-release",
             web_paper_audit_payload,
             f"v3.2 网页审核（若已发起）为仅 PDF、禁止检索、最多 {WEB_PAPER_AUDIT_MAX_ROUNDS} 轮并已放行",
+            blocking=not is_science_first_run(root),
         )
     )
     pdf_report = audit_pdf(
@@ -403,10 +415,31 @@ def run_final_checks(
         {
             "id": "contact-sheet",
             "passed": contact_error is None,
+            "blocking": False if is_science_first_run(root) else True,
             "details": contact_error or str(contact_sheet.relative_to(root)),
         }
     )
-    failed = [item["id"] for item in checks if not item["passed"]]
+    # science-first 将科学挑战、盲评和版式/文风检查作为 advisory；事实、编译、
+    # 数字、结果与匿名交付链仍是唯一硬门。
+    advisory_ids = {
+        "scientific-challenge-release",
+        "paper-blind-review-release",
+        "web-paper-audit-release",
+        "report-style-audit",
+        "paper-structure-signals",
+        "placeholders",
+        "contact-sheet",
+        "central-metric-coherence",
+    }
+    if is_science_first_run(root):
+        for item in checks:
+            if item["id"] in advisory_ids:
+                item["blocking"] = False
+    failed = [
+        item["id"]
+        for item in checks
+        if item.get("blocking", True) and item.get("passed") is not True
+    ]
     report = {
         "schema_version": "1.0",
         "run_id": state["run_id"],

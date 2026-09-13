@@ -7,13 +7,13 @@ description: 真实执行数学建模实验，比较路线、保存 current 结�
 
 代码写入 `code/`，输出写入 `results/raw/`，影响路线或论文的实验必须使用执行器登记。前置 probe 使用 `python scripts/runtime/run_simple_experiment.py ... --execution-mode exploration`，它默认 provisional/diagnostic，不能替换 current、正式图、answer-map 或论文。候选胜出后必须从源数据使用 `--execution-mode production` 重跑；没有“无重跑提升”的捷径。生产执行默认检查输出新鲜度，探索执行不以旧输出冒充正式证据。
 
-预算优先给搜索，不给复算。核心问题的搜索与深化耗时必须超过其验证与复算耗时，且核心搜索要占实际算力的 40% 以上——把复算跑成 exploration 不能稀释这条检查。建议分配：主路线深化与候选搜索 60%、竞争路线 15%、机制与敏感性 15%、独立复核 10%。
+预算优先给能改变路线或结论的实验；固定评价、解析题和普通仿真不强迫赛马，也不设搜索时长/算力配额。优化题才在首解后按决策价值安排结构 challenger 与深化。
 
 优先 baseline、区分性 probe 与能推翻当前结论的实验。实验的价值来自改变路线、模型、主要结论、机制解释或贡献，不来自填满敏感性、多种子或收敛图清单。
 
-**图表资产是实验的一级交付物，不是 SECOND STEP 的事后装饰。** 每个核心问题除了数值结果，还必须产出**可画高级图的结果数据**与**正式图本身**：
+图表资产服务于数据直觉、机制或边界；只有确有论证价值时才生成高级图，不以图数或图种配额作为实验硬门：
 
-- **可画图数据（data side）**：按问题特征至少产出两类可支撑高级图型的数据——例如 SHAP 值（分类/回归解释）、区间删失生存/达标曲线（阈值事件时间）、相关矩阵（EDA）、Bootstrap/重抽样分布（不确定性）、校准/PR/ROC 曲线（判别验证）、灵敏度矩阵（决策稳健）。这些数据随 production 结果写入 `results/raw/`，供正式稿直接消费。
+- **可画图数据（data side）**：按问题特征选择能支撑论点的结果数据（如相关矩阵、Bootstrap 分布或灵敏度矩阵），随 production 结果写入 `results/raw/`，供正式稿消费。
 - **正式图（figure side）**：用统一风格（seaborn 主题 + 语义调色板 + SimSun/中文字体 + DPI≥300）渲染，优先复用 `.agents/skills/mathmodel-advanced-figures/scripts/render_advanced.py` 的现成模板（`survival_curve` / `shap_combo` / `correlation_heatmap` / `paired_raincloud` / `cv_roc_ci` / `ci_forest` / `group_violin`）；数据支撑多面板时画组合图，不用单面板草率了事。图必须承担数据直觉、机制、决定性证据或边界中的论证角色，不能为了凑图数画装饰图。
 
 **不是配额驱动**：目标是"图种多样、可论证、好看"，不是"凑到 N 张"。实验阶段的图画得越好，SECOND STEP 越不需要重画；实验只画基础折线/柱状而把高级图全部推给 SECOND STEP，等于把最该在数据新鲜时完成的事拖到最后。

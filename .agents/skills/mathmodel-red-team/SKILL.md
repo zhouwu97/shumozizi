@@ -1,6 +1,6 @@
 ---
 name: mathmodel-red-team
-description: 对 Competition-First v3.2 运行执行条件目标语义审查、一次两阶段科学挑战、独立 PDF 盲评或按需网页 PDF 编辑审核。
+description: 对 science-first 运行按风险触发执行目标语义审查、科学挑战或可选 PDF 编辑审核。
 ---
 
 # 薄验证壳
@@ -39,7 +39,7 @@ description: 对 Competition-First v3.2 运行执行条件目标语义审查、�
 
 ## 科学挑战：两阶段阅读
 
-科学挑战只做一次。必须按阶段顺序执行，**不能跳过阶段A直接读代码**。
+科学挑战只在高影响未决歧义或明确科学风险时执行一次；未启动不阻断 Author 或交付。启动后按阶段顺序执行，**不能跳过阶段A直接读代码**。
 
 ### 阶段A：只读题面，独立建模
 

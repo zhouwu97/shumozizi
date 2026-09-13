@@ -1,4 +1,4 @@
-"""初始化 legacy-v2 或 Competition-First v3.2 运行的命令行入口。"""
+"""初始化 science-first v3.4 运行及历史兼容入口。"""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.initialization import (
     DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
     PAPER_DRAFT_MODES,
+    initialize_science_first_run,
     initialize_simple_run,
 )
 from shumozizi.workflow.initialization import initialize_run, safe_run_id
@@ -26,8 +27,8 @@ def main() -> int:
     parser.add_argument("--run-id")
     parser.add_argument(
         "--workflow",
-        choices=("legacy-v2", "capability-first-v3", "competition-first-v3.1", "competition-first-v3.2"),
-        default="legacy-v2",
+        choices=("science-first", "legacy-v2", "capability-first-v3", "competition-first-v3.1", "competition-first-v3.2"),
+        default="science-first",
         help=(
             "competition-first-v3.2 使用当前主链；competition-first-v3.1 与 legacy-v2 保持兼容；"
             "capability-first-v3 是兼容别名"
@@ -51,7 +52,28 @@ def main() -> int:
     parser.add_argument("--repo-root")
     args = parser.parse_args()
     repo_root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
-    if args.workflow in {"capability-first-v3", "competition-first-v3.1", "competition-first-v3.2"}:
+    if args.workflow == "science-first":
+        if args.problem_path:
+            problem = Path(args.problem_path)
+            if not problem.is_absolute():
+                problem = repo_root / problem
+            default_id = f"{problem.stem}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        else:
+            problem = None
+            default_id = f"science-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        run_dir = initialize_science_first_run(
+            repo_root,
+            args.run_id or default_id,
+            problem_path=problem,
+            competition=args.competition,
+            problem_id=args.problem_id,
+            required_questions=args.questions,
+            total_hours=args.total_hours,
+            token_soft_cap=args.token_soft_cap,
+            paper_draft_mode=args.paper_draft_mode,
+        )
+        version = "3.2"
+    elif args.workflow in {"capability-first-v3", "competition-first-v3.1", "competition-first-v3.2"}:
         if args.problem_path:
             problem = Path(args.problem_path)
             if not problem.is_absolute():

@@ -35,6 +35,7 @@ from shumozizi.simple.risk_routing import (
     validate_risk_assessment,
     validate_risk_package,
 )
+from shumozizi.simple.scientific_insights import _SUBSTANTIVE_INSIGHT_KINDS
 from shumozizi.simple.state import is_competition_first_v32_state, read_simple_state, utc_now
 from shumozizi.simple.visual_requirements import (
     ARGUMENT_ROLES,
@@ -3594,11 +3595,6 @@ def semantic_counterexample_for_question(
         if isinstance(contract, dict) and isinstance(contract.get("semantic_counterexample"), dict):
             return dict(contract["semantic_counterexample"])
     return None
-
-
-_SUBSTANTIVE_INSIGHT_KINDS = frozenset(
-    {"mechanism", "marginal_gain", "active_constraint", "tradeoff"}
-)
 
 
 def core_question_insights(run_dir: Path) -> dict[str, list[dict[str, Any]]]:

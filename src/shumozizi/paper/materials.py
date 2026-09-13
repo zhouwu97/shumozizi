@@ -70,6 +70,8 @@ _CONTROL_KEYS = frozenset(
     }
 )
 _ANALYSIS_INPUTS = (
+    "analysis/science-checkpoint.json",
+    "state/production-manifest.json",
     "analysis/MODELING_UNITS.json",
     "analysis/method_facts.json",
     "analysis/critical_claims.json",
@@ -372,6 +374,71 @@ def _result_materials(result: dict[str, Any]) -> list[dict[str, Any]]:
 def _analysis_materials(run_dir: Path) -> list[dict[str, Any]]:
     """把分析层的科学合同转成可写素材，不复制控制台账。"""
     materials: list[dict[str, Any]] = []
+    checkpoint = _load_optional_json(run_dir, "analysis/science-checkpoint.json") or {}
+    contracts = checkpoint.get("question_contracts", {})
+    if isinstance(contracts, dict):
+        for question_id, contract in contracts.items():
+            if not isinstance(contract, dict):
+                continue
+            text = _selected_text(
+                contract,
+                (
+                    "objective", "required_output", "mathematical_object",
+                    "information_set", "aggregation", "boundary_conditions",
+                    "baseline", "scorer", "falsification", "challenge",
+                ),
+            )
+            if text:
+                materials.append(
+                    _base_item(
+                        material_id=f"science-checkpoint-{question_id}",
+                        category="Mathematical Derivation",
+                        title=f"{question_id} 题意、对象与判据",
+                        content=text,
+                        question_id=str(question_id),
+                        inclusion="body",
+                        evidence_grade="science_checkpoint",
+                        source_paths=["analysis/science-checkpoint.json"],
+                    )
+                )
+    else:
+        legacy_contract = checkpoint.get("semantic_contract", {})
+        if isinstance(legacy_contract, dict):
+            text = _selected_text(legacy_contract, legacy_contract.keys())
+            if text:
+                materials.append(
+                    _base_item(
+                        material_id="science-checkpoint-legacy",
+                        category="Mathematical Derivation",
+                        title="科学检查点：题意与判据",
+                        content=text,
+                        question_id=None,
+                        inclusion="body",
+                        evidence_grade="science_checkpoint",
+                        source_paths=["analysis/science-checkpoint.json"],
+                    )
+                )
+    manifest = _load_optional_json(run_dir, "state/production-manifest.json") or {}
+    manifest_results = manifest.get("results", {})
+    if isinstance(manifest_results, dict):
+        for question_id, record in manifest_results.items():
+            if not isinstance(record, dict):
+                continue
+            answer = record.get("objective_answer")
+            if answer:
+                materials.append(
+                    _base_item(
+                        material_id=f"manifest-answer-{question_id}",
+                        category="Direct Answer",
+                        title=f"{question_id} 正式答案",
+                        content=_author_text(answer),
+                        question_id=str(question_id),
+                        result_ids=[str(record.get("primary_result_id"))] if record.get("primary_result_id") else [],
+                        inclusion="body",
+                        evidence_grade="production_manifest",
+                        source_paths=["state/production-manifest.json"],
+                    )
+                )
     modeling = _load_optional_json(run_dir, "analysis/MODELING_UNITS.json") or {}
     units = modeling.get("units", [])
     if isinstance(units, list):

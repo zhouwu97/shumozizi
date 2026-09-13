@@ -11,7 +11,8 @@ from typing import Any
 from shumozizi.core.io import ContractError, atomic_json, load_json, sha256_file
 from shumozizi.paper.policy import formal_result_digest
 from shumozizi.paper.templates import require_materialized_template
-from shumozizi.simple.modeling_units import _SUBSTANTIVE_INSIGHT_KINDS
+from shumozizi.simple.science_checkpoint import is_science_first_run
+from shumozizi.simple.scientific_insights import _SUBSTANTIVE_INSIGHT_KINDS
 from shumozizi.simple.state import read_simple_state, utc_now
 
 AUTHOR_PASS_DIR = Path("paper/author-pass")
@@ -174,26 +175,41 @@ def scientific_authoring_readiness(
         _validate_scientific_inputs(current_state, current_answers, current_results)
     except ContractError as exc:
         errors.append(str(exc))
+    if is_science_first_run(root):
+        try:
+            from shumozizi.simple.production_manifest import require_production_manifest
+            from shumozizi.simple.science_checkpoint import require_science_checkpoint
 
-    from shumozizi.simple.review_focus import verify_scientific_challenge_evidence
+            require_science_checkpoint(root)
+            require_production_manifest(root)
+        except (ContractError, OSError, TypeError, ValueError) as exc:
+            errors.append(f"science-first 事实冻结未就绪: {exc}")
 
-    challenge = verify_scientific_challenge_evidence(root)
-    if not challenge.get("valid"):
-        errors.extend(
-            f"科学挑战未关闭: {message}" for message in challenge.get("errors", [])
-        )
-    else:
-        findings = challenge.get("evidence", {}).get("findings", [])
-        for finding in findings if isinstance(findings, list) else []:
-            if not isinstance(finding, dict) or finding.get("status") != "open":
-                continue
-            severity = str(finding.get("severity", ""))
-            action = str(finding.get("action_type", ""))
-            if severity in {"P0", "P1"} or action in _BLOCKING_SCIENTIFIC_ACTIONS:
-                errors.append(
-                    f"科学发现 {finding.get('finding_id', 'unknown')} 尚未关闭"
-                    f"（{severity}/{action}）"
+    # science-first 不把未启动的挑战当作 Author 硬门；一旦确实启动，
+    # 仍复验其证据并阻断已确认的 P0/P1 或模型修复类开放发现。
+    challenge = {"valid": True, "skipped": True, "evidence": {"findings": []}}
+    challenge_path = root / "review/scientific-challenge-evidence.json"
+    if not is_science_first_run(root) or challenge_path.is_file():
+        from shumozizi.simple.review_focus import verify_scientific_challenge_evidence
+
+        challenge = verify_scientific_challenge_evidence(root)
+        if not challenge.get("valid"):
+            if not is_science_first_run(root):
+                errors.extend(
+                    f"科学挑战未关闭: {message}" for message in challenge.get("errors", [])
                 )
+        else:
+            findings = challenge.get("evidence", {}).get("findings", [])
+            for finding in findings if isinstance(findings, list) else []:
+                if not isinstance(finding, dict) or finding.get("status") != "open":
+                    continue
+                severity = str(finding.get("severity", ""))
+                action = str(finding.get("action_type", ""))
+                if severity in {"P0", "P1"} or action in _BLOCKING_SCIENTIFIC_ACTIONS:
+                    errors.append(
+                        f"科学发现 {finding.get('finding_id', 'unknown')} 尚未关闭"
+                        f"（{severity}/{action}）"
+                    )
     return {
         "ready": not errors,
         "errors": errors,
@@ -999,6 +1015,13 @@ def prepare_longform_author(
     brief_path = root / AUTHOR_BRIEF_PATH
     thesis_card_path = root / THESIS_CARD_PATH
     from shumozizi.knowledge.inspiration import build_inspiration_context
+
+    # science-first 初始化不创建旧素材空壳；首次进入 Author 时从 checkpoint、
+    # manifest 和 current 结果按需物化作者材料。
+    from shumozizi.paper.materials import build_material_pool
+
+    if not (root / "paper/generated/material_pool.json").is_file():
+        build_material_pool(root)
 
     inspiration = build_inspiration_context(root)
     from shumozizi.paper.visual_requirements import (

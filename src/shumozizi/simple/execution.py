@@ -13,6 +13,7 @@ from typing import Any
 from shumozizi.core.io import ContractError, relative_inside, resolve_inside, sha256_file
 from shumozizi.simple.objective_semantics import objective_semantics_for_question
 from shumozizi.simple.results import json_path_value, register_result, safe_result_id
+from shumozizi.simple.science_checkpoint import is_science_first_run, science_checkpoint_digest
 from shumozizi.simple.source_closure import python_source_closure
 from shumozizi.simple.state import read_simple_state, utc_now
 
@@ -371,7 +372,11 @@ def execute_simple_experiment(
             provisional=effective_provisional,
             candidate_eligible=candidate_eligible,
             error=error,
-            objective_semantics_sha256=objective_semantics_for_question(root, question_id),
+            objective_semantics_sha256=(
+                science_checkpoint_digest(root, question_id)
+                if is_science_first_run(root)
+                else objective_semantics_for_question(root, question_id)
+            ),
             dependency_scope="question",
             affected_question_ids=[question_id],
             declared_route_id=declared_route_id,

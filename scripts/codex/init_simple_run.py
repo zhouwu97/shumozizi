@@ -13,6 +13,7 @@ from shumozizi.core.repo_root import resolve_repo_root
 from shumozizi.simple.initialization import (
     DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
     PAPER_DRAFT_MODES,
+    initialize_science_first_run,
     initialize_simple_run,
 )
 
@@ -62,26 +63,32 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
     problem = Path(args.problem_path).resolve() if args.problem_path else None
-    run_dir = initialize_simple_run(
-        root,
-        args.run_id,
+    init_kwargs = dict(
         problem_path=problem,
         competition=args.competition,
         problem_id=args.problem_id,
         required_questions=args.questions,
         total_hours=args.total_hours,
         token_soft_cap=args.token_soft_cap,
-        workflow_version=args.workflow_version,
         require_web_review=args.require_web_review,
         paper_draft_mode=args.paper_draft_mode,
-        initial_execution_mode=(
-            "exploration" if args.workflow_version == "3.2" else "production"
-        ),
-        execution_policy=args.execution_policy
-        or ("science-first-v1" if args.workflow_version == "3.2" else "legacy-production-v1"),
-        quality_policy=args.quality_policy
-        or ("science-editorial-v1" if args.workflow_version == "3.2" else "legacy"),
     )
+    if args.workflow_version == "3.2" and args.execution_policy is None and args.quality_policy is None:
+        run_dir = initialize_science_first_run(root, args.run_id, **init_kwargs)
+    else:
+        run_dir = initialize_simple_run(
+            root,
+            args.run_id,
+            workflow_version=args.workflow_version,
+            initial_execution_mode=(
+                "exploration" if args.workflow_version == "3.2" else "production"
+            ),
+            execution_policy=args.execution_policy
+            or ("science-first-v1" if args.workflow_version == "3.2" else "legacy-production-v1"),
+            quality_policy=args.quality_policy
+            or ("science-editorial-v1" if args.workflow_version == "3.2" else "legacy"),
+            **init_kwargs,
+        )
     print(
         json.dumps(
             {"run_id": run_dir.name, "run_dir": str(run_dir), "run_schema_version": args.workflow_version},

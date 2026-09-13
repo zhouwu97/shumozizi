@@ -195,6 +195,10 @@ def run_matlab_analysis(
         ContractError: 路径越界、产物合同不完整或参数不合法。
     """
     root = run_dir.resolve()
+    from shumozizi.simple.science_checkpoint import is_science_first_run, science_checkpoint_digest
+
+    if execution_mode == "production" and is_science_first_run(root):
+        objective_semantics_sha256 = science_checkpoint_digest(root, question_id)
     if role not in _ROLES:
         raise ContractError("MATLAB role 必须是 " + ", ".join(sorted(_ROLES)))
     if engine not in {"matlab", "octave"}:

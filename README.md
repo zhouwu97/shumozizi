@@ -1,4 +1,4 @@
-# shumozizi：Competition-First v3.3 数学建模工作台
+# shumozizi：Competition-First Science v3.4 数学建模工作台
 
 shumozizi 帮助参赛者在有限时间内完成题意分析、路线竞争、真实实验、洞察提炼和论文交付。它的主目标是提高路线质量、实验价值和论文的题目特定性，而不是增加 Schema、审核任务或哈希绑定数量。
 
@@ -12,7 +12,7 @@ analysis -> experiment -> paper -> paper_review -> verify -> complete
 
 `blocked` 只表示真实生产错误或已验证的负面证据，绝不因为缺少方法画像、主张清单、覆盖声明、图表合同或手工 argument map 而进入该状态。
 
-新运行使用 v3.3 论文竞争力闭环，并兼容 v3.2 科学主链：`MODELING_UNITS` 1.4 将每问分为 `evaluation`、`optimization`、`exact_oracle`、`data_modeling`、`simulation` 或 `coordination`。固定评价、数据建模与仿真不再被迫比较多条优化路线；核心优化/协同默认使用自然 baseline 加一条结构 challenger，第二条只在仍有决策价值时增加。逐问输出始终分开 `objective_answer`、`recommended_plan` 与 `evidence_grade`，稳健建议不能替换题面原目标答案。
+新运行使用 v3.4 science-first 主链：`state schema=3.2`、`workflow generation=3.4`、`workflow profile=science-first`。先做轻量 science checkpoint，再进行真实 production、事实冻结和论文交付；固定评价、解析题和普通仿真不强迫赛马，科学挑战与 PDF 盲评按风险触发并默认为 advisory。旧 v3.2 Competition-First 运行仍兼容读取。
 
 旧 v3.0/v3.1 运行可继续打开。读取 v3.0 时会把旧阶段映射为 v3.1 内存状态；第一次显式更新才写入 `state/migrations.json`，原始阶段保存在 `legacy_phase`，历史审核产物仍可查看。
 
@@ -78,6 +78,9 @@ python scripts/paper/adjudicate_review.py <run_dir> --input adjudication.json
 ```powershell
 python -m pip install -e .[test]
 python scripts/doctor.py
+
+# 新运行默认 science-first
+python scripts/codex/init_run.py <problem> --workflow science-first --question Q1
 ```
 
 创建 v3.2 运行：
@@ -194,7 +197,7 @@ runs/<run-id>/
 
 论文只维护 `PAPER_BLUEPRINT.md`、`answer-map.json`、`FIGURE_PLAN.json` 与 `PAPER_REVIEW.md` 四个主要控制文件。知识应用、argument map、版式审计等由系统派生或作为 advisory；零匹配时使用通用结构模式。联网国赛在生成 Research Package 前执行一次紧凑的双语文献检索、候选核验和 citation ledger；只检索实际使用的方法文献，禁止同题答案和现成结论。
 
-CUMCM v3.3 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.4 把图绑定到论证单元与义务，结构性 waived 需要独立复核，图表晋级按角色检查实际信息价值。`PAPER_BLUEPRINT` 自动派生逐问论证覆盖矩阵，写作前蓝图审核和首稿 PDF 冷读把最多五项高价值修改批量导入 `PAPER_REVIEW`。`CUMCM_STRUCTURE_MAP` 1.2 继续选择 `classic` 或“经典外壳 + 语义内核”的 `semantic`；旧 FIGURE_PLAN 2.1--2.3 保持兼容。
+Competition-First Science v3.4 的图表和论文编译以当前 production manifest 为事实源；`FIGURE_PLAN`、`PAPER_BLUEPRINT` 和冷读意见用于编辑组织，不是新运行的科学硬门。`CUMCM_STRUCTURE_MAP` 1.2 与旧 FIGURE_PLAN 2.1--2.3 继续兼容历史运行。
 
 写作采用三种可往返的逻辑动作：先做结构蓝图，再统一共享模型并逐问成文，最后以证据、边界和严格返修收束。`templates/competition-first/WRITING_ACTIONS.md` 提供提示；它吸收“蓝图、共享模型、逐问章节、证据局限、返修”的优点，但不把五轮写作机械固定为状态机。
 
@@ -202,11 +205,11 @@ CUMCM v3.3 使用轻量竞赛呈现编译：`FIGURE_PLAN` 2.4 把图绑定到论
 
 ## 审查与交付
 
-科学挑战只回答六个问题：独立重建目标/变量/约束、三处最大风险、对最大风险的实际攻击、最薄弱问题、当前竞争力上限、最可能改变结论的下一实验。它必须绑定冻结输入、报告和真实任务回执，但不以覆盖率清单放行。
+科学挑战只在高影响歧义或明确风险时启动；未启动不阻断 science-first。启动后绑定冻结输入、报告和真实结果，确认的科学 P0/P1 或事实错误仍阻断交付。
 
 PDF 盲评必须使用独立上下文，只接收冻结最终 PDF 与固定提示词。盲评绑定 `argument_revision`，纯渲染重编不使它失效；CUMCM 版式审计与机械 QA 绑定 `render_revision`。首稿和 candidate 都允许按结构化评审理由返修，只有显式 final lock 才停止新增科学内容。
 
-完成前重新检查科学挑战仍绑定当前代码、数据和生产结果，再检查 PDF、匿名、占位符、乱码、裁切、空白页、当前结果和当前图表漂移。P0/P1、真实负面证据或失效的事实产物始终阻断 `complete`。
+完成前检查 checkpoint、production manifest、PDF、匿名、数字和当前结果/图表漂移；文风、图数、盲评和未启动的科学挑战属于 advisory。P0/P1、真实负面证据或失效的事实产物始终阻断 `complete`。
 
 ## Skill
 

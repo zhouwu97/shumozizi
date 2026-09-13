@@ -88,9 +88,9 @@ def _chord_data() -> dict[str, object]:
     }
 
 
-def test_direct_adaptation_real_data_changes_the_png() -> None:
+def test_direct_adaptation_real_data_changes_the_png(ws_tmp: Path) -> None:
     """P0-1：给两份不同的真实数据，PNG 必须真的发生变化（而不是都画模拟数据）。"""
-    run_dir = Path("tmp") / f"t-p01-{uuid.uuid4().hex[:8]}"
+    run_dir = ws_tmp / "case"
     run_dir.mkdir()
     try:
         stem_a = run_dir / "figures" / "work" / "q3-corr" / "v1" / "q3-corr"
@@ -113,9 +113,9 @@ def test_direct_adaptation_real_data_changes_the_png() -> None:
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_direct_adaptation_copies_original_and_keeps_drawing() -> None:
+def test_direct_adaptation_copies_original_and_keeps_drawing(ws_tmp: Path) -> None:
     """direct 模式必须复制原脚本并保留绘图结构（draw_* / fig.add_axes / fig.legend）。"""
-    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir = ws_tmp / "case"
     run_dir.mkdir()
     try:
         stem = run_dir / "figures" / "work" / "q3-corr" / "v1" / "q3-corr"
@@ -140,9 +140,9 @@ def test_direct_adaptation_copies_original_and_keeps_drawing() -> None:
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_direct_adaptation_feature_count_mismatch_raises() -> None:
+def test_direct_adaptation_feature_count_mismatch_raises(ws_tmp: Path) -> None:
     """特征数不等于母版模板时明确报错，指引 manual 模式手工调整布局。"""
-    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir = ws_tmp / "case"
     run_dir.mkdir()
     try:
         stem = run_dir / "figures" / "work" / "mismatch" / "v1" / "mismatch"
@@ -154,9 +154,9 @@ def test_direct_adaptation_feature_count_mismatch_raises() -> None:
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_direct_adaptation_unknown_template_raises() -> None:
+def test_direct_adaptation_unknown_template_raises(ws_tmp: Path) -> None:
     """没有自动 shim 的模板直接调用 adapt_and_render 必须给出 manual 指引。"""
-    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir = ws_tmp / "case"
     run_dir.mkdir()
     try:
         stem = run_dir / "figures" / "work" / "unknown" / "v1" / "unknown"
@@ -167,9 +167,9 @@ def test_direct_adaptation_unknown_template_raises() -> None:
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_manual_adaptation_patches_output_stem_and_leaves_stub() -> None:
+def test_manual_adaptation_patches_output_stem_and_leaves_stub(ws_tmp: Path) -> None:
     """manual 模式复制原脚本、改写输出路径、写数据入口 stub，不运行不产出图。"""
-    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir = ws_tmp / "case"
     run_dir.mkdir()
     try:
         stem = run_dir / "figures" / "work" / "manual-roc" / "v1" / "manual-roc"
@@ -186,9 +186,9 @@ def test_manual_adaptation_patches_output_stem_and_leaves_stub() -> None:
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_taylor_direct_adaptation_uses_model_field_and_reference_std() -> None:
+def test_taylor_direct_adaptation_uses_model_field_and_reference_std(ws_tmp: Path) -> None:
     """Taylor shim 必须用 model= 字段，并把 std 按 reference_std 归一化。"""
-    run_dir = Path("tmp") / f"t-da-{uuid.uuid4().hex[:8]}"
+    run_dir = ws_tmp / "case"
     run_dir.mkdir()
     try:
         data = {
@@ -866,5 +866,4 @@ def test_auto_never_falls_back_to_reimplemented_for_scibox_master(ws_tmp: Path) 
     assert result["mode"] != "reimplemented"
     if result["mode"] == "adapted_manual_stub":
         assert "绝不自动退回简化 reimplemented 渲染器" in result["notice"]
-
 

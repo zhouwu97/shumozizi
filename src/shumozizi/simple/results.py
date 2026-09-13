@@ -401,6 +401,18 @@ def register_result(
         }
     if execution_mode == "production" and not objective_semantics_sha256:
         raise ContractError("production 结果必须绑定 objective_semantics_sha256")
+    if execution_mode == "production":
+        from shumozizi.simple.science_checkpoint import (
+            is_science_first_run,
+            science_checkpoint_digest,
+        )
+
+        if is_science_first_run(run_dir):
+            expected_digest = science_checkpoint_digest(run_dir, question_id)
+            if objective_semantics_sha256 != expected_digest:
+                raise ContractError(
+                    f"science-first production 未绑定当前 science checkpoint（预期 {expected_digest}）"
+                )
     if dependency_scope not in {"question", "shared", "global"}:
         raise ContractError("dependency_scope 必须为 question、shared 或 global")
     affected = list(dict.fromkeys(affected_question_ids or [question_id]))

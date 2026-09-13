@@ -4860,11 +4860,22 @@ def mechanical_qa_status(run_dir: Path) -> dict[str, Any]:
                 "allowed": False,
                 "reason": f"机械 QA 缺少必要检查项: {', '.join(sorted(missing_ids))}",
             }
-        if any(
-            not isinstance(check, dict) or check.get("passed") is not True
+        hard_failures = [
+            check.get("id", "<unknown>")
             for check in checks
-        ):
-            return {"allowed": False, "reason": "机械 QA 存在未通过的检查记录"}
+            if (
+                not isinstance(check, dict)
+                or (
+                    check.get("blocking", True)
+                    and check.get("passed") is not True
+                )
+            )
+        ]
+        if hard_failures:
+            return {
+                "allowed": False,
+                "reason": "机械 QA 存在未通过的阻断检查记录: " + ", ".join(hard_failures),
+            }
         if (
             mechanical.get("final_pdf") != "paper/final.pdf"
             or not pdf.is_file()

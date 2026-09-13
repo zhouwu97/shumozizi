@@ -225,6 +225,7 @@ def initialize_simple_run(
     initial_execution_mode: str = "production",
     execution_policy: str = "legacy-production-v1",
     quality_policy: str = "legacy",
+    create_legacy_scaffolding: bool = True,
 ) -> Path:
     """创建可独立恢复的 v3 运行目录。
 
@@ -242,7 +243,8 @@ def initialize_simple_run(
         paper_draft_mode: 可选首稿模式；直接调用旧 Python API 未指定时保持
             reviewable fallback 兼容，新 CLI 默认显式传入长篇科学首稿。
         initial_execution_mode: 初始实验用途；旧 API 默认保持 production 兼容。
-        execution_policy: 执行策略；新 v3.2 CLI 使用风险自适应策略。
+        execution_policy: 执行策略；新 v3.2 CLI 使用 science-first 策略。
+        create_legacy_scaffolding: 是否创建旧 MODELING_UNITS/素材空壳；新入口关闭。
         quality_policy: 运行开始即冻结的论文质量合同；新 CLI 使用 science-editorial-v1。
 
     Returns:
@@ -343,20 +345,21 @@ def initialize_simple_run(
             require_web_review=require_web_review,
             started_at=now,
         )
-        atomic_json(
-            run_dir / "analysis" / "MODELING_UNITS.json",
-            {
-                "schema_version": "1.4",
-                "run_id": identifier,
-                "semantic_reconstructions": [],
-                "research_story": {
-                    "central_tension": "待填写：题目的核心矛盾与统一研究主线。",
-                    "central_mathematical_object": "待填写：贯穿全文的共享状态、判定器或概率对象。",
-                    "question_progression": [],
+        if create_legacy_scaffolding:
+            atomic_json(
+                run_dir / "analysis" / "MODELING_UNITS.json",
+                {
+                    "schema_version": "1.4",
+                    "run_id": identifier,
+                    "semantic_reconstructions": [],
+                    "research_story": {
+                        "central_tension": "待填写：题目的核心矛盾与统一研究主线。",
+                        "central_mathematical_object": "待填写：贯穿全文的共享状态、判定器或概率对象。",
+                        "question_progression": [],
+                    },
+                    "units": [],
                 },
-                "units": [],
-            },
-        )
+            )
         (run_dir / "paper" / "PAPER_BLUEPRINT.md").write_text(
             _paper_blueprint_template(list(required_questions or [])),
             encoding="utf-8",
@@ -378,11 +381,13 @@ def initialize_simple_run(
         from shumozizi.paper.policy import freeze_workflow_snapshot, refresh_policy_state
         from shumozizi.paper.storyboard import build_research_storyboard
 
-        build_material_pool(run_dir)
-        build_research_storyboard(run_dir)
+        if create_legacy_scaffolding:
+            build_material_pool(run_dir)
+            build_research_storyboard(run_dir)
         from shumozizi.simple.visual_opportunities import build_visual_opportunity_pool
 
-        build_visual_opportunity_pool(run_dir)
+        if create_legacy_scaffolding:
+            build_visual_opportunity_pool(run_dir)
         refresh_policy_state(run_dir)
         freeze_workflow_snapshot(run_dir, quality_policy=quality_policy)
         atomic_json(
@@ -395,3 +400,40 @@ def initialize_simple_run(
             },
         )
     return run_dir
+
+
+def initialize_science_first_run(
+    repo_root: Path,
+    run_id: str,
+    *,
+    problem_path: Path | None = None,
+    competition: str = "",
+    problem_id: str = "",
+    required_questions: list[str] | None = None,
+    total_hours: float | None = None,
+    token_soft_cap: int | None = None,
+    require_web_review: bool = False,
+    paper_draft_mode: str = DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
+) -> Path:
+    """创建 v3.4 science-first 运行；统一所有面向用户的初始化入口。
+
+    WHY: ``initialize_simple_run`` 仍需保留旧 API 的兼容默认值，故由这个
+    明确命名的包装固定科学优先合同，避免不同 CLI 再次落入旧策略。
+    """
+    return initialize_simple_run(
+        repo_root,
+        run_id,
+        problem_path=problem_path,
+        competition=competition,
+        problem_id=problem_id,
+        required_questions=required_questions,
+        total_hours=total_hours,
+        token_soft_cap=token_soft_cap,
+        workflow_version="3.2",
+        require_web_review=require_web_review,
+        paper_draft_mode=paper_draft_mode,
+        initial_execution_mode="exploration",
+        execution_policy="science-first-v1",
+        quality_policy="science-editorial-v1",
+        create_legacy_scaffolding=False,
+    )
