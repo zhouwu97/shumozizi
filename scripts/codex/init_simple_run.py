@@ -51,7 +51,7 @@ def main() -> int:
     parser.add_argument(
         "--execution-policy",
         choices=("science-first-v1", "risk-adaptive-v1", "legacy-production-v1"),
-        help="生产策略；未指定时保留旧 v3.2 名称并使用 science-editorial 语义。",
+        help="生产策略；默认使用 science-first，旧策略仅兼容旧运行。",
     )
     parser.add_argument(
         "--quality-policy",
@@ -78,7 +78,7 @@ def main() -> int:
             "exploration" if args.workflow_version == "3.2" else "production"
         ),
         execution_policy=args.execution_policy
-        or ("risk-adaptive-v1" if args.workflow_version == "3.2" else "legacy-production-v1"),
+        or ("science-first-v1" if args.workflow_version == "3.2" else "legacy-production-v1"),
         quality_policy=args.quality_policy
         or ("science-editorial-v1" if args.workflow_version == "3.2" else "legacy"),
     )

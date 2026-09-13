@@ -283,6 +283,8 @@ def initialize_simple_run(
         "schema_version": workflow_version,
         "run_id": identifier,
         "workflow": f"competition-first-v{workflow_version}",
+        "workflow_generation": "3.4" if execution_policy == "science-first-v1" else workflow_version,
+        "workflow_profile": "science-first" if execution_policy == "science-first-v1" else "legacy",
         "phase": "analysis",
         "execution_mode": initial_execution_mode,
         "execution_policy": execution_policy,

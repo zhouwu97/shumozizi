@@ -9,6 +9,8 @@
     "schema_version": {"enum": ["3.0", "3.1", "3.2"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "workflow": {"enum": ["capability-first-v3", "competition-first-v3.1", "competition-first-v3.2"]},
+    "workflow_generation": {"type": "string"},
+    "workflow_profile": {"enum": ["legacy", "science-first"]},
     "phase": {"enum": ["analysis", "capability_route", "experiment", "scientific_review", "visualization", "paper", "paper_review", "verify", "final_review", "complete", "blocked"]},
     "legacy_phase": {"type": "string"},
     "execution_mode": {"enum": ["production", "exploration"]},
