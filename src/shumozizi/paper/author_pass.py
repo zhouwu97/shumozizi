@@ -17,6 +17,7 @@ from shumozizi.simple.state import read_simple_state, utc_now
 AUTHOR_PASS_DIR = Path("paper/author-pass")
 RESEARCH_PACKAGE_PATH = AUTHOR_PASS_DIR / "RESEARCH_PACKAGE.md"
 AUTHOR_BRIEF_PATH = AUTHOR_PASS_DIR / "AUTHOR_BRIEF.md"
+THESIS_CARD_PATH = AUTHOR_PASS_DIR / "THESIS_CARD.md"
 AUTHOR_PASS_MANIFEST_PATH = AUTHOR_PASS_DIR / "manifest.json"
 AUTHOR_GAPS_PATH = Path("paper/AUTHOR_GAPS.md")
 INTERNAL_AUTHOR_REQUESTS_PATH = Path("paper/AUTHOR_REQUESTS.json")
@@ -484,15 +485,15 @@ def _citation_brief(root: Path) -> list[str]:
 
 
 def _visual_requirement_brief(root: Path) -> list[str]:
-    """把已就绪的 current 正式图压缩为 Author 必须引用的资产清单。
+    """把已就绪图压缩为按论点选用的视觉素材。
 
     与旧版的关键区别：不再把视觉状态写成"需求需要视觉评估"（会误导 Author
     以为图还没生成），而是列出 figures/index.json 中 status=current 的正式图、
     它们在正文可直接引用的 ``\\includegraphics`` 相对路径（从 paper/ 出发），
-    并给出要求：正文必须引用其中的关键图，每张配图号与图注，并在正文中完成
-    '观察 → 机制 → 结论' 的完整三步论证。
+    图表先服务于中心论点，再由作者选择是否进入正文；真正使用的图才需要在正文完成
+    “观察 → 机制 → 结论”的解释。
     """
-    lines = ["## 已就绪正式图（必须引用，并在正文完成观察—机制—结论）", ""]
+    lines = ["## 可用图表与图解读（按论点选用）", ""]
     figures = _optional_json(root, "figures/index.json").get("figures", [])
     current = [
         item
@@ -502,7 +503,7 @@ def _visual_requirement_brief(root: Path) -> list[str]:
     if not current:
         lines.extend(
             [
-                "- 当前没有已就绪的 current 正式图；若论证需要图，提出返工请求补充，不得用装饰图替代。",
+                "- 当前没有已就绪的正式图；若某个判断确实需要视觉证据，再提出具体的图表返工请求。",
                 "",
             ]
         )
@@ -530,13 +531,95 @@ def _visual_requirement_brief(root: Path) -> list[str]:
     lines.extend(
         [
             "",
-            f"以上 {referenced} 张正式图已由 current production 数据确定性生成，正文必须引用其中的关键图，"
-            "每张配图号、图注，并在正文中完成'观察（图显示了什么）→ 机制（为什么呈现该形态）→ 结论（对答案意味着什么）'。"
-            "不要因为图注复杂就省略图，也不要仅用一句话掠过。",
+            f"以上 {referenced} 张正式图均来自当前正式结果。正文可以从中选择真正支撑中心论点的图；"
+            "至少一张被实际使用的正式图必须引用并配合正文解释，"
+            "实际使用的图应有简短图题，并在图前后写出'观察（图显示了什么）→ 机制（为什么呈现该形态）→ "
+            "结论（对答案意味着什么）'。不要为了凑图插入重复或装饰图。",
             "",
         ]
     )
     return lines
+
+
+def _render_thesis_card(
+    root: Path,
+    state: dict[str, Any],
+    answers: dict[str, Any],
+    results: dict[str, dict[str, Any]],
+) -> str:
+    """生成给作者的短论点卡，先固定读者应记住的判断再展开章节。"""
+    modeling = _modeling_units(root)
+    story = modeling.get("research_story", {})
+    tension = str(story.get("central_tension", "")).strip()
+    object_name = str(story.get("central_mathematical_object", "")).strip()
+    lines = [
+        "# THESIS CARD",
+        "",
+        "这张卡只固定论文的研究判断，不规定章节模板。写作时先让读者明白结论，再展开推导。",
+        "",
+        "## 中心矛盾",
+        "",
+        tension or "请从正式结果中提炼一个可被证据支持的中心矛盾。",
+        "",
+        "## 共享对象",
+        "",
+        object_name or "请用一段话说明各问共享的对象、状态或决策关系。",
+        "",
+        "## 数据发现",
+        "",
+        "优先记录会改变模型选择或解释结果的结构事实：均值关系、周期性、相关性、缺失模式、阈值或异常。普通规模统计放入附录，不要让数据概况取代发现。",
+        "",
+        "## 理论追问",
+        "",
+        "从最简单的可解释模型提出一个可反驳预测（方向、分位数、阈值或排序），再说明完整模型为何可能偏离以及如何检验。",
+        "",
+        "## 开放题实验",
+        "",
+        "把开放问题拆成可直接测量的变化轴和只能给上界的反事实轴；为每条轴写明 baseline、对照、共同评价窗口、停止条件和信噪比判断。",
+        "",
+        "## 最多三项贡献",
+        "",
+        "1. 说明模型揭示了什么结构或机制。",
+        "2. 说明正式结果改变了什么决策。",
+        "3. 说明结论在哪些条件下成立，以及边界是什么。",
+        "",
+        "## 各问一句话判断",
+        "",
+    ]
+    units = _units_by_question(modeling)
+    for question_id in state.get("required_questions", []):
+        answer = answers.get(question_id, {})
+        unit = units.get(question_id, {})
+        insight = ""
+        for item in unit.get("insights", []):
+            if isinstance(item, dict) and item.get("kind") in _SUBSTANTIVE_INSIGHT_KINDS:
+                insight = str(item.get("mechanism") or item.get("observation") or "").strip()
+                if insight:
+                    break
+        result = results.get(str(answer.get("primary_result_id")), {})
+        metrics = result.get("metrics", {}) if isinstance(result, dict) else {}
+        metric_text = "；".join(
+            f"{key}={value}" for key, value in list(metrics.items())[:3]
+            if key not in {"runtime_seconds", "seed"}
+        ) if isinstance(metrics, dict) else ""
+        direct = str(answer.get("direct_answer", "")).strip()
+        sentence = insight or direct or metric_text or "从正式结果提炼本问最重要的机制判断。"
+        lines.extend([f"### {question_id}", "", sentence, ""])
+    lines.extend(
+        [
+            "## 阅读路径",
+            "",
+            "摘要先给问题困难、统一结构和主要发现；正文沿“矛盾 → 对象 → 模型 → 结果 → 机制 → 边界”推进。",
+            "逐问答案要能快速定位，但不复制相同的建模—参数—结果小节。",
+            "",
+            "## 图表选择",
+            "",
+            "每张图先写一句要证明的结论，再选择最清楚的编码。优先保留一张承担中心判断的主图，"
+            "其余图只在提供不可替代的机制、比较或边界证据时进入正文。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _selected_narrative(root: Path, package_sha256: str) -> dict[str, Any]:
@@ -578,7 +661,7 @@ def _render_research_package(
         "# RESEARCH PACKAGE",
         "",
         "本文件只包含可用于写作的当前研究事实。运行状态、哈希、回执、工具探测和完整搜索轨迹不进入作者上下文。"
-        "论证结构、章节组织、图文方案与叙事焦点由你自由形成，但不得创造不存在的证据、"
+        "先阅读同目录 THESIS_CARD，确定读者应记住的判断，再自由组织章节与图文方案；不得创造不存在的证据、"
         "不得超出主张边界，也不得用结果报账替代论证。",
         "",
         "## 题面与必答合同",
@@ -743,26 +826,6 @@ def _render_research_package(
 
     lines.extend(_visual_requirement_brief(root))
 
-    figures = _optional_json(root, "figures/index.json").get("figures", [])
-    lines.extend(["## 可用正式图", ""])
-    current_figures = [
-        item for item in figures if isinstance(item, dict) and item.get("status") == "current"
-    ] if isinstance(figures, list) else []
-    if current_figures:
-        for item in current_figures:
-            outputs = [
-                record.get("path")
-                for record in item.get("outputs", [])
-                if isinstance(record, dict) and isinstance(record.get("path"), str)
-            ]
-            lines.append(
-                f"- {item.get('figure_id', '')}: {item.get('takeaway', item.get('question', ''))}"
-                + (f"（{', '.join(outputs)}）" if outputs else "")
-            )
-    else:
-        lines.append("- 当前没有已晋级图；可在 Visual Sandbox 中提出候选，不得在正文引用未晋级草图。")
-    lines.append("")
-
     gate = _optional_json(root, "paper/claim_gate.json")
     lines.extend(["## 主张边界", ""])
     claims = gate.get("claims", [])
@@ -798,7 +861,7 @@ def _render_author_brief(
         "",
         f"为运行 {state['run_id']} 撰写完整数学建模竞赛论文。",
         "",
-        "论文必须按国奖级完整竞赛论文的论证标准自检，篇幅只由真实论证任务决定：每个问题都要能找到直接答案、"
+        "先阅读 THESIS_CARD，确定中心判断和读者阅读路径。论文按国奖级完整竞赛论文的论证标准自检，篇幅只由真实论证任务决定：每个问题都要能找到直接答案、"
         "模型建立、求解、结果解读以及必要证据；不得用空泛压缩或堆砌页数、图数规避论证。"
         "附录可含核心代码与稳定性图。",
         "",
@@ -934,6 +997,7 @@ def prepare_longform_author(
     )
     package_path = root / RESEARCH_PACKAGE_PATH
     brief_path = root / AUTHOR_BRIEF_PATH
+    thesis_card_path = root / THESIS_CARD_PATH
     from shumozizi.knowledge.inspiration import build_inspiration_context
 
     inspiration = build_inspiration_context(root)
@@ -947,6 +1011,7 @@ def prepare_longform_author(
         sync_opportunities=False,
     )
     _atomic_text(package_path, _render_research_package(root, state, answers, results))
+    _atomic_text(thesis_card_path, _render_thesis_card(root, state, answers, results))
     narrative = _selected_narrative(root, sha256_file(package_path))
     _atomic_text(brief_path, _render_author_brief(state, inspiration, narrative))
     gaps = root / AUTHOR_GAPS_PATH
@@ -964,6 +1029,10 @@ def prepare_longform_author(
         "author_brief": {
             "path": AUTHOR_BRIEF_PATH.as_posix(),
             "sha256": sha256_file(brief_path),
+        },
+        "thesis_card": {
+            "path": THESIS_CARD_PATH.as_posix(),
+            "sha256": sha256_file(thesis_card_path),
         },
         "visual_requirements": {
             "path": VISUAL_REQUIREMENTS_PATH.as_posix(),
@@ -1008,7 +1077,10 @@ def verify_author_pass(run_dir: Path) -> dict[str, Any]:
     errors: list[str] = []
     try:
         payload = load_json(root / AUTHOR_PASS_MANIFEST_PATH)
-        for field in ("research_package", "author_brief"):
+        fields = ["research_package", "author_brief"]
+        if isinstance(payload.get("thesis_card"), dict):
+            fields.append("thesis_card")
+        for field in fields:
             record = payload[field]
             path = root / record["path"]
             if not path.is_file() or record.get("sha256") != sha256_file(path):

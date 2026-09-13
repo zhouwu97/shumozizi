@@ -41,6 +41,7 @@ from shumozizi.simple.modeling_units import _SUBSTANTIVE_INSIGHT_KINDS
 from shumozizi.simple.objective_semantics import objective_semantics_digest
 from shumozizi.simple.quality import quality_allows_paper
 from shumozizi.simple.results import read_result_index
+from shumozizi.simple.science_checkpoint import is_science_first_run
 from shumozizi.simple.state import (
     is_competition_first_state,
     is_competition_first_v32_state,
@@ -307,6 +308,7 @@ def _advanced_figure_quota_errors(run_dir: Path) -> list[str]:
     """
     from shumozizi.paper.policy import workflow_quality_policy
 
+    # science-editorial-v1 使用论证角色而非数量门；数量不足只留给冷读器判断。
     if workflow_quality_policy(run_dir) != "competition-quality-v1":
         return []
     question_ids = _question_ids_from_state(run_dir)
@@ -1547,10 +1549,14 @@ def _validate_competition_readiness(run_dir: Path) -> tuple[list[str], list[str]
     errors.extend(_code_appendix_errors(run_dir))
     warnings.extend(_core_insight_usage_errors(run_dir, answers))
     if is_competition_first_v32_state(read_simple_state(run_dir)):
+        science_first = is_science_first_run(run_dir)
         # Figure Plan 是可选的创作资产，但 Competition Candidate 不能因为它缺失
         # 就跳过视觉判断；机会池提供不强制固定图数的替代评估路径。
-        errors.extend(validate_candidate_visual_assessment(run_dir))
-        errors.extend(validate_pending_visual_promotions(run_dir))
+        # 新的 science-editorial 运行把视觉发现留给冷读和作者判断，避免把“还可以
+        # 再画一张图”误当成科学错误；只有已使用图的来源和可读性仍是硬门。
+        if not science_first:
+            errors.extend(validate_candidate_visual_assessment(run_dir))
+            errors.extend(validate_pending_visual_promotions(run_dir))
         errors.extend(validate_required_figure_consumption(run_dir))
         # 生产事实链闭合门：frozen answer -> registered result -> paper answer map
         # -> figure source 必须一致，否则 RENDER_FORBIDDEN。

@@ -738,13 +738,19 @@ def _validate_matlab_tooling_probe(
                 )
             exit_code = probe_item.get("exit_code")
             timed_out = probe_item.get("timed_out")
-            if not isinstance(exit_code, int) or isinstance(exit_code, bool):
-                raise ContractError(
-                    f"{label}.tooling.{engine}.probe.exit_code 必须是整数"
-                )
             if not isinstance(timed_out, bool):
                 raise ContractError(
                     f"{label}.tooling.{engine}.probe.timed_out 必须是布尔值"
+                )
+            # 超时进程没有操作系统退出码；把 null 视为真实探测失败，避免伪造退出状态。
+            if timed_out:
+                if exit_code is not None:
+                    raise ContractError(
+                        f"{label}.tooling.{engine}.probe 超时时 exit_code 必须为 null"
+                    )
+            elif not isinstance(exit_code, int) or isinstance(exit_code, bool):
+                raise ContractError(
+                    f"{label}.tooling.{engine}.probe.exit_code 必须是整数"
                 )
             observed = exit_code == 0 and not timed_out
             if status != observed:
@@ -3476,6 +3482,12 @@ def require_risk_adaptive_production_ready(run_dir: Path, question_id: str) -> N
         ContractError: 建模合同、风险包或前置攻击事实尚未闭合。
     """
     state = read_simple_state(run_dir)
+    from shumozizi.simple.science_checkpoint import is_science_first_run
+    if is_science_first_run(run_dir):
+        from shumozizi.simple.science_checkpoint import require_science_checkpoint
+
+        require_science_checkpoint(run_dir)
+        return
     if state.get("execution_policy") != "risk-adaptive-v1":
         return
     if not is_competition_first_v32_state(state):
@@ -3509,8 +3521,10 @@ def require_risk_adaptive_production_ready(run_dir: Path, question_id: str) -> N
     results = {item["result_id"]: item for item in read_result_index(run_dir)["results"]}
     existing_production = any(
         item.get("question_id") == question_id
+        and item.get("status") == "current"
         and item.get("execution_mode") == "production"
         and item.get("execution_valid") is True
+        and item.get("scientific_status", "valid") != "invalidated"
         for item in results.values()
     )
     actual = raw_unit.get("actual")

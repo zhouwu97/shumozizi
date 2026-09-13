@@ -184,6 +184,8 @@ def test_author_pass_exposes_two_default_inputs_and_separate_source(tmp_path: Pa
     assert manifest["author_brief"]["path"] == "paper/author-pass/AUTHOR_BRIEF.md"
     assert not (run_dir / "paper/longform-source.tex").exists()
     assert (run_dir / "paper/AUTHOR_GAPS.md").is_file()
+    assert (run_dir / "paper/author-pass/THESIS_CARD.md").is_file()
+    assert manifest["thesis_card"]["path"] == "paper/author-pass/THESIS_CARD.md"
     brief = (run_dir / "paper/author-pass/AUTHOR_BRIEF.md").read_text(encoding="utf-8")
     assert "国奖级完整竞赛论文" in brief
     assert "应提出返工请求" in brief

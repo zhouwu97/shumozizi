@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-# WHY: 图的论证覆盖始终是硬门，但少题运行若同时强制逐题上限与全篇 12 图，
-# 在数学上不可满足。把按题数的判定集中在此处，避免生成、Author Brief 与终检
-# 各自复制数值后再次漂移。
+# WHY: 旧数量合同保留给显式 legacy/competition-quality 运行；新运行只检查
+# 论证角色和 current 来源，避免作者为满足数量制造装饰图。
 MIN_BODY_FIGURES_PER_QUESTION = 2
 MAX_BODY_FIGURES_PER_QUESTION = 3
 MIN_FORMAL_BODY_FIGURES = 13
@@ -18,9 +17,7 @@ GLOBAL_FIGURE_HARD_MINIMUM_QUESTION_COUNT = 4
 def advanced_figure_quota_payload(required_question_count: int) -> dict[str, Any]:
     """返回可写入视觉需求契约的按题数图合同。
 
-    每个必答问题始终需要足以承担不同论证角色的两到三张 current 正文图。
-    四问及以上正式稿：全篇 13–18 张 current 正文图和至少 3 种图型作为硬门；
-    少于四问以论证角色为编辑目标，不能为了满足全局数量而拆分或重复插图。
+    该函数仅生成 legacy 数量合同的兼容描述；science-editorial 运行不消费数量字段。
 
     Args:
         required_question_count: 当前正式候选稿的必答问题数量。
@@ -59,9 +56,8 @@ def advanced_figure_quota_payload(required_question_count: int) -> dict[str, Any
             MIN_FORMAL_VISUAL_ARCHETYPES if global_hard_minimum else None
         ),
         "editorial_target": (
-            "每个必答问题 2–3 张 current 正文图【硬门】；四问及以上全篇 13–18 张 current 正文图及"
-            "至少 3 种 visual archetype【硬门】。包含核心问题 Hero Figure、按需 supporting figures，"
-            "以及全局/跨问模型路线或数据结构图。不得通过重复图、拆分同一图或装饰图凑数。"
+            "按数学对象、决定性证据、机制和边界选择 current 正文图；一张图承担一个主要判断，"
+            "数量只作编辑信号，不得通过重复图、拆分同一图或装饰图凑数。"
         ),
         "count_scope": (
             "仅计正式发布入口实际引用、status=current、paper_allowed=true 的图；"

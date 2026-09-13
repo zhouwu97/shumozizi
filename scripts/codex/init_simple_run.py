@@ -48,6 +48,16 @@ def main() -> int:
         default=DEFAULT_COMPETITION_PAPER_DRAFT_MODE,
         help="默认先展开长篇科学首稿；reviewable_draft 仅作披露式 fallback。",
     )
+    parser.add_argument(
+        "--execution-policy",
+        choices=("science-first-v1", "risk-adaptive-v1", "legacy-production-v1"),
+        help="生产策略；未指定时保留旧 v3.2 名称并使用 science-editorial 语义。",
+    )
+    parser.add_argument(
+        "--quality-policy",
+        choices=("science-editorial-v1", "competition-quality-v1", "legacy"),
+        help="论文质量策略；默认 v3.2 使用 science-editorial-v1。",
+    )
     parser.add_argument("--repo-root")
     args = parser.parse_args()
     root = Path(args.repo_root).resolve() if args.repo_root else resolve_repo_root()
@@ -67,14 +77,10 @@ def main() -> int:
         initial_execution_mode=(
             "exploration" if args.workflow_version == "3.2" else "production"
         ),
-        execution_policy=(
-            "risk-adaptive-v1"
-            if args.workflow_version == "3.2"
-            else "legacy-production-v1"
-        ),
-        quality_policy=(
-            "competition-quality-v1" if args.workflow_version == "3.2" else "legacy"
-        ),
+        execution_policy=args.execution_policy
+        or ("risk-adaptive-v1" if args.workflow_version == "3.2" else "legacy-production-v1"),
+        quality_policy=args.quality_policy
+        or ("science-editorial-v1" if args.workflow_version == "3.2" else "legacy"),
     )
     print(
         json.dumps(

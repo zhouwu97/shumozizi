@@ -129,8 +129,8 @@ def freeze_workflow_snapshot(
     该快照不让代码变更反向否定真实实验；它只保证同一运行的候选稿不会在
     中途悄悄换用另一套论文/视觉规则，并明确新质量合同是否已启用。
     """
-    if quality_policy not in {"legacy", "competition-quality-v1"}:
-        raise ContractError("quality_policy 必须为 legacy 或 competition-quality-v1")
+    if quality_policy not in {"legacy", "competition-quality-v1", "science-editorial-v1"}:
+        raise ContractError("quality_policy 必须为 legacy、competition-quality-v1 或 science-editorial-v1")
     root = run_dir.resolve()
     repo_root = resolve_repo_root(Path(__file__))
     state = read_simple_state(root)

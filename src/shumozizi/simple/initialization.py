@@ -243,7 +243,7 @@ def initialize_simple_run(
             reviewable fallback 兼容，新 CLI 默认显式传入长篇科学首稿。
         initial_execution_mode: 初始实验用途；旧 API 默认保持 production 兼容。
         execution_policy: 执行策略；新 v3.2 CLI 使用风险自适应策略。
-        quality_policy: 运行开始即冻结的论文质量合同；新 CLI 使用 competition-quality-v1。
+        quality_policy: 运行开始即冻结的论文质量合同；新 CLI 使用 science-editorial-v1。
 
     Returns:
         新建运行目录。
@@ -259,12 +259,12 @@ def initialize_simple_run(
         raise ContractError("paper_draft_mode 必须为 longform_scientific_draft 或 reviewable_draft")
     if initial_execution_mode not in {"production", "exploration"}:
         raise ContractError("initial_execution_mode 必须为 production 或 exploration")
-    if execution_policy not in {"legacy-production-v1", "risk-adaptive-v1"}:
-        raise ContractError("execution_policy 必须为 legacy-production-v1 或 risk-adaptive-v1")
-    if workflow_version != "3.2" and execution_policy == "risk-adaptive-v1":
-        raise ContractError("risk-adaptive-v1 仅适用于 v3.2 运行")
-    if quality_policy not in {"legacy", "competition-quality-v1"}:
-        raise ContractError("quality_policy 必须为 legacy 或 competition-quality-v1")
+    if execution_policy not in {"legacy-production-v1", "risk-adaptive-v1", "science-first-v1"}:
+        raise ContractError("execution_policy 必须为 legacy-production-v1、risk-adaptive-v1 或 science-first-v1")
+    if workflow_version != "3.2" and execution_policy in {"risk-adaptive-v1", "science-first-v1"}:
+        raise ContractError("v3.2 才能使用新的生产策略")
+    if quality_policy not in {"legacy", "competition-quality-v1", "science-editorial-v1"}:
+        raise ContractError("quality_policy 必须为 legacy、competition-quality-v1 或 science-editorial-v1")
     if workflow_version != "3.2" and quality_policy != "legacy":
         raise ContractError("competition-quality-v1 仅适用于 v3.2 运行")
     identifier = safe_simple_run_id(run_id)
@@ -308,6 +308,10 @@ def initialize_simple_run(
     }
     require_simple_state(state)
     atomic_json(run_dir / "state" / "run.json", state)
+    if workflow_version == "3.2":
+        from shumozizi.simple.science_checkpoint import initialize_science_checkpoint
+
+        initialize_science_checkpoint(run_dir, list(required_questions or []))
     atomic_json(
         run_dir / "results" / "index.json",
         {"schema_version": "1.0", "run_id": identifier, "results": []},
